@@ -156,7 +156,7 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
   // Proporções para o container principal
   const aspectClass = format === 'VERTICAL'
     ? 'aspect-4/5 max-h-[380px]'
-    : format === 'QUADRADO' || (format as any) === 'SQUARE'
+    : format === 'QUADRADO' || format === 'SQUARE'
     ? 'aspect-square max-h-[320px]'
     : 'min-h-[190px] sm:min-h-[220px] md:min-h-[240px]';
 
