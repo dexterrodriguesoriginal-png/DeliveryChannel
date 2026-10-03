@@ -1,0 +1,6 @@
+{
+  "name": "ADEGAFOOD — SaaS Multi-Tenant de Delivery & Vendas",
+  "description": "Fundação oficial da plataforma SaaS multi-tenant ADEGAFOOD com isolamento por tenant, RBAC, App do Cliente, Painel do Estabelecimento, App do Entregador e Command Center CEO.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

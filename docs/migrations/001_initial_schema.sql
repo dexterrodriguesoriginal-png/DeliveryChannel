@@ -1,0 +1,14 @@
+-- ==============================================================================
+-- ADEGAFOOD — MIGRATION 001: INITIAL SCHEMA & ROW LEVEL SECURITY (RLS)
+-- Arquivo oficial de DDL do PostgreSQL / Supabase
+-- ==============================================================================
+
+-- Veja /supabase/migrations/20260922000001_initial_schema.sql para o arquivo canônico.
+-- O script cria:
+-- 1. Tabelas: tenants, tenant_settings, tenant_themes, users, roles, tenant_users
+-- 2. Catálogo: categories, products, offers
+-- 3. Vendas: customers, customer_consents, orders, order_items, order_status_history
+-- 4. Estoque: inventory_movements (Kardex com saldo anterior/novo)
+-- 5. Segurança & Trilha: audit_logs, app_events
+-- 6. Transação Atômica Anti-Overselling: public.process_checkout_atomic()
+-- 7. Políticas RLS (Row Level Security) ativadas em todas as 16 tabelas com bloqueio cross-tenant.

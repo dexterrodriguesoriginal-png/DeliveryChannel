@@ -1,0 +1,113 @@
+<!--
+  Template de E-mail de Magic Link do Supabase Auth para AdegaFood
+  Configuração no Supabase Dashboard:
+  Authentication -> Email Templates -> Magic Link
+
+  Assunto sugerido:
+  Confirme seu acesso ao AdegaFood / Confirm your AdegaFood access
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AdegaFood — Confirme seu acesso</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #0F172A;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #F8FAFC; padding: 40px 16px;">
+    <tr>
+      <td align="center">
+        <!-- Container Principal -->
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 540px; background-color: #FFFFFF; border-radius: 12px; border: 1px solid #E2E8F0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          
+          <!-- Header com Logo / Nome -->
+          <tr>
+            <td style="padding: 28px 32px 20px 32px; border-bottom: 1px solid #F1F5F9; text-align: center;">
+              <span style="font-size: 24px; font-weight: 800; color: #15803D; letter-spacing: -0.5px;">
+                🍇 AdegaFood
+              </span>
+            </td>
+          </tr>
+
+          <!-- Conteúdo em Português -->
+          <tr>
+            <td style="padding: 32px 32px 24px 32px;">
+              <h1 style="margin: 0 0 12px 0; font-size: 19px; font-weight: 700; color: #0F172A; line-height: 1.3;">
+                Confirme seu acesso ao AdegaFood
+              </h1>
+              <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                Clique no botão abaixo para confirmar seu e-mail e ativar seu estabelecimento.
+              </p>
+
+              <!-- Botão Português -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 0 20px 0;">
+                <tr>
+                  <td align="center" style="border-radius: 8px; background-color: #15803D;">
+                    <a href="{{ .ConfirmationURL }}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 12px 28px; font-size: 14px; font-weight: 700; color: #FFFFFF; text-decoration: none; border-radius: 8px; background-color: #15803D; letter-spacing: 0.3px;">
+                      CONFIRMAR E-MAIL
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0; font-size: 12px; color: #64748B; line-height: 1.5;">
+                Este link é de uso único e expira em breve.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Divisor Bilíngue -->
+          <tr>
+            <td style="padding: 0 32px;">
+              <hr style="border: 0; border-top: 1px dashed #E2E8F0; margin: 0;">
+            </td>
+          </tr>
+
+          <!-- Conteúdo em Inglês -->
+          <tr>
+            <td style="padding: 24px 32px 32px 32px;">
+              <div style="font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
+                English
+              </div>
+              <h2 style="margin: 0 0 12px 0; font-size: 16px; font-weight: 600; color: #0F172A; line-height: 1.3;">
+                Confirm your AdegaFood access
+              </h2>
+              <p style="margin: 0 0 20px 0; font-size: 13px; line-height: 1.6; color: #475569;">
+                Click the button below to confirm your email and activate your establishment.
+              </p>
+
+              <!-- Botão Inglês -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 0 16px 0;">
+                <tr>
+                  <td align="center" style="border-radius: 8px; background-color: #15803D;">
+                    <a href="{{ .ConfirmationURL }}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 10px 24px; font-size: 13px; font-weight: 600; color: #FFFFFF; text-decoration: none; border-radius: 8px; background-color: #15803D; letter-spacing: 0.3px;">
+                      CONFIRM EMAIL
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0; font-size: 12px; color: #64748B; line-height: 1.5;">
+                This link can only be used once and expires shortly.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Rodapé do E-mail -->
+          <tr>
+            <td style="padding: 20px 32px; background-color: #F8FAFC; border-top: 1px solid #F1F5F9; text-align: center;">
+              <p style="margin: 0 0 4px 0; font-size: 11px; color: #94A3B8;">
+                AdegaFood — Sistema de Gestão e Delivery para Adegas
+              </p>
+              <p style="margin: 0; font-size: 11px; color: #CBD5E1;">
+                Se você não solicitou este e-mail, pode ignorá-lo com segurança.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

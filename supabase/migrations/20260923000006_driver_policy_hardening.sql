@@ -1,0 +1,42 @@
+-- ==============================================================================
+-- ADEGAFOOD - MIGRATION 006: HARDENING DA POLÍTICA DE EDIÇÃO DE ENTREGADORES
+-- ==============================================================================
+-- Descrição:
+--   1. Remoção definitiva da policy 'p_drivers_self_update' em public.drivers.
+--   2. Proibição absoluta de UPDATE direto via RLS/PostgREST para clientes/frontend,
+--      inclusive para o próprio motorista autenticado.
+--   3. Toda mutação de perfil, dados de veículo ou alternância de status
+--      (AVAILABLE / UNAVAILABLE) deve passar OBRIGATORIAMENTE pela RPC
+--      SECURITY DEFINER auditada: public.update_driver_profile(...).
+--   4. Preservação integral das políticas de leitura existentes em public.drivers:
+--      - p_drivers_admin_select
+--      - p_drivers_self_select
+--   5. Nenhuma alteração em public.team_invites ou public.tenant_users.
+--
+-- ATENÇÃO CRÍTICA DE EXECUÇÃO:
+--   ESTA MIGRATION NÃO DEVE SER EXECUTADA AUTOMATICAMENTE NO BANCO REMOTO.
+--   PREPARADA LOCALMENTE PARA AUDITORIA TÉCNICA E APROVAÇÃO.
+-- ==============================================================================
+
+-- ------------------------------------------------------------------------------
+-- 1. REVOGAÇÃO DA POLICY DE UPDATE DIRETO EM public.drivers
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS p_drivers_self_update ON public.drivers;
+
+-- ------------------------------------------------------------------------------
+-- 2. NOTA ARQUITETURAL DE SEGURANÇA E RLS EM public.drivers:
+-- ------------------------------------------------------------------------------
+-- As seguintes políticas de leitura (SELECT) permanecem ativas e inalteradas:
+--   - p_drivers_admin_select:
+--       FOR SELECT TO authenticated
+--       USING (public.has_tenant_role(auth.uid(), tenant_id, ARRAY['OWNER', 'MANAGER', 'DELIVERY_MANAGER']));
+--   - p_drivers_self_select:
+--       FOR SELECT TO authenticated
+--       USING (user_id = auth.uid());
+--
+-- NENHUMA policy para INSERT, UPDATE ou DELETE é criada para public.drivers.
+-- Com o RLS habilitado (ALTER TABLE public.drivers ENABLE ROW LEVEL SECURITY):
+--   - INSERT direto pelo frontend: BLOQUEADO (apenas accept_team_invite cria motoristas).
+--   - UPDATE direto pelo frontend: BLOQUEADO (apenas update_driver_profile / suspend_driver / assign / unassign).
+--   - DELETE direto pelo frontend: BLOQUEADO (inativação ocorre via remove_team_member).
+-- ------------------------------------------------------------------------------

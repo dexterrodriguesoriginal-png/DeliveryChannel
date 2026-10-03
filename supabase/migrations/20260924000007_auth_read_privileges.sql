@@ -1,0 +1,43 @@
+-- ==============================================================================
+-- ADEGAFOOD — MIGRATION 007: REGISTRO DE PRIVILÉGIOS DE LEITURA (GRANT SELECT)
+-- ==============================================================================
+-- Descrição:
+--   Registra oficialmente no histórico de migrações os privilégios de leitura (SELECT)
+--   concedidos ao role 'authenticated' do Supabase / PostgreSQL nas tabelas:
+--     1. public.users
+--     2. public.tenant_users
+--
+-- Contexto Arquitetural:
+--   O PostgREST / Supabase API opera sob o role de banco de dados 'authenticated'
+--   quando há uma sessão ativa de usuário. Para que o motor do PostgreSQL avalie
+--   as políticas de Row Level Security (RLS), o role do banco precisa primeiramente
+--   possuir o privilégio de objeto correspondente (GRANT SELECT).
+--   Sem esse privilégio, a consulta era rejeitada na camada de permissão de tabela
+--   (HTTP 403: permission denied for table tenant_users), impedindo o frontend
+--   autenticado de resolver a associação de tenants do usuário.
+--
+-- SEGURANÇA E RLS:
+--   - O comando GRANT SELECT NÃO ignora e NÃO substitui o RLS (Row Level Security).
+--   - O RLS permanece HABILITADO e ATIVO em ambas as tabelas:
+--       * public.users: protegido pela policy 'users_select_self_or_ceo'
+--         (id = auth.uid() OR public.is_ceo(auth.uid()))
+--       * public.tenant_users: protegido pela policy 'tenant_users_select_scope'
+--         (user_id = auth.uid() OR public.is_ceo(auth.uid()) OR public.has_tenant_role(auth.uid(), tenant_id, ARRAY['OWNER', 'MANAGER']))
+--   - O papel 'authenticated' só tem visibilidade estrita das linhas autorizadas
+--     pelas políticas RLS existentes.
+--   - Nenhuma tabela é alterada, nenhuma policy é criada ou removida, e nenhum
+--     privilégio de escrita direta (INSERT, UPDATE, DELETE) é concedido.
+--
+-- IDEMPOTÊNCIA:
+--   No PostgreSQL, comandos GRANT para privilégios de tabela são idempotentes:
+--   re-execuções sucessivas não geram duplicação de privilégios nem produzem erro.
+--
+-- ATENÇÃO CRÍTICA:
+--   ESTA MIGRATION NÃO DEVE SER EXECUTADA AUTOMATICAMENTE NO BANCO REMOTO PELO AGENTE.
+-- ==============================================================================
+
+-- 1. Concede privilégio de leitura para usuários autenticados consultarem seu próprio perfil (filtrado por RLS)
+GRANT SELECT ON TABLE public.users TO authenticated;
+
+-- 2. Concede privilégio de leitura para usuários autenticados consultarem suas associações de estabelecimento (filtradas por RLS)
+GRANT SELECT ON TABLE public.tenant_users TO authenticated;

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      // Runtime safety patch for Google AI Studio iframe & browser environment
+      // Prevents "TypeError: Cannot set property fetch of #<Window> which has only a getter"
+      (function() {
+        try {
+          var originalFetch = typeof window !== 'undefined' && window.fetch ? window.fetch.bind(window) : null;
+          var currentFetch = originalFetch;
+          if (typeof window !== 'undefined') {
+            try {
+              Object.defineProperty(window, 'fetch', {
+                configurable: true,
+                enumerable: true,
+                get: function() {
+                  return currentFetch;
+                },
+                set: function(fn) {
+                  currentFetch = typeof fn === 'function' ? fn : originalFetch;
+                }
+              });
+            } catch (err) {
+              if (typeof Window !== 'undefined' && Window.prototype) {
+                try {
+                  Object.defineProperty(Window.prototype, 'fetch', {
+                    configurable: true,
+                    enumerable: true,
+                    get: function() {
+                      return currentFetch;
+                    },
+                    set: function(fn) {
+                      currentFetch = typeof fn === 'function' ? fn : originalFetch;
+                    }
+                  });
+                } catch (e2) {}
+              }
+            }
+          }
+        } catch (e) {}
+
+        // Google Maps Referer restriction graceful interceptor
+        try {
+          var origConsoleError = console.error;
+          console.error = function() {
+            var msg = arguments && arguments[0] ? String(arguments[0]) : '';
+            if (msg.indexOf('RefererNotAllowedMapError') !== -1 || (msg.indexOf('Google Maps JavaScript API error') !== -1 && msg.indexOf('RefererNotAllowed') !== -1)) {
+              console.warn('[Google Maps Resiliência] Restrição de Referer detectada na chave do usuário. Fallback automático ativado.');
+              return;
+            }
+            return origConsoleError.apply(console, arguments);
+          };
+          window.addEventListener('error', function(event) {
+            var errorMsg = event && (event.message || (event.error && event.error.message)) ? String(event.message || event.error.message) : '';
+            if (errorMsg.indexOf('RefererNotAllowedMapError') !== -1) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }, true);
+        } catch (e3) {}
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ADEGAFOOD — SaaS Multi-Tenant de Delivery & Vendas</title>
+    <meta name="description" content="Fundação oficial da plataforma SaaS multi-tenant ADEGAFOOD com isolamento por tenant, RBAC, App do Cliente, Painel do Estabelecimento, App do Entregador e Command Center CEO." />
+    <meta property="og:title" content="ADEGAFOOD — SaaS Multi-Tenant de Delivery & Vendas" />
+    <meta property="og:description" content="Fundação oficial da plataforma SaaS multi-tenant ADEGAFOOD com isolamento por tenant, RBAC, App do Cliente, Painel do Estabelecimento, App do Entregador e Command Center CEO." />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#15803d" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="AdegaFood" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-gray-50 text-gray-900 antialiased font-sans selection:bg-emerald-100 selection:text-emerald-900">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
