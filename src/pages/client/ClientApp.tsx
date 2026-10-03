@@ -7,6 +7,7 @@ import { orderRepository } from '../../repositories/orderRepository';
 import { customerRepository } from '../../repositories/customerRepository';
 import { orderService } from '../../services/orderService';
 import { OfferCarousel } from '../../components/common/OfferCarousel';
+import { buildStorefrontCards } from '../../utils/storefrontCards';
 import { PromotionalCheckoutModal } from '../../components/client/PromotionalCheckoutModal';
 import { MobileNavigation } from '../../components/layout/MobileNavigation';
 import { AddressAutocompleteInput, ParsedAddress } from '../../components/onboarding/AddressAutocompleteInput';
@@ -102,6 +103,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const [storeData, setStoreData] = useState<PublicStoreData | null>(null);
   const [isLoadingStore, setIsLoadingStore] = useState(true);
   const [storeNotFound, setStoreNotFound] = useState(false);
+  // Falha técnica ao carregar a vitrine (ex.: RPC com erro) — distinta de "loja não encontrada".
+  const [storeLoadError, setStoreLoadError] = useState<string | null>(null);
 
   // 3. Estados de Navegação e Filtros
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
@@ -183,9 +186,16 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
     setIsLoadingStore(true);
     setStoreNotFound(false);
+    setStoreLoadError(null);
 
     try {
-      const data = await publicStoreRepository.getPublicStore(slug);
+      const result = await publicStoreRepository.loadPublicStore(slug);
+      if (result.status === 'error') {
+        setStoreData(null);
+        setStoreLoadError(result.message);
+        return;
+      }
+      const data = result.status === 'ok' ? result.data : null;
       if (data && data.tenant) {
         setStoreData(data);
         // Carrega carrinho específico deste estabelecimento
@@ -203,11 +213,31 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     } catch (err) {
       console.warn('[ClientApp] Erro ao carregar loja por slug:', err);
       setStoreData(null);
-      setStoreNotFound(true);
+      setStoreLoadError(err instanceof Error ? err.message : 'Erro inesperado ao carregar a vitrine.');
     } finally {
       setIsLoadingStore(false);
     }
   }, [slug]);
+
+  // Relógio da vitrine (relógio do SERVIDOR corrigido pelo offset recebido no get_public_store).
+  // Atualiza a cada 15 s para que cards que expiram com a página aberta saiam da vitrine.
+  const [storefrontClockTick, setStorefrontClockTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setStorefrontClockTick(Date.now()), 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Cards da vitrine: cards do painel (offers) + cards de campanhas publicadas, somente do tenant do slug,
+  // filtrados por status/início/término e ordenados (ver utils/storefrontCards.ts).
+  const storefrontCards = useMemo<Offer[]>(() => {
+    if (!storeData) return [];
+    return buildStorefrontCards(
+      storeData.offers,
+      storeData.campaigns,
+      storefrontClockTick + storeData.serverTimeOffsetMs,
+      storeData.tenant.id
+    );
+  }, [storeData, storefrontClockTick]);
 
   useEffect(() => {
     loadStore();
@@ -917,6 +947,35 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   }
 
   // --------------------------------------------------------------------------
+  // ERRO TÉCNICO AO CARREGAR A VITRINE (não é "loja inexistente")
+  // --------------------------------------------------------------------------
+  if (storeLoadError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-xl border border-gray-200 text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+            <Store className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-950">Não foi possível carregar a vitrine</h2>
+          <p className="text-xs text-gray-600 leading-relaxed">
+            Ocorreu uma falha ao buscar o cardápio de <strong className="font-mono">/app/{slug}</strong>. Tente novamente em instantes.
+          </p>
+          <div className="pt-2">
+            <Button
+              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+              onClick={() => {
+                loadStore();
+              }}
+            >
+              Tentar novamente
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --------------------------------------------------------------------------
   // ESTADO 404: ESTABELECIMENTO NÃO ENCONTRADO (SEM FALLBACK MOCK)
   // --------------------------------------------------------------------------
   if (storeNotFound || !storeData) {
@@ -1277,15 +1336,16 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           )}
 
           {/* Carrossel de Ofertas Válidas do Estabelecimento */}
-          {storeData.offers.length > 0 && (
+          {storefrontCards.length > 0 && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                 <span>Ofertas & Promoções em Destaque</span>
               </div>
               <OfferCarousel
-                offers={storeData.offers}
+                offers={storefrontCards}
                 onOfferClick={handleOfferClick}
+                clockOffsetMs={storeData.serverTimeOffsetMs}
               />
             </div>
           )}

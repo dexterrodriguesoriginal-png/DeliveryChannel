@@ -94,6 +94,12 @@ export type CustomerOrigin =
   | 'direto' 
   | 'outros';
 
+/**
+ * Origem gravada em orders.origin. Inclui as origens de cliente (CustomerOrigin),
+ * o default do banco ('direct') e o checkout promocional próprio ('promotional_checkout').
+ */
+export type OrderOrigin = CustomerOrigin | 'direct' | 'promotional_checkout';
+
 export interface Customer {
   id: string;
   tenantId: string;
@@ -189,6 +195,11 @@ export interface PromotionalCard {
   computedStatus?: CardStatus;
   internalTitle?: string;
   internalDescription?: string;
+
+  /** Origem do card na vitrine: card do painel (tabela offers) ou card de campanha (campaign_cards). */
+  source?: 'OFFER' | 'CAMPAIGN_CARD';
+  campaignId?: string;
+  ctaText?: string;
   
   // Checkout Promocional Próprio (Modo 3 - Sem depender de produto de catálogo)
   hasPromoCheckout?: boolean;
@@ -225,6 +236,17 @@ export type CampaignCardModel = 'FULL_MEDIA' | 'PROMO_CARD' | 'OFFER_CARD';
 
 export type CampaignCardDestination = 'PRODUCT' | 'BANNER_ONLY' | 'CUSTOM_OFFER';
 
+/** Resumo público do produto vinculado a um card de campanha (retornado por get_public_store). */
+export interface CampaignCardProductSummary {
+  id: string;
+  name: string;
+  imageUrl?: string;
+  price: number;
+  promotionalPrice?: number;
+  unit?: string;
+  isAvailable: boolean;
+}
+
 export interface CampaignCard {
   id: string;
   campaignId: string;
@@ -244,7 +266,7 @@ export interface CampaignCard {
   autoOverlay: boolean; // Sobreposição automática: OFF por padrão no Full Media
   destinationType: CampaignCardDestination;
   productId?: string;
-  product?: Product;
+  product?: CampaignCardProductSummary;
   couponId?: string;
   coupon?: {
     id: string;
@@ -497,7 +519,9 @@ export interface Order {
   updatedAt: string;
   driverId?: string;
   driverName?: string;
-  origin: CustomerOrigin;
+  origin: OrderOrigin;
+  /** Card promocional (offers.id) que originou o pedido no checkout promocional próprio. */
+  offerId?: string;
   isDemo?: boolean;
 }
 

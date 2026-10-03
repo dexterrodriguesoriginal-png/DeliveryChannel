@@ -227,7 +227,7 @@ export const MarketingPage: React.FC = () => {
       showToast({
         type: 'error',
         title: 'Erro de Carregamento',
-        message: 'Não foi possível carregar os criativos promocionais.',
+        message: err instanceof Error ? err.message : 'Não foi possível carregar os criativos promocionais.',
       });
     } finally {
       setIsLoading(false);
@@ -316,12 +316,13 @@ export const MarketingPage: React.FC = () => {
       return;
     }
 
-    const maxSize = isVideoFile ? 60 * 1024 * 1024 : 10 * 1024 * 1024;
+    // Limites alinhados ao bucket `marketing` (migration 023: file_size_limit = 35 MB).
+    const maxSize = isVideoFile ? 35 * 1024 * 1024 : 10 * 1024 * 1024;
     if (file.size > maxSize) {
       showToast({
         type: 'error',
         title: 'Arquivo Muito Grande',
-        message: `Tamanho máximo: ${isVideoFile ? '60MB para vídeo' : '10MB para imagem'}.`,
+        message: `Tamanho máximo: ${isVideoFile ? '35MB para vídeo' : '10MB para imagem'}.`,
       });
       return;
     }
@@ -737,15 +738,24 @@ export const MarketingPage: React.FC = () => {
     newOffers[index] = newOffers[targetIdx];
     newOffers[targetIdx] = temp;
 
+    const previousOffers = offers;
     setOffers(newOffers);
     try {
-      await offerRepository.reorderOffers(
+      const persisted = await offerRepository.reorderOffers(
         securityContext,
         activeTenant.id,
         newOffers.map(o => o.id)
       );
-    } catch (err) {
+      setOffers(persisted);
+    } catch (err: any) {
       console.error('[MarketingPage] Erro ao reordenar:', err);
+      // Ordem não foi salva no banco: volta para o estado real anterior.
+      setOffers(previousOffers);
+      showToast({
+        type: 'error',
+        title: 'Ordem Não Salva',
+        message: err?.message || 'Não foi possível salvar a nova ordem dos cards.',
+      });
     }
   };
 
@@ -1311,10 +1321,10 @@ export const MarketingPage: React.FC = () => {
       {activeTab === 'materials' && (
         <div className="space-y-6">
           <QRCodeCard
-            storeUrl={getPublicStoreUrl(activeTenant.slug)}
+            slug={activeTenant.slug}
             storeName={activeTenant.name}
-            tenantCategory={activeTenant.category}
-            phone={activeTenant.phone}
+            primaryColor={activeTenant.theme.primaryColor}
+            onOpenApp={() => window.open(getPublicStoreUrl(activeTenant.slug), '_blank')}
           />
         </div>
       )}
@@ -1605,7 +1615,7 @@ export const MarketingPage: React.FC = () => {
                   <label className="w-full flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 hover:border-emerald-500 rounded-2xl cursor-pointer bg-white transition-colors">
                     <Upload className="w-6 h-6 text-gray-400 mb-1" />
                     <span className="text-xs font-bold text-gray-700">Clique para selecionar imagem ou vídeo</span>
-                    <span className="text-[10px] text-gray-400 mt-0.5">Até 60MB para vídeo e 10MB para imagem</span>
+                    <span className="text-[10px] text-gray-400 mt-0.5">Até 35MB para vídeo e 10MB para imagem</span>
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"

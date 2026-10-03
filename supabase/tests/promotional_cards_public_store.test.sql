@@ -324,6 +324,7 @@ SELECT tests.ok((:'r1'::jsonb->>'success')::boolean AND (:'r1'::jsonb->>'total_a
 SELECT (:'r1'::jsonb->>'order_id') AS ord1 \gset
 SELECT tests.ok((SELECT id FROM jsonb_to_record(public.get_customer_order_by_id(:'ord1')) AS x(id uuid)) = :'ord1'::uuid, 'Checkout: cliente consegue reler o pedido via get_customer_order_by_id (usado pelo frontend)');
 RESET ROLE;
+SELECT tests.ok((:'r1'::jsonb->>'order_number')::int = (SELECT order_number FROM public.orders WHERE id = (:'r1'::jsonb->>'order_id')::uuid), 'Checkout: RPC retorna order_number real do pedido (usado pelo frontend se a releitura falhar)');
 SELECT tests.ok((SELECT offer_id = :'o_chk'::uuid AND origin = 'promotional_checkout' AND tenant_id = :'ta'::uuid FROM public.orders WHERE id = :'ord1'), 'Checkout: orders.offer_id aponta para o card e tenant correto');
 SELECT tests.ok((SELECT offer_id = :'o_chk'::uuid AND product_id IS NULL AND quantity = 2 AND unit_price = 20.00 FROM public.order_items WHERE order_id = :'ord1'), 'Checkout: order_items.offer_id preenchido, product_id NULL (card visual sem produto)');
 SELECT tests.ok((SELECT card_id IS NULL AND offer_id = :'o_chk'::uuid FROM public.campaign_analytics_events WHERE order_id = :'ord1' AND event_type = 'CHECKOUT_COMPLETED'), 'Checkout: analytics com card_id NULL e offer_id = card (FK correta)');

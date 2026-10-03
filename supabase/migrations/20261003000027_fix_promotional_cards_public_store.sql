@@ -560,6 +560,7 @@ DECLARE
 
     v_customer_id UUID;
     v_order_id UUID;
+    v_order_number INT;
     v_clean_phone VARCHAR(32);
     v_clean_address TEXT;
     v_new_usage_count INT;
@@ -763,7 +764,7 @@ BEGIN
             'redemption_number', v_new_usage_count,
             'is_limited', (v_offer.promo_usage_limit IS NOT NULL AND v_offer.promo_usage_limit > 0)
         )
-    ) RETURNING id INTO v_order_id;
+    ) RETURNING id, order_number INTO v_order_id, v_order_number;
 
     -- 10. Item do pedido vinculado ao card (offer_id) e, se houver, ao produto
     INSERT INTO public.order_items (
@@ -826,6 +827,7 @@ BEGIN
     RETURN jsonb_build_object(
         'success', true,
         'order_id', v_order_id,
+        'order_number', v_order_number,
         'redemption_number', v_new_usage_count,
         'celebration_message', v_redemption_msg,
         'subtotal', v_subtotal,

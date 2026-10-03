@@ -1,26 +1,108 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { Offer } from '../types';
+import { Offer, CardDestination, CardFormat, CardMediaType, PromoCardModel } from '../types';
 import { dataStore } from '../services/dataStore';
 import { SecurityContext } from '../services/securityEngine';
 import { publicStoreRepository } from './publicStoreRepository';
 import { isValidUuid } from '../lib/uuid';
 import { calculatePromoCardStatus } from '../utils/promoCardDateUtils';
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/**
+ * Linha da tabela public.offers (colunas reais das migrations 001–026).
+ *
+ * IMPORTANTE: NÃO existe coluna `display_mode`. O "modo de exibição" do card é
+ * derivado de `auto_overlay` (true → EDITABLE_CARD, false → FULL_MEDIA), que é
+ * exatamente o que o MarketingPage envia. Gravar `display_mode` fazia TODO insert/
+ * update falhar no PostgREST (coluna inexistente) e o card caía em silêncio no
+ * dataStore/localStorage — causa raiz do "card não aparece na vitrine".
+ */
+export interface OfferRow {
+  id: string;
+  tenant_id: string;
+  product_id?: string | null;
+  title: string;
+  subtitle?: string | null;
+  description?: string | null;
+  badge?: string | null;
+  card_format?: string | null;
+  media_type?: string | null;
+  card_model?: string | null;
+  auto_overlay?: boolean | null;
+  destination_type?: string | null;
+  media_url?: string | null;
+  image_url?: string | null;
+  duration_seconds?: number | string | null;
+  video_duration?: number | string | null;
+  detected_width?: number | string | null;
+  detected_height?: number | string | null;
+  aspect_ratio?: string | null;
+  discount_percentage?: number | string | null;
+  original_price?: number | string | null;
+  promotional_price?: number | string | null;
+  internal_link?: string | null;
+  display_order?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  background_color?: string | null;
+  accent_color?: string | null;
+  is_active?: boolean | null;
+  has_promo_checkout?: boolean | null;
+  promo_title?: string | null;
+  promo_description?: string | null;
+  promo_price?: number | string | null;
+  promo_original_price?: number | string | null;
+  promo_discount_percentage?: number | string | null;
+  promo_unit?: string | null;
+  promo_min_quantity?: number | null;
+  promo_max_quantity_per_customer?: number | null;
+  promo_notes?: string | null;
+  promo_fulfillment_types?: string[] | null;
+  promo_payment_methods?: string[] | null;
+  promo_coupon_code?: string | null;
+  promo_usage_limit?: number | null;
+  promo_times_used?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  is_demo?: boolean | null;
+}
 
-function mapRowToOffer(row: any): Offer {
-  const cardFormat = row.card_format || row.cardFormat || 'HORIZONTAL';
-  const mediaType = row.media_type || row.mediaType || 'IMAGE';
-  const mediaUrl = row.media_url || row.mediaUrl || row.image_url;
-  const imageUrl = row.image_url || row.media_url || row.mediaUrl;
-  const durationSeconds = Number(row.duration_seconds ?? row.durationSeconds ?? 5);
-  const displayMode = (row.display_mode === 'FULL_MEDIA' || row.displayMode === 'FULL_MEDIA' || row.display_mode === 'MEDIA_COMPLETA')
-    ? 'FULL_MEDIA'
-    : 'EDITABLE_CARD';
+const CARD_FORMATS: CardFormat[] = ['HORIZONTAL', 'SQUARE', 'QUADRADO', 'VERTICAL'];
+const CARD_MODELS: PromoCardModel[] = ['HERO', 'HIGHLIGHT', 'ANIMATED'];
+const DESTINATIONS: CardDestination[] = ['BANNER_ONLY', 'PRODUCT', 'CUSTOM_OFFER'];
+const FULFILLMENT_TYPES = ['DELIVERY', 'PICKUP'] as const;
+const PAYMENT_METHODS = ['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'CASH'] as const;
+
+function optNumber(value: number | string | null | undefined): number | undefined {
+  if (value === null || value === undefined || value === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function pickEnum<T extends string>(value: string | null | undefined, allowed: readonly T[], fallback: T): T {
+  return value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+}
+
+function pickEnumList<T extends string>(value: string[] | null | undefined, allowed: readonly T[]): T[] {
+  const list = (value || []).filter((v): v is T => (allowed as readonly string[]).includes(v));
+  return list.length > 0 ? list : [...allowed];
+}
+
+/** Normaliza o destino: cards legados BANNER_ONLY com produto vinculado abrem o produto (mesma regra do get_public_store). */
+function normalizeDestination(destination: string | null | undefined, productId: string | null | undefined): CardDestination {
+  const d = pickEnum(destination, DESTINATIONS, productId ? 'PRODUCT' : 'BANNER_ONLY');
+  return d === 'BANNER_ONLY' && productId ? 'PRODUCT' : d;
+}
+
+export function mapRowToOffer(row: OfferRow): Offer {
+  const mediaType: CardMediaType = row.media_type === 'VIDEO' ? 'VIDEO' : 'IMAGE';
+  const mediaUrl = row.media_url || row.image_url || undefined;
+  const imageUrl = row.image_url || row.media_url || undefined;
+  const autoOverlay = row.auto_overlay === null || row.auto_overlay === undefined ? true : Boolean(row.auto_overlay);
 
   const isActive = Boolean(row.is_active);
-  const startDate = row.start_at || row.start_date || row.startDate || row.startAt || undefined;
-  const endDate = row.end_at || row.end_date || row.endDate || row.endAt || undefined;
+  const startDate = row.start_at || row.start_date || undefined;
+  const endDate = row.end_at || row.end_date || undefined;
   const computedStatus = calculatePromoCardStatus({ isActive, startDate, endDate });
 
   const promoUsageLimit = row.promo_usage_limit ? Number(row.promo_usage_limit) : undefined;
@@ -36,409 +118,454 @@ function mapRowToOffer(row: any): Offer {
     subtitle: row.subtitle || undefined,
     description: row.description || '',
     badge: row.badge || undefined,
-    cardFormat,
+    cardFormat: pickEnum(row.card_format, CARD_FORMATS, 'HORIZONTAL'),
     mediaType,
-    displayMode,
-    cardModel: row.card_model || 'HERO',
-    autoOverlay: row.auto_overlay !== undefined ? Boolean(row.auto_overlay) : true,
-    destinationType: row.destination_type || (row.product_id ? 'PRODUCT' : 'BANNER_ONLY'),
+    displayMode: autoOverlay ? 'EDITABLE_CARD' : 'FULL_MEDIA',
+    cardModel: pickEnum(row.card_model, CARD_MODELS, 'HERO'),
+    autoOverlay,
+    destinationType: normalizeDestination(row.destination_type, row.product_id),
     mediaUrl,
     imageUrl,
-    durationSeconds,
-    videoDuration: row.video_duration ? Number(row.video_duration) : (row.videoDuration ? Number(row.videoDuration) : undefined),
-    detectedWidth: row.detected_width ? Number(row.detected_width) : (row.detectedWidth ? Number(row.detectedWidth) : undefined),
-    detectedHeight: row.detected_height ? Number(row.detected_height) : (row.detectedHeight ? Number(row.detectedHeight) : undefined),
-    aspectRatio: row.aspect_ratio || row.aspectRatio || '16:9',
-    discountPercentage: row.discount_percentage ? Number(row.discount_percentage) : undefined,
-    originalPrice: row.original_price ? Number(row.original_price) : undefined,
-    promotionalPrice: row.promotional_price ? Number(row.promotional_price) : undefined,
+    durationSeconds: optNumber(row.duration_seconds) ?? 5,
+    videoDuration: optNumber(row.video_duration),
+    detectedWidth: optNumber(row.detected_width),
+    detectedHeight: optNumber(row.detected_height),
+    aspectRatio: row.aspect_ratio || '16:9',
+    discountPercentage: optNumber(row.discount_percentage),
+    originalPrice: optNumber(row.original_price),
+    promotionalPrice: optNumber(row.promotional_price),
     internalLink: row.internal_link || undefined,
     order: Number(row.display_order ?? 0),
     startDate,
     endDate,
     startAt: startDate,
     endAt: endDate,
+    noEndDate: !endDate,
     backgroundColor: row.background_color || '#15803d',
     accentColor: row.accent_color || '#ffffff',
     isActive,
     computedStatus,
+    source: 'OFFER',
 
     // Checkout Promocional Próprio
     hasPromoCheckout: Boolean(row.has_promo_checkout),
     promoTitle: row.promo_title || undefined,
     promoDescription: row.promo_description || undefined,
-    promoPrice: row.promo_price ? Number(row.promo_price) : undefined,
-    promoOriginalPrice: row.promo_original_price ? Number(row.promo_original_price) : undefined,
-    promoDiscountPercentage: row.promo_discount_percentage ? Number(row.promo_discount_percentage) : undefined,
+    promoPrice: optNumber(row.promo_price),
+    promoOriginalPrice: optNumber(row.promo_original_price),
+    promoDiscountPercentage: optNumber(row.promo_discount_percentage),
     promoUnit: row.promo_unit || 'un',
     promoMinQuantity: row.promo_min_quantity ? Number(row.promo_min_quantity) : 1,
     promoMaxQuantityPerCustomer: row.promo_max_quantity_per_customer ? Number(row.promo_max_quantity_per_customer) : 10,
     promoNotes: row.promo_notes || undefined,
-    promoFulfillmentTypes: row.promo_fulfillment_types || ['DELIVERY', 'PICKUP'],
-    promoPaymentMethods: row.promo_payment_methods || ['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'CASH'],
+    promoFulfillmentTypes: pickEnumList(row.promo_fulfillment_types, FULFILLMENT_TYPES),
+    promoPaymentMethods: pickEnumList(row.promo_payment_methods, PAYMENT_METHODS),
     promoCouponCode: row.promo_coupon_code || undefined,
     promoUsageLimit,
     promoTimesUsed,
     isExhausted,
     remainingUses,
 
-    createdAt: row.created_at,
+    createdAt: row.created_at || undefined,
+    updatedAt: row.updated_at || undefined,
     isDemo: Boolean(row.is_demo),
   };
 }
 
+/**
+ * Modo local/demonstração EXPLÍCITO: sem Supabase configurado, ou tenant de demonstração
+ * (id não-UUID, existente apenas no dataStore). Somente nesses casos o dataStore é usado.
+ * Com Supabase configurado e tenant real, qualquer falha de persistência é propagada
+ * como erro — nunca mascarada por uma cópia no navegador.
+ */
+function isLocalMode(tenantId: string): boolean {
+  return !isSupabaseConfigured || !isValidUuid(tenantId);
+}
+
+function dbError(action: string, message: string): Error {
+  return new Error(`Não foi possível ${action} no banco de dados: ${message}`);
+}
+
+function hasKey<T extends object>(obj: T, key: keyof T): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function positiveOrNull(value: number | undefined | null): number | null {
+  return value !== undefined && value !== null && value > 0 ? value : null;
+}
+
+function trimOrNull(value: string | undefined | null): string | null {
+  const t = (value ?? '').trim();
+  return t ? t : null;
+}
+
+type OfferWrite = Omit<Offer, 'id' | 'tenantId' | 'createdAt'>;
+
 export const offerRepository = {
   /**
-   * Obtém lista de ofertas do estabelecimento a partir do Supabase.
+   * Lista os cards do estabelecimento (painel). Com Supabase, um erro de leitura é
+   * propagado (o painel mostra a falha) em vez de exibir cards locais que não existem no banco.
    */
   async getOffers(context: SecurityContext, tenantId: string): Promise<Offer[]> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const { data, error } = await supabase
-          .from('offers')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .order('display_order', { ascending: true });
-
-        if (error) {
-          console.warn('[offerRepository] Erro ao buscar ofertas do Supabase:', error.message);
-          return dataStore.getOffers(context, tenantId);
-        }
-
-        return (data || []).map(mapRowToOffer);
-      } catch (err) {
-        console.warn('[offerRepository] Falha ao consultar ofertas no Supabase:', err);
-        return dataStore.getOffers(context, tenantId);
-      }
+    if (isLocalMode(tenantId)) {
+      return dataStore.getOffers(context, tenantId);
     }
-    return dataStore.getOffers(context, tenantId);
+    const { data, error } = await supabase
+      .from('offers')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('display_order', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      throw dbError('carregar os cards promocionais', error.message);
+    }
+    return ((data || []) as OfferRow[]).map(mapRowToOffer);
   },
 
   /**
-   * Obtém ofertas públicas através da RPC segura.
+   * Cards públicos (vitrine) a partir do get_public_store.
    */
   async getPublicOffers(slug: string): Promise<Offer[]> {
     if (isSupabaseConfigured) {
       const store = await publicStoreRepository.getPublicStore(slug);
-      if (store) {
-        return store.offers;
-      }
-      return [];
+      return store ? store.offers : [];
     }
     return dataStore.getPublicOffers(slug);
   },
 
   /**
-   * Valida se o productId é UUID legítimo e pertence ao tenant especificado.
+   * Garante que o produto vinculado é um UUID do próprio tenant.
+   * Lança erro (em vez de silenciosamente desvincular) se o produto não pertencer ao tenant.
    */
   async validateProductBelongsToTenant(tenantId: string, productId?: string | null): Promise<string | null> {
     if (!productId || !productId.trim()) return null;
     const cleanId = productId.trim();
 
-    if (!UUID_REGEX.test(cleanId)) {
-      return null;
+    if (!isValidUuid(cleanId)) {
+      throw new Error('Produto vinculado inválido.');
     }
 
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase
-        .from('products')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .eq('id', cleanId)
-        .maybeSingle();
+    const { data, error } = await supabase
+      .from('products')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('id', cleanId)
+      .maybeSingle();
 
-      if (error || !data) {
-        return null;
-      }
-      return cleanId;
+    if (error) {
+      throw dbError('validar o produto vinculado', error.message);
     }
-
+    if (!data) {
+      throw new Error('O produto selecionado não pertence a este estabelecimento.');
+    }
     return cleanId;
   },
 
   /**
-   * Cria nova oferta promocional no Supabase.
+   * Cria um card promocional. Só retorna após o INSERT confirmado pelo banco.
    */
-  async create(
-    context: SecurityContext, 
-    tenantId: string, 
-    data: Omit<Offer, 'id' | 'tenantId' | 'createdAt'>
-  ): Promise<Offer> {
-    const mediaUrl = data.mediaUrl || data.imageUrl;
-    const imageUrl = data.imageUrl || data.mediaUrl;
-    const cardFormat = data.cardFormat || 'HORIZONTAL';
-    const mediaType = data.mediaType || 'IMAGE';
-    const durationSeconds = Number(data.durationSeconds ?? 5);
-
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const validatedProductId = await this.validateProductBelongsToTenant(tenantId, data.productId);
-
-        const { data: inserted, error } = await supabase
-          .from('offers')
-          .insert({
-            tenant_id: tenantId,
-            product_id: validatedProductId,
-            title: data.title.trim(),
-            subtitle: data.subtitle ? data.subtitle.trim() : null,
-            description: data.description ? data.description.trim() : '',
-            badge: data.badge ? data.badge.trim() : null,
-            card_format: cardFormat,
-            media_type: mediaType,
-            display_mode: data.displayMode || 'EDITABLE_CARD',
-            media_url: mediaUrl,
-            image_url: imageUrl,
-            duration_seconds: durationSeconds,
-            video_duration: data.videoDuration || null,
-            detected_width: data.detectedWidth || null,
-            detected_height: data.detectedHeight || null,
-            aspect_ratio: data.aspectRatio || '16:9',
-            discount_percentage: data.discountPercentage && data.discountPercentage > 0 ? data.discountPercentage : null,
-            original_price: data.originalPrice && data.originalPrice > 0 ? data.originalPrice : null,
-            promotional_price: data.promotionalPrice && data.promotionalPrice > 0 ? data.promotionalPrice : null,
-            internal_link: data.internalLink || null,
-            display_order: data.order ?? 0,
-            start_date: data.startDate || data.startAt || null,
-            end_date: data.endDate || data.endAt || null,
-            start_at: data.startAt || data.startDate || null,
-            end_at: data.endAt || data.endDate || null,
-            background_color: data.backgroundColor || null,
-            accent_color: data.accentColor || null,
-            is_active: data.isActive !== undefined ? data.isActive : true,
-            is_demo: data.isDemo ?? false,
-
-            // Campos do Checkout Promocional Próprio
-            destination_type: data.destinationType || (validatedProductId ? 'PRODUCT' : 'BANNER_ONLY'),
-            has_promo_checkout: Boolean(data.hasPromoCheckout),
-            promo_title: data.promoTitle || null,
-            promo_description: data.promoDescription || null,
-            promo_price: data.promoPrice && data.promoPrice > 0 ? data.promoPrice : null,
-            promo_original_price: data.promoOriginalPrice && data.promoOriginalPrice > 0 ? data.promoOriginalPrice : null,
-            promo_discount_percentage: data.promoDiscountPercentage || null,
-            promo_unit: data.promoUnit || 'un',
-            promo_min_quantity: data.promoMinQuantity || 1,
-            promo_max_quantity_per_customer: data.promoMaxQuantityPerCustomer || 10,
-            promo_notes: data.promoNotes || null,
-            promo_fulfillment_types: data.promoFulfillmentTypes || ['DELIVERY', 'PICKUP'],
-            promo_payment_methods: data.promoPaymentMethods || ['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'CASH'],
-            promo_coupon_code: data.promoCouponCode || null,
-            promo_usage_limit: data.promoUsageLimit && data.promoUsageLimit > 0 ? data.promoUsageLimit : null,
-            promo_times_used: data.promoTimesUsed || 0,
-            auto_overlay: data.autoOverlay !== undefined ? data.autoOverlay : true,
-            card_model: data.cardModel || 'HERO',
-          })
-          .select()
-          .single();
-
-        if (error) {
-          console.warn('[offerRepository] Erro ao cadastrar oferta no Supabase (usando fallback dataStore):', error.message);
-          return dataStore.createOffer(context, tenantId, data);
-        }
-
-        return mapRowToOffer(inserted);
-      } catch (err) {
-        console.warn('[offerRepository] Falha ao criar oferta no Supabase:', err);
-        return dataStore.createOffer(context, tenantId, data);
-      }
+  async create(context: SecurityContext, tenantId: string, data: OfferWrite): Promise<Offer> {
+    if (isLocalMode(tenantId)) {
+      return dataStore.createOffer(context, tenantId, data);
     }
-    return dataStore.createOffer(context, tenantId, data);
+
+    const mediaUrl = (data.mediaUrl || data.imageUrl || '').trim() || null;
+    const productId = data.destinationType === 'CUSTOM_OFFER'
+      ? null
+      : await this.validateProductBelongsToTenant(tenantId, data.productId);
+    const destinationType: CardDestination = data.destinationType || (productId ? 'PRODUCT' : 'BANNER_ONLY');
+    if (destinationType === 'PRODUCT' && !productId) {
+      throw new Error('Selecione o produto do catálogo vinculado a este card.');
+    }
+    const startAt = data.startAt || data.startDate || null;
+    const endAt = data.noEndDate ? null : (data.endAt || data.endDate || null);
+
+    const { data: inserted, error } = await supabase
+      .from('offers')
+      .insert({
+        tenant_id: tenantId,
+        product_id: productId,
+        title: data.title.trim(),
+        subtitle: trimOrNull(data.subtitle),
+        description: data.description ? data.description.trim() : '',
+        badge: trimOrNull(data.badge),
+        card_format: data.cardFormat || 'HORIZONTAL',
+        media_type: data.mediaType || 'IMAGE',
+        media_url: mediaUrl,
+        image_url: mediaUrl,
+        duration_seconds: Number(data.durationSeconds ?? 5),
+        video_duration: data.mediaType === 'VIDEO' ? (data.videoDuration || null) : null,
+        detected_width: data.detectedWidth || null,
+        detected_height: data.detectedHeight || null,
+        aspect_ratio: data.aspectRatio || '16:9',
+        discount_percentage: positiveOrNull(data.discountPercentage),
+        original_price: positiveOrNull(data.originalPrice),
+        promotional_price: positiveOrNull(data.promotionalPrice),
+        internal_link: data.internalLink || null,
+        display_order: data.order ?? 0,
+        start_date: startAt,
+        end_date: endAt,
+        start_at: startAt,
+        end_at: endAt,
+        background_color: data.backgroundColor || null,
+        accent_color: data.accentColor || null,
+        is_active: data.isActive !== undefined ? data.isActive : true,
+        is_demo: data.isDemo ?? false,
+        auto_overlay: data.autoOverlay !== undefined ? data.autoOverlay : data.displayMode !== 'FULL_MEDIA',
+        card_model: data.cardModel || 'HERO',
+
+        // Checkout Promocional Próprio
+        destination_type: destinationType,
+        has_promo_checkout: destinationType === 'CUSTOM_OFFER' ? true : Boolean(data.hasPromoCheckout),
+        promo_title: trimOrNull(data.promoTitle),
+        promo_description: trimOrNull(data.promoDescription),
+        promo_price: positiveOrNull(data.promoPrice),
+        promo_original_price: positiveOrNull(data.promoOriginalPrice),
+        promo_discount_percentage: positiveOrNull(data.promoDiscountPercentage),
+        promo_unit: data.promoUnit || 'un',
+        promo_min_quantity: data.promoMinQuantity || 1,
+        promo_max_quantity_per_customer: data.promoMaxQuantityPerCustomer || 10,
+        promo_notes: trimOrNull(data.promoNotes),
+        promo_fulfillment_types: data.promoFulfillmentTypes || ['DELIVERY', 'PICKUP'],
+        promo_payment_methods: data.promoPaymentMethods || ['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'CASH'],
+        promo_coupon_code: data.promoCouponCode ? data.promoCouponCode.trim().toUpperCase() : null,
+        promo_usage_limit: positiveOrNull(data.promoUsageLimit),
+        promo_times_used: 0,
+      })
+      .select()
+      .single();
+
+    if (error || !inserted) {
+      throw dbError('salvar o card promocional', error?.message || 'o banco não confirmou a gravação');
+    }
+    return mapRowToOffer(inserted as OfferRow);
   },
 
   /**
-   * Atualiza dados de oferta existente no Supabase.
+   * Atualiza um card. Só retorna após o UPDATE confirmado (1 linha) pelo banco.
+   * Campos presentes no objeto com valor vazio/undefined são LIMPOS no banco
+   * (ex.: "sem data de término", remover selo, remover produto).
    */
-  async update(
-    context: SecurityContext, 
-    tenantId: string, 
-    offerId: string, 
-    updates: Partial<Offer>
-  ): Promise<Offer> {
-    if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(offerId)) {
-      try {
-        const dbUpdates: any = { updated_at: new Date().toISOString() };
-        if (updates.title !== undefined) dbUpdates.title = updates.title.trim();
-        if (updates.subtitle !== undefined) dbUpdates.subtitle = updates.subtitle.trim();
-        if (updates.description !== undefined) dbUpdates.description = updates.description.trim();
-        if (updates.badge !== undefined) dbUpdates.badge = updates.badge.trim();
-        if (updates.cardFormat !== undefined) dbUpdates.card_format = updates.cardFormat;
-        if (updates.mediaType !== undefined) dbUpdates.media_type = updates.mediaType;
-        if (updates.displayMode !== undefined) dbUpdates.display_mode = updates.displayMode;
-        if (updates.mediaUrl !== undefined) {
-          dbUpdates.media_url = updates.mediaUrl;
-          dbUpdates.image_url = updates.imageUrl || updates.mediaUrl;
-        } else if (updates.imageUrl !== undefined) {
-          dbUpdates.image_url = updates.imageUrl;
-          dbUpdates.media_url = updates.mediaUrl || updates.imageUrl;
-        }
-        if (updates.durationSeconds !== undefined) dbUpdates.duration_seconds = updates.durationSeconds;
-        if (updates.videoDuration !== undefined) dbUpdates.video_duration = updates.videoDuration;
-        if (updates.detectedWidth !== undefined) dbUpdates.detected_width = updates.detectedWidth;
-        if (updates.detectedHeight !== undefined) dbUpdates.detected_height = updates.detectedHeight;
-        if (updates.aspectRatio !== undefined) dbUpdates.aspect_ratio = updates.aspectRatio;
-        if (updates.discountPercentage !== undefined) {
-          dbUpdates.discount_percentage = updates.discountPercentage > 0 ? updates.discountPercentage : null;
-        }
-        if (updates.originalPrice !== undefined) {
-          dbUpdates.original_price = updates.originalPrice > 0 ? updates.originalPrice : null;
-        }
-        if (updates.promotionalPrice !== undefined) {
-          dbUpdates.promotional_price = updates.promotionalPrice > 0 ? updates.promotionalPrice : null;
-        }
-        if (updates.internalLink !== undefined) dbUpdates.internal_link = updates.internalLink;
-        if (updates.order !== undefined) dbUpdates.display_order = updates.order;
-        if (updates.startDate !== undefined || updates.startAt !== undefined) {
-          const s = updates.startAt || updates.startDate || null;
-          dbUpdates.start_date = s;
-          dbUpdates.start_at = s;
-        }
-        if (updates.endDate !== undefined || updates.endAt !== undefined) {
-          const e = updates.endAt || updates.endDate || null;
-          dbUpdates.end_date = e;
-          dbUpdates.end_at = e;
-        }
-        if (updates.backgroundColor !== undefined) dbUpdates.background_color = updates.backgroundColor;
-        if (updates.accentColor !== undefined) dbUpdates.accent_color = updates.accentColor;
-        if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
-        if (updates.productId !== undefined) {
-          dbUpdates.product_id = updates.productId ? await this.validateProductBelongsToTenant(tenantId, updates.productId) : null;
-        }
-        if (updates.destinationType !== undefined) dbUpdates.destination_type = updates.destinationType;
-        if (updates.hasPromoCheckout !== undefined) dbUpdates.has_promo_checkout = updates.hasPromoCheckout;
-        if (updates.promoTitle !== undefined) dbUpdates.promo_title = updates.promoTitle ? updates.promoTitle.trim() : null;
-        if (updates.promoDescription !== undefined) dbUpdates.promo_description = updates.promoDescription ? updates.promoDescription.trim() : null;
-        if (updates.promoPrice !== undefined) dbUpdates.promo_price = updates.promoPrice > 0 ? updates.promoPrice : null;
-        if (updates.promoOriginalPrice !== undefined) dbUpdates.promo_original_price = updates.promoOriginalPrice > 0 ? updates.promoOriginalPrice : null;
-        if (updates.promoDiscountPercentage !== undefined) dbUpdates.promo_discount_percentage = updates.promoDiscountPercentage;
-        if (updates.promoUnit !== undefined) dbUpdates.promo_unit = updates.promoUnit;
-        if (updates.promoMinQuantity !== undefined) dbUpdates.promo_min_quantity = updates.promoMinQuantity;
-        if (updates.promoMaxQuantityPerCustomer !== undefined) dbUpdates.promo_max_quantity_per_customer = updates.promoMaxQuantityPerCustomer;
-        if (updates.promoNotes !== undefined) dbUpdates.promo_notes = updates.promoNotes ? updates.promoNotes.trim() : null;
-        if (updates.promoFulfillmentTypes !== undefined) dbUpdates.promo_fulfillment_types = updates.promoFulfillmentTypes;
-        if (updates.promoPaymentMethods !== undefined) dbUpdates.promo_payment_methods = updates.promoPaymentMethods;
-        if (updates.promoCouponCode !== undefined) dbUpdates.promo_coupon_code = updates.promoCouponCode ? updates.promoCouponCode.trim().toUpperCase() : null;
-        if (updates.promoUsageLimit !== undefined) dbUpdates.promo_usage_limit = updates.promoUsageLimit > 0 ? updates.promoUsageLimit : null;
-        if (updates.promoTimesUsed !== undefined) dbUpdates.promo_times_used = updates.promoTimesUsed;
-        if (updates.autoOverlay !== undefined) dbUpdates.auto_overlay = updates.autoOverlay;
-        if (updates.cardModel !== undefined) dbUpdates.card_model = updates.cardModel;
+  async update(context: SecurityContext, tenantId: string, offerId: string, updates: Partial<Offer>): Promise<Offer> {
+    if (isLocalMode(tenantId)) {
+      return dataStore.updateOffer(context, tenantId, offerId, updates);
+    }
+    if (!isValidUuid(offerId)) {
+      throw new Error('Card promocional inválido (id não reconhecido pelo banco).');
+    }
 
-        const { data: updated, error } = await supabase
-          .from('offers')
-          .update(dbUpdates)
-          .eq('tenant_id', tenantId)
-          .eq('id', offerId)
-          .select()
-          .single();
+    const has = (k: keyof Offer) => hasKey(updates, k);
+    const db: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
-        if (error) {
-          console.warn('[offerRepository] Erro ao atualizar oferta no Supabase:', error.message);
-          return dataStore.updateOffer(context, tenantId, offerId, updates);
-        }
+    if (has('title') && updates.title !== undefined) db.title = updates.title.trim();
+    if (has('subtitle')) db.subtitle = trimOrNull(updates.subtitle);
+    if (has('description')) db.description = (updates.description || '').trim();
+    if (has('badge')) db.badge = trimOrNull(updates.badge);
+    if (has('cardFormat') && updates.cardFormat) db.card_format = updates.cardFormat;
+    if (has('mediaType') && updates.mediaType) {
+      db.media_type = updates.mediaType;
+      if (updates.mediaType !== 'VIDEO') db.video_duration = null;
+    }
+    if (has('mediaUrl') || has('imageUrl')) {
+      const url = (updates.mediaUrl || updates.imageUrl || '').trim() || null;
+      db.media_url = url;
+      db.image_url = url;
+    }
+    if (has('durationSeconds') && updates.durationSeconds !== undefined) db.duration_seconds = updates.durationSeconds;
+    if (has('videoDuration') && (updates.mediaType === undefined || updates.mediaType === 'VIDEO')) {
+      db.video_duration = updates.videoDuration || null;
+    }
+    if (has('detectedWidth')) db.detected_width = updates.detectedWidth || null;
+    if (has('detectedHeight')) db.detected_height = updates.detectedHeight || null;
+    if (has('aspectRatio') && updates.aspectRatio) db.aspect_ratio = updates.aspectRatio;
+    if (has('discountPercentage')) db.discount_percentage = positiveOrNull(updates.discountPercentage);
+    if (has('originalPrice')) db.original_price = positiveOrNull(updates.originalPrice);
+    if (has('promotionalPrice')) db.promotional_price = positiveOrNull(updates.promotionalPrice);
+    if (has('internalLink')) db.internal_link = updates.internalLink || null;
+    if (has('order') && updates.order !== undefined) db.display_order = updates.order;
 
-        return mapRowToOffer(updated);
-      } catch (err) {
-        console.warn('[offerRepository] Falha ao atualizar oferta no Supabase:', err);
-        return dataStore.updateOffer(context, tenantId, offerId, updates);
+    if (has('startAt') || has('startDate')) {
+      const s = updates.startAt || updates.startDate || null;
+      db.start_date = s;
+      db.start_at = s;
+    }
+    if (updates.noEndDate === true) {
+      db.end_date = null;
+      db.end_at = null;
+    } else if (has('endAt') || has('endDate')) {
+      const e = updates.endAt || updates.endDate || null;
+      db.end_date = e;
+      db.end_at = e;
+    }
+
+    if (has('backgroundColor')) db.background_color = updates.backgroundColor || null;
+    if (has('accentColor')) db.accent_color = updates.accentColor || null;
+    if (has('isActive') && updates.isActive !== undefined) db.is_active = updates.isActive;
+    if (has('autoOverlay') && updates.autoOverlay !== undefined) {
+      db.auto_overlay = updates.autoOverlay;
+    } else if (has('displayMode') && updates.displayMode) {
+      // displayMode não é coluna: é derivado de auto_overlay.
+      db.auto_overlay = updates.displayMode !== 'FULL_MEDIA';
+    }
+    if (has('cardModel') && updates.cardModel) db.card_model = updates.cardModel;
+
+    if (has('destinationType') && updates.destinationType) {
+      db.destination_type = updates.destinationType;
+      if (updates.destinationType === 'CUSTOM_OFFER') {
+        db.product_id = null;
+        db.has_promo_checkout = true;
       }
     }
-    return dataStore.updateOffer(context, tenantId, offerId, updates);
+    if (has('productId') && updates.destinationType !== 'CUSTOM_OFFER') {
+      db.product_id = await this.validateProductBelongsToTenant(tenantId, updates.productId);
+      if (updates.destinationType === 'PRODUCT' && !db.product_id) {
+        throw new Error('Selecione o produto do catálogo vinculado a este card.');
+      }
+    }
+    if (has('hasPromoCheckout') && updates.destinationType !== 'CUSTOM_OFFER') {
+      db.has_promo_checkout = Boolean(updates.hasPromoCheckout);
+    }
+    if (has('promoTitle')) db.promo_title = trimOrNull(updates.promoTitle);
+    if (has('promoDescription')) db.promo_description = trimOrNull(updates.promoDescription);
+    if (has('promoPrice')) db.promo_price = positiveOrNull(updates.promoPrice);
+    if (has('promoOriginalPrice')) db.promo_original_price = positiveOrNull(updates.promoOriginalPrice);
+    if (has('promoDiscountPercentage')) db.promo_discount_percentage = positiveOrNull(updates.promoDiscountPercentage);
+    if (has('promoUnit') && updates.promoUnit) db.promo_unit = updates.promoUnit;
+    if (has('promoMinQuantity') && updates.promoMinQuantity) db.promo_min_quantity = updates.promoMinQuantity;
+    if (has('promoMaxQuantityPerCustomer') && updates.promoMaxQuantityPerCustomer) {
+      db.promo_max_quantity_per_customer = updates.promoMaxQuantityPerCustomer;
+    }
+    if (has('promoNotes')) db.promo_notes = trimOrNull(updates.promoNotes);
+    if (has('promoFulfillmentTypes') && updates.promoFulfillmentTypes) db.promo_fulfillment_types = updates.promoFulfillmentTypes;
+    if (has('promoPaymentMethods') && updates.promoPaymentMethods) db.promo_payment_methods = updates.promoPaymentMethods;
+    if (has('promoCouponCode')) db.promo_coupon_code = updates.promoCouponCode ? updates.promoCouponCode.trim().toUpperCase() : null;
+    if (has('promoUsageLimit')) db.promo_usage_limit = positiveOrNull(updates.promoUsageLimit);
+    // promo_times_used é controlado pelo backend (checkout atômico): não é sobrescrito pelo painel.
+
+    const { data: updated, error } = await supabase
+      .from('offers')
+      .update(db)
+      .eq('tenant_id', tenantId)
+      .eq('id', offerId)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      throw dbError('atualizar o card promocional', error.message);
+    }
+    if (!updated) {
+      throw new Error('O card não foi encontrado no banco ou você não tem permissão para alterá-lo.');
+    }
+    return mapRowToOffer(updated as OfferRow);
   },
 
   /**
-   * Reordena lista de ofertas.
+   * Persiste a nova ordem dos cards. Lança erro se qualquer UPDATE falhar e
+   * retorna a lista recarregada do banco (estado real).
    */
   async reorderOffers(context: SecurityContext, tenantId: string, offerIds: string[]): Promise<Offer[]> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        for (let i = 0; i < offerIds.length; i++) {
-          if (isValidUuid(offerIds[i])) {
-            await supabase
-              .from('offers')
-              .update({ display_order: i + 1 })
-              .eq('tenant_id', tenantId)
-              .eq('id', offerIds[i]);
-          }
-        }
-      } catch (err) {
-        console.warn('[offerRepository] Erro ao salvar ordem no Supabase:', err);
+    if (isLocalMode(tenantId)) {
+      return dataStore.reorderOffers(context, tenantId, offerIds);
+    }
+    for (let i = 0; i < offerIds.length; i++) {
+      if (!isValidUuid(offerIds[i])) {
+        throw new Error('Card promocional inválido na reordenação.');
+      }
+      const { data, error } = await supabase
+        .from('offers')
+        .update({ display_order: i + 1, updated_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId)
+        .eq('id', offerIds[i])
+        .select('id');
+      if (error) {
+        throw dbError('salvar a nova ordem dos cards', error.message);
+      }
+      if (!data || data.length !== 1) {
+        throw new Error('Não foi possível salvar a nova ordem: card não encontrado ou sem permissão.');
       }
     }
-    return dataStore.reorderOffers(context, tenantId, offerIds);
+    return this.getOffers(context, tenantId);
   },
 
   /**
-   * Upload de mídia promocional com isolamento multi-tenant:
-   * marketing/{tenant_id}/cards/{card_id}/{filename}
+   * Upload de mídia do card no bucket `marketing` (migration 023), caminho
+   *   {tenant_id}/cards/{card_id}/{timestamp}.{ext}
+   * O 1º segmento precisa ser o UUID do tenant: é o que a policy
+   * can_manage_catalog_storage(name) exige. O caminho antigo
+   * (catalog/marketing/{tenant}/...) era sempre negado e caía em base64.
+   * Com Supabase configurado, falha de upload é erro real (sem base64 silencioso).
    */
   async uploadMedia(tenantId: string, cardId: string, file: File): Promise<string> {
     const ext = file.name.split('.').pop()?.toLowerCase() || (file.type.startsWith('video') ? 'mp4' : 'jpg');
-    const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'webm'].includes(ext) ? ext : 'webp';
-    const cleanCardId = cardId || crypto.randomUUID();
-    const filePath = `marketing/${tenantId}/cards/${cleanCardId}/${Date.now()}.${safeExt}`;
+    const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'webm'].includes(ext) ? ext : (file.type.startsWith('video') ? 'mp4' : 'jpg');
 
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const { error: uploadErr } = await supabase.storage
-          .from('catalog')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: true,
-            contentType: file.type,
-          });
-
-        if (!uploadErr) {
-          const { data } = supabase.storage.from('catalog').getPublicUrl(filePath);
-          if (data?.publicUrl) {
-            return data.publicUrl;
-          }
-        } else {
-          console.warn('[offerRepository] Erro no upload Supabase Storage, caindo para base64:', uploadErr.message);
-        }
-      } catch (err) {
-        console.warn('[offerRepository] Exceção no upload para Supabase Storage:', err);
-      }
+    if (isLocalMode(tenantId)) {
+      // Modo demonstração/local explícito: mídia fica como Data URL no navegador.
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Erro ao converter arquivo local.'));
+        reader.readAsDataURL(file);
+      });
     }
 
-    // Fallback: conversão para Base64 Data URL persistente
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error('Erro ao converter arquivo local.'));
-      reader.readAsDataURL(file);
-    });
+    const cleanCardId = isValidUuid(cardId) ? cardId : crypto.randomUUID();
+    const filePath = `${tenantId}/cards/${cleanCardId}/${Date.now()}.${safeExt}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from('marketing')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type,
+      });
+
+    if (uploadErr) {
+      throw new Error(`Falha no upload da mídia para o Storage: ${uploadErr.message}`);
+    }
+    const { data } = supabase.storage.from('marketing').getPublicUrl(filePath);
+    if (!data?.publicUrl) {
+      throw new Error('Upload concluído, mas o Storage não retornou a URL pública da mídia.');
+    }
+    return data.publicUrl;
   },
 
   /**
-   * Remove oferta do Supabase.
+   * Exclui um card. Confirma que exatamente 1 linha foi removida no banco.
    */
   async delete(context: SecurityContext, tenantId: string, offerId: string): Promise<void> {
-    if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(offerId)) {
-      try {
-        const { error } = await supabase
-          .from('offers')
-          .delete()
-          .eq('tenant_id', tenantId)
-          .eq('id', offerId);
-
-        if (error) {
-          console.warn('[offerRepository] Erro ao excluir oferta no Supabase:', error.message);
-        }
-      } catch (err) {
-        console.warn('[offerRepository] Falha ao excluir oferta no Supabase:', err);
-      }
+    if (isLocalMode(tenantId)) {
+      dataStore.deleteOffer(context, tenantId, offerId);
+      return;
     }
-    dataStore.deleteOffer(context, tenantId, offerId);
+    if (!isValidUuid(offerId)) {
+      throw new Error('Card promocional inválido (id não reconhecido pelo banco).');
+    }
+    const { data, error } = await supabase
+      .from('offers')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', offerId)
+      .select('id');
+
+    if (error) {
+      throw dbError('excluir o card promocional', error.message);
+    }
+    if (!data || data.length === 0) {
+      throw new Error('O card não foi encontrado no banco ou você não tem permissão para excluí-lo.');
+    }
   },
 
   /**
-   * Alterna status da oferta no Supabase.
+   * Alterna ativo/pausado. Retorna o status confirmado pelo banco.
    */
   async toggleStatus(context: SecurityContext, tenantId: string, offerId: string): Promise<boolean> {
     const list = await this.getOffers(context, tenantId);
     const offer = list.find(o => o.id === offerId);
     if (!offer) throw new Error('Oferta não encontrada');
-    const newStatus = !offer.isActive;
-    await this.update(context, tenantId, offerId, { isActive: newStatus });
-    return newStatus;
+    const updated = await this.update(context, tenantId, offerId, { isActive: !offer.isActive });
+    return updated.isActive;
   },
 
   /**
@@ -457,6 +584,7 @@ export const offerRepository = {
       cardFormat: source.cardFormat,
       mediaType: source.mediaType,
       displayMode: source.displayMode,
+      noEndDate: source.noEndDate,
       mediaUrl: source.mediaUrl,
       imageUrl: source.imageUrl,
       durationSeconds: source.durationSeconds,
@@ -500,71 +628,5 @@ export const offerRepository = {
     };
 
     return this.create(context, tenantId, payload);
-  },
-
-  /**
-   * Processa o Checkout Promocional Próprio de forma atômica no banco de dados.
-   * Não confia em valores do navegador: valida preço, validade e limite no PostgreSQL.
-   */
-  async processPromotionalCheckout(
-    slug: string,
-    payload: {
-      offerId: string;
-      quantity: number;
-      customerName: string;
-      customerPhone: string;
-      customerEmail?: string;
-      deliveryAddress?: string;
-      addressDetails?: any;
-      paymentMethod: string;
-      fulfillmentType?: 'DELIVERY' | 'PICKUP';
-      notes?: string;
-      couponCode?: string;
-    }
-  ): Promise<{
-    orderId: string;
-    redemptionNumber?: number;
-    celebrationMessage?: string;
-    totalAmount: number;
-    isExhausted?: boolean;
-  }> {
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase.rpc('process_promotional_checkout_atomic', {
-          p_tenant_slug: slug,
-          p_offer_id: payload.offerId,
-          p_quantity: payload.quantity,
-          p_customer_name: payload.customerName,
-          p_customer_phone: payload.customerPhone,
-          p_customer_email: payload.customerEmail || null,
-          p_delivery_address: payload.deliveryAddress || (payload.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : ''),
-          p_address_details: payload.addressDetails || {},
-          p_payment_method: payload.paymentMethod,
-          p_fulfillment_type: payload.fulfillmentType || 'DELIVERY',
-          p_notes: payload.notes || null,
-          p_coupon_code: payload.couponCode || null,
-        });
-
-        if (error) {
-          console.error('[offerRepository] Erro no RPC process_promotional_checkout_atomic:', error.message);
-          throw new Error(error.message);
-        }
-
-        if (data && data.success) {
-          return {
-            orderId: data.order_id,
-            redemptionNumber: data.redemption_number,
-            celebrationMessage: data.celebration_message,
-            totalAmount: Number(data.total_amount),
-            isExhausted: Boolean(data.is_exhausted),
-          };
-        }
-      } catch (err: any) {
-        console.warn('[offerRepository] Falha ao processar checkout promocional no Supabase, caindo para dataStore:', err.message);
-        throw err;
-      }
-    }
-
-    return dataStore.processPromotionalCheckout(slug, payload);
   },
 };

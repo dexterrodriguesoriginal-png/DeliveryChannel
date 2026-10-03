@@ -1,48 +1,46 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Offer } from '../../types';
-import { ChevronLeft, ChevronRight, Tag, ArrowRight, Play, VolumeX, Sparkles, Percent } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Tag, ArrowRight, VolumeX, Percent } from 'lucide-react';
+import { getCardDisplayDurationMs, isCardLiveAt, sortCardsForDisplay } from '../../utils/storefrontCards';
 
 export interface OfferCarouselProps {
   offers: Offer[];
   onOfferClick?: (offer: Offer) => void;
-  autoPlayInterval?: number; // fallback default
+  autoPlayInterval?: number; // mantido por compatibilidade (duração padrão vem de getCardDisplayDurationMs)
+  /** Diferença (ms) entre o relógio do servidor e o local; filtra início/término pelo relógio do servidor. */
+  clockOffsetMs?: number;
 }
+
+/** Sem progresso do vídeo por este tempo (rede travada / arquivo inválido) → avança para o próximo card. */
+const VIDEO_STALL_TIMEOUT_MS = 8000;
 
 export const OfferCarousel: React.FC<OfferCarouselProps> = ({
   offers,
   onOfferClick,
-  autoPlayInterval = 5000,
+  clockOffsetMs = 0,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [progress, setProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<number | null>(null);
-  const [now, setNow] = useState(() => Date.now());
+  const startedKeyRef = useRef<string>('');
+  const [now, setNow] = useState(() => Date.now() + clockOffsetMs);
 
-  // Atualização periódica a cada 10 segundos para transição automática de cards agendados/expirados sem refresh
+  // Atualização periódica (10 s) para retirar cards que expiram / incluir os que iniciam sem refresh
   useEffect(() => {
+    setNow(Date.now() + clockOffsetMs);
     const clockInterval = setInterval(() => {
-      setNow(Date.now());
+      setNow(Date.now() + clockOffsetMs);
     }, 10000);
     return () => clearInterval(clockInterval);
-  }, []);
+  }, [clockOffsetMs]);
 
-  // Filtra apenas ofertas estritamente ativas conforme agendamento (startAt <= now <= endAt)
-  const validOffers = offers.filter(o => {
-    if (!o.isActive) return false;
-    const startStr = o.startAt || o.startDate;
-    const endStr = o.endAt || o.endDate;
-    if (startStr) {
-      const s = new Date(startStr).getTime();
-      if (!isNaN(s) && s > now) return false;
-    }
-    if (endStr) {
-      const e = new Date(endStr).getTime();
-      if (!isNaN(e) && e < now) return false;
-    }
-    return true;
-  });
+  // Apenas cards ativos e dentro da janela (início <= agora <= término), em ordem estável por `order`
+  const validOffers = useMemo(
+    () => sortCardsForDisplay(offers.filter(o => isCardLiveAt(o, now))),
+    [offers, now]
+  );
 
   const total = validOffers.length;
 
@@ -54,65 +52,79 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
     }
   }, [total, currentIndex]);
 
-  const currentOffer = validOffers[currentIndex];
+  const currentOffer: Offer | undefined = validOffers[currentIndex] || validOffers[0];
 
-  // Determina duração deste slide em milissegundos
-  const currentDurationMs = React.useMemo(() => {
-    if (!currentOffer) return autoPlayInterval;
-    if (currentOffer.mediaType === 'VIDEO') {
-      const durSec = currentOffer.videoDuration || currentOffer.durationSeconds || 10;
-      return Math.max(1000, Math.round(durSec * 1000));
-    }
-    const durSec = currentOffer.durationSeconds || 5;
-    return Math.max(1000, Math.round(durSec * 1000));
-  }, [currentOffer, autoPlayInterval]);
+  // Duração deste slide (imagem: configurada; vídeo: duração real detectada)
+  const currentDurationMs = currentOffer ? getCardDisplayDurationMs(currentOffer) : 5000;
 
-  // Avançar slide
-  const nextSlide = () => {
+  const nextSlide = useCallback(() => {
     setProgress(0);
-    setCurrentIndex(prev => (prev + 1) % total);
-  };
+    setCurrentIndex(prev => (total > 0 ? (prev + 1) % total : 0));
+  }, [total]);
 
   const prevSlide = () => {
     setProgress(0);
     setCurrentIndex(prev => (prev - 1 + total) % total);
   };
 
+  const currentKey = currentOffer ? `${currentOffer.source || 'OFFER'}:${currentOffer.id}` : '';
+  const currentIsVideo = Boolean(currentOffer && currentOffer.mediaType === 'VIDEO' && (currentOffer.mediaUrl || currentOffer.imageUrl));
+
   // Gerenciamento do AutoPlay e Barra de Progresso
   useEffect(() => {
-    if (total <= 1 || isPaused || !currentOffer) {
+    if (total <= 1 || isPaused || !currentKey) {
       return;
     }
 
-    // Se for vídeo, sincroniza com o playback do elemento <video>
-    if (currentOffer.mediaType === 'VIDEO' && videoRef.current) {
+    // VÍDEO: avança no evento `ended` (duração REAL do arquivo). Watchdog avança se travar ou falhar.
+    if (currentIsVideo && videoRef.current) {
       const videoEl = videoRef.current;
-      videoEl.currentTime = 0;
+      // Reinicia do zero só quando o card muda (ao retomar após pausa, continua de onde parou).
+      if (startedKeyRef.current !== currentKey) {
+        startedKeyRef.current = currentKey;
+        try {
+          videoEl.currentTime = 0;
+        } catch {
+          // alguns navegadores não permitem antes do metadata; ignorar
+        }
+      }
       videoEl.play().catch(() => {});
+      let lastProgressAt = Date.now();
+      let lastTime = -1;
 
       const handleTimeUpdate = () => {
+        if (videoEl.currentTime !== lastTime) {
+          lastTime = videoEl.currentTime;
+          lastProgressAt = Date.now();
+        }
         if (videoEl.duration && !isNaN(videoEl.duration)) {
           const pct = (videoEl.currentTime / videoEl.duration) * 100;
           setProgress(Math.min(100, pct));
         }
       };
-
-      const handleEnded = () => {
-        nextSlide();
-      };
+      const handleEnded = () => nextSlide();
+      const handleError = () => nextSlide();
 
       videoEl.addEventListener('timeupdate', handleTimeUpdate);
       videoEl.addEventListener('ended', handleEnded);
+      videoEl.addEventListener('error', handleError);
+      const watchdog = window.setInterval(() => {
+        if (Date.now() - lastProgressAt > VIDEO_STALL_TIMEOUT_MS) {
+          nextSlide();
+        }
+      }, 1000);
 
       return () => {
         videoEl.removeEventListener('timeupdate', handleTimeUpdate);
         videoEl.removeEventListener('ended', handleEnded);
+        videoEl.removeEventListener('error', handleError);
+        window.clearInterval(watchdog);
       };
     }
 
-    // Para imagens: temporizador suave
+    // IMAGEM: temporizador pela duração configurada
     const stepMs = 50;
-    const totalSteps = currentDurationMs / stepMs;
+    const totalSteps = Math.max(1, currentDurationMs / stepMs);
     let stepCount = 0;
 
     timerRef.current = window.setInterval(() => {
@@ -131,7 +143,7 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
         clearInterval(timerRef.current);
       }
     };
-  }, [total, isPaused, currentIndex, currentDurationMs, currentOffer]);
+  }, [total, isPaused, currentIndex, currentDurationMs, currentKey, currentIsVideo, nextSlide]);
 
   if (!validOffers || validOffers.length === 0 || !currentOffer) {
     return null;
@@ -186,11 +198,14 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
           <div className="absolute inset-0 w-full h-full overflow-hidden bg-black flex items-center justify-center">
             {isVideo && mediaSource ? (
               <video
+                key={currentKey}
                 ref={videoRef}
                 src={mediaSource}
                 muted
                 playsInline
                 autoPlay
+                loop={total <= 1}
+                preload="auto"
                 className="w-full h-full object-cover object-center"
               />
             ) : mediaSource ? (
@@ -212,11 +227,14 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
             <div className="absolute inset-0 z-0 overflow-hidden">
               {isVideo && mediaSource ? (
                 <video
+                  key={currentKey}
                   ref={videoRef}
                   src={mediaSource}
                   muted
                   playsInline
                   autoPlay
+                  loop={total <= 1}
+                  preload="auto"
                   className="w-full h-full object-cover object-center opacity-60 scale-105 transition-transform duration-700 group-hover:scale-110"
                 />
               ) : mediaSource ? (
@@ -302,7 +320,7 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
               {currentOffer.destinationType !== 'BANNER_ONLY' && (
                 <div className="pt-2 flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-white/15 hover:bg-white/25 backdrop-blur-xs px-3.5 py-1.5 rounded-xl border border-white/25 transition-all shadow-xs group-hover:translate-x-0.5">
-                    {currentOffer.destinationType === 'CUSTOM_OFFER' ? '⚡ Comprar Promoção' : 'Aproveitar Oferta'}
+                    {currentOffer.ctaText || (currentOffer.destinationType === 'CUSTOM_OFFER' ? '⚡ Comprar Promoção' : 'Aproveitar Oferta')}
                     <ArrowRight className="w-3.5 h-3.5" />
                   </span>
                 </div>
@@ -352,9 +370,9 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
       {/* Indicadores de Slide */}
       {total > 1 && (
         <div className="absolute bottom-3 right-4 z-20 flex items-center gap-1.5">
-          {validOffers.map((_, idx) => (
+          {validOffers.map((o, idx) => (
             <button
-              key={idx}
+              key={`${o.source || 'OFFER'}:${o.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setProgress(0);
