@@ -87,14 +87,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'est-orders', label: 'Pedidos', icon: <ShoppingBag className="w-4 h-4 shrink-0" /> },
         { id: 'est-products', label: 'Cardápio / Produtos', icon: <Package className="w-4 h-4 shrink-0" /> },
         { id: 'est-categories', label: 'Categorias', icon: <Layers className="w-4 h-4 shrink-0" /> },
-        { id: 'est-offers', label: 'Promoções', icon: <Tag className="w-4 h-4 shrink-0" /> },
+        { id: 'est-marketing', label: 'Marketing', icon: <QrCode className="w-4 h-4 shrink-0" /> },
       ],
     },
     {
       groupTitle: 'CLIENTES',
       items: [
         { id: 'est-customers', label: 'Clientes', icon: <Users className="w-4 h-4 shrink-0" /> },
-        { id: 'est-marketing', label: 'Marketing & Cupons', icon: <QrCode className="w-4 h-4 shrink-0" /> },
+        { id: 'est-promotions', label: 'Promoções & Cupons', icon: <Tag className="w-4 h-4 shrink-0" /> },
       ],
     },
     {

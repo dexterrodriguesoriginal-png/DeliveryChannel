@@ -25,6 +25,7 @@ import { OrdersPage } from './pages/establishment/OrdersPage';
 import { ProductsPage } from './pages/establishment/ProductsPage';
 import { CategoriesPage } from './pages/establishment/CategoriesPage';
 import { OffersPage } from './pages/establishment/OffersPage';
+import { PromotionsPage } from './pages/establishment/PromotionsPage';
 import { CustomersPage } from './pages/establishment/CustomersPage';
 import { MarketingPage } from './pages/establishment/MarketingPage';
 import { ThemePage } from './pages/establishment/ThemePage';
@@ -411,8 +412,9 @@ function AppContent() {
         return <ProductsPage />;
       case 'est-categories':
         return <CategoriesPage />;
+      case 'est-promotions':
       case 'est-offers':
-        return <OffersPage />;
+        return <PromotionsPage />;
       case 'est-customers':
         return <CustomersPage />;
       case 'est-marketing':

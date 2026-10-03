@@ -88,6 +88,22 @@ export const orderService = {
     return orderRepository.createPublicOrder(slug, orderData);
   },
 
+  async createPromotional(slug: string, orderData: {
+    offerId: string;
+    quantity: number;
+    customerName: string;
+    customerPhone: string;
+    customerEmail?: string;
+    deliveryAddress?: string;
+    addressDetails?: Order['addressDetails'];
+    paymentMethod: Order['paymentMethod'];
+    fulfillmentType?: Order['fulfillmentType'];
+    notes?: string;
+    couponCode?: string;
+  }): Promise<{ order: Order; celebrationMessage?: string; redemptionNumber?: number; isExhausted?: boolean }> {
+    return orderRepository.createPromotionalOrder(slug, orderData);
+  },
+
   getCustomerOrders(_slug: string, _phone: string): Order[] {
     return [];
   },

@@ -15,9 +15,14 @@ import {
   InternalNotification,
   PromotionCarousel,
   PromotionCarouselItem,
-  Coupon
+  Coupon,
+  CouponRedemption,
+  RedeemCouponResult,
+  ValidateCouponResult,
+  CardStatus
 } from '../types';
 import { SecurityContext, validateTenantAccess, validatePermission } from './securityEngine';
+import { calculatePromoCardStatus } from '../utils/promoCardDateUtils';
 
 const STORAGE_KEY = 'adegafood_saas_db_v2';
 
@@ -367,15 +372,23 @@ const INITIAL_OFFERS: Offer[] = [
     subtitle: 'Compre 2 garrafas de Cabernet e ganhe 20% OFF imediato',
     description: 'Válido exclusivamente para compras realizadas pelo app oficial.',
     badge: 'DESTAQUE DA SEMANA',
+    cardFormat: 'HORIZONTAL',
+    mediaType: 'IMAGE',
+    displayMode: 'EDITABLE_CARD',
+    mediaUrl: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=1200&auto=format&fit=crop&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=1200&auto=format&fit=crop&q=80',
+    durationSeconds: 5.0,
+    detectedWidth: 1200,
+    detectedHeight: 675,
+    aspectRatio: '16:9',
     discountPercentage: 20,
     originalPrice: 89.90,
     promotionalPrice: 69.90,
-    imageUrl: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=800&auto=format&fit=crop&q=80',
     productId: 'prod-adega-1',
     internalLink: '/app/adega-premium?product=prod-adega-1',
     order: 1,
     startDate: '2026-09-01',
-    endDate: '2026-10-31',
+    endDate: '2026-12-31',
     backgroundColor: '#15803d',
     accentColor: '#4ade80',
     isActive: true,
@@ -386,17 +399,25 @@ const INITIAL_OFFERS: Offer[] = [
     tenantId: 'tenant-adega-01',
     title: 'Happy Hour Cervejas Artesanais',
     subtitle: 'Cerveja IPA Puro Malte gelada na porta da sua casa em 30 min',
-    description: 'Preço promocional para encerrar o expediente com a melhor artesanal.',
+    description: 'Arte promocional completa para vitrine.',
     badge: 'SUPER OFERTA',
+    cardFormat: 'QUADRADO',
+    mediaType: 'IMAGE',
+    displayMode: 'FULL_MEDIA',
+    mediaUrl: 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=1080&auto=format&fit=crop&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=1080&auto=format&fit=crop&q=80',
+    durationSeconds: 6.0,
+    detectedWidth: 1080,
+    detectedHeight: 1080,
+    aspectRatio: '1:1',
     discountPercentage: 18,
     originalPrice: 24.50,
     promotionalPrice: 19.90,
-    imageUrl: 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=800&auto=format&fit=crop&q=80',
     productId: 'prod-adega-2',
     internalLink: '/app/adega-premium?product=prod-adega-2',
     order: 2,
     startDate: '2026-09-01',
-    endDate: '2026-10-31',
+    endDate: '2026-12-31',
     backgroundColor: '#0f766e',
     accentColor: '#2dd4bf',
     isActive: true,
@@ -405,18 +426,27 @@ const INITIAL_OFFERS: Offer[] = [
   {
     id: 'off-adega-3',
     tenantId: 'tenant-adega-01',
-    title: 'Combo Gin Botânico & Tônica',
-    subtitle: 'Leve o Gin Artesanal e receba 4 águas tônicas de brinde',
-    description: 'Kit completo para seu drink de fim de semana.',
-    badge: 'EDIÇÃO LIMITADA',
+    title: 'Vídeo Promocional Gin Botânico',
+    subtitle: 'Vídeo animado com reprodução pela duração real do arquivo',
+    description: 'Campanha de vídeo animado gerada para redes e vitrine.',
+    badge: 'VÍDEO ESPECIAL',
+    cardFormat: 'VERTICAL',
+    mediaType: 'VIDEO',
+    displayMode: 'FULL_MEDIA',
+    mediaUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    imageUrl: 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?w=800&auto=format&fit=crop&q=80',
+    durationSeconds: 15.0,
+    videoDuration: 15.0,
+    detectedWidth: 1080,
+    detectedHeight: 1350,
+    aspectRatio: '4:5',
     originalPrice: 159.00,
     promotionalPrice: 139.00,
-    imageUrl: 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?w=800&auto=format&fit=crop&q=80',
     productId: 'prod-adega-3',
     internalLink: '/app/adega-premium?product=prod-adega-3',
     order: 3,
     startDate: '2026-09-15',
-    endDate: '2026-10-15',
+    endDate: '2026-12-31',
     backgroundColor: '#1e3a8a',
     accentColor: '#93c5fd',
     isActive: true,
@@ -431,15 +461,23 @@ const INITIAL_OFFERS: Offer[] = [
     subtitle: 'O segundo hambúrguer com 50% de desconto',
     description: 'Promoção exclusiva de terças e quartas no aplicativo próprio.',
     badge: 'PROMOÇÃO DO DIA',
+    cardFormat: 'HORIZONTAL',
+    mediaType: 'IMAGE',
+    displayMode: 'FULL_MEDIA',
+    mediaUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=1200&auto=format&fit=crop&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=1200&auto=format&fit=crop&q=80',
+    durationSeconds: 5.0,
+    detectedWidth: 1200,
+    detectedHeight: 675,
+    aspectRatio: '16:9',
     discountPercentage: 50,
     originalPrice: 36.90,
     promotionalPrice: 29.90,
-    imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&auto=format&fit=crop&q=80',
     productId: 'prod-burger-1',
     internalLink: '/app/burger-craft?product=prod-burger-1',
     order: 1,
     startDate: '2026-09-01',
-    endDate: '2026-11-01',
+    endDate: '2026-12-31',
     backgroundColor: '#047857',
     accentColor: '#a7f3d0',
     isActive: true,
@@ -610,6 +648,19 @@ const INITIAL_COUPONS: Coupon[] = [
     timesUsed: 8,
     isActive: true,
     createdAt: '2026-03-10T10:00:00Z',
+  },
+  {
+    id: 'coup-4',
+    tenantId: 'tenant-adega-01',
+    code: 'PRIMEIRA20',
+    discountType: 'PERCENTAGE',
+    discountValue: 20,
+    minOrderValue: 40,
+    usageLimit: 20,
+    usageLimitPerCustomer: 1,
+    timesUsed: 16,
+    isActive: true,
+    createdAt: '2026-03-20T10:00:00Z',
   },
   {
     id: 'coup-3',
@@ -1047,6 +1098,7 @@ export class DataStore {
   private notifications: InternalNotification[];
   private promotionCarousels: PromotionCarousel[];
   private coupons: Coupon[];
+  private couponRedemptions: CouponRedemption[] = [];
   private listeners: Set<() => void> = new Set();
 
   constructor() {
@@ -1081,6 +1133,7 @@ export class DataStore {
         if (parsed.offers) this.offers = parsed.offers;
         if (parsed.promotionCarousels) this.promotionCarousels = parsed.promotionCarousels;
         if (parsed.coupons) this.coupons = parsed.coupons;
+        if (parsed.couponRedemptions) this.couponRedemptions = parsed.couponRedemptions;
         if (parsed.orders) this.orders = parsed.orders;
         if (parsed.customers) this.customers = parsed.customers;
         if (parsed.drivers) this.drivers = parsed.drivers;
@@ -1104,6 +1157,7 @@ export class DataStore {
         offers: this.offers,
         promotionCarousels: this.promotionCarousels,
         coupons: this.coupons,
+        couponRedemptions: this.couponRedemptions,
         orders: this.orders,
         customers: this.customers,
         drivers: this.drivers,
@@ -1576,11 +1630,25 @@ export class DataStore {
       .sort((a, b) => a.order - b.order);
   }
 
-  // --- CRUD REAL: MINHAS OFERTAS (PARTE 6) ---
+  // --- CRUD REAL: CRIATIVOS PROMOCIONAIS & OFERTAS (COMANDO 139) ---
+  public calculateCardStatus(card: { isActive: boolean; startDate?: string; endDate?: string; startAt?: string; endAt?: string }): CardStatus {
+    return calculatePromoCardStatus(card);
+  }
+
   public getOffers(context: SecurityContext, tenantId: string): Offer[] {
     validateTenantAccess(context, tenantId, 'GET_OFFERS', this.addAuditViolation.bind(this));
     return this.offers
       .filter(o => o.tenantId === tenantId)
+      .map(o => ({
+        ...o,
+        computedStatus: this.calculateCardStatus(o),
+        mediaUrl: o.mediaUrl || o.imageUrl,
+        imageUrl: o.imageUrl || o.mediaUrl,
+        cardFormat: o.cardFormat || 'HORIZONTAL',
+        mediaType: o.mediaType || 'IMAGE',
+        displayMode: o.displayMode || 'EDITABLE_CARD',
+        durationSeconds: Number(o.durationSeconds ?? 5),
+      }))
       .sort((a, b) => a.order - b.order);
   }
 
@@ -1588,14 +1656,28 @@ export class DataStore {
     validateTenantAccess(context, tenantId, 'CREATE_OFFER', this.addAuditViolation.bind(this));
     validatePermission(context, 'manage_offers');
 
+    const mediaUrl = data.mediaUrl || data.imageUrl || '';
+    const imageUrl = data.imageUrl || data.mediaUrl || '';
+    const cardFormat = data.cardFormat || 'HORIZONTAL';
+    const mediaType = data.mediaType || 'IMAGE';
+    const displayMode = data.displayMode || 'EDITABLE_CARD';
+    const durationSeconds = Number(data.durationSeconds ?? 5);
+
     const newOffer: Offer = {
       ...data,
+      mediaUrl,
+      imageUrl,
+      cardFormat,
+      mediaType,
+      displayMode,
+      durationSeconds,
       id: `off-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       tenantId,
       isActive: data.isActive !== undefined ? data.isActive : true,
       order: data.order || (this.offers.filter(o => o.tenantId === tenantId).length + 1),
       createdAt: new Date().toISOString(),
     };
+    newOffer.computedStatus = this.calculateCardStatus(newOffer);
 
     this.offers.push(newOffer);
 
@@ -1607,7 +1689,7 @@ export class DataStore {
       action: 'CREATE_OFFER',
       resource: 'OFFER',
       resourceId: newOffer.id,
-      details: `Oferta "${newOffer.title}" criada no carrossel.`,
+      details: `Card Promocional "${newOffer.title}" (${newOffer.cardFormat}, ${newOffer.mediaType}, ${newOffer.displayMode}) criado.`,
       newValue: JSON.stringify(newOffer),
       ipAddress: '189.45.12.90',
       isCeoSupport: !!context.isCeoSupportMode,
@@ -1625,7 +1707,19 @@ export class DataStore {
     if (index === -1) throw new Error('Oferta não encontrada.');
 
     const previousValue = JSON.stringify(this.offers[index]);
-    this.offers[index] = { ...this.offers[index], ...updates };
+    const updatedMediaUrl = updates.mediaUrl || (updates.imageUrl ? updates.imageUrl : this.offers[index].mediaUrl);
+    const updatedImageUrl = updates.imageUrl || (updates.mediaUrl ? updates.mediaUrl : this.offers[index].imageUrl);
+    const updatedDisplayMode = updates.displayMode !== undefined ? updates.displayMode : this.offers[index].displayMode;
+
+    this.offers[index] = { 
+      ...this.offers[index], 
+      ...updates,
+      mediaUrl: updatedMediaUrl || this.offers[index].mediaUrl,
+      imageUrl: updatedImageUrl || this.offers[index].imageUrl,
+      displayMode: updatedDisplayMode || 'EDITABLE_CARD',
+      updatedAt: new Date().toISOString()
+    };
+    this.offers[index].computedStatus = this.calculateCardStatus(this.offers[index]);
 
     this.addAuditLog({
       userId: context.userId,
@@ -1635,7 +1729,7 @@ export class DataStore {
       action: 'UPDATE_OFFER',
       resource: 'OFFER',
       resourceId: offerId,
-      details: `Oferta "${this.offers[index].title}" atualizada.`,
+      details: `Card Promocional "${this.offers[index].title}" atualizado.`,
       previousValue,
       newValue: JSON.stringify(this.offers[index]),
       ipAddress: '189.45.12.90',
@@ -1644,6 +1738,36 @@ export class DataStore {
 
     this.persist();
     return this.offers[index];
+  }
+
+  public duplicateOffer(context: SecurityContext, tenantId: string, offerId: string): Offer {
+    validateTenantAccess(context, tenantId, 'DUPLICATE_OFFER', this.addAuditViolation.bind(this));
+    validatePermission(context, 'manage_offers');
+
+    const source = this.offers.find(o => o.id === offerId && o.tenantId === tenantId);
+    if (!source) throw new Error('Card original não encontrado para duplicação.');
+
+    const { id: _, createdAt: __, updatedAt: ___, ...data } = source;
+    return this.createOffer(context, tenantId, {
+      ...data,
+      title: `${source.title} (Cópia)`,
+      order: this.offers.filter(o => o.tenantId === tenantId).length + 1,
+    });
+  }
+
+  public reorderOffers(context: SecurityContext, tenantId: string, offerIds: string[]): Offer[] {
+    validateTenantAccess(context, tenantId, 'REORDER_OFFERS', this.addAuditViolation.bind(this));
+    validatePermission(context, 'manage_offers');
+
+    offerIds.forEach((id, idx) => {
+      const off = this.offers.find(o => o.id === id && o.tenantId === tenantId);
+      if (off) {
+        off.order = idx + 1;
+      }
+    });
+
+    this.persist();
+    return this.getOffers(context, tenantId);
   }
 
   public deleteOffer(context: SecurityContext, tenantId: string, offerId: string): void {
@@ -1680,6 +1804,7 @@ export class DataStore {
     if (!offer) throw new Error('Oferta não encontrada.');
 
     offer.isActive = !offer.isActive;
+    offer.computedStatus = this.calculateCardStatus(offer);
 
     this.addAuditLog({
       userId: context.userId,
@@ -1702,8 +1827,166 @@ export class DataStore {
     const tenant = this.getTenantBySlug(slug);
     if (!tenant) return [];
     return this.offers
-      .filter(o => o.tenantId === tenant.id && o.isActive)
+      .filter(o => {
+        if (o.tenantId !== tenant.id) return false;
+        const status = this.calculateCardStatus(o);
+        return status === 'ACTIVE';
+      })
+      .map(o => ({
+        ...o,
+        computedStatus: 'ACTIVE' as CardStatus,
+        mediaUrl: o.mediaUrl || o.imageUrl,
+        imageUrl: o.imageUrl || o.mediaUrl,
+        cardFormat: o.cardFormat || 'HORIZONTAL',
+        mediaType: o.mediaType || 'IMAGE',
+        displayMode: o.displayMode || 'EDITABLE_CARD',
+        durationSeconds: Number(o.durationSeconds ?? 5),
+        isExhausted: Boolean(o.promoUsageLimit && Number(o.promoTimesUsed || 0) >= o.promoUsageLimit),
+        remainingUses: o.promoUsageLimit ? Math.max(0, o.promoUsageLimit - Number(o.promoTimesUsed || 0)) : null,
+      }))
       .sort((a, b) => a.order - b.order);
+  }
+
+  public processPromotionalCheckout(
+    slug: string,
+    payload: {
+      offerId: string;
+      quantity: number;
+      customerName: string;
+      customerPhone: string;
+      customerEmail?: string;
+      deliveryAddress?: string;
+      addressDetails?: any;
+      paymentMethod: string;
+      fulfillmentType?: 'DELIVERY' | 'PICKUP';
+      notes?: string;
+      couponCode?: string;
+    }
+  ): {
+    orderId: string;
+    redemptionNumber?: number;
+    celebrationMessage?: string;
+    totalAmount: number;
+    isExhausted?: boolean;
+  } {
+    const tenant = this.getTenantBySlug(slug);
+    if (!tenant) throw new Error('Estabelecimento não encontrado.');
+
+    const offer = this.offers.find(o => o.id === payload.offerId && o.tenantId === tenant.id);
+    if (!offer) throw new Error('Card promocional não encontrado.');
+
+    if (!offer.isActive) throw new Error('Esta promoção está desativada.');
+
+    const status = this.calculateCardStatus(offer);
+    if (status === 'SCHEDULED') throw new Error('Esta promoção ainda não iniciou.');
+    if (status === 'EXPIRED') throw new Error('Esta promoção já expirou.');
+
+    if (offer.promoUsageLimit && offer.promoUsageLimit > 0) {
+      if ((offer.promoTimesUsed || 0) >= offer.promoUsageLimit) {
+        throw new Error(`Esta promoção atingiu o limite de ${offer.promoUsageLimit} usos e está esgotada.`);
+      }
+    }
+
+    if (offer.promoMaxQuantityPerCustomer && payload.quantity > offer.promoMaxQuantityPerCustomer) {
+      throw new Error(`Quantidade máxima permitida por cliente nesta promoção: ${offer.promoMaxQuantityPerCustomer} un.`);
+    }
+
+    const unitPrice = offer.promoPrice || offer.promotionalPrice || offer.originalPrice || 0;
+    if (unitPrice <= 0) throw new Error('Preço promocional inválido.');
+
+    const origPrice = offer.promoOriginalPrice || offer.originalPrice || unitPrice;
+    const subtotal = unitPrice * payload.quantity;
+
+    let deliveryFee = payload.fulfillmentType === 'PICKUP' ? 0 : (tenant.settings.deliveryFee || 0);
+    if (tenant.settings.freeDeliveryThreshold && subtotal >= tenant.settings.freeDeliveryThreshold) {
+      deliveryFee = 0;
+    }
+
+    let couponDiscount = 0;
+    if (payload.couponCode) {
+      const cRes = this.validatePublicCoupon(tenant.id, payload.couponCode, subtotal);
+      if (cRes.isValid && cRes.discountAmount) {
+        couponDiscount = cRes.discountAmount;
+      }
+    }
+
+    const totalAmount = Math.max(0, subtotal + deliveryFee - couponDiscount);
+    const newTimesUsed = (offer.promoTimesUsed || 0) + 1;
+    offer.promoTimesUsed = newTimesUsed;
+
+    const celebrationMessage = (offer.promoUsageLimit && offer.promoUsageLimit > 0)
+      ? `🎉 Parabéns! Você foi o cliente nº ${newTimesUsed} a aproveitar esta promoção!`
+      : undefined;
+
+    const orderId = `ord-promo-${Date.now()}`;
+    const orderNumber = (this.orders.filter(o => o.tenantId === tenant.id).length + 1).toString().padStart(4, '0');
+
+    const newOrder: any = {
+      id: orderId,
+      orderNumber,
+      tenantId: tenant.id,
+      customerName: payload.customerName,
+      customerPhone: payload.customerPhone,
+      customerEmail: payload.customerEmail,
+      deliveryAddress: payload.deliveryAddress || (payload.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : ''),
+      addressDetails: payload.addressDetails,
+      subtotal,
+      deliveryFee,
+      discount: couponDiscount,
+      totalAmount,
+      paymentMethod: payload.paymentMethod,
+      paymentStatus: 'PENDING',
+      fulfillmentType: payload.fulfillmentType || 'DELIVERY',
+      status: 'PENDING',
+      notes: payload.notes || '',
+      origin: 'promotional_checkout',
+      prepTimeMinutes: tenant.settings.defaultPrepTimeMinutes || 30,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      items: [
+        {
+          id: `item-${Date.now()}`,
+          orderId,
+          productId: offer.productId || `promo-${offer.id}`,
+          productName: offer.promoTitle || offer.title,
+          quantity: payload.quantity,
+          unitPrice,
+          totalPrice: subtotal,
+          unit: offer.promoUnit || 'un',
+          notes: payload.notes,
+        },
+      ],
+      statusHistory: [
+        {
+          id: `hist-${Date.now()}`,
+          orderId,
+          status: 'PENDING',
+          note: 'Pedido confirmado via Checkout Promocional',
+          changedBy: 'Checkout Promocional',
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
+
+    this.orders.unshift(newOrder);
+
+    // Se vinculado a produto real, decrementa estoque se houver produto
+    if (offer.productId) {
+      const prod = this.products.find(p => p.id === offer.productId && p.tenantId === tenant.id);
+      if (prod && prod.stockQuantity !== undefined) {
+        prod.stockQuantity = Math.max(0, prod.stockQuantity - payload.quantity);
+      }
+    }
+
+    this.persist();
+
+    return {
+      orderId,
+      redemptionNumber: newTimesUsed,
+      celebrationMessage,
+      totalAmount,
+      isExhausted: Boolean(offer.promoUsageLimit && newTimesUsed >= offer.promoUsageLimit),
+    };
   }
 
   // --- CARROSSÉIS DE PROMOÇÃO (COMANDO 138) ---
@@ -2068,6 +2351,138 @@ export class DataStore {
     }
   }
 
+  public validatePublicCoupon(slugOrTenantId: string, couponCode: string, orderSubtotal: number): ValidateCouponResult {
+    const tenant = this.getTenantBySlug(slugOrTenantId) || this.tenants.find(t => t.id === slugOrTenantId);
+    if (!tenant) {
+      return { isValid: false, discountAmount: 0, message: 'Estabelecimento não encontrado.' };
+    }
+
+    const clean = couponCode.trim().toUpperCase();
+    if (!clean) {
+      return { isValid: false, discountAmount: 0, message: 'Digite o código do cupom.' };
+    }
+
+    const coupon = this.coupons.find(c => c.tenantId === tenant.id && c.code === clean);
+    if (!coupon) {
+      return { isValid: false, discountAmount: 0, message: 'Cupom inválido ou inexistente para esta loja.' };
+    }
+
+    if (!coupon.isActive) {
+      return { isValid: false, discountAmount: 0, message: 'Este cupom foi desativado.' };
+    }
+
+    const now = new Date();
+    if (coupon.startDate && new Date(coupon.startDate) > now) {
+      return { isValid: false, discountAmount: 0, message: 'Este cupom ainda não é válido.' };
+    }
+
+    if (coupon.endDate && new Date(coupon.endDate) < now) {
+      return { isValid: false, discountAmount: 0, message: 'Este cupom já expirou.' };
+    }
+
+    const remainingUses = coupon.usageLimit !== undefined 
+      ? Math.max(0, coupon.usageLimit - (coupon.timesUsed || 0)) 
+      : null;
+
+    if (coupon.usageLimit && (coupon.timesUsed || 0) >= coupon.usageLimit) {
+      return { 
+        isValid: false, 
+        discountAmount: 0, 
+        remainingUses: 0,
+        message: 'Cupom esgotado! Todas as utilizações já foram resgatadas.' 
+      };
+    }
+
+    if (coupon.minOrderValue && orderSubtotal < coupon.minOrderValue) {
+      return {
+        isValid: false,
+        discountAmount: 0,
+        remainingUses,
+        message: `Pedido mínimo de R$ ${coupon.minOrderValue.toFixed(2)} necessário para este cupom.`,
+      };
+    }
+
+    let discountAmount = 0;
+    if (coupon.discountType === 'PERCENTAGE') {
+      discountAmount = Number(((orderSubtotal * coupon.discountValue) / 100).toFixed(2));
+    } else {
+      discountAmount = Math.min(orderSubtotal, Number(coupon.discountValue.toFixed(2)));
+    }
+
+    const urgencyNote = remainingUses !== null && remainingUses <= 10
+      ? ` Restam apenas ${remainingUses} utilizações!`
+      : '';
+
+    return {
+      isValid: true,
+      coupon,
+      discountAmount,
+      remainingUses,
+      message: `Cupom "${coupon.code}" aplicado com sucesso!${urgencyNote}`,
+    };
+  }
+
+  public redeemCoupon(
+    tenantId: string, 
+    couponCode: string, 
+    orderId?: string, 
+    customerId?: string, 
+    discountApplied?: number
+  ): RedeemCouponResult {
+    const clean = couponCode.trim().toUpperCase();
+    const coupon = this.coupons.find(c => c.tenantId === tenantId && c.code === clean);
+    if (!coupon) {
+      return { success: false, message: 'Cupom não encontrado.' };
+    }
+
+    if (!coupon.isActive) {
+      return { success: false, message: 'Cupom inativo.' };
+    }
+
+    if (coupon.usageLimit && (coupon.timesUsed || 0) >= coupon.usageLimit) {
+      return {
+        success: false,
+        isExhausted: true,
+        couponId: coupon.id,
+        couponCode: coupon.code,
+        remainingUses: 0,
+        message: 'Cupom esgotado! Limite de utilizações atingido.'
+      };
+    }
+
+    // Atomic increment
+    coupon.timesUsed = (coupon.timesUsed || 0) + 1;
+    coupon.updatedAt = new Date().toISOString();
+
+    const redemptionNumber = coupon.timesUsed;
+    const remaining = coupon.usageLimit ? Math.max(0, coupon.usageLimit - coupon.timesUsed) : null;
+
+    const redemp: CouponRedemption = {
+      id: `redemp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      tenantId,
+      couponId: coupon.id,
+      customerId,
+      orderId,
+      redemptionNumber,
+      discountApplied: discountApplied || 0,
+      createdAt: new Date().toISOString()
+    };
+
+    this.couponRedemptions.push(redemp);
+    this.persist();
+
+    return {
+      success: true,
+      isExhausted: remaining !== null && remaining <= 0,
+      couponId: coupon.id,
+      couponCode: coupon.code,
+      redemptionNumber,
+      discountAmount: discountApplied,
+      remainingUses: remaining,
+      message: `Você garantiu a oferta como comprador nº ${redemptionNumber}!`,
+    };
+  }
+
   // --- ORDERS (ISOLAMENTO ESTRITO & CICLO DE VIDA) ---
   public getOrders(context: SecurityContext, tenantId: string): Order[] {
     validateTenantAccess(context, tenantId, 'GET_ORDERS', this.addAuditViolation.bind(this));
@@ -2383,9 +2798,23 @@ export class DataStore {
         );
       }
 
-      const unitPrice = product.promotionalPrice && product.promotionalPrice > 0 
-        ? product.promotionalPrice 
-        : product.price;
+      // Verifica se o produto possui desconto ativo em algum carrossel promocional da loja
+      let promoPrice: number | null = null;
+      const activeCarousels = this.getPublicPromotionCarousels(tenant.id);
+      for (const carousel of activeCarousels) {
+        const itemPromo = carousel.items.find(ci => ci.productId === product.id);
+        if (itemPromo && itemPromo.promotionalPrice > 0 && itemPromo.promotionalPrice < product.price) {
+          if (promoPrice === null || itemPromo.promotionalPrice < promoPrice) {
+            promoPrice = itemPromo.promotionalPrice;
+          }
+        }
+      }
+
+      const unitPrice = (promoPrice !== null)
+        ? promoPrice
+        : (product.promotionalPrice && product.promotionalPrice > 0 && product.promotionalPrice < product.price 
+            ? product.promotionalPrice 
+            : product.price);
 
       validatedItems.push({
         productId: product.id,
@@ -2535,6 +2964,204 @@ export class DataStore {
 
     this.persist();
     return newOrder;
+  }
+
+  // --- CHECKOUT PROMOCIONAL PRÓPRIO (MODO 3 - ATÔMICO E REAL) ---
+  public processPromotionalCheckout(slugOrTenantId: string, orderData: {
+    offerId: string;
+    quantity: number;
+    customerName: string;
+    customerPhone: string;
+    customerEmail?: string;
+    deliveryAddress?: string;
+    addressDetails?: Order['addressDetails'];
+    paymentMethod: Order['paymentMethod'];
+    fulfillmentType?: Order['fulfillmentType'];
+    notes?: string;
+    couponCode?: string;
+  }): { order: Order; celebrationMessage?: string; redemptionNumber?: number; isExhausted?: boolean } {
+    const tenant = this.getTenantBySlug(slugOrTenantId);
+    if (!tenant) {
+      throw new Error(`Estabelecimento não encontrado.`);
+    }
+
+    if (!orderData.quantity || orderData.quantity <= 0) {
+      throw new Error('A quantidade deve ser de pelo menos 1 unidade.');
+    }
+
+    const offer = this.offers.find(o => o.id === orderData.offerId && o.tenantId === tenant.id);
+    if (!offer) {
+      throw new Error('Oferta promocional não encontrada neste estabelecimento.');
+    }
+
+    if (!offer.isActive) {
+      throw new Error('Esta promoção foi desativada pelo estabelecimento.');
+    }
+
+    const now = Date.now();
+    const startIso = offer.startAt || offer.startDate;
+    const endIso = offer.endAt || offer.endDate;
+    if (startIso && new Date(startIso).getTime() > now) {
+      throw new Error('Esta promoção ainda não iniciou.');
+    }
+    if (endIso && new Date(endIso).getTime() < now) {
+      throw new Error('Esta promoção expirou.');
+    }
+
+    const currentTimesUsed = offer.promoTimesUsed || 0;
+    if (offer.promoUsageLimit && offer.promoUsageLimit > 0) {
+      if (currentTimesUsed >= offer.promoUsageLimit) {
+        throw new Error(`Esta promoção atingiu o limite máximo de ${offer.promoUsageLimit} compras e está esgotada.`);
+      }
+    }
+
+    const maxQty = offer.promoMaxQuantityPerCustomer || 10;
+    if (orderData.quantity > maxQty) {
+      throw new Error(`A quantidade máxima permitida por cliente nesta promoção é de ${maxQty} unidades.`);
+    }
+
+    // Preço e dados oficiais do servidor (impossível fraudar pelo front)
+    const unitPrice = offer.promoPrice || offer.promotionalPrice || offer.originalPrice || 0;
+    const origPrice = offer.promoOriginalPrice || offer.originalPrice || unitPrice;
+    const itemName = offer.promoTitle || offer.title;
+    const itemUnit = offer.promoUnit || 'un';
+
+    if (unitPrice <= 0) {
+      throw new Error('Preço promocional inválido.');
+    }
+
+    const subtotal = Number((unitPrice * orderData.quantity).toFixed(2));
+
+    // Abate de estoque se houver produto de catálogo vinculado
+    if (offer.productId) {
+      const prod = this.products.find(p => p.id === offer.productId && p.tenantId === tenant.id);
+      if (prod) {
+        if (prod.stockQuantity < orderData.quantity) {
+          throw new Error(`Estoque insuficiente para o produto da promoção. Disponível: ${prod.stockQuantity}`);
+        }
+        prod.stockQuantity -= orderData.quantity;
+        prod.updatedAt = new Date().toISOString();
+      }
+    }
+
+    // Entrega e taxa
+    const fulfillmentType = orderData.fulfillmentType || 'DELIVERY';
+    let deliveryFee = 0;
+    if (fulfillmentType === 'DELIVERY') {
+      const isFreeDelivery = tenant.settings.freeDeliveryThreshold && subtotal >= tenant.settings.freeDeliveryThreshold;
+      deliveryFee = isFreeDelivery ? 0 : Number((tenant.settings.deliveryFee || 0).toFixed(2));
+    }
+
+    const discount = 0;
+    const totalAmount = Number((subtotal + deliveryFee - discount).toFixed(2));
+
+    // Atualiza contador de usos da promoção
+    const newTimesUsed = currentTimesUsed + 1;
+    offer.promoTimesUsed = newTimesUsed;
+    if (offer.promoUsageLimit && newTimesUsed >= offer.promoUsageLimit) {
+      offer.isExhausted = true;
+    }
+
+    // Cliente
+    const cleanPhone = orderData.customerPhone.replace(/\D/g, '');
+    let customer = this.customers.find(c => c.tenantId === tenant.id && c.phone.replace(/\D/g, '') === cleanPhone);
+    if (customer) {
+      customer.totalOrders += 1;
+      customer.ltvAmount += totalAmount;
+      customer.lastOrderDate = new Date().toISOString().split('T')[0];
+      if (orderData.customerName) customer.name = orderData.customerName;
+    } else {
+      customer = {
+        id: `cust-${Date.now()}`,
+        tenantId: tenant.id,
+        name: orderData.customerName,
+        phone: orderData.customerPhone,
+        email: orderData.customerEmail,
+        origin: 'promotional_checkout',
+        totalOrders: 1,
+        ltvAmount: totalAmount,
+        firstOrderDate: new Date().toISOString().split('T')[0],
+        lastOrderDate: new Date().toISOString().split('T')[0],
+        consentLgpd: true,
+        isDemo: false,
+      };
+      this.customers.push(customer);
+    }
+
+    const orderId = `ord-${Date.now()}`;
+    const orderNumber = 1000 + this.orders.filter(o => o.tenantId === tenant.id).length + 1;
+    const deliveryAddress = fulfillmentType === 'PICKUP' 
+      ? `Retirada no Estabelecimento: ${tenant.settings.address}` 
+      : (orderData.deliveryAddress || 'Endereço não informado');
+
+    const paymentStatus: Order['paymentStatus'] = orderData.paymentMethod === 'PIX' ? 'PENDING' : 'PAYMENT_ON_DELIVERY';
+
+    const newOrder: Order = {
+      id: orderId,
+      tenantId: tenant.id,
+      customerId: customer.id,
+      orderNumber,
+      customerName: orderData.customerName,
+      customerPhone: orderData.customerPhone,
+      customerEmail: orderData.customerEmail,
+      deliveryAddress,
+      addressDetails: orderData.addressDetails,
+      items: [
+        {
+          productId: offer.productId || `promo-${offer.id}`,
+          productName: itemName,
+          quantity: orderData.quantity,
+          unitPrice,
+          totalPrice: subtotal,
+          notes: orderData.notes || 'Oferta Promocional Exclusiva',
+          unit: itemUnit,
+        }
+      ],
+      subtotal,
+      deliveryFee,
+      discount,
+      totalAmount,
+      paymentMethod: orderData.paymentMethod,
+      paymentStatus,
+      fulfillmentType,
+      notes: orderData.notes,
+      prepTimeMinutes: tenant.settings?.defaultPrepTimeMinutes ?? 30,
+      status: 'PENDING',
+      isDemo: false,
+      statusHistory: [
+        {
+          status: 'PENDING',
+          timestamp: new Date().toISOString(),
+          note: 'Pedido recebido via Checkout Promocional com sucesso',
+          changedBy: orderData.customerName,
+        }
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      origin: 'promotional_checkout',
+    };
+
+    this.orders.unshift(newOrder);
+
+    this.addNotification(tenant.id, {
+      title: `⚡ Pedido Promocional #${newOrder.orderNumber} Recebido!`,
+      message: `${orderData.customerName} aproveitou a oferta "${itemName}" (${orderData.quantity}x) - Total R$ ${totalAmount.toFixed(2)}.`,
+      type: 'ORDER_NEW',
+      orderId: newOrder.id,
+    });
+
+    this.persist();
+
+    const celebrationMessage = offer.promoUsageLimit && offer.promoUsageLimit > 0
+      ? `🎉 Parabéns! Você foi o cliente nº ${newTimesUsed} a aproveitar esta promoção!`
+      : undefined;
+
+    return {
+      order: newOrder,
+      celebrationMessage,
+      redemptionNumber: newTimesUsed,
+      isExhausted: Boolean(offer.promoUsageLimit && newTimesUsed >= offer.promoUsageLimit),
+    };
   }
 
   // --- CONSULTA PÚBLICA DE PEDIDOS DO CLIENTE (FASE 3 - MEUS PEDIDOS & RASTREIO) ---

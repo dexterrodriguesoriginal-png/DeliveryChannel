@@ -144,31 +144,201 @@ export interface Product {
   isDemo?: boolean;
 }
 
-export interface Offer {
+export type CardFormat = 'HORIZONTAL' | 'SQUARE' | 'QUADRADO' | 'VERTICAL';
+export type CardMediaType = 'IMAGE' | 'VIDEO';
+export type CardStatus = 'ACTIVE' | 'SCHEDULED' | 'PAUSED' | 'EXPIRED';
+export type CardDisplayMode = 'FULL_MEDIA' | 'EDITABLE_CARD';
+export type CardDestination = 'BANNER_ONLY' | 'PRODUCT' | 'CUSTOM_OFFER';
+export type PromoCardModel = 'HERO' | 'HIGHLIGHT' | 'ANIMATED';
+
+export interface PromotionalCard {
   id: string;
   tenantId: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   description?: string;
-  badge: string;
+  badge?: string;
+  cardFormat?: CardFormat;
+  mediaType?: CardMediaType;
+  displayMode?: CardDisplayMode;
+  cardModel?: PromoCardModel;
+  autoOverlay?: boolean;
+  destinationType?: CardDestination;
+  mediaUrl?: string;
+  imageUrl?: string; // espelho de mediaUrl para compatibilidade
+  durationSeconds?: number; // para imagens (ex: 5s, 8s, 10s...)
+  videoDuration?: number; // duração real detectada para vídeos (ex: 8.4s)
+  detectedWidth?: number;
+  detectedHeight?: number;
+  aspectRatio?: string;
   discountPercentage?: number;
   originalPrice?: number;
   promotionalPrice?: number;
-  imageUrl: string;
   productId?: string;
   linkUrl?: string;
   internalLink?: string;
   startDate?: string;
   endDate?: string;
+  startAt?: string;
+  endAt?: string;
+  noEndDate?: boolean;
   order: number;
-  backgroundColor: string;
-  accentColor: string;
+  backgroundColor?: string;
+  accentColor?: string;
   isActive: boolean;
+  computedStatus?: CardStatus;
+  internalTitle?: string;
+  internalDescription?: string;
+  
+  // Checkout Promocional Próprio (Modo 3 - Sem depender de produto de catálogo)
+  hasPromoCheckout?: boolean;
+  promoTitle?: string;
+  promoDescription?: string;
+  promoPrice?: number;
+  promoOriginalPrice?: number;
+  promoDiscountPercentage?: number;
+  promoUnit?: string;
+  promoMinQuantity?: number;
+  promoMaxQuantityPerCustomer?: number;
+  promoNotes?: string;
+  promoFulfillmentTypes?: ('DELIVERY' | 'PICKUP')[];
+  promoPaymentMethods?: ('PIX' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'CASH')[];
+  promoCouponCode?: string;
+  promoUsageLimit?: number;
+  promoTimesUsed?: number;
+  isExhausted?: boolean;
+  remainingUses?: number | null;
+
   createdAt?: string;
+  updatedAt?: string;
   isDemo?: boolean;
 }
 
+export type Offer = PromotionalCard;
+
 export type PromotionDiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT' | 'PROMOTIONAL_PRICE';
+
+// --- GERENCIADOR PROFISSIONAL DE CAMPANHAS PROMOCIONAIS (COMANDO MASTER) ---
+export type CampaignStatus = 'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'SOLD_OUT' | 'ARCHIVED';
+
+export type CampaignCardModel = 'FULL_MEDIA' | 'PROMO_CARD' | 'OFFER_CARD';
+
+export type CampaignCardDestination = 'PRODUCT' | 'BANNER_ONLY' | 'CUSTOM_OFFER';
+
+export interface CampaignCard {
+  id: string;
+  campaignId: string;
+  tenantId: string;
+  displayOrder: number;
+  model: CampaignCardModel; // MODELO 1 (FULL MEDIA), MODELO 2 (PROMO CARD), MODELO 3 (OFFER CARD)
+  mediaType: CardMediaType; // 'IMAGE' | 'VIDEO'
+  mediaUrl: string;
+  storagePath?: string;
+  durationSeconds: number; // para imagens (ex: 5s, 8s, 10s...)
+  videoDuration?: number; // para vídeos: reproduz pela duração real do arquivo
+  title?: string;
+  subtitle?: string;
+  description?: string;
+  badge?: string;
+  ctaText?: string;
+  autoOverlay: boolean; // Sobreposição automática: OFF por padrão no Full Media
+  destinationType: CampaignCardDestination;
+  productId?: string;
+  product?: Product;
+  couponId?: string;
+  coupon?: {
+    id: string;
+    code: string;
+    discountType: 'PERCENTAGE' | 'FIXED_AMOUNT';
+    discountValue: number;
+    usageLimit?: number;
+    timesUsed: number;
+    remainingUses?: number | null;
+    isExhausted?: boolean;
+  };
+  
+  // Oferta Personalizada (Custom Offer com Checkout Real)
+  customTitle?: string;
+  customDescription?: string;
+  customPrice?: number;
+  customPromotionalPrice?: number;
+  customDiscountPercentage?: number;
+  customQuantityAvailable?: number;
+  customUnit?: string;
+  customNotes?: string;
+
+  backgroundColor?: string;
+  accentColor?: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Campaign {
+  id: string;
+  tenantId: string;
+  name: string;
+  description?: string;
+  status: CampaignStatus;
+  startAt?: string;
+  endAt?: string;
+  noEndDate: boolean;
+  timezone: string;
+  createdBy?: string;
+  publishedAt?: string;
+  endedAt?: string;
+  isActive: boolean;
+  displayOrder: number;
+  cards: CampaignCard[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type CampaignAnalyticsEventType = 
+  | 'CAMPAIGN_IMPRESSION'
+  | 'CARD_IMPRESSION'
+  | 'CARD_CLICK'
+  | 'PRODUCT_OPEN'
+  | 'ADD_TO_CART'
+  | 'CHECKOUT_STARTED'
+  | 'CHECKOUT_COMPLETED'
+  | 'COUPON_VIEWED'
+  | 'COUPON_APPLIED'
+  | 'COUPON_REJECTED'
+  | 'CAMPAIGN_SOLD_OUT'
+  | 'CAMPAIGN_EXPIRED';
+
+export interface CampaignCardMetric {
+  cardId: string;
+  title: string;
+  model: string;
+  mediaType: string;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  checkouts: number;
+  orders: number;
+  conversionRate: number;
+  revenue: number;
+}
+
+export interface CampaignAnalyticsSummary {
+  campaignId?: string;
+  campaignName?: string;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  productsOpened: number;
+  cartAdditions: number;
+  checkoutsStarted: number;
+  ordersCompleted: number;
+  conversionRate: number;
+  couponsUsed: number;
+  revenue: number;
+  averageTicket: number;
+  discountsGranted: number;
+  cardMetrics: CampaignCardMetric[];
+}
 
 export interface PromotionCarouselItem {
   id: string;
@@ -206,6 +376,17 @@ export interface PromotionCarousel {
 
 export type CouponDiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT';
 
+export interface CouponRedemption {
+  id: string;
+  tenantId: string;
+  couponId: string;
+  customerId?: string;
+  orderId?: string;
+  redemptionNumber: number;
+  discountApplied: number;
+  createdAt: string;
+}
+
 export interface Coupon {
   id: string;
   tenantId: string;
@@ -213,16 +394,36 @@ export interface Coupon {
   discountType: CouponDiscountType;
   discountValue: number;
   minOrderValue?: number;
-  usageLimit?: number;
-  usageLimitPerCustomer?: number;
+  usageLimit?: number; // Quantidade máxima de cupons (ex: 20)
+  usageLimitPerCustomer?: number; // Limite por cliente (1 ou ilimitado)
   timesUsed: number;
   customerId?: string;
   customerName?: string;
+  customerPhone?: string;
   startDate?: string;
   endDate?: string;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface RedeemCouponResult {
+  success: boolean;
+  isExhausted?: boolean;
+  couponId?: string;
+  couponCode?: string;
+  redemptionNumber?: number;
+  discountAmount?: number;
+  remainingUses?: number | null;
+  message: string;
+}
+
+export interface ValidateCouponResult {
+  isValid: boolean;
+  coupon?: Coupon;
+  discountAmount: number;
+  remainingUses?: number | null;
+  message: string;
 }
 
 export type OrderStatus = 

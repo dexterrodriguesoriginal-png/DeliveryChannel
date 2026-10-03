@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { Product, Category, Offer, TenantTheme, TenantSettings } from '../types';
+import { Product, Category, Offer, TenantTheme, TenantSettings, PromotionCarousel } from '../types';
 import { dataStore } from '../services/dataStore';
 
 export interface PublicStoreData {
@@ -17,6 +17,7 @@ export interface PublicStoreData {
   categories: Category[];
   products: Product[];
   offers: Offer[];
+  promotionCarousels: PromotionCarousel[];
 }
 
 export const publicStoreRepository = {
@@ -88,13 +89,80 @@ export const publicStoreRepository = {
               discountPercentage: o.discountPercentage,
               originalPrice: o.originalPrice ? Number(o.originalPrice) : undefined,
               promotionalPrice: o.promotionalPrice ? Number(o.promotionalPrice) : undefined,
-              imageUrl: o.imageUrl,
+              imageUrl: o.imageUrl || o.mediaUrl || o.media_url,
+              mediaUrl: o.mediaUrl || o.media_url || o.imageUrl,
+              mediaType: o.mediaType || o.media_type || 'IMAGE',
+              displayMode: (o.displayMode || o.display_mode || 'EDITABLE_CARD'),
+              cardFormat: o.cardFormat || o.card_format || 'HORIZONTAL',
+              durationSeconds: Number(o.durationSeconds ?? o.duration_seconds ?? 5.0),
+              videoDuration: o.videoDuration ? Number(o.videoDuration) : (o.video_duration ? Number(o.video_duration) : undefined),
+              detectedWidth: o.detectedWidth ? Number(o.detectedWidth) : (o.detected_width ? Number(o.detected_width) : undefined),
+              detectedHeight: o.detectedHeight ? Number(o.detectedHeight) : (o.detected_height ? Number(o.detected_height) : undefined),
+              aspectRatio: o.aspectRatio || o.aspect_ratio || '16:9',
+              internalTitle: o.internalTitle || o.internal_title,
+              internalDescription: o.internalDescription || o.internal_description,
               internalLink: o.internalLink,
               order: o.order,
               backgroundColor: o.backgroundColor || '#15803d',
               accentColor: o.accentColor || '#ffffff',
+              startDate: o.startDate || o.start_date || o.startAt || o.start_at || undefined,
+              endDate: o.endDate || o.end_date || o.endAt || o.end_at || undefined,
+              startAt: o.startAt || o.start_at || o.startDate || o.start_date || undefined,
+              endAt: o.endAt || o.end_at || o.endDate || o.end_date || undefined,
               isActive: Boolean(o.isActive),
               isDemo: false,
+
+              // Checkout Promocional Próprio e Destino
+              destinationType: o.destinationType || (o.productId ? 'PRODUCT' : 'BANNER_ONLY'),
+              hasPromoCheckout: Boolean(o.hasPromoCheckout),
+              promoTitle: o.promoTitle,
+              promoDescription: o.promoDescription,
+              promoPrice: o.promoPrice ? Number(o.promoPrice) : undefined,
+              promoOriginalPrice: o.promoOriginalPrice ? Number(o.promoOriginalPrice) : undefined,
+              promoDiscountPercentage: o.promoDiscountPercentage ? Number(o.promoDiscountPercentage) : undefined,
+              promoUnit: o.promoUnit || 'un',
+              promoMinQuantity: o.promoMinQuantity ? Number(o.promoMinQuantity) : 1,
+              promoMaxQuantityPerCustomer: o.promoMaxQuantityPerCustomer ? Number(o.promoMaxQuantityPerCustomer) : 10,
+              promoNotes: o.promoNotes,
+              promoFulfillmentTypes: o.promoFulfillmentTypes || ['DELIVERY', 'PICKUP'],
+              promoPaymentMethods: o.promoPaymentMethods || ['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'CASH'],
+              promoCouponCode: o.promoCouponCode,
+              promoUsageLimit: o.promoUsageLimit ? Number(o.promoUsageLimit) : undefined,
+              promoTimesUsed: Number(o.promoTimesUsed ?? 0),
+              isExhausted: Boolean(o.isExhausted || (o.promoUsageLimit && Number(o.promoTimesUsed ?? 0) >= o.promoUsageLimit)),
+              remainingUses: o.remainingUses !== undefined ? o.remainingUses : (o.promoUsageLimit ? Math.max(0, o.promoUsageLimit - Number(o.promoTimesUsed ?? 0)) : null),
+              autoOverlay: o.autoOverlay !== undefined ? Boolean(o.autoOverlay) : true,
+              cardModel: o.cardModel || 'HERO',
+            })),
+            promotionCarousels: (data.promotionCarousels || []).map((pc: any) => ({
+              id: pc.id,
+              tenantId: pc.tenantId || pc.tenant_id,
+              name: pc.name,
+              description: pc.description,
+              imageUrl: pc.imageUrl || pc.image_url,
+              isActive: Boolean(pc.isActive ?? pc.is_active ?? true),
+              showInStore: Boolean(pc.showInStore ?? pc.show_in_store ?? true),
+              displayOrder: pc.displayOrder ?? pc.display_order ?? 0,
+              items: (pc.items || []).map((pci: any) => ({
+                id: pci.id,
+                carouselId: pci.carouselId || pci.carousel_id,
+                productId: pci.productId || pci.product_id,
+                tenantId: pci.tenantId || pci.tenant_id,
+                discountType: pci.discountType || pci.discount_type || 'PERCENTAGE',
+                discountValue: Number(pci.discountValue ?? pci.discount_value ?? 0),
+                promotionalPrice: Number(pci.promotionalPrice ?? pci.promotional_price ?? 0),
+                calculatedDiscountPercentage: Number(pci.calculatedDiscountPercentage ?? pci.calculated_discount_percentage ?? 0),
+                showDiscountBadge: Boolean(pci.showDiscountBadge ?? pci.show_discount_badge ?? true),
+                showPromotionalPrice: Boolean(pci.showPromotionalPrice ?? pci.show_promotional_price ?? true),
+                startDate: pci.startDate || pci.start_date,
+                endDate: pci.endDate || pci.end_date,
+                isActive: Boolean(pci.isActive ?? pci.is_active ?? true),
+                displayOrder: pci.displayOrder ?? pci.display_order ?? 0,
+                product: pci.product ? {
+                  ...pci.product,
+                  price: Number(pci.product.price),
+                } : undefined,
+              })),
             })),
           };
         } else if (error) {
@@ -127,6 +195,7 @@ export const publicStoreRepository = {
         categories: dataStore.getPublicCategories(slug),
         products: dataStore.getPublicProducts(slug),
         offers: dataStore.getPublicOffers(slug),
+        promotionCarousels: dataStore.getPublicPromotionCarousels(slug),
       };
     }
 

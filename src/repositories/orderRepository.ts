@@ -456,6 +456,112 @@ export const orderRepository = {
   },
 
   /**
+   * Processamento atômico de Checkout Promocional Próprio (Modo 3)
+   */
+  async createPromotionalOrder(
+    slug: string,
+    orderData: {
+      offerId: string;
+      quantity: number;
+      customerName: string;
+      customerPhone: string;
+      customerEmail?: string;
+      deliveryAddress?: string;
+      addressDetails?: Order['addressDetails'];
+      paymentMethod: Order['paymentMethod'];
+      fulfillmentType?: Order['fulfillmentType'];
+      notes?: string;
+      couponCode?: string;
+    }
+  ): Promise<{ order: Order; celebrationMessage?: string; redemptionNumber?: number; isExhausted?: boolean }> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data: rpcResult, error: rpcError } = await supabase.rpc('process_promotional_checkout_atomic', {
+          p_tenant_slug: slug,
+          p_offer_id: orderData.offerId,
+          p_quantity: orderData.quantity,
+          p_customer_name: orderData.customerName,
+          p_customer_phone: orderData.customerPhone,
+          p_customer_email: orderData.customerEmail || null,
+          p_delivery_address: orderData.deliveryAddress || (orderData.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : 'Endereço de entrega'),
+          p_address_details: orderData.addressDetails || {},
+          p_payment_method: orderData.paymentMethod,
+          p_fulfillment_type: orderData.fulfillmentType || 'DELIVERY',
+          p_notes: orderData.notes || '',
+          p_coupon_code: orderData.couponCode || null,
+        });
+
+        if (rpcError) {
+          console.error('[orderRepository] Erro no RPC process_promotional_checkout_atomic:', rpcError.message);
+          throw new Error(rpcError.message || 'Falha ao processar checkout promocional no servidor.');
+        }
+
+        if (rpcResult && rpcResult.order_id) {
+          const { data: orderDataFromDb } = await supabase.rpc(
+            'get_customer_order_by_id',
+            { p_order_id: rpcResult.order_id }
+          );
+
+          if (orderDataFromDb) {
+            const mappedOrder: Order = {
+              id: orderDataFromDb.id,
+              orderNumber: orderDataFromDb.orderNumber,
+              tenantId: orderDataFromDb.tenantId,
+              customerId: orderDataFromDb.customerId || undefined,
+              customerName: orderDataFromDb.customerName,
+              customerPhone: orderDataFromDb.customerPhone,
+              customerEmail: orderDataFromDb.customerEmail || undefined,
+              deliveryAddress: orderDataFromDb.deliveryAddress,
+              addressDetails: orderDataFromDb.addressDetails || undefined,
+              items: (orderDataFromDb.items || []).map((item: any) => ({
+                productId: item.productId,
+                productName: item.productName,
+                quantity: Number(item.quantity),
+                unitPrice: Number(item.unitPrice),
+                totalPrice: Number(item.totalPrice),
+                notes: item.notes || undefined,
+                unit: item.unit || 'un',
+              })),
+              subtotal: Number(orderDataFromDb.subtotal),
+              deliveryFee: Number(orderDataFromDb.deliveryFee),
+              discount: Number(orderDataFromDb.discount ?? 0),
+              totalAmount: Number(orderDataFromDb.totalAmount),
+              paymentMethod: orderDataFromDb.paymentMethod,
+              paymentStatus: orderDataFromDb.paymentStatus,
+              fulfillmentType: orderDataFromDb.fulfillmentType || 'DELIVERY',
+              notes: orderDataFromDb.notes || undefined,
+              prepTimeMinutes: orderDataFromDb.prepTimeMinutes ? Number(orderDataFromDb.prepTimeMinutes) : 30,
+              status: orderDataFromDb.status as OrderStatus,
+              statusHistory: (orderDataFromDb.statusHistory || []).map((h: any) => ({
+                status: h.status,
+                timestamp: h.timestamp,
+                note: h.note || undefined,
+                changedBy: h.changedBy || 'Sistema',
+              })),
+              createdAt: orderDataFromDb.createdAt,
+              updatedAt: orderDataFromDb.updatedAt,
+              origin: 'promotional_checkout',
+              isDemo: false,
+            };
+
+            return {
+              order: mappedOrder,
+              celebrationMessage: rpcResult.celebration_message || undefined,
+              redemptionNumber: rpcResult.redemption_number || undefined,
+              isExhausted: Boolean(rpcResult.is_exhausted),
+            };
+          }
+        }
+      } catch (err: any) {
+        console.warn('[orderRepository] Falha ao processar checkout via RPC, caindo para dataStore:', err.message);
+        return dataStore.processPromotionalCheckout(slug, orderData);
+      }
+    }
+
+    return dataStore.processPromotionalCheckout(slug, orderData);
+  },
+
+  /**
    * Consulta os pedidos do cliente autenticado neste tenant
    */
   async getCustomerOrders(tenantId: string, customerUserId: string): Promise<Order[]> {

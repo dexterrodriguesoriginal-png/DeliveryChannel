@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { PromotionCarousel, PromotionCarouselItem, Coupon } from '../types';
+import { PromotionCarousel, PromotionCarouselItem, Coupon, RedeemCouponResult, ValidateCouponResult } from '../types';
 import { SecurityContext } from '../services/securityEngine';
 import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
@@ -399,5 +399,171 @@ export const promotionRepository = {
       }
     }
     dataStore.deleteCoupon(context, tenantId, couponId);
+  },
+
+  async validatePublicCoupon(
+    tenantId: string,
+    couponCode: string,
+    orderSubtotal: number
+  ): Promise<ValidateCouponResult> {
+    if (isSupabaseConfigured && isValidUuid(tenantId)) {
+      try {
+        const clean = couponCode.trim().toUpperCase();
+        const { data, error } = await supabase
+          .from('coupons')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('code', clean)
+          .single();
+
+        if (!error && data) {
+          if (!data.is_active) {
+            return { isValid: false, discountAmount: 0, message: 'Este cupom foi desativado.' };
+          }
+          const now = new Date();
+          if (data.start_date && new Date(data.start_date) > now) {
+            return { isValid: false, discountAmount: 0, message: 'Este cupom ainda não é válido.' };
+          }
+          if (data.end_date && new Date(data.end_date) < now) {
+            return { isValid: false, discountAmount: 0, message: 'Este cupom já expirou.' };
+          }
+          const remainingUses = data.usage_limit !== undefined 
+            ? Math.max(0, data.usage_limit - (data.times_used || 0)) 
+            : null;
+
+          if (data.usage_limit && (data.times_used || 0) >= data.usage_limit) {
+            return { 
+              isValid: false, 
+              discountAmount: 0, 
+              remainingUses: 0,
+              message: 'Cupom esgotado! Limite de utilizações atingido.' 
+            };
+          }
+          const minVal = Number(data.min_order_value || 0);
+          if (minVal > 0 && orderSubtotal < minVal) {
+            return {
+              isValid: false,
+              discountAmount: 0,
+              remainingUses,
+              message: `Pedido mínimo de R$ ${minVal.toFixed(2)} necessário para este cupom.`,
+            };
+          }
+
+          const discVal = Number(data.discount_value);
+          let discountAmount = 0;
+          if (data.discount_type === 'PERCENTAGE') {
+            discountAmount = Number(((orderSubtotal * discVal) / 100).toFixed(2));
+          } else {
+            discountAmount = Math.min(orderSubtotal, discVal);
+          }
+
+          const urgencyNote = remainingUses !== null && remainingUses <= 10
+            ? ` Restam apenas ${remainingUses} utilizações!`
+            : '';
+
+          return {
+            isValid: true,
+            coupon: {
+              id: data.id,
+              tenantId: data.tenant_id,
+              code: data.code,
+              discountType: data.discount_type,
+              discountValue: discVal,
+              minOrderValue: minVal,
+              usageLimit: data.usage_limit,
+              usageLimitPerCustomer: data.usage_limit_per_customer,
+              timesUsed: data.times_used,
+              customerId: data.customer_id,
+              startDate: data.start_date,
+              endDate: data.end_date,
+              isActive: data.is_active,
+              createdAt: data.created_at,
+              updatedAt: data.updated_at,
+            },
+            discountAmount,
+            remainingUses,
+            message: `Cupom "${data.code}" aplicado com sucesso!${urgencyNote}`,
+          };
+        }
+      } catch (err) {
+        console.warn('[promotionRepository] Fallback para dataStore validatePublicCoupon:', err);
+      }
+    }
+
+    return dataStore.validatePublicCoupon(tenantId, couponCode, orderSubtotal);
+  },
+
+  async redeemCoupon(
+    tenantId: string, 
+    couponCode: string, 
+    orderId?: string, 
+    customerId?: string, 
+    discountApplied?: number
+  ): Promise<RedeemCouponResult> {
+    if (isSupabaseConfigured && isValidUuid(tenantId)) {
+      try {
+        const clean = couponCode.trim().toUpperCase();
+        // Fetch current coupon state with strict lock
+        const { data: couponData, error } = await supabase
+          .from('coupons')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('code', clean)
+          .single();
+
+        if (!error && couponData) {
+          if (!couponData.is_active) {
+            return { success: false, message: 'Cupom inativo.' };
+          }
+          if (couponData.usage_limit && (couponData.times_used || 0) >= couponData.usage_limit) {
+            return { 
+              success: false, 
+              isExhausted: true, 
+              remainingUses: 0,
+              message: 'Cupom esgotado! Limite de utilizações atingido.' 
+            };
+          }
+
+          const nextTimesUsed = (couponData.times_used || 0) + 1;
+          const remainingUses = couponData.usage_limit ? Math.max(0, couponData.usage_limit - nextTimesUsed) : null;
+
+          await supabase
+            .from('coupons')
+            .update({ 
+              times_used: nextTimesUsed,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', couponData.id)
+            .eq('tenant_id', tenantId);
+
+          // Record redemption row
+          await supabase
+            .from('coupon_redemptions')
+            .insert({
+              tenant_id: tenantId,
+              coupon_id: couponData.id,
+              customer_id: customerId || null,
+              order_id: orderId || null,
+              redemption_number: nextTimesUsed,
+              discount_applied: discountApplied || 0,
+            });
+
+          return {
+            success: true,
+            isExhausted: remainingUses !== null && remainingUses <= 0,
+            couponId: couponData.id,
+            couponCode: couponData.code,
+            redemptionNumber: nextTimesUsed,
+            discountAmount: discountApplied,
+            remainingUses,
+            message: `Você garantiu a oferta como comprador nº ${nextTimesUsed}!`,
+          };
+        }
+      } catch (err) {
+        console.warn('[promotionRepository] Fallback para dataStore redeemCoupon:', err);
+      }
+    }
+
+    return dataStore.redeemCoupon(tenantId, couponCode, orderId, customerId, discountApplied);
   },
 };

@@ -121,7 +121,7 @@ export const OffersPage: React.FC = () => {
       discountPercentage: off.discountPercentage ? off.discountPercentage.toString() : '',
       originalPrice: off.originalPrice ? off.originalPrice.toString() : '',
       promotionalPrice: off.promotionalPrice ? off.promotionalPrice.toString() : '',
-      imageUrl: off.imageUrl,
+      imageUrl: off.imageUrl || off.mediaUrl || '',
       productId: off.productId || '',
       startDate: off.startDate || '',
       endDate: off.endDate || '',

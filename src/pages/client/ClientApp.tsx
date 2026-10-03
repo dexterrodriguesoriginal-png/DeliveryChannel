@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { publicStoreRepository, PublicStoreData } from '../../repositories/publicStoreRepository';
+import { promotionRepository } from '../../repositories/promotionRepository';
 import { orderRepository } from '../../repositories/orderRepository';
 import { customerRepository } from '../../repositories/customerRepository';
 import { orderService } from '../../services/orderService';
 import { OfferCarousel } from '../../components/common/OfferCarousel';
+import { PromotionalCheckoutModal } from '../../components/client/PromotionalCheckoutModal';
 import { MobileNavigation } from '../../components/layout/MobileNavigation';
 import { AddressAutocompleteInput, ParsedAddress } from '../../components/onboarding/AddressAutocompleteInput';
 import { Card } from '../../components/ui/Card';
@@ -13,7 +15,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
-import { Product, CustomerOrigin, Order, Offer, OrderStatus, TenantTheme } from '../../types';
+import { Product, CustomerOrigin, Order, Offer, OrderStatus, TenantTheme, Coupon, RedeemCouponResult } from '../../types';
 import { 
   Search, 
   ShoppingBag, 
@@ -24,8 +26,10 @@ import {
   CheckCircle2, 
   ArrowRight, 
   Sparkles,
+  Flame,
   User as UserIcon,
   Tag,
+  Ticket,
   Store,
   Phone,
   ArrowLeft,
@@ -118,6 +122,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [selectedPromoOffer, setSelectedPromoOffer] = useState<Offer | null>(null);
+  const [isPromoCheckoutOpen, setIsPromoCheckoutOpen] = useState(false);
 
   // 7. Autenticação do Cliente no Checkout
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -151,9 +157,17 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const [orderNotes, setOrderNotes] = useState('');
   const [origin] = useState<CustomerOrigin>('qr_code');
 
+  // Cupom de Desconto (COMANDO 138)
+  const [couponCodeInput, setCouponCodeInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponMessage, setCouponMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   // Submissão do Pedido
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
+  const [completedCouponRedemption, setCompletedCouponRedemption] = useState<RedeemCouponResult | null>(null);
   const [copiedPix, setCopiedPix] = useState(false);
 
   // --------------------------------------------------------------------------
@@ -366,6 +380,75 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     return acc + (price * item.quantity);
   }, 0);
 
+  // Recalcular desconto de cupom quando o subtotal do carrinho mudar
+  useEffect(() => {
+    if (!appliedCoupon) {
+      setCouponDiscount(0);
+      return;
+    }
+    if (subtotal <= 0) {
+      setAppliedCoupon(null);
+      setCouponDiscount(0);
+      setCouponMessage(null);
+      return;
+    }
+    if (appliedCoupon.minOrderValue && subtotal < appliedCoupon.minOrderValue) {
+      setAppliedCoupon(null);
+      setCouponDiscount(0);
+      setCouponMessage({
+        type: 'error',
+        text: `O cupom ${appliedCoupon.code} requer pedido mínimo de R$ ${appliedCoupon.minOrderValue.toFixed(2)}.`,
+      });
+      return;
+    }
+    if (appliedCoupon.discountType === 'PERCENTAGE') {
+      const disc = Number(((subtotal * appliedCoupon.discountValue) / 100).toFixed(2));
+      setCouponDiscount(disc);
+    } else {
+      const disc = Math.min(subtotal, Number(appliedCoupon.discountValue.toFixed(2)));
+      setCouponDiscount(disc);
+    }
+  }, [subtotal, appliedCoupon]);
+
+  const handleApplyCoupon = async () => {
+    if (!storeData?.tenant.id) return;
+    const clean = couponCodeInput.trim().toUpperCase();
+    if (!clean) {
+      setCouponMessage({ type: 'error', text: 'Digite o código do cupom.' });
+      return;
+    }
+    setCouponLoading(true);
+    setCouponMessage(null);
+    try {
+      const res = await promotionRepository.validatePublicCoupon(
+        storeData.tenant.id,
+        clean,
+        subtotal
+      );
+      if (res.isValid && res.coupon) {
+        setAppliedCoupon(res.coupon);
+        setCouponDiscount(res.discountAmount);
+        setCouponMessage({ type: 'success', text: res.message });
+        showToast({ type: 'success', title: 'Cupom Aplicado', message: res.message });
+      } else {
+        setAppliedCoupon(null);
+        setCouponDiscount(0);
+        setCouponMessage({ type: 'error', text: res.message });
+      }
+    } catch (err: any) {
+      setCouponMessage({ type: 'error', text: err.message || 'Erro ao validar cupom.' });
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
+    setCouponCodeInput('');
+    setCouponMessage(null);
+  };
+
   const freeThreshold = storeData?.settings.freeDeliveryThreshold;
   const isFreeDelivery = fulfillmentType === 'DELIVERY' && 
     Boolean(freeThreshold && subtotal >= freeThreshold);
@@ -374,7 +457,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     ? 0
     : (subtotal > 0 ? (isFreeDelivery ? 0 : (storeData?.settings.deliveryFee || 0)) : 0);
 
-  const grandTotal = subtotal + deliveryFee;
+  const discountedSubtotal = Math.max(0, subtotal - couponDiscount);
+  const grandTotal = discountedSubtotal + deliveryFee;
 
   // Normalização de telefone / WhatsApp com máscara brasileira
   const handlePhoneChange = (val: string) => {
@@ -481,6 +565,22 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       return;
     }
 
+    // MODO 1: APENAS VISUAL (Sem abrir produto nem checkout)
+    if (offer.destinationType === 'BANNER_ONLY' && !offer.productId && !offer.hasPromoCheckout) {
+      if (offer.linkUrl && offer.linkUrl.startsWith('http')) {
+        window.open(offer.linkUrl, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+
+    // MODO 3: CHECKOUT PROMOCIONAL PRÓPRIO (Fluxo Direto de Oferta)
+    if (offer.destinationType === 'CUSTOM_OFFER' || offer.hasPromoCheckout) {
+      setSelectedPromoOffer(offer);
+      setIsPromoCheckoutOpen(true);
+      return;
+    }
+
+    // MODO 2: PRODUTO DO CATÁLOGO
     let targetProductId = offer.productId;
 
     // Fallback: extrai do internalLink (?product=UUID) se necessário
@@ -685,6 +785,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       ? `${orderNotes ? `${orderNotes} | ` : ''}Troco para: R$ ${cashChange}`
       : orderNotes;
 
+    const finalNotes = appliedCoupon && couponDiscount > 0
+      ? `${notesWithCash ? `${notesWithCash} | ` : ''}[Cupom: ${appliedCoupon.code} -R$ ${couponDiscount.toFixed(2)}]`
+      : notesWithCash;
+
     setIsSubmittingOrder(true);
 
     try {
@@ -709,7 +813,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         },
         paymentMethod,
         fulfillmentType,
-        notes: notesWithCash,
+        notes: finalNotes,
         origin,
         items: cart.map(item => ({
           productId: item.product.id,
@@ -718,9 +822,33 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         })),
       });
 
+      // Resgate atômico do cupom de desconto se houver
+      let redemptionResult: RedeemCouponResult | null = null;
+      if (appliedCoupon && storeData?.tenant.id) {
+        try {
+          redemptionResult = await promotionRepository.redeemCoupon(
+            storeData.tenant.id,
+            appliedCoupon.code,
+            order.id,
+            supabaseUser?.id || undefined,
+            couponDiscount
+          );
+          setCompletedCouponRedemption(redemptionResult);
+        } catch (couponErr) {
+          console.warn('[ClientApp] Erro ao registrar resgate do cupom:', couponErr);
+          setCompletedCouponRedemption(null);
+        }
+      } else {
+        setCompletedCouponRedemption(null);
+      }
+
       // Limpar carrinho e exibir confirmação
       setCompletedOrder(order);
       setCart([]);
+      setAppliedCoupon(null);
+      setCouponDiscount(0);
+      setCouponCodeInput('');
+      setCouponMessage(null);
       setIsCheckoutOpen(false);
 
       // Atualiza imediatamente o estado de pedidos do cliente em memória (sem race condition)
@@ -1159,6 +1287,171 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                 offers={storeData.offers}
                 onOfferClick={handleOfferClick}
               />
+            </div>
+          )}
+
+          {/* Carrosséis Promocionais da Vitrine (COMANDO 138) */}
+          {storeData.promotionCarousels && storeData.promotionCarousels.length > 0 && !searchTerm.trim() && (
+            <div className="space-y-5">
+              {storeData.promotionCarousels
+                .filter(carousel => carousel.isActive && carousel.showInStore && carousel.items && carousel.items.length > 0)
+                .map((carousel) => (
+                  <div key={carousel.id} className="space-y-2">
+                    {/* Header do Carrossel Promocional */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                          <Flame className="w-3.5 h-3.5 text-amber-500" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-extrabold text-gray-900 tracking-tight">
+                            {carousel.name}
+                          </h3>
+                          {carousel.description && (
+                            <p className="text-[11px] text-gray-500 line-clamp-1">{carousel.description}</p>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-[11px] text-gray-400 font-medium">
+                        {carousel.items.length} {carousel.items.length === 1 ? 'item' : 'itens'}
+                      </span>
+                    </div>
+
+                    {/* Rolagem Horizontal de Cards Promocionais */}
+                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-0.5">
+                      {carousel.items.map((item) => {
+                        if (!item.product) return null;
+                        const p = item.product;
+                        const inCart = cart.find(i => i.product.id === p.id);
+                        const isOutOfStock = p.isAvailable !== undefined ? !p.isAvailable : ((p.stockQuantity ?? 1) <= 0);
+                        const discountPct = item.calculatedDiscountPercentage > 0 
+                          ? item.calculatedDiscountPercentage 
+                          : (p.price > item.promotionalPrice && item.promotionalPrice > 0 
+                              ? Math.round(((p.price - item.promotionalPrice) / p.price) * 100) 
+                              : 0);
+
+                        const promoProduct: Product = {
+                          ...p,
+                          promotionalPrice: item.promotionalPrice > 0 ? item.promotionalPrice : p.promotionalPrice,
+                        };
+
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              setSelectedProductModal(promoProduct);
+                            }}
+                            className={`w-40 sm:w-44 shrink-0 bg-white border rounded-2xl p-2.5 flex flex-col justify-between shadow-2xs hover:shadow-md transition-all cursor-pointer snap-start relative group ${
+                              highlightedProductId === p.id 
+                                ? 'ring-2 ring-emerald-500 bg-emerald-50/40 border-emerald-400' 
+                                : 'border-gray-200/90 hover:border-gray-300'
+                            } ${isOutOfStock ? 'opacity-70 bg-gray-50/60' : ''}`}
+                            style={{ borderRadius }}
+                          >
+                            {/* Imagem do Produto + Badges */}
+                            <div className="relative w-full h-28 sm:h-32 rounded-xl overflow-hidden bg-gray-100 mb-2">
+                              {p.imageUrl ? (
+                                <img
+                                  src={p.imageUrl}
+                                  alt={p.name}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                  <ShoppingBag className="w-7 h-7" />
+                                </div>
+                              )}
+
+                              {item.showDiscountBadge !== false && discountPct > 0 && (
+                                <span className="absolute top-1.5 left-1.5 bg-rose-600 text-white text-[9.5px] font-black uppercase px-2 py-0.5 rounded-full shadow-xs flex items-center gap-0.5">
+                                  <Flame className="w-2.5 h-2.5 fill-current" />
+                                  {discountPct}% OFF
+                                </span>
+                              )}
+
+                              {isOutOfStock && (
+                                <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center">
+                                  <span className="text-[10px] font-bold text-white bg-black/70 px-2 py-0.5 rounded-md uppercase">
+                                    Esgotado
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Detalhes do Produto */}
+                            <div className="space-y-1 min-w-0 mb-2 flex-1">
+                              <h4 className="font-bold text-xs text-gray-900 leading-snug line-clamp-2" title={p.name}>
+                                {p.name}
+                              </h4>
+                              {p.description && (
+                                <p className="text-[10px] text-gray-400 line-clamp-1">
+                                  {p.description}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Preço e Botão Adicionar */}
+                            <div className="pt-1.5 border-t border-gray-100 flex items-end justify-between gap-1.5">
+                              <div className="min-w-0">
+                                {item.promotionalPrice > 0 && item.promotionalPrice < p.price ? (
+                                  <div>
+                                    <span className="text-[10px] text-gray-400 line-through font-mono block leading-tight">
+                                      R$ {p.price.toFixed(2)}
+                                    </span>
+                                    <span className="font-extrabold text-xs sm:text-sm text-emerald-800 font-mono leading-tight">
+                                      R$ {item.promotionalPrice.toFixed(2)}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="font-extrabold text-xs sm:text-sm text-gray-900 font-mono">
+                                    R$ {p.price.toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                                {isOutOfStock ? (
+                                  <span className="text-[9px] font-bold text-gray-400 uppercase">
+                                    Off
+                                  </span>
+                                ) : inCart ? (
+                                  <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 shadow-2xs">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveFromCart(p.id)}
+                                      className="w-5 h-5 rounded bg-white flex items-center justify-center text-gray-700 hover:bg-gray-200 cursor-pointer shadow-xs"
+                                    >
+                                      <Minus className="w-2.5 h-2.5" />
+                                    </button>
+                                    <span className="text-[11px] font-black font-mono px-0.5">{inCart.quantity}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAddToCart(promoProduct)}
+                                      className="w-5 h-5 rounded text-white flex items-center justify-center cursor-pointer shadow-xs"
+                                      style={{ backgroundColor: buttonColor }}
+                                    >
+                                      <Plus className="w-2.5 h-2.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddToCart(promoProduct)}
+                                    className="h-6 px-2 rounded-lg text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-xs hover:opacity-95 transition-opacity"
+                                    style={{ backgroundColor: buttonColor }}
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    <span>Adicionar</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
             </div>
           )}
 
@@ -1716,12 +2009,89 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                 />
               </div>
 
+              {/* Cupom de Desconto (COMANDO 138) */}
+              <div className="space-y-1.5 pt-1">
+                <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                  <Ticket className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Cupom de Desconto</span>
+                </label>
+                {appliedCoupon ? (
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-emerald-700 text-white flex items-center justify-center text-xs font-black">
+                        %
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-extrabold text-emerald-900 tracking-wider">
+                            {appliedCoupon.code}
+                          </span>
+                          {appliedCoupon.usageLimit && (
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded-md">
+                              Restam {Math.max(0, appliedCoupon.usageLimit - (appliedCoupon.timesUsed || 0))}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-emerald-700">
+                          Desconto de R$ {couponDiscount.toFixed(2)} aplicado
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      className="text-xs text-rose-600 hover:text-rose-800 font-semibold cursor-pointer px-2 py-1"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Ex: PRIMEIRACOMPRA"
+                        value={couponCodeInput}
+                        onChange={(e) => {
+                          setCouponCodeInput(e.target.value.toUpperCase());
+                          if (couponMessage) setCouponMessage(null);
+                        }}
+                        className="flex-1 p-2.5 rounded-xl border border-gray-200 text-xs font-mono uppercase bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyCoupon}
+                        disabled={couponLoading || !couponCodeInput.trim()}
+                        className="px-3 py-2 rounded-xl text-xs font-bold text-white transition-opacity disabled:opacity-50 cursor-pointer shadow-xs"
+                        style={{ backgroundColor: buttonColor }}
+                      >
+                        {couponLoading ? 'Aplicando...' : 'Aplicar'}
+                      </button>
+                    </div>
+                    {couponMessage && (
+                      <p className={`text-[11px] ${couponMessage.type === 'success' ? 'text-emerald-700 font-medium' : 'text-rose-600'}`}>
+                        {couponMessage.text}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Valores Totais Oficiais */}
               <div className="p-3 bg-gray-50 rounded-xl space-y-1.5 text-xs">
                 <div className="flex justify-between text-gray-600">
                   <span>Subtotal</span>
                   <span className="font-mono">R$ {subtotal.toFixed(2)}</span>
                 </div>
+                {couponDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-semibold">
+                    <span className="flex items-center gap-1">
+                      <Ticket className="w-3 h-3" />
+                      Desconto ({appliedCoupon?.code})
+                    </span>
+                    <span className="font-mono">- R$ {couponDiscount.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-gray-600">
                   <span>Taxa de Entrega</span>
                   <span className="font-mono text-emerald-700 font-bold">
@@ -1793,6 +2163,19 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               <span className="font-bold text-emerald-700">Recebido pelo Estabelecimento</span>
             </div>
           </div>
+
+          {/* Banner de Recompensa Atômica do Cupom (COMANDO 139) */}
+          {completedCouponRedemption?.redemptionNumber && (
+            <div className="p-3.5 bg-linear-to-r from-emerald-50 to-teal-50 border border-emerald-300 rounded-2xl text-left space-y-1 shadow-2xs">
+              <div className="flex items-center gap-1.5 text-xs font-black text-emerald-950">
+                <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                <span>Oferta Limitada Garantida!</span>
+              </div>
+              <p className="text-[11px] text-emerald-900 leading-snug">
+                Parabéns! Você foi o comprador nº <strong>{completedCouponRedemption.redemptionNumber}</strong> e garantiu o desconto exclusivo do cupom <strong>{completedCouponRedemption.couponCode}</strong>!
+              </p>
+            </div>
+          )}
 
           {/* Se PIX, exibe código Copia e Cola */}
           {completedOrder?.paymentMethod === 'PIX' && (
@@ -2178,6 +2561,34 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* MODAL DE CHECKOUT PROMOCIONAL PRÓPRIO (MODO 3) */}
+      {selectedPromoOffer && storeData && (
+        <PromotionalCheckoutModal
+          isOpen={isPromoCheckoutOpen}
+          onClose={() => {
+            setIsPromoCheckoutOpen(false);
+            setSelectedPromoOffer(null);
+          }}
+          offer={selectedPromoOffer}
+          storeData={storeData}
+          onOrderCompleted={(order, celebrationMessage) => {
+            setCompletedOrder(order);
+            setCustomerOrders(prev => {
+              const exists = prev.some(o => o.id === order.id);
+              if (exists) return prev;
+              return [order, ...prev];
+            });
+            if (celebrationMessage) {
+              showToast({
+                type: 'success',
+                title: '🎉 Parabéns!',
+                message: celebrationMessage,
+              });
+            }
+          }}
+        />
       )}
 
       {/* Navegação Inferior Mobile */}
