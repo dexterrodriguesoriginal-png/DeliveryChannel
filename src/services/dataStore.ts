@@ -1847,148 +1847,6 @@ export class DataStore {
       .sort((a, b) => a.order - b.order);
   }
 
-  public processPromotionalCheckout(
-    slug: string,
-    payload: {
-      offerId: string;
-      quantity: number;
-      customerName: string;
-      customerPhone: string;
-      customerEmail?: string;
-      deliveryAddress?: string;
-      addressDetails?: any;
-      paymentMethod: string;
-      fulfillmentType?: 'DELIVERY' | 'PICKUP';
-      notes?: string;
-      couponCode?: string;
-    }
-  ): {
-    orderId: string;
-    redemptionNumber?: number;
-    celebrationMessage?: string;
-    totalAmount: number;
-    isExhausted?: boolean;
-  } {
-    const tenant = this.getTenantBySlug(slug);
-    if (!tenant) throw new Error('Estabelecimento não encontrado.');
-
-    const offer = this.offers.find(o => o.id === payload.offerId && o.tenantId === tenant.id);
-    if (!offer) throw new Error('Card promocional não encontrado.');
-
-    if (!offer.isActive) throw new Error('Esta promoção está desativada.');
-
-    const status = this.calculateCardStatus(offer);
-    if (status === 'SCHEDULED') throw new Error('Esta promoção ainda não iniciou.');
-    if (status === 'EXPIRED') throw new Error('Esta promoção já expirou.');
-
-    if (offer.promoUsageLimit && offer.promoUsageLimit > 0) {
-      if ((offer.promoTimesUsed || 0) >= offer.promoUsageLimit) {
-        throw new Error(`Esta promoção atingiu o limite de ${offer.promoUsageLimit} usos e está esgotada.`);
-      }
-    }
-
-    if (offer.promoMaxQuantityPerCustomer && payload.quantity > offer.promoMaxQuantityPerCustomer) {
-      throw new Error(`Quantidade máxima permitida por cliente nesta promoção: ${offer.promoMaxQuantityPerCustomer} un.`);
-    }
-
-    const unitPrice = offer.promoPrice || offer.promotionalPrice || offer.originalPrice || 0;
-    if (unitPrice <= 0) throw new Error('Preço promocional inválido.');
-
-    const origPrice = offer.promoOriginalPrice || offer.originalPrice || unitPrice;
-    const subtotal = unitPrice * payload.quantity;
-
-    let deliveryFee = payload.fulfillmentType === 'PICKUP' ? 0 : (tenant.settings.deliveryFee || 0);
-    if (tenant.settings.freeDeliveryThreshold && subtotal >= tenant.settings.freeDeliveryThreshold) {
-      deliveryFee = 0;
-    }
-
-    let couponDiscount = 0;
-    if (payload.couponCode) {
-      const cRes = this.validatePublicCoupon(tenant.id, payload.couponCode, subtotal);
-      if (cRes.isValid && cRes.discountAmount) {
-        couponDiscount = cRes.discountAmount;
-      }
-    }
-
-    const totalAmount = Math.max(0, subtotal + deliveryFee - couponDiscount);
-    const newTimesUsed = (offer.promoTimesUsed || 0) + 1;
-    offer.promoTimesUsed = newTimesUsed;
-
-    const celebrationMessage = (offer.promoUsageLimit && offer.promoUsageLimit > 0)
-      ? `🎉 Parabéns! Você foi o cliente nº ${newTimesUsed} a aproveitar esta promoção!`
-      : undefined;
-
-    const orderId = `ord-promo-${Date.now()}`;
-    const orderNumber = (this.orders.filter(o => o.tenantId === tenant.id).length + 1).toString().padStart(4, '0');
-
-    const newOrder: any = {
-      id: orderId,
-      orderNumber,
-      tenantId: tenant.id,
-      customerName: payload.customerName,
-      customerPhone: payload.customerPhone,
-      customerEmail: payload.customerEmail,
-      deliveryAddress: payload.deliveryAddress || (payload.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : ''),
-      addressDetails: payload.addressDetails,
-      subtotal,
-      deliveryFee,
-      discount: couponDiscount,
-      totalAmount,
-      paymentMethod: payload.paymentMethod,
-      paymentStatus: 'PENDING',
-      fulfillmentType: payload.fulfillmentType || 'DELIVERY',
-      status: 'PENDING',
-      notes: payload.notes || '',
-      origin: 'promotional_checkout',
-      prepTimeMinutes: tenant.settings.defaultPrepTimeMinutes || 30,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      items: [
-        {
-          id: `item-${Date.now()}`,
-          orderId,
-          productId: offer.productId || `promo-${offer.id}`,
-          productName: offer.promoTitle || offer.title,
-          quantity: payload.quantity,
-          unitPrice,
-          totalPrice: subtotal,
-          unit: offer.promoUnit || 'un',
-          notes: payload.notes,
-        },
-      ],
-      statusHistory: [
-        {
-          id: `hist-${Date.now()}`,
-          orderId,
-          status: 'PENDING',
-          note: 'Pedido confirmado via Checkout Promocional',
-          changedBy: 'Checkout Promocional',
-          timestamp: new Date().toISOString(),
-        },
-      ],
-    };
-
-    this.orders.unshift(newOrder);
-
-    // Se vinculado a produto real, decrementa estoque se houver produto
-    if (offer.productId) {
-      const prod = this.products.find(p => p.id === offer.productId && p.tenantId === tenant.id);
-      if (prod && prod.stockQuantity !== undefined) {
-        prod.stockQuantity = Math.max(0, prod.stockQuantity - payload.quantity);
-      }
-    }
-
-    this.persist();
-
-    return {
-      orderId,
-      redemptionNumber: newTimesUsed,
-      celebrationMessage,
-      totalAmount,
-      isExhausted: Boolean(offer.promoUsageLimit && newTimesUsed >= offer.promoUsageLimit),
-    };
-  }
-
   // --- CARROSSÉIS DE PROMOÇÃO (COMANDO 138) ---
   public getPromotionCarousels(context: SecurityContext, tenantId: string): PromotionCarousel[] {
     validateTenantAccess(context, tenantId, 'GET_PROMOTION_CAROUSELS', this.addAuditViolation.bind(this));
@@ -3064,12 +2922,14 @@ export class DataStore {
 
     // Cliente
     const cleanPhone = orderData.customerPhone.replace(/\D/g, '');
-    let customer = this.customers.find(c => c.tenantId === tenant.id && c.phone.replace(/\D/g, '') === cleanPhone);
-    if (customer) {
-      customer.totalOrders += 1;
-      customer.ltvAmount += totalAmount;
-      customer.lastOrderDate = new Date().toISOString().split('T')[0];
-      if (orderData.customerName) customer.name = orderData.customerName;
+    let customer: Customer;
+    const existingCustomer = this.customers.find(c => c.tenantId === tenant.id && c.phone.replace(/\D/g, '') === cleanPhone);
+    if (existingCustomer) {
+      existingCustomer.totalOrders += 1;
+      existingCustomer.ltvAmount += totalAmount;
+      existingCustomer.lastOrderDate = new Date().toISOString().split('T')[0];
+      if (orderData.customerName) existingCustomer.name = orderData.customerName;
+      customer = existingCustomer;
     } else {
       customer = {
         id: `cust-${Date.now()}`,

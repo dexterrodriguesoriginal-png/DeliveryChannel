@@ -92,6 +92,8 @@ export type CustomerOrigin =
   | 'google' 
   | 'indicacao' 
   | 'direto' 
+  | 'direct'
+  | 'promotional_checkout'
   | 'outros';
 
 export interface Customer {
@@ -154,10 +156,12 @@ export type PromoCardModel = 'HERO' | 'HIGHLIGHT' | 'ANIMATED';
 export interface PromotionalCard {
   id: string;
   tenantId: string;
+  source?: 'OFFER' | 'CAMPAIGN_CARD';
   title: string;
   subtitle?: string;
   description?: string;
   badge?: string;
+  ctaText?: string;
   cardFormat?: CardFormat;
   mediaType?: CardMediaType;
   displayMode?: CardDisplayMode;
@@ -244,7 +248,7 @@ export interface CampaignCard {
   autoOverlay: boolean; // Sobreposição automática: OFF por padrão no Full Media
   destinationType: CampaignCardDestination;
   productId?: string;
-  product?: Product;
+  product?: Partial<Product> & { id: string; name: string; price: number; isAvailable: boolean };
   couponId?: string;
   coupon?: {
     id: string;
@@ -497,6 +501,7 @@ export interface Order {
   updatedAt: string;
   driverId?: string;
   driverName?: string;
+  offerId?: string;
   origin: CustomerOrigin;
   isDemo?: boolean;
 }

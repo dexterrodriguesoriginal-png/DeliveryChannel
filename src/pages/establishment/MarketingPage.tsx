@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { supabase, ensureValidSession } from '../../lib/supabase';
 import { offerRepository } from '../../repositories/offerRepository';
 import { productRepository } from '../../repositories/productRepository';
 import { orderRepository } from '../../repositories/orderRepository';
@@ -158,6 +159,7 @@ export const MarketingPage: React.FC = () => {
   const [mediaType, setMediaType] = useState<CardMediaType>('IMAGE');
   const [mediaSourceMode, setMediaSourceMode] = useState<'upload' | 'url'>('upload');
   const [mediaUrl, setMediaUrl] = useState('');
+  const [pendingMarketingAsset, setPendingMarketingAsset] = useState<{ assetId: string; path: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [detectedWidth, setDetectedWidth] = useState<number | null>(null);
   const [detectedHeight, setDetectedHeight] = useState<number | null>(null);
@@ -227,7 +229,7 @@ export const MarketingPage: React.FC = () => {
       showToast({
         type: 'error',
         title: 'Erro de Carregamento',
-        message: 'Não foi possível carregar os criativos promocionais.',
+        message: err instanceof Error ? err.message : 'Não foi possível carregar os criativos promocionais.',
       });
     } finally {
       setIsLoading(false);
@@ -316,28 +318,95 @@ export const MarketingPage: React.FC = () => {
       return;
     }
 
-    const maxSize = isVideoFile ? 60 * 1024 * 1024 : 10 * 1024 * 1024;
+    // Limites alinhados ao bucket `marketing` (migration 023: file_size_limit = 35 MB).
+    const maxSize = isVideoFile ? 35 * 1024 * 1024 : 10 * 1024 * 1024;
     if (file.size > maxSize) {
       showToast({
         type: 'error',
         title: 'Arquivo Muito Grande',
-        message: `Tamanho máximo: ${isVideoFile ? '60MB para vídeo' : '10MB para imagem'}.`,
+        message: `Tamanho máximo: ${isVideoFile ? '35MB para vídeo' : '10MB para imagem'}.`,
       });
       return;
     }
 
     setIsUploading(true);
     try {
-      const uploadedUrl = await offerRepository.uploadMedia(
+      const detectedType: CardMediaType = isVideoFile ? 'VIDEO' : 'IMAGE';
+      const localPreviewUrl = URL.createObjectURL(file);
+
+      // Pré-detecta dimensões e duração antes do upload para alimentar confirm_marketing_upload (N3)
+      let preWidth: number | null = null;
+      let preHeight: number | null = null;
+      let preDuration: number | null = null;
+
+      try {
+        if (isVideoFile) {
+          const meta = await new Promise<{ width: number; height: number; duration: number }>((resolve, reject) => {
+            const vid = document.createElement('video');
+            vid.preload = 'metadata';
+            vid.onloadedmetadata = () => {
+              resolve({
+                width: vid.videoWidth || 1200,
+                height: vid.videoHeight || 675,
+                duration: vid.duration && !isNaN(vid.duration) ? Math.round(vid.duration * 10) / 10 : 10,
+              });
+            };
+            vid.onerror = () => reject(new Error('Erro ao inspecionar metadados do vídeo.'));
+            vid.src = localPreviewUrl;
+          });
+          preWidth = meta.width;
+          preHeight = meta.height;
+          preDuration = meta.duration;
+          setDetectedWidth(meta.width);
+          setDetectedHeight(meta.height);
+          setDetectedVideoDuration(meta.duration);
+          setDurationSeconds(meta.duration);
+        } else {
+          const meta = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+              resolve({
+                width: img.naturalWidth || 1200,
+                height: img.naturalHeight || 675,
+              });
+            };
+            img.onerror = () => reject(new Error('Erro ao inspecionar dimensões da imagem.'));
+            img.src = localPreviewUrl;
+          });
+          preWidth = meta.width;
+          preHeight = meta.height;
+          setDetectedWidth(meta.width);
+          setDetectedHeight(meta.height);
+          setDetectedVideoDuration(null);
+        }
+      } catch (metaErr) {
+        console.warn('[MarketingPage] Não foi possível inspecionar dimensões prévias, usando valores padrão:', metaErr);
+      }
+
+      const uploadResult = await offerRepository.uploadMedia(
         activeTenant.id,
         editingCard?.id || crypto.randomUUID(),
-        file
+        file,
+        {
+          width: preWidth,
+          height: preHeight,
+          duration: preDuration,
+        }
       );
 
-      const detectedType: CardMediaType = isVideoFile ? 'VIDEO' : 'IMAGE';
-      setMediaUrl(uploadedUrl);
+      // Define a URL local imediatamente para renderização no visualizador em tempo real (16:9).
+      // Se não houver assetId (ex: modo local), utiliza o caminho retornado ou preview local.
+      setMediaUrl(localPreviewUrl || uploadResult.path);
+      if (uploadResult.assetId) {
+        setPendingMarketingAsset({
+          assetId: uploadResult.assetId,
+          path: uploadResult.path,
+        });
+      } else {
+        setPendingMarketingAsset(null);
+      }
       setMediaType(detectedType);
-      inspectMedia(uploadedUrl, detectedType);
+      inspectMedia(localPreviewUrl, detectedType);
 
       showToast({
         type: 'success',
@@ -361,6 +430,7 @@ export const MarketingPage: React.FC = () => {
   // --------------------------------------------------------------------------
   const handleOpenCreate = () => {
     setEditingCard(null);
+    setPendingMarketingAsset(null);
     setCardModel('HERO');
     setAutoOverlay(true);
     setDisplayMode('FULL_MEDIA');
@@ -414,6 +484,7 @@ export const MarketingPage: React.FC = () => {
 
   const handleOpenEdit = (card: Offer) => {
     setEditingCard(card);
+    setPendingMarketingAsset(null);
     setCardModel(card.cardModel || 'HERO');
     setAutoOverlay(card.autoOverlay !== undefined ? card.autoOverlay : (card.displayMode !== 'FULL_MEDIA'));
     setDisplayMode(card.displayMode || 'FULL_MEDIA');
@@ -585,6 +656,96 @@ export const MarketingPage: React.FC = () => {
 
     setIsSaving(true);
     try {
+      // Fluxo Oficial de Publicação N3: executa somente quando há novo asset pendente de publicação
+      let finalPublicMediaUrl = mediaUrl.trim();
+
+      if (pendingMarketingAsset?.assetId) {
+        const { assetId } = pendingMarketingAsset;
+
+        // 1. Chamar request_publish_marketing_asset({ p_asset_id: assetId })
+        const { data: pubReqData, error: pubReqErr } = await supabase.rpc('request_publish_marketing_asset', {
+          p_asset_id: assetId,
+        });
+
+        if (pubReqErr || !pubReqData) {
+          throw new Error(`Falha ao solicitar publicação do asset: ${pubReqErr?.message || 'Resposta inválida do servidor.'}`);
+        }
+
+        const reqRow = Array.isArray(pubReqData) ? pubReqData[0] : pubReqData;
+        const sourceBucket = reqRow?.source_bucket;
+        const sourcePath = reqRow?.source_path;
+        const targetBucket = reqRow?.target_bucket;
+        const targetPath = reqRow?.target_path;
+
+        if (!sourceBucket || !sourcePath || !targetBucket || !targetPath) {
+          throw new Error('request_publish_marketing_asset não retornou os campos obrigatórios (source_bucket, source_path, target_bucket, target_path).');
+        }
+
+        // 2. Copiar o objeto de source_bucket/source_path para target_bucket/target_path
+        await ensureValidSession();
+        let copyErrResult = (
+          await supabase.storage
+            .from(sourceBucket)
+            .copy(sourcePath, targetPath, { destinationBucket: targetBucket })
+        ).error;
+
+        if (copyErrResult && /exp claim|jwt|expired|token/i.test(copyErrResult.message || '')) {
+          console.warn('[MarketingPage] Token expirado na cópia para publicação, renovando sessão e tentando novamente...');
+          const { error: refreshErr } = await supabase.auth.refreshSession();
+          if (!refreshErr) {
+            copyErrResult = (
+              await supabase.storage
+                .from(sourceBucket)
+                .copy(sourcePath, targetPath, { destinationBucket: targetBucket })
+            ).error;
+          }
+        }
+
+        if (copyErrResult) {
+          throw new Error(`Falha ao copiar mídia para o bucket de publicação: ${copyErrResult.message}`);
+        }
+
+        // 3. Somente se a cópia for concluída com sucesso chamar confirm_publish_marketing_asset({ p_asset_id: assetId })
+        const { data: pubConfirmData, error: pubConfirmErr } = await supabase.rpc('confirm_publish_marketing_asset', {
+          p_asset_id: assetId,
+        });
+
+        if (pubConfirmErr || !pubConfirmData) {
+          throw new Error(`Falha ao confirmar publicação do asset: ${pubConfirmErr?.message || 'Resposta inválida na confirmação.'}`);
+        }
+
+        const confirmRow = Array.isArray(pubConfirmData) ? pubConfirmData[0] : pubConfirmData;
+        const publicPath = typeof pubConfirmData === 'string'
+          ? pubConfirmData
+          : (confirmRow?.public_path || confirmRow?.publicPath || confirmRow?.public_url || confirmRow?.publicUrl);
+
+        if (!publicPath || typeof publicPath !== 'string') {
+          throw new Error('confirm_publish_marketing_asset não retornou public_path válido.');
+        }
+
+        // Obtém a URL pública definitiva a partir do bucket marketing-public e do public_path retornado
+        let resolvedPublicUrl = '';
+        if (publicPath.startsWith('http://') || publicPath.startsWith('https://')) {
+          resolvedPublicUrl = publicPath;
+        } else {
+          const { data: publicUrlObj } = supabase.storage
+            .from('marketing-public')
+            .getPublicUrl(publicPath);
+
+          if (!publicUrlObj?.publicUrl) {
+            throw new Error('Não foi possível gerar a URL pública para o asset no bucket marketing-public.');
+          }
+          resolvedPublicUrl = publicUrlObj.publicUrl;
+        }
+
+        // 4. Usar a URL pública definitiva no estado da aplicação e para persistência em image_url
+        finalPublicMediaUrl = resolvedPublicUrl;
+
+        // Marca que o asset foi publicado com sucesso
+        setPendingMarketingAsset(null);
+        setMediaUrl(finalPublicMediaUrl);
+      }
+
       const finalDuration = mediaType === 'VIDEO'
         ? (detectedVideoDuration || 10)
         : (isCustomDuration ? Math.max(1, parseInt(customDurationInput, 10) || 5) : durationSeconds);
@@ -605,8 +766,8 @@ export const MarketingPage: React.FC = () => {
         cardModel,
         autoOverlay,
         destinationType,
-        mediaUrl: mediaUrl.trim(),
-        imageUrl: mediaUrl.trim(),
+        mediaUrl: finalPublicMediaUrl,
+        imageUrl: finalPublicMediaUrl,
         durationSeconds: finalDuration,
         videoDuration: mediaType === 'VIDEO' ? (detectedVideoDuration || 10) : undefined,
         detectedWidth: detectedWidth || 1200,
@@ -737,15 +898,24 @@ export const MarketingPage: React.FC = () => {
     newOffers[index] = newOffers[targetIdx];
     newOffers[targetIdx] = temp;
 
+    const previousOffers = offers;
     setOffers(newOffers);
     try {
-      await offerRepository.reorderOffers(
+      const persisted = await offerRepository.reorderOffers(
         securityContext,
         activeTenant.id,
         newOffers.map(o => o.id)
       );
-    } catch (err) {
+      setOffers(persisted);
+    } catch (err: any) {
       console.error('[MarketingPage] Erro ao reordenar:', err);
+      // Ordem não foi salva no banco: volta para o estado real anterior.
+      setOffers(previousOffers);
+      showToast({
+        type: 'error',
+        title: 'Ordem Não Salva',
+        message: err?.message || 'Não foi possível salvar a nova ordem dos cards.',
+      });
     }
   };
 
@@ -1311,10 +1481,10 @@ export const MarketingPage: React.FC = () => {
       {activeTab === 'materials' && (
         <div className="space-y-6">
           <QRCodeCard
-            storeUrl={getPublicStoreUrl(activeTenant.slug)}
+            slug={activeTenant.slug}
             storeName={activeTenant.name}
-            tenantCategory={activeTenant.category}
-            phone={activeTenant.phone}
+            primaryColor={activeTenant.theme.primaryColor}
+            onOpenApp={() => window.open(getPublicStoreUrl(activeTenant.slug), '_blank')}
           />
         </div>
       )}
@@ -1605,7 +1775,7 @@ export const MarketingPage: React.FC = () => {
                   <label className="w-full flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 hover:border-emerald-500 rounded-2xl cursor-pointer bg-white transition-colors">
                     <Upload className="w-6 h-6 text-gray-400 mb-1" />
                     <span className="text-xs font-bold text-gray-700">Clique para selecionar imagem ou vídeo</span>
-                    <span className="text-[10px] text-gray-400 mt-0.5">Até 60MB para vídeo e 10MB para imagem</span>
+                    <span className="text-[10px] text-gray-400 mt-0.5">Até 35MB para vídeo e 10MB para imagem</span>
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
@@ -1623,6 +1793,7 @@ export const MarketingPage: React.FC = () => {
                     onChange={(e) => {
                       const val = e.target.value;
                       setMediaUrl(val);
+                      setPendingMarketingAsset(null);
                       const isVid = /\.(mp4|webm|mov)(\?.*)?$/i.test(val);
                       setMediaType(isVid ? 'VIDEO' : 'IMAGE');
                       inspectMedia(val, isVid ? 'VIDEO' : 'IMAGE');

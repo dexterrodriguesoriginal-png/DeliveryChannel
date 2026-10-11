@@ -34,3 +34,35 @@ export const supabase = createClient(
     },
   }
 );
+
+/**
+ * Garante que a sessão Supabase atual esteja válida antes de operações autenticadas (como Storage).
+ * Se o token estiver prestes a expirar ou expirado, faz refresh automático via auth.refreshSession().
+ */
+export async function ensureValidSession(): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+  try {
+    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr) {
+      console.warn('[SupabaseAuth] Erro ao obter sessão atual:', sessionErr.message);
+    }
+    const session = sessionData?.session;
+    const nowSec = Math.floor(Date.now() / 1000);
+    // Se não há sessão, ou se o token expira nos próximos 60 segundos ou já expirou:
+    const expiresAt = session?.expires_at ?? 0;
+    const isExpiringSoon = !session || expiresAt <= nowSec + 60;
+
+    if (isExpiringSoon) {
+      const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+      if (refreshErr) {
+        console.warn('[SupabaseAuth] Falha ao renovar sessão:', refreshErr.message);
+        return Boolean(session);
+      }
+      return Boolean(refreshed.session);
+    }
+    return true;
+  } catch (err) {
+    console.warn('[SupabaseAuth] Falha inesperada ao validar sessão:', err);
+    return false;
+  }
+}

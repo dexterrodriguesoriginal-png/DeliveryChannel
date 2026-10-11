@@ -186,6 +186,8 @@ export const CustomersPage: React.FC = () => {
     google: { label: 'Google', variant: 'neutral' },
     indicacao: { label: 'Indicação', variant: 'success' },
     direto: { label: 'Acesso Direto', variant: 'neutral' },
+    direct: { label: 'Acesso Direto', variant: 'neutral' },
+    promotional_checkout: { label: 'Checkout Promocional', variant: 'brand' },
     outros: { label: 'Outros Canais', variant: 'neutral' },
   };
 

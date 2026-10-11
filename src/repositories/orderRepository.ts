@@ -4,6 +4,21 @@ import { dataStore } from '../services/dataStore';
 import { SecurityContext } from '../services/securityEngine';
 import { isValidUuid } from '../lib/uuid';
 
+/** Retorno de process_promotional_checkout_atomic (migration 027). */
+interface PromotionalCheckoutRpcResult {
+  success: boolean;
+  order_id: string;
+  order_number?: number | null;
+  redemption_number?: number | null;
+  celebration_message?: string | null;
+  subtotal?: number | string | null;
+  delivery_fee?: number | string | null;
+  discount?: number | string | null;
+  coupon_code?: string | null;
+  total_amount?: number | string | null;
+  is_exhausted?: boolean | null;
+}
+
 function mapRowToOrder(row: any, items: any[] = [], history: any[] = []): Order {
   return {
     id: row.id,
@@ -43,6 +58,7 @@ function mapRowToOrder(row: any, items: any[] = [], history: any[] = []): Order 
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     origin: row.origin || 'direct',
+    offerId: row.offer_id || undefined,
     isDemo: false,
   };
 }
@@ -474,91 +490,125 @@ export const orderRepository = {
       couponCode?: string;
     }
   ): Promise<{ order: Order; celebrationMessage?: string; redemptionNumber?: number; isExhausted?: boolean }> {
-    if (isSupabaseConfigured) {
-      try {
-        const { data: rpcResult, error: rpcError } = await supabase.rpc('process_promotional_checkout_atomic', {
-          p_tenant_slug: slug,
-          p_offer_id: orderData.offerId,
-          p_quantity: orderData.quantity,
-          p_customer_name: orderData.customerName,
-          p_customer_phone: orderData.customerPhone,
-          p_customer_email: orderData.customerEmail || null,
-          p_delivery_address: orderData.deliveryAddress || (orderData.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : 'Endereço de entrega'),
-          p_address_details: orderData.addressDetails || {},
-          p_payment_method: orderData.paymentMethod,
-          p_fulfillment_type: orderData.fulfillmentType || 'DELIVERY',
-          p_notes: orderData.notes || '',
-          p_coupon_code: orderData.couponCode || null,
-        });
-
-        if (rpcError) {
-          console.error('[orderRepository] Erro no RPC process_promotional_checkout_atomic:', rpcError.message);
-          throw new Error(rpcError.message || 'Falha ao processar checkout promocional no servidor.');
-        }
-
-        if (rpcResult && rpcResult.order_id) {
-          const { data: orderDataFromDb } = await supabase.rpc(
-            'get_customer_order_by_id',
-            { p_order_id: rpcResult.order_id }
-          );
-
-          if (orderDataFromDb) {
-            const mappedOrder: Order = {
-              id: orderDataFromDb.id,
-              orderNumber: orderDataFromDb.orderNumber,
-              tenantId: orderDataFromDb.tenantId,
-              customerId: orderDataFromDb.customerId || undefined,
-              customerName: orderDataFromDb.customerName,
-              customerPhone: orderDataFromDb.customerPhone,
-              customerEmail: orderDataFromDb.customerEmail || undefined,
-              deliveryAddress: orderDataFromDb.deliveryAddress,
-              addressDetails: orderDataFromDb.addressDetails || undefined,
-              items: (orderDataFromDb.items || []).map((item: any) => ({
-                productId: item.productId,
-                productName: item.productName,
-                quantity: Number(item.quantity),
-                unitPrice: Number(item.unitPrice),
-                totalPrice: Number(item.totalPrice),
-                notes: item.notes || undefined,
-                unit: item.unit || 'un',
-              })),
-              subtotal: Number(orderDataFromDb.subtotal),
-              deliveryFee: Number(orderDataFromDb.deliveryFee),
-              discount: Number(orderDataFromDb.discount ?? 0),
-              totalAmount: Number(orderDataFromDb.totalAmount),
-              paymentMethod: orderDataFromDb.paymentMethod,
-              paymentStatus: orderDataFromDb.paymentStatus,
-              fulfillmentType: orderDataFromDb.fulfillmentType || 'DELIVERY',
-              notes: orderDataFromDb.notes || undefined,
-              prepTimeMinutes: orderDataFromDb.prepTimeMinutes ? Number(orderDataFromDb.prepTimeMinutes) : 30,
-              status: orderDataFromDb.status as OrderStatus,
-              statusHistory: (orderDataFromDb.statusHistory || []).map((h: any) => ({
-                status: h.status,
-                timestamp: h.timestamp,
-                note: h.note || undefined,
-                changedBy: h.changedBy || 'Sistema',
-              })),
-              createdAt: orderDataFromDb.createdAt,
-              updatedAt: orderDataFromDb.updatedAt,
-              origin: 'promotional_checkout',
-              isDemo: false,
-            };
-
-            return {
-              order: mappedOrder,
-              celebrationMessage: rpcResult.celebration_message || undefined,
-              redemptionNumber: rpcResult.redemption_number || undefined,
-              isExhausted: Boolean(rpcResult.is_exhausted),
-            };
-          }
-        }
-      } catch (err: any) {
-        console.warn('[orderRepository] Falha ao processar checkout via RPC, caindo para dataStore:', err.message);
-        return dataStore.processPromotionalCheckout(slug, orderData);
-      }
+    if (!isSupabaseConfigured) {
+      // Modo local/demonstração explícito (sem Supabase configurado).
+      return dataStore.processPromotionalCheckout(slug, orderData);
     }
 
-    return dataStore.processPromotionalCheckout(slug, orderData);
+    // Produção: a RPC atômica é a ÚNICA fonte da verdade (preço, limites, cupom, total).
+    // Qualquer erro é propagado ao cliente — nunca há pedido "fictício" salvo só no navegador.
+    const { data, error: rpcError } = await supabase.rpc('process_promotional_checkout_atomic', {
+      p_tenant_slug: slug,
+      p_offer_id: orderData.offerId,
+      p_quantity: orderData.quantity,
+      p_customer_name: orderData.customerName,
+      p_customer_phone: orderData.customerPhone,
+      p_customer_email: orderData.customerEmail || null,
+      p_delivery_address: orderData.deliveryAddress || (orderData.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : ''),
+      p_address_details: orderData.addressDetails || {},
+      p_payment_method: orderData.paymentMethod,
+      p_fulfillment_type: orderData.fulfillmentType || 'DELIVERY',
+      p_notes: orderData.notes || '',
+      p_coupon_code: orderData.couponCode || null,
+    });
+
+    if (rpcError) {
+      console.error('[orderRepository] Erro no RPC process_promotional_checkout_atomic:', rpcError.message);
+      throw new Error(rpcError.message || 'Falha ao processar checkout promocional no servidor.');
+    }
+
+    const rpcResult = (data ?? null) as PromotionalCheckoutRpcResult | null;
+    if (!rpcResult || !rpcResult.success || !rpcResult.order_id) {
+      throw new Error('O servidor não confirmou a criação do pedido promocional.');
+    }
+
+    const extras = {
+      celebrationMessage: rpcResult.celebration_message || undefined,
+      redemptionNumber: rpcResult.redemption_number || undefined,
+      isExhausted: Boolean(rpcResult.is_exhausted),
+    };
+
+    // Relê o pedido oficial (itens, histórico). Se a releitura falhar, o pedido JÁ EXISTE
+    // no banco: monta o resumo a partir do retorno confirmado da RPC (sem inventar valores).
+    const { data: orderDataFromDb, error: readError } = await supabase.rpc('get_customer_order_by_id', {
+      p_order_id: rpcResult.order_id,
+    });
+
+    if (readError || !orderDataFromDb) {
+      console.warn('[orderRepository] Pedido promocional criado, mas a releitura falhou:', readError?.message);
+      const nowIso = new Date().toISOString();
+      const fallbackOrder: Order = {
+        id: rpcResult.order_id,
+        orderNumber: Number(rpcResult.order_number ?? 0),
+        tenantId: '',
+        customerName: orderData.customerName,
+        customerPhone: orderData.customerPhone,
+        customerEmail: orderData.customerEmail,
+        deliveryAddress: orderData.deliveryAddress || '',
+        addressDetails: orderData.addressDetails,
+        items: [],
+        subtotal: Number(rpcResult.subtotal ?? 0),
+        deliveryFee: Number(rpcResult.delivery_fee ?? 0),
+        discount: Number(rpcResult.discount ?? 0),
+        totalAmount: Number(rpcResult.total_amount ?? 0),
+        paymentMethod: orderData.paymentMethod,
+        paymentStatus: 'PENDING',
+        fulfillmentType: orderData.fulfillmentType || 'DELIVERY',
+        notes: orderData.notes,
+        status: 'PENDING',
+        statusHistory: [],
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        origin: 'promotional_checkout',
+        offerId: orderData.offerId,
+        isDemo: false,
+      };
+      return { order: fallbackOrder, ...extras };
+    }
+
+    const mappedOrder: Order = {
+      id: orderDataFromDb.id,
+      orderNumber: orderDataFromDb.orderNumber,
+      tenantId: orderDataFromDb.tenantId,
+      customerId: orderDataFromDb.customerId || undefined,
+      customerName: orderDataFromDb.customerName,
+      customerPhone: orderDataFromDb.customerPhone,
+      customerEmail: orderDataFromDb.customerEmail || undefined,
+      deliveryAddress: orderDataFromDb.deliveryAddress,
+      addressDetails: orderDataFromDb.addressDetails || undefined,
+      items: (orderDataFromDb.items || []).map((item: any) => ({
+        productId: item.productId,
+        productName: item.productName,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPrice),
+        totalPrice: Number(item.totalPrice),
+        notes: item.notes || undefined,
+        unit: item.unit || 'un',
+      })),
+      subtotal: Number(orderDataFromDb.subtotal),
+      deliveryFee: Number(orderDataFromDb.deliveryFee),
+      discount: Number(orderDataFromDb.discount ?? 0),
+      totalAmount: Number(orderDataFromDb.totalAmount),
+      paymentMethod: orderDataFromDb.paymentMethod,
+      paymentStatus: orderDataFromDb.paymentStatus,
+      fulfillmentType: orderDataFromDb.fulfillmentType || 'DELIVERY',
+      notes: orderDataFromDb.notes || undefined,
+      prepTimeMinutes: orderDataFromDb.prepTimeMinutes ? Number(orderDataFromDb.prepTimeMinutes) : 30,
+      status: orderDataFromDb.status as OrderStatus,
+      statusHistory: (orderDataFromDb.statusHistory || []).map((h: any) => ({
+        status: h.status,
+        timestamp: h.timestamp,
+        note: h.note || undefined,
+        changedBy: h.changedBy || 'Sistema',
+      })),
+      createdAt: orderDataFromDb.createdAt,
+      updatedAt: orderDataFromDb.updatedAt,
+      origin: 'promotional_checkout',
+      offerId: orderData.offerId,
+      isDemo: false,
+    };
+
+    return { order: mappedOrder, ...extras };
   },
 
   /**

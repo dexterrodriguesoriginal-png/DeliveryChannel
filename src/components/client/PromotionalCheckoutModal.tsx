@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Offer, Order, PublicStoreData } from '../../types';
+import { Offer, Order, Coupon } from '../../types';
+import type { PublicStoreData } from '../../repositories/publicStoreRepository';
 import { orderService } from '../../services/orderService';
 import { promotionRepository } from '../../repositories/promotionRepository';
 import { Modal } from '../ui/Modal';
@@ -43,7 +44,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
   storeData,
   onOrderCompleted,
 }) => {
-  const { supabaseUser, signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
+  const { supabaseUser, signInWithGoogle, signInWithPassword, signUp } = useAuth();
   const { showToast } = useToast();
 
   // Quantidade selecionada
@@ -104,9 +105,10 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
   const [orderNotes, setOrderNotes] = useState('');
 
   // Cupom
+  // O desconto exibido aqui é apenas PRÉVIA: o valor oficial é calculado e o cupom
+  // é resgatado de forma atômica pelo backend (process_promotional_checkout_atomic → redeem_coupon).
   const [couponCodeInput, setCouponCodeInput] = useState(() => offer?.promoCouponCode || '');
-  const [appliedCouponCode, setAppliedCouponCode] = useState<string | null>(() => offer?.promoCouponCode || null);
-  const [couponDiscount, setCouponDiscount] = useState<number>(0);
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
 
@@ -126,6 +128,36 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
       setCustomerEmail(supabaseUser.email);
     }
   }, [supabaseUser]);
+
+  // Ao abrir/trocar de card: reinicia o cupom e, se o card traz um cupom configurado,
+  // valida-o contra o backend (nunca é considerado aplicado sem validação).
+  const offerId = offer?.id;
+  const offerCouponCode = offer?.promoCouponCode;
+  const tenantIdForCoupon = storeData.tenant.id;
+  const minSubtotalForCoupon = Number(((offer?.promoPrice || offer?.promotionalPrice || offer?.originalPrice || 0) * (offer?.promoMinQuantity || 1)).toFixed(2));
+  useEffect(() => {
+    setAppliedCoupon(null);
+    setCouponError(null);
+    setCouponCodeInput(offerCouponCode || '');
+    if (!isOpen || !offerCouponCode || !tenantIdForCoupon) return;
+    let cancelled = false;
+    promotionRepository
+      .validatePublicCoupon(tenantIdForCoupon, offerCouponCode, minSubtotalForCoupon)
+      .then(res => {
+        if (cancelled) return;
+        if (res.isValid && res.coupon) {
+          setAppliedCoupon(res.coupon);
+        } else {
+          setCouponError(res.message || 'Cupom do card indisponível.');
+        }
+      })
+      .catch(err => {
+        if (!cancelled) setCouponError(err instanceof Error ? err.message : 'Erro ao validar cupom.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, offerId, offerCouponCode, tenantIdForCoupon, minSubtotalForCoupon]);
 
   if (!offer) return null;
 
@@ -147,6 +179,18 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
   const deliveryFee = fulfillmentType === 'DELIVERY'
     ? (isFreeDelivery ? 0 : Number(storeData.settings.deliveryFee || 0))
     : 0;
+
+  // Prévia do desconto (mesma regra do backend: percentual sobre o subtotal, ou valor fixo limitado ao subtotal).
+  const appliedCouponCode = appliedCoupon?.code || null;
+  const couponMinNotReached = Boolean(appliedCoupon?.minOrderValue && subtotal < appliedCoupon.minOrderValue);
+  const couponDiscount = !appliedCoupon || couponMinNotReached
+    ? 0
+    : Number(Math.min(
+        subtotal,
+        appliedCoupon.discountType === 'PERCENTAGE'
+          ? (subtotal * appliedCoupon.discountValue) / 100
+          : appliedCoupon.discountValue
+      ).toFixed(2));
 
   const finalTotal = Math.max(0, Number((subtotal + deliveryFee - couponDiscount).toFixed(2)));
 
@@ -188,38 +232,27 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
     setCouponError(null);
 
     try {
-      const coupon = await promotionRepository.validateCoupon(
+      const res = await promotionRepository.validatePublicCoupon(
         storeData.tenant.id,
         couponCodeInput.trim(),
-        subtotal,
-        supabaseUser?.id
+        subtotal
       );
 
-      if (!coupon) {
-        setCouponError('Cupom inválido ou expirado.');
-        setAppliedCouponCode(null);
-        setCouponDiscount(0);
+      if (!res.isValid || !res.coupon) {
+        setCouponError(res.message || 'Cupom inválido ou expirado.');
+        setAppliedCoupon(null);
         return;
       }
 
-      let calculated = 0;
-      if (coupon.discountType === 'PERCENTAGE') {
-        calculated = (subtotal * coupon.discountValue) / 100;
-      } else {
-        calculated = coupon.discountValue;
-      }
-
-      setCouponDiscount(Number(Math.min(subtotal, calculated).toFixed(2)));
-      setAppliedCouponCode(coupon.code);
+      setAppliedCoupon(res.coupon);
       showToast({
         type: 'success',
         title: 'Cupom Aplicado!',
-        message: `Desconto de R$ ${calculated.toFixed(2)} aplicado com sucesso.`,
+        message: `${res.message} O desconto final é confirmado pelo servidor ao finalizar.`,
       });
     } catch (err: any) {
       setCouponError(err.message || 'Erro ao validar cupom.');
-      setAppliedCouponCode(null);
-      setCouponDiscount(0);
+      setAppliedCoupon(null);
     } finally {
       setIsApplyingCoupon(false);
     }
@@ -242,11 +275,18 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
     setIsAuthenticating(true);
     try {
       if (authMode === 'login') {
-        await signInWithEmail(authEmail, authPassword);
+        const res = await signInWithPassword(authEmail, authPassword);
+        if (!res.success) throw new Error(res.error || 'E-mail ou senha inválidos.');
+        showToast({ type: 'success', title: 'Conectado!', message: 'Login realizado com sucesso.' });
       } else {
-        await signUpWithEmail(authEmail, authPassword, authName);
+        const res = await signUp(authEmail, authPassword, authName);
+        if (!res.success) throw new Error(res.error || 'Não foi possível criar a conta.');
+        if (res.requiresEmailConfirmation) {
+          showToast({ type: 'info', title: 'Confirme seu e-mail', message: 'Enviamos um link de confirmação. Depois de confirmar, entre para finalizar o pedido.' });
+        } else {
+          showToast({ type: 'success', title: 'Conta criada!', message: 'Você já pode finalizar seu pedido.' });
+        }
       }
-      showToast({ type: 'success', title: 'Conectado!', message: 'Login realizado com sucesso.' });
     } catch (err: any) {
       showToast({ type: 'error', title: 'Falha na Autenticação', message: err.message || 'Verifique seus dados.' });
     } finally {
@@ -313,7 +353,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
       ? `${orderNotes ? `${orderNotes} | ` : ''}Troco para: R$ ${cashChange}`
       : orderNotes;
 
-    const finalNotes = appliedCouponCode
+    const finalNotes = appliedCouponCode && !couponMinNotReached
       ? `${notesWithCash ? `${notesWithCash} | ` : ''}[Oferta: ${offer.title} | Cupom: ${appliedCouponCode}]`
       : `${notesWithCash ? `${notesWithCash} | ` : ''}[Oferta: ${offer.title}]`;
 
@@ -338,13 +378,13 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
         paymentMethod,
         fulfillmentType,
         notes: finalNotes,
-        couponCode: appliedCouponCode || undefined,
+        couponCode: appliedCouponCode && !couponMinNotReached ? appliedCouponCode : undefined,
       });
 
       showToast({
         type: 'success',
         title: '🎉 Pedido Promocional Confirmado!',
-        message: `Pedido #${result.order.orderNumber || result.order.id.slice(0, 6)} finalizado com sucesso!`,
+        message: `Pedido #${result.order.orderNumber || result.order.id.slice(0, 6)} finalizado com sucesso! Total confirmado: R$ ${result.order.totalAmount.toFixed(2)}.`,
       });
 
       onOrderCompleted(result.order, result.celebrationMessage);
@@ -817,7 +857,13 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                   <div className="flex gap-2">
                     <Input
                       value={couponCodeInput}
-                      onChange={(e) => setCouponCodeInput(e.target.value.toUpperCase())}
+                      onChange={(e) => {
+                        const next = e.target.value.toUpperCase();
+                        setCouponCodeInput(next);
+                        if (appliedCoupon && next.trim() !== appliedCoupon.code) {
+                          setAppliedCoupon(null);
+                        }
+                      }}
                       placeholder="Código do cupom"
                       className="text-xs font-mono uppercase"
                     />
@@ -831,6 +877,11 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                     </Button>
                   </div>
                   {couponError && <p className="text-[11px] text-rose-600">{couponError}</p>}
+                  {appliedCoupon && couponMinNotReached && (
+                    <p className="text-[11px] text-amber-700">
+                      Pedido mínimo de R$ {Number(appliedCoupon.minOrderValue).toFixed(2)} para o cupom {appliedCoupon.code}.
+                    </p>
+                  )}
                   {appliedCouponCode && couponDiscount > 0 && (
                     <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
                       <Check className="w-3.5 h-3.5" /> Cupom {appliedCouponCode} aplicado (-R$ {couponDiscount.toFixed(2)})
