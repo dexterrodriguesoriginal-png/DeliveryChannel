@@ -180,154 +180,40 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
           currentOffer.destinationType === 'BANNER_ONLY' && !currentOffer.internalLink && !currentOffer.linkUrl
             ? 'cursor-default'
             : 'cursor-pointer'
-        } overflow-hidden transition-all duration-500`}
-        style={{
-          backgroundColor: currentOffer.backgroundColor || '#15803d',
-        }}
+        } overflow-hidden bg-black transition-all duration-500`}
         onClick={() => {
           if (onOfferClick) {
             onOfferClick(currentOffer);
           }
         }}
       >
-        {currentOffer.autoOverlay === false || currentOffer.displayMode === 'FULL_MEDIA' ? (
-          /* ================================================================ */
-          /* MODO A: MÍDIA COMPLETA (A ARTE DO ESTABELECIMENTO É SOBERANA)    */
-          /* 100% da área do card, sem texto, sem overlay, sem botões        */
-          /* ================================================================ */
-          <div className="absolute inset-0 w-full h-full overflow-hidden bg-black flex items-center justify-center">
-            {isVideo && mediaSource ? (
-              <video
-                key={currentKey}
-                ref={videoRef}
-                src={mediaSource}
-                muted
-                playsInline
-                autoPlay
-                loop={total <= 1}
-                preload="auto"
-                className="w-full h-full object-cover object-center"
-              />
-            ) : mediaSource ? (
-              <img
-                src={mediaSource}
-                alt={currentOffer.title || 'Arte Promocional'}
-                className="w-full h-full object-cover object-center"
-              />
-            ) : (
-              <div className="text-white/40 text-xs">Mídia promocional</div>
-            )}
-          </div>
-        ) : (
-          /* ================================================================ */
-          /* MODO B: CARD COM SOBREPOSIÇÃO (COMPOSIÇÃO PROFISSIONAL)          */
-          /* ================================================================ */
-          <div className="relative w-full h-full flex items-center p-5 sm:p-7 overflow-hidden">
-            {/* Camada de Mídia de Fundo */}
-            <div className="absolute inset-0 z-0 overflow-hidden">
-              {isVideo && mediaSource ? (
-                <video
-                  key={currentKey}
-                  ref={videoRef}
-                  src={mediaSource}
-                  muted
-                  playsInline
-                  autoPlay
-                  loop={total <= 1}
-                  preload="auto"
-                  className="w-full h-full object-cover object-center opacity-60 scale-105 transition-transform duration-700 group-hover:scale-110"
-                />
-              ) : mediaSource ? (
-                <img
-                  src={mediaSource}
-                  alt={currentOffer.title}
-                  className="w-full h-full object-cover object-center opacity-40 mix-blend-luminosity scale-105 transition-transform duration-700 group-hover:scale-110"
-                />
-              ) : null}
-
-              {/* Gradiente de contraste escuro/marca */}
-              <div 
-                className="absolute inset-0"
-                style={{
-                  background: `linear-gradient(to right, ${currentOffer.backgroundColor || '#15803d'}e6 0%, ${currentOffer.backgroundColor || '#15803d'}99 50%, transparent 100%)`
-                }}
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
-            </div>
-
-            {/* Indicador de Tipo de Mídia (Vídeo) */}
-            {isVideo && (
-              <div className="absolute top-3 right-3 z-10 px-2 py-1 rounded-full bg-black/40 backdrop-blur-md text-[10px] font-semibold text-white/90 flex items-center gap-1 border border-white/20">
-                <VolumeX className="w-3 h-3" />
-                <span>Vídeo</span>
-              </div>
-            )}
-
-            {/* Conteúdo Textual & Oferta */}
-            <div className="relative z-10 max-w-sm sm:max-w-md text-white flex flex-col gap-2">
-              {currentOffer.badge && (
-                <div className="inline-flex items-center gap-1.5 self-start px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider bg-white/20 backdrop-blur-md text-white border border-white/30 shadow-xs">
-                  <Tag className="w-3 h-3" />
-                  <span>{currentOffer.badge}</span>
-                </div>
-              )}
-
-              <h2 className="text-lg sm:text-2xl font-extrabold tracking-tight leading-tight drop-shadow-md">
-                {currentOffer.destinationType === 'CUSTOM_OFFER' && currentOffer.promoTitle
-                  ? currentOffer.promoTitle
-                  : currentOffer.title}
-              </h2>
-
-              {(currentOffer.subtitle || (currentOffer.destinationType === 'CUSTOM_OFFER' && currentOffer.promoDescription)) && (
-                <p className="text-xs sm:text-sm text-white/90 line-clamp-2 leading-relaxed drop-shadow-xs">
-                  {currentOffer.destinationType === 'CUSTOM_OFFER' && currentOffer.promoDescription
-                    ? currentOffer.promoDescription
-                    : currentOffer.subtitle}
-                </p>
-              )}
-
-              {/* Bloco de Preços Promocionais (se cadastrados ou se checkout promocional) */}
-              {(() => {
-                const isCustom = currentOffer.destinationType === 'CUSTOM_OFFER';
-                const price = isCustom ? (currentOffer.promoPrice || currentOffer.promotionalPrice) : currentOffer.promotionalPrice;
-                const origPrice = isCustom ? (currentOffer.promoOriginalPrice || currentOffer.originalPrice) : currentOffer.originalPrice;
-                const discountPct = isCustom ? (currentOffer.promoDiscountPercentage || currentOffer.discountPercentage) : currentOffer.discountPercentage;
-
-                if (!price && !discountPct) return null;
-
-                return (
-                  <div className="flex items-center gap-2 pt-1">
-                    {price && (
-                      <span className="text-base sm:text-lg font-mono font-black text-amber-300 drop-shadow-xs">
-                        R$ {Number(price).toFixed(2)}
-                      </span>
-                    )}
-                    {origPrice && Number(origPrice) > (Number(price) || 0) && (
-                      <span className="text-xs font-mono line-through text-white/70">
-                        R$ {Number(origPrice).toFixed(2)}
-                      </span>
-                    )}
-                    {discountPct && (
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-400 text-gray-950 text-[10px] font-black uppercase">
-                        <Percent className="w-2.5 h-2.5" />
-                        {discountPct}% OFF
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {currentOffer.destinationType !== 'BANNER_ONLY' && (
-                <div className="pt-2 flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-white/15 hover:bg-white/25 backdrop-blur-xs px-3.5 py-1.5 rounded-xl border border-white/25 transition-all shadow-xs group-hover:translate-x-0.5">
-                    {currentOffer.ctaText || (currentOffer.destinationType === 'CUSTOM_OFFER' ? '⚡ Comprar Promoção' : 'Aproveitar Oferta')}
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* ================================================================ */}
+        {/* MÍDIA COMPLETA PURA (A ARTE DO ESTABELECIMENTO É 100% SOBERANA)  */}
+        {/* Ocupa toda a área do card sem faixas coloridas e sem textos      */}
+        {/* ================================================================ */}
+        <div className="absolute inset-0 w-full h-full overflow-hidden bg-black flex items-center justify-center">
+          {isVideo && mediaSource ? (
+            <video
+              key={currentKey}
+              ref={videoRef}
+              src={mediaSource}
+              muted
+              playsInline
+              autoPlay
+              loop={total <= 1}
+              preload="auto"
+              className="w-full h-full object-cover object-center"
+            />
+          ) : mediaSource ? (
+            <img
+              src={mediaSource}
+              alt={currentOffer.title || 'Arte Promocional'}
+              className="w-full h-full object-cover object-center"
+            />
+          ) : (
+            <div className="text-white/40 text-xs">Mídia promocional</div>
+          )}
+        </div>
       </div>
 
       {/* Barra de Progresso do Slide Atual */}

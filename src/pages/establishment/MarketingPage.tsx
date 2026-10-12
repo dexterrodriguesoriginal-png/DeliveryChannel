@@ -152,7 +152,7 @@ export const MarketingPage: React.FC = () => {
 
   // 2. MODELO E SOBREPOSIÇÕES
   const [cardModel, setCardModel] = useState<PromoCardModel>('HERO');
-  const [autoOverlay, setAutoOverlay] = useState<boolean>(true);
+  const [autoOverlay, setAutoOverlay] = useState<boolean>(false);
   const [displayMode, setDisplayMode] = useState<CardDisplayMode>('FULL_MEDIA');
 
   // 3. MÍDIA
@@ -486,8 +486,8 @@ export const MarketingPage: React.FC = () => {
     setEditingCard(card);
     setPendingMarketingAsset(null);
     setCardModel(card.cardModel || 'HERO');
-    setAutoOverlay(card.autoOverlay !== undefined ? card.autoOverlay : (card.displayMode !== 'FULL_MEDIA'));
-    setDisplayMode(card.displayMode || 'FULL_MEDIA');
+    setAutoOverlay(false);
+    setDisplayMode('FULL_MEDIA');
     
     // Destino
     const dest = card.destinationType || (card.hasPromoCheckout ? 'CUSTOM_OFFER' : card.productId ? 'PRODUCT' : 'BANNER_ONLY');
@@ -1134,11 +1134,6 @@ export const MarketingPage: React.FC = () => {
                         <div className="text-white/40 text-xs">Sem mídia</div>
                       )}
 
-                      {/* Gradiente escuro se tiver autoOverlay */}
-                      {card.autoOverlay !== false && card.displayMode !== 'FULL_MEDIA' && (
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                      )}
-
                       {/* Badges superiores na mídia */}
                       <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between z-10">
                         <div className="flex items-center gap-1.5">
@@ -1629,120 +1624,18 @@ export const MarketingPage: React.FC = () => {
             </div>
 
             {/* ============================================================== */}
-            {/* SEÇÃO 2: TRÊS MODELOS PROFISSIONAIS (1200 x 675 px — 16:9)     */}
-            {/* ============================================================== */}
-            <div className="space-y-2.5">
-              <label className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-emerald-600" />
-                <span>2. Modelo do Card (1200 × 675 px — 16:9)</span>
-              </label>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {PROMO_CARD_MODELS.map((model) => {
-                  const isSelected = cardModel === model.id;
-                  return (
-                    <div
-                      key={model.id}
-                      onClick={() => setCardModel(model.id)}
-                      className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between gap-2.5 ${
-                        isSelected
-                          ? 'border-emerald-600 bg-emerald-50/50 shadow-xs'
-                          : 'border-gray-200 hover:border-gray-300 bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-md">
-                          {model.badge}
-                        </span>
-                        {isSelected && (
-                          <div className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center">
-                            <Check className="w-3 h-3 stroke-[3]" />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-1">
-                        <h4 className="text-xs font-black text-gray-900 leading-snug">
-                          {model.name}
-                        </h4>
-                        <div className="font-mono text-[11px] font-bold text-emerald-800">
-                          {model.tagline}
-                        </div>
-                        <p className="text-[11px] text-gray-500 leading-snug">
-                          {model.description}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Dica para Criação de Arte com IA */}
-              <div className="p-3.5 bg-emerald-50/80 border border-emerald-200/80 rounded-2xl space-y-1 text-xs text-emerald-950">
-                <div className="flex items-center gap-1.5 font-bold uppercase tracking-wide">
-                  <Lightbulb className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Dica para Criar sua Arte com IA</span>
-                </div>
-                <p className="text-[11px] text-emerald-900/90 leading-relaxed">
-                  Para obter a melhor qualidade, gere sua imagem ou vídeo em <strong>1200 × 675 px (proporção 16:9)</strong>. Use exatamente essa resolução para evitar cortes ou deformações na vitrine.
-                </p>
-              </div>
-            </div>
-
-            {/* ============================================================== */}
-            {/* SEÇÃO 3: ELEMENTOS AUTOMÁTICOS [ ON / OFF ]                     */}
-            {/* ============================================================== */}
-            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <div className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>3. Elementos Automáticos Sobrepostos</span>
-                </div>
-                <p className="text-[11px] text-gray-500 max-w-lg leading-relaxed">
-                  Quando <strong>OFF</strong>, o sistema exibe <strong>somente o arquivo original</strong> sem textos, títulos, preços ou botões por cima. Ideal para artes finalizadas criadas em IA.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-gray-200 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAutoOverlay(true);
-                    setDisplayMode('EDITABLE_CARD');
-                  }}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                    autoOverlay ? 'bg-emerald-600 text-white shadow-2xs' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  ON (Com Textos)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAutoOverlay(false);
-                    setDisplayMode('FULL_MEDIA');
-                  }}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                    !autoOverlay ? 'bg-emerald-600 text-white shadow-2xs' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  OFF (Arte Pura)
-                </button>
-              </div>
-            </div>
-
-            {/* ============================================================== */}
-            {/* SEÇÃO 4: UPLOAD DE MÍDIA (IMAGEM OU VÍDEO)                      */}
+            {/* SEÇÃO 2: MÍDIA PROMOCIONAL (IMAGEM OU VÍDEO)                   */}
+            {/* 100% Arte Pura: Upload ou URL Direta (1200 x 675 px — 16:9)    */}
             {/* ============================================================== */}
             <div className="space-y-3 p-4 bg-gray-50 rounded-2xl border border-gray-200">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <label className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
                     <Film className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>4. Mídia Promocional (1200 × 675 px — 16:9)</span>
+                    <span>2. Mídia Promocional (1200 × 675 px — Proporção 16:9)</span>
                   </label>
                   <p className="text-[11px] text-gray-500">
-                    Formatos: JPG, JPEG, PNG, WEBP, MP4 ou WEBM
+                    O card é 100% visual (Arte Pura). Formatos: JPG, PNG, WEBP, MP4 ou WEBM via upload ou link direto.
                   </p>
                 </div>
 
@@ -2002,7 +1895,7 @@ export const MarketingPage: React.FC = () => {
             )}
 
             {/* ============================================================== */}
-            {/* SEÇÃO 6: IDENTIFICAÇÃO E COMPOSIÇÃO DE TEXTOS                  */}
+            {/* SEÇÃO 5: IDENTIFICAÇÃO DO CARD                                 */}
             {/* ============================================================== */}
             <div className="space-y-3">
               <Input
@@ -2012,23 +1905,6 @@ export const MarketingPage: React.FC = () => {
                 placeholder="Ex: Super Oferta de Sábado"
                 required
               />
-
-              {autoOverlay && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-gray-50 rounded-2xl border border-gray-200">
-                  <Input
-                    label="Etiqueta / Badge Superior"
-                    value={badge}
-                    onChange={(e) => setBadge(e.target.value)}
-                    placeholder="Ex: SUPER OFERTA, DESTAQUE"
-                  />
-                  <Input
-                    label="Subtítulo Sobreposto"
-                    value={subtitle}
-                    onChange={(e) => setSubtitle(e.target.value)}
-                    placeholder="Ex: Compre 2 e ganhe 1 taça especial"
-                  />
-                </div>
-              )}
             </div>
 
             {/* ============================================================== */}
@@ -2255,50 +2131,6 @@ export const MarketingPage: React.FC = () => {
                   ) : (
                     <div className="text-white/40 text-xs">Selecione uma imagem ou vídeo para visualizar</div>
                   )}
-
-                  {/* Overlays apenas se autoOverlay for TRUE */}
-                  {autoOverlay && (
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex flex-col justify-end p-4 text-white">
-                      {badge && (
-                        <span className="self-start px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/20 backdrop-blur-md border border-white/30 mb-1">
-                          {badge}
-                        </span>
-                      )}
-                      <h3 className="text-base font-black leading-tight drop-shadow-md">
-                        {destinationType === 'CUSTOM_OFFER' && promoTitle ? promoTitle : (title || 'Título do Card')}
-                      </h3>
-                      {subtitle && (
-                        <p className="text-xs text-white/90 line-clamp-1 mt-0.5">
-                          {subtitle}
-                        </p>
-                      )}
-
-                      {destinationType === 'CUSTOM_OFFER' && promoPrice && (
-                        <div className="flex items-center gap-2 pt-1 font-mono">
-                          <span className="text-base font-extrabold text-amber-300">
-                            R$ {parseFloat(promoPrice).toFixed(2)}
-                          </span>
-                          {promoOriginalPrice && (
-                            <span className="text-xs line-through text-white/70">
-                              R$ {parseFloat(promoOriginalPrice).toFixed(2)}
-                            </span>
-                          )}
-                          {promoDiscountPercentage && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400 text-gray-950 font-black">
-                              {promoDiscountPercentage}% OFF
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="pt-2">
-                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold shadow-sm">
-                          {destinationType === 'CUSTOM_OFFER' ? '⚡ Comprar Agora' : 'Aproveitar Oferta'}
-                          <ArrowRight className="w-3 h-3" />
-                        </span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -2355,39 +2187,6 @@ export const MarketingPage: React.FC = () => {
                   />
                 ) : (
                   <div className="text-white/40 text-xs">Sem mídia disponível</div>
-                )}
-
-                {/* Overlays somente se autoOverlay estiver ativo */}
-                {previewingCard.autoOverlay !== false && previewingCard.displayMode !== 'FULL_MEDIA' && (
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex flex-col justify-end p-5 text-white pointer-events-none">
-                    {previewingCard.badge && (
-                      <span className="self-start px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/20 backdrop-blur-md border border-white/30 mb-1">
-                        {previewingCard.badge}
-                      </span>
-                    )}
-                    <h3 className="text-lg font-black leading-tight drop-shadow-md">
-                      {previewingCard.destinationType === 'CUSTOM_OFFER' && previewingCard.promoTitle
-                        ? previewingCard.promoTitle
-                        : previewingCard.title}
-                    </h3>
-                    {previewingCard.subtitle && (
-                      <p className="text-xs text-white/90 line-clamp-2 mt-1">
-                        {previewingCard.subtitle}
-                      </p>
-                    )}
-                    {(previewingCard.promoPrice || previewingCard.promotionalPrice) && (
-                      <div className="flex items-center gap-2 pt-2 font-mono">
-                        <span className="text-base font-extrabold text-amber-300">
-                          R$ {(previewingCard.promoPrice || previewingCard.promotionalPrice)?.toFixed(2)}
-                        </span>
-                        {(previewingCard.promoOriginalPrice || previewingCard.originalPrice) && (
-                          <span className="text-xs line-through text-white/70">
-                            R$ {(previewingCard.promoOriginalPrice || previewingCard.originalPrice)?.toFixed(2)}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
                 )}
               </div>
             </div>
