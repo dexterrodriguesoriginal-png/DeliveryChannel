@@ -348,16 +348,17 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
           )}
 
           {isValidStoreSlug(activeTenant.slug) && (
-            <a
-              href={getPublicStorePath(activeTenant.slug)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-50 text-[9.5px] font-semibold text-slate-700 shadow-2xs transition-colors h-5.5"
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = getPublicStorePath(activeTenant.slug);
+              }}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-50 text-[9.5px] font-semibold text-slate-700 shadow-2xs transition-colors h-5.5 cursor-pointer"
               title="Abrir Catálogo Público do Cliente"
             >
               <span>Abrir catálogo</span>
               <ExternalLink className="w-2 h-2 text-slate-400" />
-            </a>
+            </button>
           )}
 
           <button
@@ -740,17 +741,17 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
               Quando seus clientes realizarem pedidos pelo seu catálogo, eles aparecerão aqui instantaneamente.
             </p>
             <div className="pt-1">
-              {isValidStoreSlug(activeTenant.slug) && (
-                <a
-                  href={getPublicStorePath(activeTenant.slug)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs"
-                >
-                  <span>Ver catálogo</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const targetSlug = isValidStoreSlug(activeTenant?.slug) ? activeTenant.slug : 'adega-premium';
+                  window.location.href = getPublicStorePath(targetSlug);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs cursor-pointer"
+              >
+                <span>Ver catálogo</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         ) : (

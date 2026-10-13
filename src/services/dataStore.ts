@@ -19,7 +19,8 @@ import {
   CouponRedemption,
   RedeemCouponResult,
   ValidateCouponResult,
-  CardStatus
+  CardStatus,
+  CardDisplayMode
 } from '../types';
 import { SecurityContext, validateTenantAccess, validatePermission } from './securityEngine';
 import { calculatePromoCardStatus } from '../utils/promoCardDateUtils';
@@ -374,7 +375,8 @@ const INITIAL_OFFERS: Offer[] = [
     badge: 'DESTAQUE DA SEMANA',
     cardFormat: 'HORIZONTAL',
     mediaType: 'IMAGE',
-    displayMode: 'EDITABLE_CARD',
+    displayMode: 'FULL_MEDIA',
+    autoOverlay: false,
     mediaUrl: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=1200&auto=format&fit=crop&q=80',
     imageUrl: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=1200&auto=format&fit=crop&q=80',
     durationSeconds: 5.0,
@@ -1646,7 +1648,8 @@ export class DataStore {
         imageUrl: o.imageUrl || o.mediaUrl,
         cardFormat: o.cardFormat || 'HORIZONTAL',
         mediaType: o.mediaType || 'IMAGE',
-        displayMode: o.displayMode || 'EDITABLE_CARD',
+        displayMode: 'FULL_MEDIA' as CardDisplayMode,
+        autoOverlay: false,
         durationSeconds: Number(o.durationSeconds ?? 5),
       }))
       .sort((a, b) => a.order - b.order);
@@ -1660,7 +1663,7 @@ export class DataStore {
     const imageUrl = data.imageUrl || data.mediaUrl || '';
     const cardFormat = data.cardFormat || 'HORIZONTAL';
     const mediaType = data.mediaType || 'IMAGE';
-    const displayMode = data.displayMode || 'EDITABLE_CARD';
+    const displayMode = 'FULL_MEDIA';
     const durationSeconds = Number(data.durationSeconds ?? 5);
 
     const newOffer: Offer = {
@@ -1669,7 +1672,8 @@ export class DataStore {
       imageUrl,
       cardFormat,
       mediaType,
-      displayMode,
+      displayMode: 'FULL_MEDIA',
+      autoOverlay: false,
       durationSeconds,
       id: `off-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       tenantId,
@@ -1709,14 +1713,14 @@ export class DataStore {
     const previousValue = JSON.stringify(this.offers[index]);
     const updatedMediaUrl = updates.mediaUrl || (updates.imageUrl ? updates.imageUrl : this.offers[index].mediaUrl);
     const updatedImageUrl = updates.imageUrl || (updates.mediaUrl ? updates.mediaUrl : this.offers[index].imageUrl);
-    const updatedDisplayMode = updates.displayMode !== undefined ? updates.displayMode : this.offers[index].displayMode;
 
     this.offers[index] = { 
       ...this.offers[index], 
       ...updates,
       mediaUrl: updatedMediaUrl || this.offers[index].mediaUrl,
       imageUrl: updatedImageUrl || this.offers[index].imageUrl,
-      displayMode: updatedDisplayMode || 'EDITABLE_CARD',
+      displayMode: 'FULL_MEDIA',
+      autoOverlay: false,
       updatedAt: new Date().toISOString()
     };
     this.offers[index].computedStatus = this.calculateCardStatus(this.offers[index]);
@@ -1839,7 +1843,8 @@ export class DataStore {
         imageUrl: o.imageUrl || o.mediaUrl,
         cardFormat: o.cardFormat || 'HORIZONTAL',
         mediaType: o.mediaType || 'IMAGE',
-        displayMode: o.displayMode || 'EDITABLE_CARD',
+        displayMode: 'FULL_MEDIA' as CardDisplayMode,
+        autoOverlay: false,
         durationSeconds: Number(o.durationSeconds ?? 5),
         isExhausted: Boolean(o.promoUsageLimit && Number(o.promoTimesUsed || 0) >= o.promoUsageLimit),
         remainingUses: o.promoUsageLimit ? Math.max(0, o.promoUsageLimit - Number(o.promoTimesUsed || 0)) : null,

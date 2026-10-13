@@ -7,7 +7,7 @@ export interface ModalProps {
   onClose: () => void;
   title?: string;
   description?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
   children: React.ReactNode;
   footer?: React.ReactNode;
 }
@@ -42,11 +42,12 @@ export const Modal: React.FC<ModalProps> = ({
     md: 'max-w-lg',
     lg: 'max-w-2xl',
     xl: 'max-w-4xl',
-    full: 'max-w-6xl',
+    '2xl': 'max-w-6xl xl:max-w-7xl',
+    full: 'max-w-6xl xl:max-w-7xl',
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
       {/* Backdrop */}
       <div 
         className="fixed inset-0 bg-gray-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
@@ -56,26 +57,26 @@ export const Modal: React.FC<ModalProps> = ({
       {/* Modal Dialog */}
       <div
         className={cn(
-          'relative w-full bg-white rounded-2xl shadow-xl border border-gray-200/80 overflow-hidden z-10 my-auto animate-in zoom-in-95 duration-200',
+          'relative w-full bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-200/80 overflow-hidden z-10 my-auto animate-in zoom-in-95 duration-200',
           sizes[size]
         )}
       >
         {/* Header */}
         <div className="flex items-start justify-between p-4 sm:p-5 pb-3 border-b border-gray-100">
           <div>
-            {title && <h3 className="text-base font-bold text-gray-900">{title}</h3>}
+            {title && <h3 className="text-base sm:text-lg font-bold text-gray-900">{title}</h3>}
             {description && <p className="text-[11px] text-gray-500 mt-0.5">{description}</p>}
           </div>
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-4 sm:p-5 max-h-[75vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 max-h-[85vh] overflow-y-auto">
           {children}
         </div>
 

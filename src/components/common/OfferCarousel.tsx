@@ -151,18 +151,12 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
 
   const mediaSource = currentOffer.mediaUrl || currentOffer.imageUrl;
   const isVideo = currentOffer.mediaType === 'VIDEO';
-  const format = currentOffer.cardFormat || 'HORIZONTAL';
-
-  // Proporções para o container principal
-  const aspectClass = format === 'VERTICAL'
-    ? 'aspect-4/5 max-h-[380px]'
-    : format === 'QUADRADO' || format === 'SQUARE'
-    ? 'aspect-square max-h-[320px]'
-    : 'min-h-[190px] sm:min-h-[220px] md:min-h-[240px]';
+  // Proporção consistente 16:9 para todos os criativos (sem saltos de layout nem deformação)
+  const aspectClass = 'aspect-16/9 w-full';
 
   return (
     <div
-      className="relative w-full overflow-hidden rounded-3xl shadow-sm group select-none transition-all duration-300"
+      className="relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-sm group select-none transition-all duration-300"
       onMouseEnter={() => {
         setIsPaused(true);
         if (videoRef.current) videoRef.current.pause();
@@ -174,7 +168,7 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
       onTouchStart={() => setIsPaused(true)}
       onTouchEnd={() => setIsPaused(false)}
     >
-      {/* Banner Card Container */}
+      {/* Banner Card Container 16:9 */}
       <div
         className={`relative ${aspectClass} w-full flex items-center p-0 ${
           currentOffer.destinationType === 'BANNER_ONLY' && !currentOffer.internalLink && !currentOffer.linkUrl
@@ -216,16 +210,6 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
         </div>
       </div>
 
-      {/* Barra de Progresso do Slide Atual */}
-      {total > 1 && (
-        <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/30 z-20 overflow-hidden">
-          <div
-            className="h-full bg-white transition-all duration-75 ease-linear shadow-xs"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      )}
-
       {/* Setas de Navegação Manual */}
       {total > 1 && (
         <>
@@ -234,7 +218,7 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
               e.stopPropagation();
               prevSlide();
             }}
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/30 hover:bg-black/60 text-white flex items-center justify-center backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-pointer"
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-pointer shadow-md"
             aria-label="Oferta anterior"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -245,7 +229,7 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
               e.stopPropagation();
               nextSlide();
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/30 hover:bg-black/60 text-white flex items-center justify-center backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-pointer"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-pointer shadow-md"
             aria-label="Próxima oferta"
           >
             <ChevronRight className="w-5 h-5" />
@@ -253,23 +237,40 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
         </>
       )}
 
-      {/* Indicadores de Slide */}
+      {/* ================================================================ */}
+      {/* INDICADORES DE PROGRESSO SEGMENTADOS NO ESTILO DO IFOOD          */}
+      {/* 1 anúncio = 1 segmento. Segmento ativo preenche de 0 a 100%.    */}
+      {/* Segmentos anteriores ficam concluídos (100%) e próximos vazios.  */}
+      {/* ================================================================ */}
       {total > 1 && (
-        <div className="absolute bottom-3 right-4 z-20 flex items-center gap-1.5">
-          {validOffers.map((o, idx) => (
-            <button
-              key={`${o.source || 'OFFER'}:${o.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setProgress(0);
-                setCurrentIndex(idx);
-              }}
-              className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
-                idx === currentIndex ? 'w-5 bg-white' : 'w-1.5 bg-white/40 hover:bg-white/70'
-              }`}
-              aria-label={`Ir para oferta ${idx + 1}`}
-            />
-          ))}
+        <div className="absolute bottom-0 left-0 right-0 z-30 pt-7 pb-2.5 px-3 sm:px-4 bg-gradient-to-t from-black/80 via-black/35 to-transparent pointer-events-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2 w-full">
+            {validOffers.map((o, idx) => {
+              const isPast = idx < currentIndex;
+              const isCurrent = idx === currentIndex;
+              const fillPct = isPast ? 100 : isCurrent ? progress : 0;
+
+              return (
+                <button
+                  key={`${o.source || 'OFFER'}:${o.id}`}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setProgress(0);
+                    setCurrentIndex(idx);
+                  }}
+                  className="flex-1 h-1 sm:h-1.5 rounded-full overflow-hidden bg-white/35 hover:bg-white/55 transition-colors cursor-pointer relative shadow-2xs"
+                  aria-label={`Ir para card promocional ${idx + 1} de ${total}`}
+                  title={`Card ${idx + 1}: ${o.title || 'Oferta'}`}
+                >
+                  <div
+                    className="h-full bg-white rounded-full transition-all duration-75 ease-linear shadow-xs"
+                    style={{ width: `${fillPct}%` }}
+                  />
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

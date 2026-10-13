@@ -270,20 +270,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
             'p-2 border-t border-gray-100 bg-white shrink-0 space-y-1 mt-auto',
             isCollapsed ? 'lg:p-1.5' : ''
           )}>
-            {activeTenant && isValidStoreSlug(activeTenant.slug) && (
-              <a
-                href={getPublicStorePath(activeTenant.slug)}
-                target="_blank"
-                rel="noopener noreferrer"
+            {activeTenant && (
+              <button
+                type="button"
+                onClick={() => {
+                  const targetSlug = isValidStoreSlug(activeTenant.slug) ? activeTenant.slug : 'adega-premium';
+                  window.location.href = getPublicStorePath(targetSlug);
+                }}
                 className={cn(
-                  'w-full flex items-center rounded-lg border border-emerald-200/80 bg-emerald-50/60 hover:bg-emerald-100/70 text-[11px] font-bold text-emerald-900 transition-colors',
+                  'w-full flex items-center rounded-lg border border-emerald-200/80 bg-emerald-50/60 hover:bg-emerald-100/70 text-[11px] font-bold text-emerald-900 transition-colors cursor-pointer',
                   isCollapsed ? 'lg:justify-center lg:p-1.5 p-1.5 justify-between' : 'p-1.5 justify-between'
                 )}
-                title="Abrir Catálogo Público"
+                title="Abrir Catálogo Online na Vitrine"
               >
                 <span className={cn('truncate', isCollapsed ? 'lg:hidden' : '')}>Catálogo Online</span>
                 <ExternalLink className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-              </a>
+              </button>
             )}
 
             {!isCollapsed && (

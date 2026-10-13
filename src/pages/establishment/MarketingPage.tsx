@@ -3,6 +3,8 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase, ensureValidSession } from '../../lib/supabase';
 import { offerRepository } from '../../repositories/offerRepository';
 import { productRepository } from '../../repositories/productRepository';
+import { categoryRepository } from '../../repositories/categoryRepository';
+import { promotionRepository } from '../../repositories/promotionRepository';
 import { orderRepository } from '../../repositories/orderRepository';
 import { QRCodeCard } from '../../components/common/QRCodeCard';
 import { Card } from '../../components/ui/Card';
@@ -13,6 +15,9 @@ import { Modal } from '../../components/ui/Modal';
 import { 
   Offer, 
   Product, 
+  Category,
+  PromotionCarousel,
+  PromotionCarouselItem,
   Order,
   CardFormat, 
   CardMediaType, 
@@ -69,7 +74,10 @@ import {
   Percent,
   Flame,
   CheckSquare,
-  Square
+  Square,
+  Search,
+  X,
+  Filter
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 
@@ -138,6 +146,8 @@ export const MarketingPage: React.FC = () => {
   // Dados de Criativos e Produtos
   const [offers, setOffers] = useState<Offer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [promotionCarousels, setPromotionCarousels] = useState<PromotionCarousel[]>([]);
   const [tenantOrders, setTenantOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -149,6 +159,24 @@ export const MarketingPage: React.FC = () => {
   // 1. DESTINO DO CARD
   const [destinationType, setDestinationType] = useState<CardDestination>('BANNER_ONLY');
   const [selectedProductId, setSelectedProductId] = useState<string>('');
+
+  // SELETOR AVANÇADO: PRODUTO DO CATÁLOGO / OFERTA EXISTENTE
+  const [productLinkMode, setProductLinkMode] = useState<'CATALOG' | 'EXISTING_OFFER'>('CATALOG');
+  const [productSearchTerm, setProductSearchTerm] = useState('');
+  const [selectedProductCategory, setSelectedProductCategory] = useState('ALL');
+  const [offerSearchTerm, setOfferSearchTerm] = useState('');
+  const [offerStatusFilter, setOfferStatusFilter] = useState<'ALL' | 'ACTIVE'>('ACTIVE');
+  const [isChangingProductSelection, setIsChangingProductSelection] = useState(false);
+  const [isChangingOfferSelection, setIsChangingOfferSelection] = useState(false);
+  const [selectedLinkedOfferMeta, setSelectedLinkedOfferMeta] = useState<{
+    carouselName: string;
+    originalPrice: number;
+    promotionalPrice: number;
+    discountPercentage: number;
+    startDate?: string;
+    endDate?: string;
+  } | null>(null);
+  const [isCustomPromoUnit, setIsCustomPromoUnit] = useState(false);
 
   // 2. MODELO E SOBREPOSIÇÕES
   const [cardModel, setCardModel] = useState<PromoCardModel>('HERO');
@@ -209,6 +237,27 @@ export const MarketingPage: React.FC = () => {
   // Modal de Preview
   const [previewingCard, setPreviewingCard] = useState<Offer | null>(null);
 
+  // Estados da Pré-visualização Interativa no Editor (Formulário à Esquerda / Prévia à Direita)
+  const [editorPreviewTab, setEditorPreviewTab] = useState<'isolated' | 'carousel' | 'action'>('isolated');
+  const [simulatedProgress, setSimulatedProgress] = useState(0);
+
+  // Efeito da Barra de Progresso Simulada para Modo Carrossel na Prévia
+  useEffect(() => {
+    if (!isEditorOpen || editorPreviewTab !== 'carousel') {
+      setSimulatedProgress(0);
+      return;
+    }
+    const currentDurSec = mediaType === 'VIDEO'
+      ? (detectedVideoDuration || 10)
+      : (isCustomDuration ? Math.max(1, parseInt(customDurationInput, 10) || 5) : durationSeconds);
+    const intervalMs = 50;
+    const step = (intervalMs / (currentDurSec * 1000)) * 100;
+    const timer = setInterval(() => {
+      setSimulatedProgress(prev => (prev >= 100 ? 0 : prev + step));
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }, [isEditorOpen, editorPreviewTab, durationSeconds, detectedVideoDuration, mediaType, isCustomDuration, customDurationInput]);
+
   // --------------------------------------------------------------------------
   // CARREGAR DADOS
   // --------------------------------------------------------------------------
@@ -216,14 +265,18 @@ export const MarketingPage: React.FC = () => {
     if (!activeTenant?.id) return;
     setIsLoading(true);
     try {
-      const [offersData, prodsData, ordersData] = await Promise.all([
+      const [offersData, prodsData, ordersData, catsData, carouselsData] = await Promise.all([
         offerRepository.getOffers(securityContext, activeTenant.id),
         productRepository.getProducts(securityContext, activeTenant.id),
         orderRepository.getOrders(securityContext, activeTenant.id).catch(() => []),
+        categoryRepository.getCategories(securityContext, activeTenant.id).catch(() => []),
+        promotionRepository.getCarousels(securityContext, activeTenant.id).catch(() => []),
       ]);
       setOffers(offersData);
       setProducts(prodsData);
       setTenantOrders(ordersData);
+      setCategories(catsData);
+      setPromotionCarousels(carouselsData);
     } catch (err) {
       console.error('[MarketingPage] Erro ao carregar dados:', err);
       showToast({
@@ -244,6 +297,93 @@ export const MarketingPage: React.FC = () => {
   const activeCount = useMemo(() => {
     return offers.filter(o => calculatePromoCardStatus(o) === 'ACTIVE').length;
   }, [offers]);
+
+  // Lista unificada de Ofertas cadastradas em Promoções e Cupons
+  const availableOffers = useMemo(() => {
+    const list: Array<{
+      id: string;
+      carouselId: string;
+      carouselName: string;
+      productId: string;
+      productName: string;
+      productImage?: string;
+      categoryName?: string;
+      originalPrice: number;
+      promotionalPrice: number;
+      discountPercentage: number;
+      discountType: string;
+      startDate?: string;
+      endDate?: string;
+      isActive: boolean;
+      unit: string;
+    }> = [];
+
+    promotionCarousels.forEach(carousel => {
+      (carousel.items || []).forEach(item => {
+        const prod = item.product || products.find(p => p.id === item.productId);
+        if (!prod) return;
+        const cat = categories.find(c => c.id === prod.categoryId);
+        const origPrice = Number(prod.price || 0);
+        const promoPrice = Number(item.promotionalPrice || 0);
+        const discountPct = item.calculatedDiscountPercentage 
+          ? item.calculatedDiscountPercentage 
+          : (origPrice > promoPrice && origPrice > 0 ? Math.round(((origPrice - promoPrice) / origPrice) * 100) : 0);
+
+        list.push({
+          id: item.id,
+          carouselId: carousel.id,
+          carouselName: carousel.name,
+          productId: item.productId,
+          productName: prod.name,
+          productImage: prod.imageUrl,
+          categoryName: cat?.name,
+          originalPrice: origPrice,
+          promotionalPrice: promoPrice,
+          discountPercentage: discountPct,
+          discountType: item.discountType,
+          startDate: item.startDate,
+          endDate: item.endDate,
+          isActive: Boolean(item.isActive && carousel.isActive),
+          unit: prod.unit || 'un',
+        });
+      });
+    });
+
+    return list;
+  }, [promotionCarousels, products, categories]);
+
+  // Filtro de ofertas de Promoções e Cupons
+  const filteredOffers = useMemo(() => {
+    return availableOffers.filter(offer => {
+      if (offerStatusFilter === 'ACTIVE' && !offer.isActive) return false;
+      if (offerSearchTerm.trim()) {
+        const q = offerSearchTerm.toLowerCase();
+        const matchName = offer.productName.toLowerCase().includes(q);
+        const matchCar = offer.carouselName.toLowerCase().includes(q);
+        const matchCat = offer.categoryName?.toLowerCase().includes(q);
+        if (!matchName && !matchCar && !matchCat) return false;
+      }
+      return true;
+    });
+  }, [availableOffers, offerStatusFilter, offerSearchTerm]);
+
+  // Filtro avançado de produtos do catálogo (Multi-tenant real do estabelecimento)
+  const filteredProducts = useMemo(() => {
+    return products.filter(p => {
+      if (selectedProductCategory !== 'ALL' && p.categoryId !== selectedProductCategory) {
+        return false;
+      }
+      if (productSearchTerm.trim()) {
+        const q = productSearchTerm.toLowerCase();
+        const matchName = p.name.toLowerCase().includes(q);
+        const matchDesc = p.description?.toLowerCase().includes(q);
+        const cat = categories.find(c => c.id === p.categoryId);
+        const matchCat = cat?.name.toLowerCase().includes(q);
+        if (!matchName && !matchDesc && !matchCat) return false;
+      }
+      return true;
+    });
+  }, [products, selectedProductCategory, productSearchTerm, categories]);
 
   // Modelo Selecionado
   const currentModelConfig = useMemo(() => {
@@ -432,10 +572,19 @@ export const MarketingPage: React.FC = () => {
     setEditingCard(null);
     setPendingMarketingAsset(null);
     setCardModel('HERO');
-    setAutoOverlay(true);
+    setAutoOverlay(false);
     setDisplayMode('FULL_MEDIA');
     setDestinationType('BANNER_ONLY');
     setSelectedProductId('');
+    setProductLinkMode('CATALOG');
+    setProductSearchTerm('');
+    setSelectedProductCategory('ALL');
+    setOfferSearchTerm('');
+    setOfferStatusFilter('ACTIVE');
+    setIsChangingProductSelection(false);
+    setIsChangingOfferSelection(false);
+    setSelectedLinkedOfferMeta(null);
+    setIsCustomPromoUnit(false);
     
     // Mídia Padrão
     setMediaType('IMAGE');
@@ -444,10 +593,10 @@ export const MarketingPage: React.FC = () => {
     setMediaUrl(defaultUrl);
     inspectMedia(defaultUrl, 'IMAGE');
 
-    // Textos e Rotação
-    setTitle('Oferta Especial da Casa');
-    setSubtitle('Aproveite as condições especiais por tempo limitado');
-    setBadge('DESTAQUE');
+    // Identificação Interna e Rotação
+    setTitle(`Card Promocional #${offers.length + 1}`);
+    setSubtitle('');
+    setBadge('');
     setDurationSeconds(5);
     setIsCustomDuration(false);
     setCustomDurationInput('5');
@@ -485,7 +634,7 @@ export const MarketingPage: React.FC = () => {
   const handleOpenEdit = (card: Offer) => {
     setEditingCard(card);
     setPendingMarketingAsset(null);
-    setCardModel(card.cardModel || 'HERO');
+    setCardModel('HERO');
     setAutoOverlay(false);
     setDisplayMode('FULL_MEDIA');
     
@@ -493,6 +642,33 @@ export const MarketingPage: React.FC = () => {
     const dest = card.destinationType || (card.hasPromoCheckout ? 'CUSTOM_OFFER' : card.productId ? 'PRODUCT' : 'BANNER_ONLY');
     setDestinationType(dest);
     setSelectedProductId(card.productId || '');
+    setProductSearchTerm('');
+    setSelectedProductCategory('ALL');
+    setOfferSearchTerm('');
+    setOfferStatusFilter('ACTIVE');
+    setIsChangingProductSelection(false);
+    setIsChangingOfferSelection(false);
+
+    // Identifica se havia oferta vinculada preservada
+    const linkedOffer = card.productId ? availableOffers.find(o => o.productId === card.productId) : null;
+    if (linkedOffer && (card.promotionalPrice || card.discountPercentage)) {
+      setProductLinkMode('EXISTING_OFFER');
+      setSelectedLinkedOfferMeta({
+        carouselName: linkedOffer.carouselName,
+        originalPrice: linkedOffer.originalPrice,
+        promotionalPrice: linkedOffer.promotionalPrice,
+        discountPercentage: linkedOffer.discountPercentage,
+        startDate: linkedOffer.startDate,
+        endDate: linkedOffer.endDate,
+      });
+    } else {
+      setProductLinkMode('CATALOG');
+      setSelectedLinkedOfferMeta(null);
+    }
+
+    const currentUnit = card.promoUnit || 'un';
+    const isStandardUnit = ['un', 'kit', 'cesta', 'combo', 'serviço', 'kg', 'g'].includes(currentUnit);
+    setIsCustomPromoUnit(!isStandardUnit);
 
     // Mídia
     setMediaType(card.mediaType || 'IMAGE');
@@ -507,10 +683,10 @@ export const MarketingPage: React.FC = () => {
     setCustomDurationInput(String(dur));
     setIsCustomDuration(!DURATION_PRESETS.includes(dur));
 
-    // Textos
-    setTitle(card.title || '');
-    setSubtitle(card.subtitle || '');
-    setBadge(card.badge || 'PROMOÇÃO');
+    // Identificação Interna
+    setTitle(card.title || `Card Promocional #${offers.indexOf(card) + 1}`);
+    setSubtitle('');
+    setBadge('');
 
     // Checkout Promocional
     setHasPromoCheckout(Boolean(card.hasPromoCheckout || dest === 'CUSTOM_OFFER'));
@@ -756,15 +932,15 @@ export const MarketingPage: React.FC = () => {
       const parsedUsageLimit = promoUsageLimit ? parseInt(promoUsageLimit, 10) : undefined;
 
       const payload: Omit<Offer, 'id' | 'tenantId' | 'createdAt'> = {
-        title: title.trim(),
-        subtitle: subtitle.trim() || undefined,
-        description: (destinationType === 'CUSTOM_OFFER' ? promoDescription : subtitle) || '',
-        badge: badge.trim() || undefined,
+        title: title.trim() || 'Card Promocional',
+        subtitle: undefined,
+        description: (destinationType === 'CUSTOM_OFFER' ? promoDescription : '') || '',
+        badge: undefined,
         cardFormat: 'HORIZONTAL',
         mediaType,
-        displayMode: autoOverlay ? 'EDITABLE_CARD' : 'FULL_MEDIA',
-        cardModel,
-        autoOverlay,
+        displayMode: 'FULL_MEDIA',
+        cardModel: 'HERO',
+        autoOverlay: false,
         destinationType,
         mediaUrl: finalPublicMediaUrl,
         imageUrl: finalPublicMediaUrl,
@@ -796,9 +972,15 @@ export const MarketingPage: React.FC = () => {
         promoTimesUsed: editingCard?.promoTimesUsed || 0,
 
         // Compatibilidade de Preço
-        promotionalPrice: destinationType === 'CUSTOM_OFFER' ? parsedPromoPrice : undefined,
-        originalPrice: destinationType === 'CUSTOM_OFFER' ? parsedPromoOrigPrice : undefined,
-        discountPercentage: destinationType === 'CUSTOM_OFFER' ? parsedDiscountPct : undefined,
+        promotionalPrice: destinationType === 'CUSTOM_OFFER' 
+          ? parsedPromoPrice 
+          : (destinationType === 'PRODUCT' && selectedLinkedOfferMeta ? selectedLinkedOfferMeta.promotionalPrice : undefined),
+        originalPrice: destinationType === 'CUSTOM_OFFER' 
+          ? parsedPromoOrigPrice 
+          : (destinationType === 'PRODUCT' && selectedLinkedOfferMeta ? selectedLinkedOfferMeta.originalPrice : undefined),
+        discountPercentage: destinationType === 'CUSTOM_OFFER' 
+          ? parsedDiscountPct 
+          : (destinationType === 'PRODUCT' && selectedLinkedOfferMeta ? selectedLinkedOfferMeta.discountPercentage : undefined),
 
         // Agendamento
         startDate: computedStartIso || undefined,
@@ -1018,7 +1200,7 @@ export const MarketingPage: React.FC = () => {
           }`}
         >
           <Sparkles className="w-4 h-4" />
-          <span>Criativos da Vitrine</span>
+          <span>Cards Promocionais</span>
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
             {activeCount} ativos
           </span>
@@ -1168,12 +1350,6 @@ export const MarketingPage: React.FC = () => {
                             ? '🛒 Produto do Catálogo' 
                             : '👁️ Apenas Visual'}
                         </span>
-
-                        {card.autoOverlay === false && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-black/70 border border-white/30">
-                            Arte Pura
-                          </span>
-                        )}
                       </div>
 
                       {isVideo && (
@@ -1185,17 +1361,11 @@ export const MarketingPage: React.FC = () => {
 
                     {/* Detalhes do Card */}
                     <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         <div className="flex items-start justify-between gap-2">
                           <h4 className="text-sm font-bold text-gray-900 line-clamp-1">{card.title}</h4>
                           <span className="text-[11px] font-mono text-gray-400 shrink-0">#{idx + 1}</span>
                         </div>
-
-                        {card.subtitle && (
-                          <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed">
-                            {card.subtitle}
-                          </p>
-                        )}
 
                         {/* Bloco de Valores (se houver checkout promocional) */}
                         {destType === 'CUSTOM_OFFER' && (
@@ -1492,645 +1662,1400 @@ export const MarketingPage: React.FC = () => {
           isOpen={isEditorOpen}
           onClose={() => !isSaving && setIsEditorOpen(false)}
           title={editingCard ? 'Editar Criativo Promocional' : 'Novo Card Promocional'}
-          size="xl"
+          size="2xl"
         >
           <form onSubmit={handleSaveCard} className="space-y-6">
-            {/* ============================================================== */}
-            {/* SEÇÃO 1: DESTINO DO CARD (REGRA PRINCIPAL)                     */}
-            {/* ============================================================== */}
-            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
-              <label className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-emerald-600" />
-                <span>1. Destino do Card (O que acontece ao clicar?)</span>
-              </label>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* MODO 1: APENAS VISUAL */}
-                <div
-                  onClick={() => {
-                    setDestinationType('BANNER_ONLY');
-                    setHasPromoCheckout(false);
-                  }}
-                  className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between gap-2.5 ${
-                    destinationType === 'BANNER_ONLY'
-                      ? 'border-emerald-600 bg-emerald-50/70 shadow-xs'
-                      : 'border-gray-200 hover:border-gray-300 bg-white'
-                  }`}
-                >
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* ============================================================== */}
+              {/* COLUNA ESQUERDA: FORMULÁRIO COMPLETO                           */}
+              {/* ============================================================== */}
+              <div className="lg:col-span-7 space-y-4">
+                {/* ------------------------------------------------------------ */}
+                {/* SEÇÃO 1: DESTINO DO CARD (O QUE ACONTECE AO CLICAR)           */}
+                {/* ------------------------------------------------------------ */}
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-black tracking-wide text-gray-900">
-                      👁️ Apenas Visual
-                    </span>
-                    {destinationType === 'BANNER_ONLY' && (
-                      <div className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-gray-500 leading-snug">
-                    O card apenas apresenta a imagem ou vídeo sem abrir produtos ou checkout.
-                  </p>
-                </div>
-
-                {/* MODO 2: PRODUTO DO CATÁLOGO */}
-                <div
-                  onClick={() => {
-                    setDestinationType('PRODUCT');
-                    setHasPromoCheckout(false);
-                    if (!selectedProductId && products[0]?.id) {
-                      setSelectedProductId(products[0].id);
-                    }
-                  }}
-                  className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between gap-2.5 ${
-                    destinationType === 'PRODUCT'
-                      ? 'border-emerald-600 bg-emerald-50/70 shadow-xs'
-                      : 'border-gray-200 hover:border-gray-300 bg-white'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black tracking-wide text-gray-900">
-                      🛒 Produto do Catálogo
-                    </span>
-                    {destinationType === 'PRODUCT' && (
-                      <div className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-gray-500 leading-snug">
-                    Abre o produto existente correspondente para adicionar à sacola normalmente.
-                  </p>
-                </div>
-
-                {/* MODO 3: CHECKOUT PROMOCIONAL */}
-                <div
-                  onClick={() => {
-                    setDestinationType('CUSTOM_OFFER');
-                    setHasPromoCheckout(true);
-                  }}
-                  className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between gap-2.5 ${
-                    destinationType === 'CUSTOM_OFFER'
-                      ? 'border-amber-600 bg-amber-50/70 shadow-xs'
-                      : 'border-gray-200 hover:border-gray-300 bg-white'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black tracking-wide text-amber-950 flex items-center gap-1">
-                      ⚡ Checkout Promocional
-                    </span>
-                    {destinationType === 'CUSTOM_OFFER' && (
-                      <div className="w-4 h-4 rounded-full bg-amber-600 text-white flex items-center justify-center">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-amber-800/90 leading-snug">
-                    Oferta completa com checkout próprio, regras, cupons e limites (não precisa de produto no catálogo).
-                  </p>
-                </div>
-              </div>
-
-              {/* Seletor de Produto do Catálogo se MODO 2 */}
-              {destinationType === 'PRODUCT' && (
-                <div className="pt-2 border-t border-gray-200 space-y-1.5">
-                  <label className="text-xs font-bold text-gray-700 block">
-                    Selecione o Produto Vinculado da Loja:
-                  </label>
-                  <select
-                    value={selectedProductId}
-                    onChange={(e) => {
-                      setSelectedProductId(e.target.value);
-                      const prod = products.find(p => p.id === e.target.value);
-                      if (prod) {
-                        if (!title || title === 'Oferta Especial da Casa') setTitle(prod.name);
-                        if (!mediaUrl && prod.imageUrl) {
-                          setMediaUrl(prod.imageUrl);
-                          inspectMedia(prod.imageUrl, 'IMAGE');
-                        }
-                      }
-                    }}
-                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 font-medium"
-                    required
-                  >
-                    <option value="">Selecione um produto do catálogo...</option>
-                    {products.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} — R$ {p.price.toFixed(2)} ({p.unit || 'un'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* ============================================================== */}
-            {/* SEÇÃO 2: MÍDIA PROMOCIONAL (IMAGEM OU VÍDEO)                   */}
-            {/* 100% Arte Pura: Upload ou URL Direta (1200 x 675 px — 16:9)    */}
-            {/* ============================================================== */}
-            <div className="space-y-3 p-4 bg-gray-50 rounded-2xl border border-gray-200">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <label className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <Film className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>2. Mídia Promocional (1200 × 675 px — Proporção 16:9)</span>
-                  </label>
-                  <p className="text-[11px] text-gray-500">
-                    O card é 100% visual (Arte Pura). Formatos: JPG, PNG, WEBP, MP4 ou WEBM via upload ou link direto.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 self-start sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => setMediaSourceMode('upload')}
-                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
-                      mediaSourceMode === 'upload' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <Upload className="w-3 h-3" />
-                    <span>Upload</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMediaSourceMode('url')}
-                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
-                      mediaSourceMode === 'url' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <LinkIcon className="w-3 h-3" />
-                    <span>URL Externa</span>
-                  </button>
-                </div>
-              </div>
-
-              {mediaSourceMode === 'upload' ? (
-                <div className="flex flex-col sm:flex-row items-center gap-3">
-                  <label className="w-full flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 hover:border-emerald-500 rounded-2xl cursor-pointer bg-white transition-colors">
-                    <Upload className="w-6 h-6 text-gray-400 mb-1" />
-                    <span className="text-xs font-bold text-gray-700">Clique para selecionar imagem ou vídeo</span>
-                    <span className="text-[10px] text-gray-400 mt-0.5">Até 35MB para vídeo e 10MB para imagem</span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
-                      onChange={handleFileUpload}
-                      disabled={isUploading}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <Input
-                    placeholder="https://exemplo.com/sua-arte-16-9.jpg ou .mp4"
-                    value={mediaUrl}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setMediaUrl(val);
-                      setPendingMarketingAsset(null);
-                      const isVid = /\.(mp4|webm|mov)(\?.*)?$/i.test(val);
-                      setMediaType(isVid ? 'VIDEO' : 'IMAGE');
-                      inspectMedia(val, isVid ? 'VIDEO' : 'IMAGE');
-                    }}
-                    required
-                  />
-                </div>
-              )}
-
-              {/* Informações da Mídia Detectada */}
-              {mediaUrl && (
-                <div className="p-3 bg-white border border-gray-200 rounded-xl space-y-1 text-xs text-gray-700 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-gray-900">
-                      {mediaType === 'VIDEO' ? '🎥 Arquivo de Vídeo' : '🖼️ Imagem Estática'}
-                    </span>
-                    {detectedWidth && detectedHeight && (
-                      <span className="font-mono text-gray-500 text-[11px]">
-                        ({detectedWidth} × {detectedHeight} px)
-                      </span>
-                    )}
+                    <label className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>1. Destino do Card (O que acontece ao clicar?)</span>
+                    </label>
                   </div>
 
-                  {mediaType === 'VIDEO' && detectedVideoDuration && (
-                    <span className="font-mono font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                      Duração real: {detectedVideoDuration}s
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* ============================================================== */}
-            {/* SEÇÃO 5: CHECKOUT DA PROMOÇÃO (MODO 3 - DESTAQUE ABSOLUTO)      */}
-            {/* ============================================================== */}
-            {destinationType === 'CUSTOM_OFFER' && (
-              <div className="p-4 bg-amber-50/60 rounded-2xl border-2 border-amber-300/80 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1.5 rounded-lg bg-amber-600 text-white shadow-2xs">
-                      <Flame className="w-4 h-4" />
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-black text-amber-950 uppercase tracking-wide">
-                        5. Configuração do Checkout da Promoção
-                      </h3>
-                      <p className="text-[11px] text-amber-800">
-                        O cliente poderá comprar esta promoção diretamente sem precisar de produto no catálogo.
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant="warning" size="sm">Validação Server-Side</Badge>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input
-                    label="Nome do Produto / Oferta *"
-                    value={promoTitle}
-                    onChange={(e) => setPromoTitle(e.target.value)}
-                    placeholder="Ex: Combo Especial 2 Garrafas + Petisco"
-                    required={destinationType === 'CUSTOM_OFFER'}
-                  />
-
-                  <Input
-                    label="Unidade de Medida"
-                    value={promoUnit}
-                    onChange={(e) => setPromoUnit(e.target.value)}
-                    placeholder="Ex: combo, un, kit, garrafa"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-700 block">
-                    Descrição Completa da Oferta *
-                  </label>
-                  <textarea
-                    value={promoDescription}
-                    onChange={(e) => setPromoDescription(e.target.value)}
-                    placeholder="Descreva detalhadamente o que está incluso, regras de consumo ou entrega..."
-                    rows={2}
-                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500 font-medium"
-                    required={destinationType === 'CUSTOM_OFFER'}
-                  />
-                </div>
-
-                {/* Preços e Desconto */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Input
-                    label="Preço Normal / De (R$)"
-                    type="number"
-                    step="0.01"
-                    value={promoOriginalPrice}
-                    onChange={(e) => handlePromoPriceChange(e.target.value, promoPrice)}
-                    placeholder="Ex: 59.90"
-                  />
-
-                  <Input
-                    label="Preço Promocional / Por (R$) *"
-                    type="number"
-                    step="0.01"
-                    value={promoPrice}
-                    onChange={(e) => handlePromoPriceChange(promoOriginalPrice, e.target.value)}
-                    placeholder="Ex: 44.90"
-                    required={destinationType === 'CUSTOM_OFFER'}
-                  />
-
-                  <Input
-                    label="% de Desconto"
-                    type="number"
-                    value={promoDiscountPercentage}
-                    onChange={(e) => setPromoDiscountPercentage(e.target.value)}
-                    placeholder="Ex: 25"
-                  />
-                </div>
-
-                {/* Quantidades e Limites */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Input
-                    label="Quantidade Mínima"
-                    type="number"
-                    min={1}
-                    value={promoMinQuantity}
-                    onChange={(e) => setPromoMinQuantity(e.target.value)}
-                    placeholder="Ex: 1"
-                  />
-
-                  <Input
-                    label="Máximo por Cliente"
-                    type="number"
-                    min={1}
-                    value={promoMaxQuantityPerCustomer}
-                    onChange={(e) => setPromoMaxQuantityPerCustomer(e.target.value)}
-                    placeholder="Ex: 5"
-                  />
-
-                  <Input
-                    label="Limite de Usos (Ex: 20 primeiros)"
-                    type="number"
-                    min={1}
-                    value={promoUsageLimit}
-                    onChange={(e) => setPromoUsageLimit(e.target.value)}
-                    placeholder="Vazio = Sem limite"
-                  />
-                </div>
-
-                {/* Opções de Entrega e Pagamento */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-amber-200">
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-bold text-gray-700 block">
-                      Tipos de Entrega Permitidos:
-                    </span>
-                    <div className="flex items-center gap-4">
-                      <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={promoFulfillmentTypes.includes('DELIVERY')}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setPromoFulfillmentTypes(prev => [...prev, 'DELIVERY']);
-                            } else {
-                              setPromoFulfillmentTypes(prev => prev.filter(t => t !== 'DELIVERY'));
-                            }
-                          }}
-                          className="rounded text-amber-600 focus:ring-amber-500"
-                        />
-                        <span>Entrega (Delivery)</span>
-                      </label>
-
-                      <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={promoFulfillmentTypes.includes('PICKUP')}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setPromoFulfillmentTypes(prev => [...prev, 'PICKUP']);
-                            } else {
-                              setPromoFulfillmentTypes(prev => prev.filter(t => t !== 'PICKUP'));
-                            }
-                          }}
-                          className="rounded text-amber-600 focus:ring-amber-500"
-                        />
-                        <span>Retirada no Balcão</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-bold text-gray-700 block">
-                      Cupom de Desconto Vinculado (Opcional):
-                    </span>
-                    <Input
-                      placeholder="Ex: SABADO20"
-                      value={promoCouponCode}
-                      onChange={(e) => setPromoCouponCode(e.target.value.toUpperCase())}
-                    />
-                  </div>
-                </div>
-
-                <Input
-                  label="Instruções / Observação da Oferta (Exibida no checkout)"
-                  value={promoNotes}
-                  onChange={(e) => setPromoNotes(e.target.value)}
-                  placeholder="Ex: Validade exclusiva para o turno da noite ou retirada até 23h."
-                />
-              </div>
-            )}
-
-            {/* ============================================================== */}
-            {/* SEÇÃO 5: IDENTIFICAÇÃO DO CARD                                 */}
-            {/* ============================================================== */}
-            <div className="space-y-3">
-              <Input
-                label="Identificação Interna / Nome do Card *"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ex: Super Oferta de Sábado"
-                required
-              />
-            </div>
-
-            {/* ============================================================== */}
-            {/* SEÇÃO 7: AGENDAMENTO COMPLETO (DATA + HORÁRIO)                 */}
-            {/* ============================================================== */}
-            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <CalendarDays className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>6. Programar Período de Exibição</span>
-                </label>
-                <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
-                  Fuso Horário: Brasília (America/Sao_Paulo)
-                </span>
-              </div>
-
-              {/* Início */}
-              <div className="space-y-1.5">
-                <span className="text-xs font-bold text-gray-700">INÍCIO DA EXIBIÇÃO</span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-semibold text-gray-500 mb-1 block">Data de início</label>
-                    <Input
-                      type="date"
-                      value={startDateInput}
-                      onChange={(e) => setStartDateInput(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-gray-500 mb-1 block">Horário de início</label>
-                    <Input
-                      type="time"
-                      value={startTimeInput}
-                      onChange={(e) => setStartTimeInput(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Término */}
-              <div className="space-y-2 pt-2 border-t border-gray-200">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-gray-700">TÉRMINO DA EXIBIÇÃO</span>
-                  <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-emerald-800">
-                    <input
-                      type="checkbox"
-                      checked={noEndDate}
-                      onChange={(e) => setNoEndDate(e.target.checked)}
-                      className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
-                    />
-                    <span>Sem data de término (permanece ativo até desativação)</span>
-                  </label>
-                </div>
-
-                {!noEndDate ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] font-semibold text-gray-500 mb-1 block">Data de término</label>
-                      <Input
-                        type="date"
-                        value={endDateInput}
-                        onChange={(e) => setEndDateInput(e.target.value)}
-                        required={!noEndDate}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-semibold text-gray-500 mb-1 block">Horário de término</label>
-                      <Input
-                        type="time"
-                        value={endTimeInput}
-                        onChange={(e) => setEndTimeInput(e.target.value)}
-                        required={!noEndDate}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-white border border-gray-200 rounded-xl text-xs text-gray-600 italic">
-                    Card configurado sem data de término. Ele permanecerá em exibição contínua na vitrine até ser desativado manualmente.
-                  </div>
-                )}
-              </div>
-
-              {/* Box de Resumo Visual em Tempo Real */}
-              <div className={`p-4 rounded-xl border space-y-2.5 transition-colors ${formStatusMeta.cardBorderClass}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold tracking-wide uppercase flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>📅 Período de Exibição</span>
-                  </span>
-                  <span className={`px-2 py-0.5 rounded-md text-[11px] font-extrabold border shadow-2xs ${formStatusMeta.badgeClass}`}>
-                    {formStatusMeta.fullLabel}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div className="space-y-0.5">
-                    <span className="text-[11px] font-semibold text-gray-500 block">Início:</span>
-                    <span className="font-mono font-bold text-gray-900">
-                      {computedStartIso ? formatPromoDateTimeBr(computedStartIso) : 'Aguardando data/horário...'}
-                    </span>
-                  </div>
-                  <div className="space-y-0.5">
-                    <span className="text-[11px] font-semibold text-gray-500 block">Término:</span>
-                    <span className="font-mono font-bold text-gray-900">
-                      {noEndDate 
-                        ? 'Indeterminado (Sem data de término)' 
-                        : (computedEndIso ? formatPromoDateTimeBr(computedEndIso) : 'Aguardando data/horário...')}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pt-1.5 border-t border-black/10 text-xs font-medium leading-relaxed">
-                  {formStatusMeta.summaryText}
-                </div>
-              </div>
-            </div>
-
-            {/* ============================================================== */}
-            {/* SEÇÃO 8: TEMPO DE ROTAÇÃO                                       */}
-            {/* ============================================================== */}
-            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
-              <label className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                <span>7. Tempo de Rotação do Carrossel</span>
-              </label>
-
-              {mediaType === 'VIDEO' ? (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Film className="w-4 h-4 text-blue-600 shrink-0" />
-                    <div>
-                      <span className="font-bold">
-                        Duração do vídeo: {detectedVideoDuration ? `${detectedVideoDuration} segundos` : 'Detectando...'}
-                      </span>
-                      <p className="text-[11px] text-blue-800">
-                        O card respeitará a duração real do arquivo de vídeo. O carrossel avançará automaticamente ao término da reprodução.
-                      </p>
-                    </div>
-                  </div>
-                  <span className="px-3 py-1 font-mono font-black text-sm bg-white rounded-lg border border-blue-200 text-blue-950 shrink-0">
-                    {detectedVideoDuration ? `${detectedVideoDuration}s` : 'Auto'}
-                  </span>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {DURATION_PRESETS.map((sec) => (
-                      <button
-                        key={sec}
-                        type="button"
-                        onClick={() => {
-                          setDurationSeconds(sec);
-                          setIsCustomDuration(false);
-                          setCustomDurationInput(String(sec));
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          !isCustomDuration && durationSeconds === sec
-                            ? 'bg-emerald-600 text-white shadow-2xs'
-                            : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
-                        }`}
-                      >
-                        {sec} segundos
-                      </button>
-                    ))}
-
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomDuration(true)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        isCustomDuration
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {/* MODO 1: APENAS VISUAL */}
+                    <div
+                      onClick={() => {
+                        setDestinationType('BANNER_ONLY');
+                        setHasPromoCheckout(false);
+                      }}
+                      className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between gap-2 ${
+                        destinationType === 'BANNER_ONLY'
+                          ? 'border-emerald-600 bg-emerald-50/70 shadow-xs'
+                          : 'border-gray-200 hover:border-gray-300 bg-white'
                       }`}
                     >
-                      Personalizado
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black tracking-wide text-gray-900">
+                          👁️ Apenas Visual
+                        </span>
+                        {destinationType === 'BANNER_ONLY' && (
+                          <div className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-500 leading-snug">
+                        Exibição pura de arte ou vídeo sem abrir produtos ou checkout.
+                      </p>
+                    </div>
+
+                    {/* MODO 2: PRODUTO DO CATÁLOGO */}
+                    <div
+                      onClick={() => {
+                        setDestinationType('PRODUCT');
+                        setHasPromoCheckout(false);
+                        if (!selectedProductId && products[0]?.id) {
+                          setSelectedProductId(products[0].id);
+                        }
+                      }}
+                      className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between gap-2 ${
+                        destinationType === 'PRODUCT'
+                          ? 'border-emerald-600 bg-emerald-50/70 shadow-xs'
+                          : 'border-gray-200 hover:border-gray-300 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black tracking-wide text-gray-900">
+                          🛒 Produto Loja
+                        </span>
+                        {destinationType === 'PRODUCT' && (
+                          <div className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-500 leading-snug">
+                        Abre um produto existente do catálogo para adicionar à sacola.
+                      </p>
+                    </div>
+
+                    {/* MODO 3: CHECKOUT PROMOCIONAL */}
+                    <div
+                      onClick={() => {
+                        setDestinationType('CUSTOM_OFFER');
+                        setHasPromoCheckout(true);
+                      }}
+                      className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between gap-2 ${
+                        destinationType === 'CUSTOM_OFFER'
+                          ? 'border-amber-600 bg-amber-50/70 shadow-xs'
+                          : 'border-gray-200 hover:border-gray-300 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black tracking-wide text-amber-950 flex items-center gap-1">
+                          ⚡ Checkout
+                        </span>
+                        {destinationType === 'CUSTOM_OFFER' && (
+                          <div className="w-4 h-4 rounded-full bg-amber-600 text-white flex items-center justify-center">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-amber-800/90 leading-snug">
+                        Oferta direta independente com preço De/Por, cupons e regras.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* SELETOR AVANÇADO DE PRODUTO OU OFERTA EXISTENTE (MODO 2) */}
+                  {destinationType === 'PRODUCT' && (
+                    <div className="pt-3 border-t border-gray-200 space-y-3">
+                      {/* Sub-abas de escolha: Produto Direto vs Oferta Existente de Promoções e Cupons */}
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                          <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Vínculo do Card:</span>
+                        </label>
+
+                        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProductLinkMode('CATALOG');
+                              setIsChangingProductSelection(false);
+                            }}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                              productLinkMode === 'CATALOG'
+                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                          >
+                            <ShoppingBag className="w-3 h-3" />
+                            <span>Produto do Catálogo</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProductLinkMode('EXISTING_OFFER');
+                              setIsChangingOfferSelection(false);
+                            }}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                              productLinkMode === 'EXISTING_OFFER'
+                                ? 'bg-amber-600 text-white shadow-2xs'
+                                : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                          >
+                            <Flame className="w-3 h-3 text-amber-200" />
+                            <span>Oferta em Promoções ({availableOffers.length})</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* ============================================================== */}
+                      {/* SUB-MODO A: PRODUTO DO CATÁLOGO                                */}
+                      {/* ============================================================== */}
+                      {productLinkMode === 'CATALOG' && (
+                        <div className="space-y-2.5 bg-white p-3 rounded-xl border border-gray-200 shadow-2xs">
+                          {/* 1. SE PRODUTO ESTIVER SELECIONADO E NÃO EM MODO DE TROCA */}
+                          {selectedProductId && !isChangingProductSelection ? (
+                            (() => {
+                              const selProd = products.find(p => p.id === selectedProductId);
+                              const cat = selProd ? categories.find(c => c.id === selProd.categoryId) : null;
+                              return selProd ? (
+                                <div className="p-3 bg-emerald-50/70 border-2 border-emerald-500 rounded-xl space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                      Produto Selecionado do Catálogo
+                                    </span>
+                                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                                      Ativo na Loja
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-3">
+                                    {selProd.imageUrl ? (
+                                      <img
+                                        src={selProd.imageUrl}
+                                        alt={selProd.name}
+                                        className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shrink-0 bg-white"
+                                      />
+                                    ) : (
+                                      <div className="w-14 h-14 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+                                        <ShoppingBag className="w-6 h-6" />
+                                      </div>
+                                    )}
+
+                                    <div className="flex-1 min-w-0">
+                                      <h4 className="text-xs font-extrabold text-gray-900 truncate">
+                                        {selProd.name}
+                                      </h4>
+                                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                        {cat && (
+                                          <span className="text-[10px] font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
+                                            {cat.name}
+                                          </span>
+                                        )}
+                                        <span className="text-[11px] font-extrabold text-emerald-800">
+                                          R$ {selProd.price.toFixed(2)}
+                                          <span className="text-[10px] text-gray-500 font-normal"> / {selProd.unit || 'un'}</span>
+                                        </span>
+                                      </div>
+                                      <p className="text-[10px] text-gray-500 mt-0.5">
+                                        Estoque: {selProd.stockQuantity > 0 ? `${selProd.stockQuantity} disponíveis` : 'Sem estoque'}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-emerald-200/80">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedProductId('');
+                                        setIsChangingProductSelection(true);
+                                      }}
+                                      className="px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                    >
+                                      Remover Seleção
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsChangingProductSelection(true)}
+                                      className="px-3 py-1 text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                                    >
+                                      <RefreshCw className="w-3 h-3" />
+                                      <span>Trocar Produto</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                                  Produto vinculado não encontrado. Selecione um novo produto abaixo.
+                                </div>
+                              );
+                            })()
+                          ) : (
+                            /* 2. PESQUISA INSTANTÂNEA E FILTRO POR CATEGORIA */
+                            <div className="space-y-2.5">
+                              {/* Barra de Filtro de Categoria e Busca */}
+                              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                                {/* Filtro por Categoria */}
+                                <div className="sm:col-span-5">
+                                  <div className="relative">
+                                    <select
+                                      value={selectedProductCategory}
+                                      onChange={(e) => setSelectedProductCategory(e.target.value)}
+                                      className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 font-medium text-gray-800"
+                                    >
+                                      <option value="ALL">Todas as Categorias ({products.length})</option>
+                                      {categories.map((c) => {
+                                        const count = products.filter(p => p.categoryId === c.id).length;
+                                        return (
+                                          <option key={c.id} value={c.id}>
+                                            {c.name} ({count})
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                  </div>
+                                </div>
+
+                                {/* Barra de Pesquisa Instantânea */}
+                                <div className="sm:col-span-7">
+                                  <div className="relative">
+                                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    <input
+                                      type="text"
+                                      placeholder="Pesquisar por nome ou descrição..."
+                                      value={productSearchTerm}
+                                      onChange={(e) => setProductSearchTerm(e.target.value)}
+                                      className="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 font-medium text-gray-800 placeholder-gray-400"
+                                    />
+                                    {productSearchTerm && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setProductSearchTerm('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Lista de Resultados de Produtos com Imagem, Preço e Categoria */}
+                              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                                <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-200 flex items-center justify-between text-[11px] text-gray-500 font-semibold">
+                                  <span>{filteredProducts.length} produtos encontrados</span>
+                                  {selectedProductId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsChangingProductSelection(false)}
+                                      className="text-emerald-700 hover:underline cursor-pointer font-bold"
+                                    >
+                                      Manter atual
+                                    </button>
+                                  )}
+                                </div>
+
+                                <div className="max-h-56 overflow-y-auto divide-y divide-gray-100 p-1">
+                                  {filteredProducts.length === 0 ? (
+                                    <div className="p-6 text-center text-gray-500 space-y-1">
+                                      <ShoppingBag className="w-7 h-7 mx-auto text-gray-300" />
+                                      <p className="text-xs font-semibold">Nenhum produto encontrado</p>
+                                      <p className="text-[11px] text-gray-400">
+                                        Tente alterar o termo da pesquisa ou trocar a categoria selecionada.
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    filteredProducts.map((p) => {
+                                      const isSelected = selectedProductId === p.id;
+                                      const cat = categories.find(c => c.id === p.categoryId);
+                                      return (
+                                        <div
+                                          key={p.id}
+                                          onClick={() => {
+                                            setSelectedProductId(p.id);
+                                            setIsChangingProductSelection(false);
+                                            setSelectedLinkedOfferMeta(null);
+                                            if (!title || title.startsWith('Card Promocional')) {
+                                              setTitle(p.name);
+                                            }
+                                            if (!mediaUrl && p.imageUrl) {
+                                              setMediaUrl(p.imageUrl);
+                                              inspectMedia(p.imageUrl, 'IMAGE');
+                                            }
+                                          }}
+                                          className={`p-2 rounded-lg flex items-center justify-between gap-2.5 cursor-pointer transition-all ${
+                                            isSelected
+                                              ? 'bg-emerald-50 border border-emerald-500 text-emerald-950 font-medium'
+                                              : 'hover:bg-gray-50 border border-transparent'
+                                          }`}
+                                        >
+                                          <div className="flex items-center gap-2.5 min-w-0">
+                                            {p.imageUrl ? (
+                                              <img
+                                                src={p.imageUrl}
+                                                alt={p.name}
+                                                className="w-10 h-10 rounded-lg object-cover border border-gray-200 shrink-0 bg-white"
+                                              />
+                                            ) : (
+                                              <div className="w-10 h-10 rounded-lg bg-gray-100 text-gray-500 flex items-center justify-center shrink-0 border border-gray-200">
+                                                <ShoppingBag className="w-4 h-4" />
+                                              </div>
+                                            )}
+
+                                            <div className="min-w-0">
+                                              <p className="text-xs font-bold text-gray-900 truncate">
+                                                {p.name}
+                                              </p>
+                                              <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                                                {cat && (
+                                                  <span className="bg-gray-100 text-gray-700 px-1 py-0.2 rounded font-medium">
+                                                    {cat.name}
+                                                  </span>
+                                                )}
+                                                <span>Estoque: {p.stockQuantity}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <div className="text-right">
+                                              <span className="text-xs font-extrabold text-emerald-800 block">
+                                                R$ {p.price.toFixed(2)}
+                                              </span>
+                                              <span className="text-[10px] text-gray-400 block">
+                                                por {p.unit || 'un'}
+                                              </span>
+                                            </div>
+
+                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+                                              isSelected ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-400'
+                                            }`}>
+                                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ============================================================== */}
+                      {/* SUB-MODO B: OFERTA EXISTENTE EM PROMOÇÕES E CUPONS              */}
+                      {/* ============================================================== */}
+                      {productLinkMode === 'EXISTING_OFFER' && (
+                        <div className="space-y-2.5 bg-white p-3 rounded-xl border border-gray-200 shadow-2xs">
+                          {/* SE JÁ HÁ UMA OFERTA VINCULADA E NÃO ESTÁ TROCANDO */}
+                          {selectedProductId && selectedLinkedOfferMeta && !isChangingOfferSelection ? (
+                            (() => {
+                              const selProd = products.find(p => p.id === selectedProductId);
+                              return (
+                                <div className="p-3 bg-amber-50/70 border-2 border-amber-500 rounded-xl space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-900 flex items-center gap-1">
+                                      <Flame className="w-3.5 h-3.5 text-amber-600" />
+                                      Oferta Vinculada Preservada (Promoções e Cupons)
+                                    </span>
+                                    <span className="text-[11px] font-bold text-amber-900 bg-amber-200/70 px-2 py-0.5 rounded-full">
+                                      {selectedLinkedOfferMeta.carouselName}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-3">
+                                    {selProd?.imageUrl ? (
+                                      <img
+                                        src={selProd.imageUrl}
+                                        alt={selProd.name}
+                                        className="w-14 h-14 rounded-lg object-cover border border-amber-200 shrink-0 bg-white"
+                                      />
+                                    ) : (
+                                      <div className="w-14 h-14 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
+                                        <Flame className="w-6 h-6" />
+                                      </div>
+                                    )}
+
+                                    <div className="flex-1 min-w-0">
+                                      <h4 className="text-xs font-extrabold text-gray-900 truncate">
+                                        {selProd?.name || 'Oferta Promocional'}
+                                      </h4>
+                                      <div className="flex items-center gap-2 mt-0.5">
+                                        <span className="text-[11px] text-gray-400 line-through">
+                                          R$ {selectedLinkedOfferMeta.originalPrice.toFixed(2)}
+                                        </span>
+                                        <span className="text-xs font-black text-amber-700">
+                                          R$ {selectedLinkedOfferMeta.promotionalPrice.toFixed(2)}
+                                        </span>
+                                        <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded">
+                                          -{selectedLinkedOfferMeta.discountPercentage}% OFF
+                                        </span>
+                                      </div>
+                                      <p className="text-[10px] text-gray-500 mt-0.5">
+                                        {selectedLinkedOfferMeta.startDate || selectedLinkedOfferMeta.endDate
+                                          ? `Vigência: ${selectedLinkedOfferMeta.startDate ? formatPromoDateTimeBr(selectedLinkedOfferMeta.startDate) : 'Início imediato'} até ${selectedLinkedOfferMeta.endDate ? formatPromoDateTimeBr(selectedLinkedOfferMeta.endDate) : 'Sem expiração'}`
+                                          : 'Oferta com vigência contínua'}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-amber-200/80">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedProductId('');
+                                        setSelectedLinkedOfferMeta(null);
+                                        setIsChangingOfferSelection(true);
+                                      }}
+                                      className="px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                    >
+                                      Remover Vínculo
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsChangingOfferSelection(true)}
+                                      className="px-3 py-1 text-xs font-bold bg-amber-600 text-white hover:bg-amber-700 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                                    >
+                                      <RefreshCw className="w-3 h-3" />
+                                      <span>Trocar Oferta</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })()
+                          ) : (
+                            /* LISTAGEM DE OFERTAS EXISTENTES DE PROMOÇÕES E CUPONS */
+                            <div className="space-y-2.5">
+                              {/* Barra de Busca de Ofertas e Filtro de Situação */}
+                              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                                <div className="sm:col-span-8">
+                                  <div className="relative">
+                                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    <input
+                                      type="text"
+                                      placeholder="Pesquisar por oferta, produto ou carrossel..."
+                                      value={offerSearchTerm}
+                                      onChange={(e) => setOfferSearchTerm(e.target.value)}
+                                      className="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500 font-medium text-gray-800 placeholder-gray-400"
+                                    />
+                                    {offerSearchTerm && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setOfferSearchTerm('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="sm:col-span-4">
+                                  <select
+                                    value={offerStatusFilter}
+                                    onChange={(e) => setOfferStatusFilter(e.target.value as 'ALL' | 'ACTIVE')}
+                                    className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500 font-medium text-gray-800"
+                                  >
+                                    <option value="ACTIVE">Apenas Ativas</option>
+                                    <option value="ALL">Todas as Ofertas</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              {/* Lista de Resultados de Ofertas */}
+                              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                                <div className="bg-amber-50/60 px-3 py-1.5 border-b border-gray-200 flex items-center justify-between text-[11px] text-amber-900 font-semibold">
+                                  <span>{filteredOffers.length} ofertas elegíveis encontradas</span>
+                                  {selectedProductId && selectedLinkedOfferMeta && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsChangingOfferSelection(false)}
+                                      className="text-amber-800 hover:underline cursor-pointer font-bold"
+                                    >
+                                      Manter atual
+                                    </button>
+                                  )}
+                                </div>
+
+                                <div className="max-h-56 overflow-y-auto divide-y divide-gray-100 p-1">
+                                  {filteredOffers.length === 0 ? (
+                                    <div className="p-6 text-center text-gray-500 space-y-1">
+                                      <Flame className="w-7 h-7 mx-auto text-amber-300" />
+                                      <p className="text-xs font-semibold">Nenhuma oferta promocional disponível</p>
+                                      <p className="text-[11px] text-gray-400 max-w-sm mx-auto">
+                                        Nenhuma oferta foi encontrada com estes filtros. Você pode selecionar um "Produto do Catálogo" ou cadastrar uma oferta no menu "Promoções".
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    filteredOffers.map((off) => {
+                                      const isSelected = selectedProductId === off.productId;
+                                      return (
+                                        <div
+                                          key={off.id}
+                                          onClick={() => {
+                                            setSelectedProductId(off.productId);
+                                            setSelectedLinkedOfferMeta({
+                                              carouselName: off.carouselName,
+                                              originalPrice: off.originalPrice,
+                                              promotionalPrice: off.promotionalPrice,
+                                              discountPercentage: off.discountPercentage,
+                                              startDate: off.startDate,
+                                              endDate: off.endDate,
+                                            });
+                                            setIsChangingOfferSelection(false);
+
+                                            // Preserva título e imagem quando apropriado
+                                            if (!title || title.startsWith('Card Promocional')) {
+                                              setTitle(off.productName);
+                                            }
+                                            if (!mediaUrl && off.productImage) {
+                                              setMediaUrl(off.productImage);
+                                              inspectMedia(off.productImage, 'IMAGE');
+                                            }
+
+                                            // Preserva agendamento se a oferta possuir datas cadastradas
+                                            if (off.startDate) {
+                                              const s = extractDateAndTimeFromIso(off.startDate);
+                                              setStartDateInput(s.date);
+                                              setStartTimeInput(s.time || '07:00');
+                                            }
+                                            if (off.endDate) {
+                                              const e = extractDateAndTimeFromIso(off.endDate);
+                                              setEndDateInput(e.date);
+                                              setEndTimeInput(e.time || '23:59');
+                                              setNoEndDate(false);
+                                            }
+                                          }}
+                                          className={`p-2.5 rounded-lg flex items-center justify-between gap-2.5 cursor-pointer transition-all ${
+                                            isSelected
+                                              ? 'bg-amber-50 border border-amber-500 text-amber-950 font-medium'
+                                              : 'hover:bg-amber-50/40 border border-transparent'
+                                          }`}
+                                        >
+                                          <div className="flex items-center gap-2.5 min-w-0">
+                                            {off.productImage ? (
+                                              <img
+                                                src={off.productImage}
+                                                alt={off.productName}
+                                                className="w-10 h-10 rounded-lg object-cover border border-gray-200 shrink-0 bg-white"
+                                              />
+                                            ) : (
+                                              <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
+                                                <Flame className="w-4 h-4" />
+                                              </div>
+                                            )}
+
+                                            <div className="min-w-0">
+                                              <div className="flex items-center gap-1.5">
+                                                <p className="text-xs font-bold text-gray-900 truncate">
+                                                  {off.productName}
+                                                </p>
+                                                <span className={`text-[9.5px] px-1.5 py-0.2 rounded font-semibold ${
+                                                  off.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'
+                                                }`}>
+                                                  {off.isActive ? 'Ativa' : 'Inativa'}
+                                                </span>
+                                              </div>
+                                              <div className="flex items-center gap-1.5 text-[10px] text-gray-500 mt-0.5">
+                                                <span className="font-medium text-amber-900">
+                                                  📁 {off.carouselName}
+                                                </span>
+                                                {off.categoryName && <span>• {off.categoryName}</span>}
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <div className="text-right">
+                                              <span className="text-[10px] text-gray-400 line-through block">
+                                                R$ {off.originalPrice.toFixed(2)}
+                                              </span>
+                                              <span className="text-xs font-black text-amber-700 block">
+                                                R$ {off.promotionalPrice.toFixed(2)}
+                                              </span>
+                                              <span className="text-[9.5px] font-bold text-emerald-800 bg-emerald-50 px-1 py-0.2 rounded">
+                                                -{off.discountPercentage}%
+                                              </span>
+                                            </div>
+
+                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+                                              isSelected ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-400'
+                                            }`}>
+                                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* ------------------------------------------------------------ */}
+                {/* SEÇÃO 2: MÍDIA PROMOCIONAL (1200 x 675 px — 16:9)            */}
+                {/* ------------------------------------------------------------ */}
+                <div className="space-y-3 p-4 bg-gray-50 rounded-2xl border border-gray-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <label className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                        <Film className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>2. Mídia Promocional (1200 × 675 px — 16:9)</span>
+                      </label>
+                      <p className="text-[11px] text-gray-500">
+                        Arte 100% limpa (sem textos sobrepostos). Upload direto ou URL externa.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 self-start sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => setMediaSourceMode('upload')}
+                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                          mediaSourceMode === 'upload' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        <Upload className="w-3 h-3" />
+                        <span>Upload</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMediaSourceMode('url')}
+                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                          mediaSourceMode === 'url' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        <LinkIcon className="w-3 h-3" />
+                        <span>URL Externa</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {mediaSourceMode === 'upload' ? (
+                    <div className="flex flex-col sm:flex-row items-center gap-3">
+                      <label className="w-full flex flex-col items-center justify-center p-5 border-2 border-dashed border-gray-300 hover:border-emerald-500 rounded-2xl cursor-pointer bg-white transition-colors">
+                        <Upload className="w-6 h-6 text-gray-400 mb-1" />
+                        <span className="text-xs font-bold text-gray-700">Clique para enviar imagem ou vídeo</span>
+                        <span className="text-[10px] text-gray-400 mt-0.5">JPG, PNG, WEBP até 10MB • MP4, WEBM até 35MB</span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
+                          onChange={handleFileUpload}
+                          disabled={isUploading}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Input
+                        placeholder="https://exemplo.com/sua-arte-16-9.jpg ou .mp4"
+                        value={mediaUrl}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setMediaUrl(val);
+                          setPendingMarketingAsset(null);
+                          const isVid = /\.(mp4|webm|mov)(\?.*)?$/i.test(val);
+                          setMediaType(isVid ? 'VIDEO' : 'IMAGE');
+                          inspectMedia(val, isVid ? 'VIDEO' : 'IMAGE');
+                        }}
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {/* Informações da Mídia Detectada */}
+                  {mediaUrl && (
+                    <div className="p-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-700 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-900">
+                          {mediaType === 'VIDEO' ? '🎥 Vídeo Detectado' : '🖼️ Imagem Detectada'}
+                        </span>
+                        {detectedWidth && detectedHeight && (
+                          <span className="font-mono text-gray-500 text-[11px]">
+                            ({detectedWidth} × {detectedHeight} px)
+                          </span>
+                        )}
+                      </div>
+
+                      {mediaType === 'VIDEO' && detectedVideoDuration && (
+                        <span className="font-mono font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-[11px]">
+                          Duração: {detectedVideoDuration}s
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* ------------------------------------------------------------ */}
+                {/* SEÇÃO 3: CHECKOUT DA PROMOÇÃO (MODO 3)                       */}
+                {/* ------------------------------------------------------------ */}
+                {destinationType === 'CUSTOM_OFFER' && (
+                  <div className="p-4 bg-amber-50/60 rounded-2xl border-2 border-amber-300/80 space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1 rounded-lg bg-amber-600 text-white shadow-2xs">
+                          <Flame className="w-3.5 h-3.5" />
+                        </span>
+                        <div>
+                          <h3 className="text-xs font-black text-amber-950 uppercase tracking-wide">
+                            3. Regras do Checkout Promocional
+                          </h3>
+                        </div>
+                      </div>
+                      <Badge variant="warning" size="sm">Oferta Independente</Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <Input
+                        label="Nome da Oferta *"
+                        value={promoTitle}
+                        onChange={(e) => setPromoTitle(e.target.value)}
+                        placeholder="Ex: Combo Especial 2 Garrafas + Petisco"
+                        required={destinationType === 'CUSTOM_OFFER'}
+                      />
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-gray-700 block">
+                          Unidade de venda
+                        </label>
+                        <select
+                          value={isCustomPromoUnit ? 'outro' : (['un', 'kit', 'cesta', 'combo', 'serviço', 'kg', 'g'].includes(promoUnit) ? promoUnit : 'outro')}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === 'outro') {
+                              setIsCustomPromoUnit(true);
+                              if (promoUnit === 'un') setPromoUnit('');
+                            } else {
+                              setIsCustomPromoUnit(false);
+                              setPromoUnit(val);
+                            }
+                          }}
+                          className="w-full px-3 py-2 text-xs border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500 font-medium"
+                        >
+                          <option value="un">Unidade (padrão - un)</option>
+                          <option value="kit">Kit (kit)</option>
+                          <option value="cesta">Cesta (cesta)</option>
+                          <option value="combo">Combo (combo)</option>
+                          <option value="serviço">Serviço (serv)</option>
+                          <option value="kg">Quilograma (kg)</option>
+                          <option value="g">Grama (g)</option>
+                          <option value="outro">Outro (personalizada)...</option>
+                        </select>
+                        {isCustomPromoUnit && (
+                          <div className="pt-1">
+                            <Input
+                              placeholder="Digite a unidade comercial (ex: garrafa, dúzia, taça)"
+                              value={promoUnit}
+                              onChange={(e) => setPromoUnit(e.target.value)}
+                              required={destinationType === 'CUSTOM_OFFER'}
+                            />
+                          </div>
+                        )}
+                        <p className="text-[10px] text-gray-500">
+                          Define a unidade comercial vendida. Não altera quantidades mínimas, máximas ou preços.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-gray-700 block">
+                        Descrição da Oferta *
+                      </label>
+                      <textarea
+                        value={promoDescription}
+                        onChange={(e) => setPromoDescription(e.target.value)}
+                        placeholder="Descreva detalhadamente o que está incluso na promoção..."
+                        rows={2}
+                        className="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500 font-medium"
+                        required={destinationType === 'CUSTOM_OFFER'}
+                      />
+                    </div>
+
+                    {/* Preços e Desconto */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <Input
+                        label="Preço De (R$)"
+                        type="number"
+                        step="0.01"
+                        value={promoOriginalPrice}
+                        onChange={(e) => handlePromoPriceChange(e.target.value, promoPrice)}
+                        placeholder="Ex: 59.90"
+                      />
+
+                      <Input
+                        label="Preço Por (R$) *"
+                        type="number"
+                        step="0.01"
+                        value={promoPrice}
+                        onChange={(e) => handlePromoPriceChange(promoOriginalPrice, e.target.value)}
+                        placeholder="Ex: 44.90"
+                        required={destinationType === 'CUSTOM_OFFER'}
+                      />
+
+                      <Input
+                        label="% Desconto"
+                        type="number"
+                        value={promoDiscountPercentage}
+                        onChange={(e) => setPromoDiscountPercentage(e.target.value)}
+                        placeholder="Auto"
+                      />
+                    </div>
+
+                    {/* Quantidades e Limites */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <Input
+                        label="Qtd Mínima"
+                        type="number"
+                        min={1}
+                        value={promoMinQuantity}
+                        onChange={(e) => setPromoMinQuantity(e.target.value)}
+                        placeholder="1"
+                      />
+
+                      <Input
+                        label="Máx / Cliente"
+                        type="number"
+                        min={1}
+                        value={promoMaxQuantityPerCustomer}
+                        onChange={(e) => setPromoMaxQuantityPerCustomer(e.target.value)}
+                        placeholder="10"
+                      />
+
+                      <Input
+                        label="Limite de Usos"
+                        type="number"
+                        min={1}
+                        value={promoUsageLimit}
+                        onChange={(e) => setPromoUsageLimit(e.target.value)}
+                        placeholder="Sem limite"
+                      />
+                    </div>
+
+                    {/* Modalidades de Entrega e Cupom */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-amber-200">
+                      <div className="space-y-1">
+                        <span className="text-[11px] font-bold text-gray-700 block">
+                          Modalidades Aceitas:
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={promoFulfillmentTypes.includes('DELIVERY')}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setPromoFulfillmentTypes(prev => [...prev, 'DELIVERY']);
+                                } else {
+                                  setPromoFulfillmentTypes(prev => prev.filter(t => t !== 'DELIVERY'));
+                                }
+                              }}
+                              className="rounded text-amber-600 focus:ring-amber-500"
+                            />
+                            <span>Delivery</span>
+                          </label>
+
+                          <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={promoFulfillmentTypes.includes('PICKUP')}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setPromoFulfillmentTypes(prev => [...prev, 'PICKUP']);
+                                } else {
+                                  setPromoFulfillmentTypes(prev => prev.filter(t => t !== 'PICKUP'));
+                                }
+                              }}
+                              className="rounded text-amber-600 focus:ring-amber-500"
+                            />
+                            <span>Retirada</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Input
+                          label="Cupom Vinculado (Opcional)"
+                          placeholder="Ex: PROMO20"
+                          value={promoCouponCode}
+                          onChange={(e) => setPromoCouponCode(e.target.value.toUpperCase())}
+                        />
+                      </div>
+                    </div>
+
+                    <Input
+                      label="Observações / Regras da Oferta"
+                      value={promoNotes}
+                      onChange={(e) => setPromoNotes(e.target.value)}
+                      placeholder="Ex: Validade exclusiva para o turno da noite."
+                    />
+                  </div>
+                )}
+
+                {/* ------------------------------------------------------------ */}
+                {/* SEÇÃO 4: IDENTIFICAÇÃO DO CARD                                */}
+                {/* ------------------------------------------------------------ */}
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-1.5">
+                  <label className="text-xs font-bold text-gray-800 uppercase tracking-wider block">
+                    4. Nome de Identificação do Card (Apenas para organização interna) *
+                  </label>
+                  <Input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Ex: Banner Fim de Semana, Combo Chopp"
+                    required
+                  />
+                  <p className="text-[11px] text-gray-500">
+                    Este nome é exclusivo para gestão no seu painel. A imagem/vídeo ocupa 100% da área do card na vitrine, sem nenhum texto ou faixa por cima.
+                  </p>
+                </div>
+
+                {/* ------------------------------------------------------------ */}
+                {/* SEÇÃO 5: AGENDAMENTO (DATA + HORÁRIO)                         */}
+                {/* ------------------------------------------------------------ */}
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <CalendarDays className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>5. Período de Exibição</span>
+                    </label>
+                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      Horário de Brasília
+                    </span>
+                  </div>
+
+                  {/* Início */}
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-bold text-gray-700">INÍCIO DA EXIBIÇÃO</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 mb-0.5 block">Data</label>
+                        <Input
+                          type="date"
+                          value={startDateInput}
+                          onChange={(e) => setStartDateInput(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 mb-0.5 block">Horário</label>
+                        <Input
+                          type="time"
+                          value={startTimeInput}
+                          onChange={(e) => setStartTimeInput(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Término */}
+                  <div className="space-y-1.5 pt-2 border-t border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-gray-700">TÉRMINO DA EXIBIÇÃO</span>
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-emerald-800">
+                        <input
+                          type="checkbox"
+                          checked={noEndDate}
+                          onChange={(e) => setNoEndDate(e.target.checked)}
+                          className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                        />
+                        <span>Sem término (contínuo)</span>
+                      </label>
+                    </div>
+
+                    {!noEndDate ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 mb-0.5 block">Data</label>
+                          <Input
+                            type="date"
+                            value={endDateInput}
+                            onChange={(e) => setEndDateInput(e.target.value)}
+                            required={!noEndDate}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 mb-0.5 block">Horário</label>
+                          <Input
+                            type="time"
+                            value={endTimeInput}
+                            onChange={(e) => setEndTimeInput(e.target.value)}
+                            required={!noEndDate}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 bg-white border border-gray-200 rounded-xl text-[11px] text-gray-600 italic">
+                        O card permanecerá ativo na vitrine até ser desativado manualmente.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* ------------------------------------------------------------ */}
+                {/* SEÇÃO 6: TEMPO DE ROTAÇÃO                                     */}
+                {/* ------------------------------------------------------------ */}
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
+                  <label className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>6. Tempo de Rotação do Carrossel</span>
+                  </label>
+
+                  {mediaType === 'VIDEO' ? (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Film className="w-4 h-4 text-blue-600 shrink-0" />
+                        <div>
+                          <span className="font-bold">
+                            Vídeo: {detectedVideoDuration ? `${detectedVideoDuration} segundos` : 'Detectando duração...'}
+                          </span>
+                          <p className="text-[11px] text-blue-800">
+                            Avança automaticamente ao término da reprodução do arquivo de vídeo.
+                          </p>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 font-mono font-black text-xs bg-white rounded-lg border border-blue-200 text-blue-950 shrink-0">
+                        {detectedVideoDuration ? `${detectedVideoDuration}s` : 'Auto'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {DURATION_PRESETS.map((sec) => (
+                          <button
+                            key={sec}
+                            type="button"
+                            onClick={() => {
+                              setDurationSeconds(sec);
+                              setIsCustomDuration(false);
+                              setCustomDurationInput(String(sec));
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              !isCustomDuration && durationSeconds === sec
+                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
+                            }`}
+                          >
+                            {sec}s
+                          </button>
+                        ))}
+
+                        <button
+                          type="button"
+                          onClick={() => setIsCustomDuration(true)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            isCustomDuration
+                              ? 'bg-emerald-600 text-white shadow-2xs'
+                              : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
+                          }`}
+                        >
+                          Personalizado
+                        </button>
+                      </div>
+
+                      {isCustomDuration && (
+                        <div className="flex items-center gap-2 max-w-xs pt-1">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={60}
+                            value={customDurationInput}
+                            onChange={(e) => setCustomDurationInput(e.target.value)}
+                            placeholder="Ex: 8"
+                          />
+                          <span className="text-xs font-semibold text-gray-600">segundos</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ============================================================== */}
+              {/* COLUNA DIREITA: PRÉVIA AO VIVO STICKY (16:9)                   */}
+              {/* ============================================================== */}
+              <div className="lg:col-span-5 lg:sticky lg:top-0 space-y-4">
+                {/* Box de Prévia Interativa */}
+                <div className="bg-slate-900 text-white p-4 rounded-3xl border border-slate-800 shadow-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 text-slate-200">
+                      <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Prévia ao Vivo na Vitrine</span>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                      16:9 • 1200×675 px
+                    </span>
+                  </div>
+
+                  {/* Abas da Prévia */}
+                  <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl text-[11px] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setEditorPreviewTab('isolated')}
+                      className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                        editorPreviewTab === 'isolated'
+                          ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      🖼️ Isolado
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditorPreviewTab('carousel')}
+                      className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                        editorPreviewTab === 'carousel'
+                          ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      🎠 Carrossel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditorPreviewTab('action')}
+                      className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                        editorPreviewTab === 'action'
+                          ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      🛍️ Ao Clicar
                     </button>
                   </div>
 
-                  {isCustomDuration && (
-                    <div className="flex items-center gap-2 max-w-xs pt-1">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={60}
-                        value={customDurationInput}
-                        onChange={(e) => setCustomDurationInput(e.target.value)}
-                        placeholder="Ex: 8"
+                  {/* Banner 16:9 Fiel ao App do Cliente */}
+                  <div className="relative aspect-16/9 w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-slate-800 shadow-2xl group">
+                    {mediaType === 'VIDEO' && mediaUrl ? (
+                      <video
+                        key={mediaUrl}
+                        src={mediaUrl}
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
+                        className="w-full h-full object-cover object-center"
                       />
-                      <span className="text-xs font-semibold text-gray-600">segundos</span>
+                    ) : mediaUrl ? (
+                      <img
+                        src={mediaUrl}
+                        alt={title || 'Arte do Card'}
+                        className="w-full h-full object-cover object-center"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center p-6 text-center text-slate-500 space-y-1.5">
+                        <Film className="w-8 h-8 text-slate-600" />
+                        <span className="text-xs font-semibold text-slate-300">Área do Card 16:9</span>
+                        <span className="text-[10px] text-slate-500">Envie uma imagem/vídeo ou insira uma URL</span>
+                      </div>
+                    )}
+
+                    {/* Simulação de Carrossel: Indicadores Segmentados Estilo iFood e Setas */}
+                    {editorPreviewTab === 'carousel' && (
+                      <>
+                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-xs text-xs z-20 shadow-md">
+                          ‹
+                        </div>
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-xs text-xs z-20 shadow-md">
+                          ›
+                        </div>
+
+                        {/* Indicadores Segmentados no Estilo do iFood */}
+                        <div className="absolute bottom-0 left-0 right-0 z-30 pt-6 pb-2 px-3 bg-gradient-to-t from-black/80 via-black/35 to-transparent pointer-events-none">
+                          <div className="flex items-center gap-1.5 w-full">
+                            {/* Segmento 1: Anterior concluído */}
+                            <div className="flex-1 h-1 rounded-full overflow-hidden bg-white/35">
+                              <div className="h-full bg-white rounded-full w-full" />
+                            </div>
+                            {/* Segmento 2: Card em edição (progresso animado ao vivo) */}
+                            <div className="flex-1 h-1 rounded-full overflow-hidden bg-white/35">
+                              <div
+                                className="h-full bg-white rounded-full transition-all duration-75 ease-linear"
+                                style={{ width: `${simulatedProgress}%` }}
+                              />
+                            </div>
+                            {/* Segmento 3: Próximo anúncio */}
+                            <div className="flex-1 h-1 rounded-full overflow-hidden bg-white/35">
+                              <div className="h-full bg-white rounded-full w-0" />
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Badge de tipo de mídia */}
+                    {mediaUrl && (
+                      <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
+                        <span className="px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[9.5px] font-bold text-white flex items-center gap-1 border border-white/20">
+                          {mediaType === 'VIDEO' ? <Film className="w-3 h-3 text-amber-400" /> : <ImageIcon className="w-3 h-3 text-emerald-400" />}
+                          <span>{mediaType === 'VIDEO' ? 'Vídeo (16:9)' : 'Imagem (16:9)'}</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Simulação do Destino / Ação ao Clicar */}
+                  {editorPreviewTab === 'action' && (
+                    <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 text-xs space-y-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        Comportamento no Toque do Cliente:
+                      </span>
+
+                      {destinationType === 'BANNER_ONLY' && (
+                        <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 text-xs space-y-1">
+                          <div className="font-bold text-white flex items-center gap-1.5">
+                            <span>👁️ Apenas Visual</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 leading-snug">
+                            O banner é uma campanha institucional ou artística de destaque sem acionar modal.
+                          </p>
+                        </div>
+                      )}
+
+                      {destinationType === 'PRODUCT' && (
+                        <div className={`p-2.5 rounded-xl border text-xs space-y-1.5 ${
+                          selectedLinkedOfferMeta 
+                            ? 'bg-amber-950/60 border-amber-800/80 text-amber-200' 
+                            : 'bg-emerald-950/60 border-emerald-800/80 text-emerald-200'
+                        }`}>
+                          <div className={`font-bold flex items-center gap-1.5 ${
+                            selectedLinkedOfferMeta ? 'text-amber-300' : 'text-emerald-300'
+                          }`}>
+                            <span>
+                              {selectedLinkedOfferMeta ? '🔥 Oferta Vinculada (Promoções e Cupons):' : '🛒 Abre o Produto Vinculado:'}
+                            </span>
+                          </div>
+                          {selectedProductId ? (
+                            (() => {
+                              const p = products.find(prod => prod.id === selectedProductId);
+                              return p ? (
+                                <div className="p-2 bg-slate-900 rounded-lg flex items-center justify-between border border-slate-700/60">
+                                  <div className="min-w-0 pr-2">
+                                    <p className="font-bold text-white text-xs truncate">{p.name}</p>
+                                    {selectedLinkedOfferMeta ? (
+                                      <div className="flex items-center gap-1.5 text-[10px]">
+                                        <span className="text-slate-400 line-through">R$ {selectedLinkedOfferMeta.originalPrice.toFixed(2)}</span>
+                                        <span className="font-bold text-amber-400">R$ {selectedLinkedOfferMeta.promotionalPrice.toFixed(2)}</span>
+                                        <span className="px-1 rounded bg-emerald-900 text-emerald-300 font-bold">-{selectedLinkedOfferMeta.discountPercentage}%</span>
+                                      </div>
+                                    ) : (
+                                      <p className="text-[10px] text-slate-400">R$ {p.price.toFixed(2)} / {p.unit || 'un'}</p>
+                                    )}
+                                  </div>
+                                  <span className={`text-[10px] px-2 py-0.5 rounded text-white font-bold shrink-0 ${
+                                    selectedLinkedOfferMeta ? 'bg-amber-600' : 'bg-emerald-600'
+                                  }`}>
+                                    {selectedLinkedOfferMeta ? 'Aproveitar Oferta' : 'Adicionar à Sacola'}
+                                  </span>
+                                </div>
+                              ) : <span className="text-slate-400">Produto não encontrado</span>;
+                            })()
+                          ) : (
+                            <p className="text-amber-300 text-[11px]">Selecione um produto ou oferta no formulário.</p>
+                          )}
+                        </div>
+                      )}
+
+                      {destinationType === 'CUSTOM_OFFER' && (
+                        <div className="p-3 rounded-xl bg-amber-950/60 border border-amber-800/80 text-amber-200 text-xs space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-amber-300 flex items-center gap-1">
+                              <span>⚡ Modal de Checkout Promocional</span>
+                            </span>
+                            {promoDiscountPercentage && (
+                              <span className="px-2 py-0.5 rounded bg-rose-600 text-white font-bold text-[10px]">
+                                {promoDiscountPercentage}% OFF
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="p-2.5 bg-slate-900 rounded-xl space-y-1 border border-amber-700/50">
+                            <p className="font-extrabold text-white text-xs">{promoTitle || 'Nome da Oferta'}</p>
+                            <p className="text-[11px] text-slate-400 line-clamp-2">{promoDescription || 'Descrição da promoção...'}</p>
+                            
+                            <div className="flex items-baseline gap-2 pt-1">
+                              {promoPrice && (
+                                <span className="font-extrabold text-amber-400 text-sm font-mono">
+                                  R$ {parseFloat(promoPrice).toFixed(2)}
+                                </span>
+                              )}
+                              {promoOriginalPrice && (
+                                <span className="line-through text-slate-500 text-[11px] font-mono">
+                                  R$ {parseFloat(promoOriginalPrice).toFixed(2)}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-400">/{promoUnit || 'un'}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                            <span>Entrega: {promoFulfillmentTypes.join(', ')}</span>
+                            <span className="font-bold text-amber-400">Checkout Atômico</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {/* ============================================================== */}
-            {/* SEÇÃO 9: PRÉ-VISUALIZAÇÃO EM TEMPO REAL                        */}
-            {/* ============================================================== */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                <span>8. Pré-visualização em Tempo Real (16:9)</span>
-              </label>
+                {/* Card de Resumo Técnico e Auditoria do Criativo */}
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-gray-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Resumo da Configuração</span>
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${formStatusMeta.badgeClass}`}>
+                      {formStatusMeta.fullLabel}
+                    </span>
+                  </div>
 
-              <div className="p-4 bg-gray-950 rounded-3xl flex items-center justify-center overflow-hidden">
-                <div className="w-full max-w-md aspect-16/9 rounded-2xl overflow-hidden relative flex items-center justify-center bg-black shadow-2xl">
-                  {mediaType === 'VIDEO' && mediaUrl ? (
-                    <video
-                      src={mediaUrl}
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                      className="w-full h-full object-cover object-center"
-                    />
-                  ) : mediaUrl ? (
-                    <img
-                      src={mediaUrl}
-                      alt="Preview Arte"
-                      className="w-full h-full object-cover object-center"
-                    />
-                  ) : (
-                    <div className="text-white/40 text-xs">Selecione uma imagem ou vídeo para visualizar</div>
-                  )}
+                  <div className="space-y-2 text-gray-600 text-[11px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Destino:</span>
+                      <span className="font-bold text-gray-900">
+                        {destinationType === 'CUSTOM_OFFER' 
+                          ? '⚡ Checkout Promocional' 
+                          : destinationType === 'PRODUCT' 
+                          ? '🛒 Produto do Catálogo' 
+                          : '👁️ Apenas Visual'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Tempo de Exibição:</span>
+                      <span className="font-mono font-bold text-gray-900">
+                        {mediaType === 'VIDEO' ? `${detectedVideoDuration || 10}s (Vídeo)` : `${isCustomDuration ? customDurationInput : durationSeconds}s (Imagem)`}
+                      </span>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-gray-500 shrink-0">Período:</span>
+                      <span className="font-mono text-right font-medium text-gray-800">
+                        {computedStartIso ? formatPromoDateTimeBr(computedStartIso) : 'Aguardando'} 
+                        {' → '}
+                        {noEndDate ? 'Indeterminado' : (computedEndIso ? formatPromoDateTimeBr(computedEndIso) : 'Aguardando')}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-[11px] text-emerald-900 leading-snug">
+                    {formStatusMeta.summaryText}
+                  </div>
                 </div>
               </div>
             </div>

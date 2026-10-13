@@ -56,6 +56,7 @@ function AppContent() {
     membershipError,
     retryAuthResolution,
     isSupabaseAuth, 
+    isDevBypassed,
     hasTenantMembership, 
     isAccountSuspended,
     availableTenants,
@@ -277,7 +278,7 @@ function AppContent() {
   }
 
   // 6. Usuário Não Autenticado (NOT_AUTHENTICATED) — Tela de Entrada Premium
-  if (authState === 'NOT_AUTHENTICATED' || !isSupabaseAuth || !currentUser) {
+  if (!isDevBypassed && (authState === 'NOT_AUTHENTICATED' || !isSupabaseAuth || !currentUser)) {
     return (
       <div className="min-h-screen bg-slate-900/98 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(21,128,61,0.25),rgba(255,255,255,0))] flex flex-col items-center justify-center p-4 sm:p-6">
         {/* Card de Login Premium com abas integradas de Entrar e Criar Conta */}

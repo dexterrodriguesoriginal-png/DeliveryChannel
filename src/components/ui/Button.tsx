@@ -1,9 +1,8 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
-import { Loader2 } from 'lucide-react';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
   leftIcon?: React.ReactNode;
@@ -17,41 +16,48 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({
   isLoading = false,
   leftIcon,
   rightIcon,
-  children,
   disabled,
+  children,
   ...props
 }, ref) => {
-  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98] select-none';
-
   const variants = {
-    primary: 'bg-emerald-700 text-white hover:bg-emerald-800 shadow-2xs shadow-emerald-700/20 focus:ring-emerald-600',
-    secondary: 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100/80 border border-emerald-200/60 focus:ring-emerald-500',
-    outline: 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-2xs focus:ring-emerald-500',
-    ghost: 'bg-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:ring-emerald-500',
-    danger: 'bg-rose-600 text-white hover:bg-rose-700 shadow-2xs shadow-rose-600/20 focus:ring-rose-500',
-    success: 'bg-green-600 text-white hover:bg-green-700 shadow-2xs focus:ring-green-500',
+    primary: 'bg-emerald-700 text-white hover:bg-emerald-800 active:bg-emerald-900 shadow-sm border border-transparent focus:ring-emerald-600/30',
+    secondary: 'bg-gray-100 text-gray-800 hover:bg-gray-200 active:bg-gray-300 border border-gray-200 focus:ring-gray-400/20',
+    outline: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 active:bg-gray-100 shadow-2xs focus:ring-emerald-600/20',
+    ghost: 'bg-transparent text-gray-600 hover:bg-gray-100 active:bg-gray-200 border-transparent focus:ring-gray-400/20',
+    danger: 'bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800 shadow-sm border border-transparent focus:ring-rose-600/30',
   };
 
   const sizes = {
-    sm: 'text-[8px] px-1 py-0 gap-0.5 h-4.5 rounded',
-    md: 'text-[9px] px-2 py-0 gap-0.5 h-5.5 rounded font-semibold',
-    lg: 'text-[10px] px-2.5 py-0.5 gap-1 h-6 rounded',
+    sm: 'text-xs px-2.5 py-1.5 rounded-lg gap-1.5 font-medium min-h-7',
+    md: 'text-sm px-3.5 py-2 rounded-xl gap-2 font-semibold min-h-9',
+    lg: 'text-base px-5 py-2.5 rounded-xl gap-2.5 font-semibold min-h-11',
   };
 
   return (
     <button
       ref={ref}
-      className={cn(baseStyles, variants[variant], sizes[size], className)}
       disabled={disabled || isLoading}
+      className={cn(
+        'inline-flex items-center justify-center select-none transition-all duration-150 outline-none focus:ring-2 disabled:opacity-50 disabled:pointer-events-none cursor-pointer',
+        variants[variant],
+        sizes[size],
+        className
+      )}
       {...props}
     >
       {isLoading ? (
-        <Loader2 className="w-3 h-3 animate-spin text-current" />
-      ) : (
-        leftIcon
+        <svg className="animate-spin w-4 h-4 text-current shrink-0" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+      ) : leftIcon ? (
+        <span className="shrink-0">{leftIcon}</span>
+      ) : null}
+      {children}
+      {!isLoading && rightIcon && (
+        <span className="shrink-0">{rightIcon}</span>
       )}
-      <span>{children}</span>
-      {!isLoading && rightIcon}
     </button>
   );
 });

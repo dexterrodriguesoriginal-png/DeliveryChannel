@@ -993,14 +993,23 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           <p className="text-[11px] text-gray-400">
             Verifique se o link ou QR Code foi gerado corretamente para este estabelecimento comercial.
           </p>
-          <div className="pt-2">
+          <div className="pt-2 flex flex-col sm:flex-row gap-2">
             <Button
-              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+              className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+              onClick={() => {
+                window.location.href = '/app/adega-premium';
+              }}
+            >
+              Abrir Catálogo Modelo
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1 cursor-pointer border-gray-300 text-gray-700 hover:bg-gray-50"
               onClick={() => {
                 window.location.href = '/';
               }}
             >
-              Voltar ao Início
+              Voltar ao Painel
             </Button>
           </div>
         </div>
@@ -1016,6 +1025,27 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         fontFamily: theme.fontFamily || 'Inter'
       }}
     >
+      {/* Barra de Retorno ao Painel (Facilita Testes do Dono Sem Precisar Publicar) */}
+      <div className="bg-slate-950 text-white text-xs px-3.5 py-2 flex items-center justify-between border-b border-slate-800 z-40 relative">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+          <span className="font-bold text-[11px] sm:text-xs text-white truncate">
+            Vitrine do Cliente • Visualização em Tempo Real
+          </span>
+          <span className="text-[10px] text-slate-400 hidden sm:inline truncate">
+            ({storeData.tenant.name})
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => { window.location.href = '/'; }}
+          className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
+          title="Voltar ao Painel Administrativo"
+        >
+          <span>← Voltar ao Painel</span>
+        </button>
+      </div>
+
       {/* Top Header com Marca Oficial do Estabelecimento */}
       <div 
         className="sticky top-0 z-30 shadow-xs px-4 py-3 flex items-center justify-between border-b border-black/5 backdrop-blur-md"

@@ -64,7 +64,7 @@ export function sortCardsForDisplay(cards: Offer[]): Offer[] {
  * Converte um CampaignCard em um Offer padronizado para consumo no carrossel da vitrine.
  */
 export function campaignCardToOffer(card: CampaignCard, campaign: Campaign): Offer {
-  const autoOverlay = card.autoOverlay ?? false;
+  const autoOverlay = false;
   const mediaUrl = card.mediaUrl || '';
 
   return {
@@ -75,15 +75,15 @@ export function campaignCardToOffer(card: CampaignCard, campaign: Campaign): Off
     subtitle: card.subtitle,
     description: card.description || campaign.description,
     badge: card.badge,
-    cardModel: card.model === 'FULL_MEDIA' ? 'HERO' : (card.model === 'PROMO_CARD' ? 'HIGHLIGHT' : 'ANIMATED'),
+    cardModel: 'HERO',
     cardFormat: 'HORIZONTAL',
     mediaType: card.mediaType || 'IMAGE',
     mediaUrl,
     imageUrl: mediaUrl,
     durationSeconds: card.durationSeconds ?? 5,
     videoDuration: card.videoDuration,
-    autoOverlay,
-    displayMode: autoOverlay ? 'EDITABLE_CARD' : 'FULL_MEDIA',
+    autoOverlay: false,
+    displayMode: 'FULL_MEDIA',
     destinationType: (card.destinationType as CardDestination) || 'BANNER_ONLY',
     productId: card.productId || card.product?.id,
     order: card.displayOrder ?? 0,

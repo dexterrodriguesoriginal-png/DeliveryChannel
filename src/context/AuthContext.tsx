@@ -185,24 +185,33 @@ export const isGoogleVerifiedUser = (user: any): boolean => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
-  const [activeRole, setActiveRole] = useState<RoleId | null>(null);
-  const [activeTenant, setActiveTenantState] = useState<Tenant | null>(null);
+  // Acesso Temporário de Desenvolvimento (Bypass de login para dono)
+  const isDevBypassedInitial = typeof window !== 'undefined' && localStorage.getItem('adegafood_dev_bypass') === 'true';
+  const initialDevTenant: Tenant | null = isDevBypassedInitial 
+    ? (dataStore.getTenantBySlug('adega-premium') || (dataStore as any).tenants?.[0] || null) 
+    : null;
+  const initialDevUser: AppUser | null = initialDevTenant ? {
+    id: 'dev-owner-bypass',
+    name: 'Dono do Estabelecimento (Dev)',
+    email: initialDevTenant.email || 'dono.dev@adegafood.test',
+    role: 'OWNER',
+    tenantId: initialDevTenant.id,
+  } : null;
+
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(initialDevUser);
+  const [activeRole, setActiveRole] = useState<RoleId | null>(isDevBypassedInitial ? 'OWNER' : null);
+  const [activeTenant, setActiveTenantState] = useState<Tenant | null>(initialDevTenant);
   const [isCeoSupportMode, setIsCeoSupportMode] = useState<boolean>(false);
 
-  // Acesso Temporário de Desenvolvimento (Bypass de login para dono)
-  const [isDevBypassed, setIsDevBypassed] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('adegafood_dev_bypass') === 'true';
-    }
-    return false;
-  });
+  const [isDevBypassed, setIsDevBypassed] = useState<boolean>(isDevBypassedInitial);
+  const isDevBypassedRef = useRef<boolean>(isDevBypassedInitial);
+  isDevBypassedRef.current = isDevBypassed;
 
   // Supabase Auth Real
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [supabaseSession, setSupabaseSession] = useState<SupabaseSession | null>(null);
-  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
-  const [isMembershipLoading, setIsMembershipLoading] = useState<boolean>(true);
+  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(!isDevBypassedInitial);
+  const [isMembershipLoading, setIsMembershipLoading] = useState<boolean>(!isDevBypassedInitial);
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Controle estrito de Confirmação de E-mail (Supabase Auth Email Confirmation)
@@ -264,10 +273,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const currentResolvedUserIdRef = useRef<string | null>(null);
 
   // Estados Multi-Tenant estritos e Resolução Conceitual
-  const [membershipStatus, setMembershipStatus] = useState<MembershipStatus>('AUTH_LOADING');
+  const [membershipStatus, setMembershipStatus] = useState<MembershipStatus>(
+    isDevBypassedInitial ? 'MEMBERSHIP_RESOLVED_WITH_DATA' : 'AUTH_LOADING'
+  );
   const [membershipError, setMembershipError] = useState<string | null>(null);
-  const [availableTenants, setAvailableTenants] = useState<TenantMembership[]>([]);
-  const [hasTenantMembership, setHasTenantMembership] = useState<boolean>(false);
+  const [availableTenants, setAvailableTenants] = useState<TenantMembership[]>(() => {
+    if (initialDevTenant) {
+      return [{
+        tenantId: initialDevTenant.id,
+        roleId: 'OWNER',
+        status: 'ACTIVE',
+        tenantName: initialDevTenant.name,
+        tenantSlug: initialDevTenant.slug,
+        category: initialDevTenant.category || 'ADEGA',
+      }];
+    }
+    return [];
+  });
+  const [hasTenantMembership, setHasTenantMembership] = useState<boolean>(isDevBypassedInitial);
   const [isAccountSuspended, setIsAccountSuspended] = useState<boolean>(false);
 
   // Carrega os dados reais do Tenant do banco a partir do tenant_id de forma tolerante a falhas
@@ -855,7 +878,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentResolvedUserIdRef.current = null;
         if (source === 'SIGNED_OUT') {
           clearEmailConfirmation();
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('adegafood_dev_bypass');
+          }
+          setIsDevBypassed(false);
+          isDevBypassedRef.current = false;
         }
+
+        // Se o modo bypass estiver ativo, preserva o dono de desenvolvimento e não zera a sessão!
+        if (isDevBypassedRef.current || (typeof window !== 'undefined' && localStorage.getItem('adegafood_dev_bypass') === 'true')) {
+          console.log('[AuthContext] Sessão Supabase vazia ignorada: DevBypass ativo para desenvolvimento.');
+          setIsMembershipLoading(false);
+          setIsLoadingAuth(false);
+          setMembershipStatus('MEMBERSHIP_RESOLVED_WITH_DATA');
+          return;
+        }
+
         setSupabaseSession(null);
         setSupabaseUser(null);
         setCurrentUser(null);
@@ -1643,22 +1681,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('adegafood_dev_bypass', 'true');
     }
     setIsDevBypassed(true);
+    isDevBypassedRef.current = true;
 
     let tenant: Tenant | null = null;
-    try {
-      const { data: tenantRows } = await supabase.from('tenants').select('*').limit(1);
-      if (tenantRows && tenantRows.length > 0) {
-        const tRow = tenantRows[0];
-        const { data: settingsRow } = await supabase.from('tenant_settings').select('*').eq('tenant_id', tRow.id).maybeSingle();
-        const { data: themeRow } = await supabase.from('tenant_themes').select('*').eq('tenant_id', tRow.id).maybeSingle();
-        tenant = mapDbTenant(tRow, settingsRow, themeRow);
+    if (isSupabaseConfigured) {
+      try {
+        const { data: tenantRows } = await supabase.from('tenants').select('*').limit(1);
+        if (tenantRows && tenantRows.length > 0) {
+          const tRow = tenantRows[0];
+          const { data: settingsRow } = await supabase.from('tenant_settings').select('*').eq('tenant_id', tRow.id).maybeSingle();
+          const { data: themeRow } = await supabase.from('tenant_themes').select('*').eq('tenant_id', tRow.id).maybeSingle();
+          tenant = mapDbTenant(tRow, settingsRow, themeRow);
+        }
+      } catch (e) {
+        console.warn('[DevBypass] Erro ao buscar tenant no Supabase:', e);
       }
-    } catch (e) {
-      console.warn('[DevBypass] Erro ao buscar tenant no Supabase:', e);
     }
 
     if (!tenant) {
-      tenant = dataStore.getTenantBySlug('adega-premium') || null;
+      tenant = dataStore.getTenantBySlug('adega-premium') || (dataStore as any).tenants?.[0] || null;
     }
 
     const tenantId = tenant?.id || 'tenant-adega-01';
@@ -1695,6 +1736,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem('adegafood_dev_bypass');
     }
     setIsDevBypassed(false);
+    isDevBypassedRef.current = false;
     setCurrentUser(null);
     setActiveRole(null);
     setActiveTenantState(null);

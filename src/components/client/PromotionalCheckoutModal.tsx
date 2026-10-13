@@ -433,19 +433,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
             <div className="text-white/40 text-xs">Mídia promocional</div>
           )}
 
-          {/* Badge flutuante de escassez ou destaque */}
-          <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 z-10">
-            {offer.badge && (
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/90 backdrop-blur-md text-amber-950 border border-white shadow-xs">
-                {offer.badge}
-              </span>
-            )}
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500 text-gray-950 flex items-center gap-1 shadow-xs">
-              <Flame className="w-3 h-3 fill-current" />
-              Oferta Especial
-            </span>
-          </div>
-
+          {/* Mídia pura sem sobreposição de textos ou faixas */}
           {remainingUses !== null && remainingUses <= 15 && (
             <div className="absolute bottom-3 right-3 z-10 px-2.5 py-1 rounded-full bg-rose-600/90 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1 animate-pulse">
               <AlertCircle className="w-3 h-3" />
