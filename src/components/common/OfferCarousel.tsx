@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Offer } from '../../types';
 import { ChevronLeft, ChevronRight, Tag, ArrowRight, VolumeX, Percent } from 'lucide-react';
+import { detectSwipeIntent, swipeDirection, DRAG_CLICK_SUPPRESS_PX, SwipeIntent } from '../../utils/swipe';
 import { getCardDisplayDurationMs, isCardLiveAt, sortCardsForDisplay } from '../../utils/storefrontCards';
 
 export interface OfferCarouselProps {
@@ -25,6 +26,8 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<number | null>(null);
   const startedKeyRef = useRef<string>('');
+  const dragRef = useRef<{ id: number; x: number; y: number; intent: SwipeIntent } | null>(null);
+  const suppressClickRef = useRef(false);
   const [now, setNow] = useState(() => Date.now() + clockOffsetMs);
 
   // Atualização periódica (10 s) para retirar cards que expiram / incluir os que iniciam sem refresh
@@ -167,6 +170,33 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
       }}
       onTouchStart={() => setIsPaused(true)}
       onTouchEnd={() => setIsPaused(false)}
+      onTouchCancel={() => setIsPaused(false)}
+      style={{ touchAction: 'pan-y' }}
+      onPointerDown={(e) => {
+        if (total <= 1 || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        dragRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, intent: 'pending' };
+        suppressClickRef.current = false;
+      }}
+      onPointerMove={(e) => {
+        const d = dragRef.current;
+        if (!d || d.id !== e.pointerId) return;
+        const dx = e.clientX - d.x, dy = e.clientY - d.y;
+        if (d.intent === 'pending') d.intent = detectSwipeIntent(dx, dy);
+        if (d.intent === 'vertical') { dragRef.current = null; return; }
+        if (Math.abs(dx) > DRAG_CLICK_SUPPRESS_PX) suppressClickRef.current = true;
+      }}
+      onPointerUp={(e) => {
+        const d = dragRef.current;
+        dragRef.current = null;
+        if (!d || d.id !== e.pointerId) return;
+        const dir = swipeDirection(e.clientX - d.x, e.clientY - d.y);
+        if (dir) { suppressClickRef.current = true; if (dir === 'next') nextSlide(); else prevSlide(); }
+      }}
+      onPointerCancel={() => { dragRef.current = null; }}
+      onClickCapture={(e) => {
+        if (suppressClickRef.current) { suppressClickRef.current = false; e.stopPropagation(); e.preventDefault(); }
+      }}
+      onDragStart={(e) => e.preventDefault()}
     >
       {/* Banner Card Container 16:9 */}
       <div

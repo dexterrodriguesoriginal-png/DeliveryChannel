@@ -96,7 +96,8 @@ export async function fetchServedManifest(store: StoreIdentityInput, fetchImpl: 
 export async function applyStoreIdentity(store: StoreIdentityInput): Promise<AppliedIdentity> {
   const name = storeDisplayName(store);
   const themeColor = safeColor(store.theme?.primaryColor, FALLBACK_THEME_COLOR);
-  const served = await fetchServedManifest(store);
+  // Uma nova tentativa evita trocar o manifesto servido por um data: numa falha momentânea.
+  const served = (await fetchServedManifest(store)) || (await fetchServedManifest(store));
   if (served) {
     setManifestLink(served.href, store.id);
     applyHeadMeta(name, served.shortName || name, themeColor, served.touchIcon);

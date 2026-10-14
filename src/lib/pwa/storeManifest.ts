@@ -54,20 +54,13 @@ export function storeDisplayName(s: StoreIdentityInput): string {
   return n || s.slug;
 }
 
-/** Nome curto: usa theme.shortName se houver; senão deriva do nome (até 12 caracteres, por palavras). */
+/**
+ * Nome curto: theme.shortName configurado pela loja, se houver; senão o NOME COMPLETO.
+ * Sem truncamento artificial (o launcher Android pode abreviar visualmente nomes longos).
+ */
 export function deriveShortName(fullName: string, explicit?: string): string {
   const ex = (explicit || '').trim();
-  if (ex) return ex.slice(0, 12);
-  const name = fullName.trim();
-  if (name.length <= 12) return name;
-  const words = name.split(/\s+/);
-  let out = '';
-  for (const w of words) {
-    const next = out ? `${out} ${w}` : w;
-    if (next.length > 12) break;
-    out = next;
-  }
-  return out || name.slice(0, 12);
+  return ex || fullName.trim();
 }
 
 export function storeInitials(name: string): string {

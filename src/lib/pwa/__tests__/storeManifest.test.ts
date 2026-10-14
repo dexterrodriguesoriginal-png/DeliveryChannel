@@ -49,11 +49,11 @@ describe('manifesto PWA por loja', () => {
     }
   });
 
-  it('short_name derivado com até 12 caracteres', () => {
-    expect(deriveShortName('Adega Premium Jardins')).toBe('Adega');
-    expect(deriveShortName('Padaria do João')).toBe('Padaria do');
-    expect(deriveShortName('Curto')).toBe('Curto');
-    expect(deriveShortName('X', 'Explicito Muito Longo')).toBe('Explicito Mu');
+  it('short_name = nome completo (ou nome curto configurado), sem truncar', () => {
+    expect(deriveShortName('Adega Premium')).toBe('Adega Premium');
+    expect(deriveShortName('Adega Premium Jardins')).toBe('Adega Premium Jardins');
+    expect(deriveShortName('Padaria do João')).toBe('Padaria do João');
+    expect(deriveShortName('X', 'Explicito Muito Longo')).toBe('Explicito Muito Longo');
   });
 });
 
