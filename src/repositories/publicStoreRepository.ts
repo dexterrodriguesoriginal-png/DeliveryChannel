@@ -2,13 +2,21 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 /**
  * Com Supabase configurado (produção), a vitrine NUNCA cai em dados locais/demonstrativos: uma loja inexistente,
- * pendente ou inativa aparece como "não encontrada" em vez de exibir a Adega Premium de demonstração
- * (o servidor também responde 404 para o manifesto dela). Só com VITE_ENABLE_DEMO_MODE=true o fallback local volta.
+ * pendente ou inativa aparece como "não encontrada" e uma falha técnica aparece como erro.
+ * Os dados locais (dataStore) só existem sem Supabase em desenvolvimento (isLocalDemoAllowed).
+ *
+ * Formato do get_public_store por esquema (src/lib/backendSchema.ts):
+ *  - legacy-020: mapPublicStorePayload (formato 001–020);
+ *  - n1n6:       mapN6PublicStore (N6: mídia publicada, carrosséis com preço do servidor, campanhas N5).
  */
-const DEMO_FALLBACK_ENABLED = import.meta.env?.VITE_ENABLE_DEMO_MODE === 'true';
-const demoFallback = (slug: string) => (DEMO_FALLBACK_ENABLED ? loadLocalStore(slug) : null);
 import { dataStore } from '../services/dataStore';
 import { mapPublicStorePayload, PublicStoreData, PublicStorePayloadError } from './publicStoreMapper';
+import { mapN6PublicStore } from './publicStoreN6';
+import { isN1N6Backend } from '../lib/backendSchema';
+import { isLocalDemoAllowed } from '../lib/backend';
+
+const resolvePublicMedia = (bucket: 'marketing-public', path: string): string =>
+  supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 
 export type { PublicStoreData, PublicStoreTenant } from './publicStoreMapper';
 
@@ -94,7 +102,8 @@ export const publicStoreRepository = {
    */
   async loadPublicStore(slug: string): Promise<PublicStoreLoadResult> {
     if (!isSupabaseConfigured) {
-      // Ambiente local/demonstração explícito (sem Supabase configurado).
+      // Ambiente local/demonstração explícito (sem Supabase configurado, só em DEV).
+      if (!isLocalDemoAllowed) return { status: 'error', message: 'Servidor não configurado.' };
       const local = loadLocalStore(slug);
       return local ? { status: 'ok', data: local } : { status: 'not_found' };
     }
@@ -102,41 +111,18 @@ export const publicStoreRepository = {
     try {
       const { data, error } = await supabase.rpc('get_public_store', { p_slug: slug });
       if (error) {
-        if (isNotFoundError(error.message)) {
-          // Fallback gracioso para store local se o slug não existir no Supabase remoto (ex: adega-premium em desenvolvimento)
-          const local = demoFallback(slug);
-          if (local) return { status: 'ok', data: local };
-          return { status: 'not_found' };
-        }
-        console.warn('[publicStoreRepository] RPC get_public_store retornou erro, verificando fallback local:', error.message);
-        const local = demoFallback(slug);
-        if (local) return { status: 'ok', data: local };
+        if (isNotFoundError(error.message)) return { status: 'not_found' };
+        console.warn('[publicStoreRepository] RPC get_public_store retornou erro:', error.message);
         return { status: 'error', message: error.message };
       }
-      if (data === null || data === undefined) {
-        const local = demoFallback(slug);
-        if (local) return { status: 'ok', data: local };
-        return { status: 'not_found' };
-      }
-      const mapped = mapPublicStorePayload(data, Date.now());
-      // Campanhas N4 com preço AUTORIZADO pelo servidor (proposta 20261013000300: get_public_campaign_carousels).
-      // Só usado quando o get_public_store atual não traz carrosséis; se a RPC não existir, a vitrine segue sem campanhas.
-      if (mapped.promotionCarousels.length === 0) {
-        try {
-          const { data: camp, error: campErr } = await supabase.rpc('get_public_campaign_carousels', { p_slug: slug });
-          if (!campErr && Array.isArray(camp)) {
-            mapped.promotionCarousels = mapPublicStorePayload({ ...(data as any), promotionCarousels: camp }, Date.now()).promotionCarousels;
-          }
-        } catch {
-          // RPC ausente (proposta não aplicada): sem campanhas na vitrine; checkout de campanha recusado no servidor.
-        }
-      }
+      if (data === null || data === undefined) return { status: 'not_found' };
+      const mapped = isN1N6Backend()
+        ? mapN6PublicStore(data, resolvePublicMedia, Date.now())
+        : mapPublicStorePayload(data, Date.now());
       return { status: 'ok', data: mapped };
     } catch (err) {
       const message = err instanceof PublicStorePayloadError || err instanceof Error ? err.message : String(err);
-      console.warn('[publicStoreRepository] Falha ao carregar a vitrine remota, verificando fallback local:', message);
-      const local = demoFallback(slug);
-      if (local) return { status: 'ok', data: local };
+      console.warn('[publicStoreRepository] Falha ao carregar a vitrine remota:', message);
       return { status: 'error', message };
     }
   },

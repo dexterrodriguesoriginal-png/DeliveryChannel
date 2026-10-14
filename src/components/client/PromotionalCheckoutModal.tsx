@@ -380,7 +380,10 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
     setIsSubmitting(true);
     try {
       const result = await orderService.createPromotional(storeData.tenant.slug, {
-        offerId: offer.id,
+        // N6: card de campanha compra por p_card_id (+ campanha); card do painel compra pela oferta.
+        ...(offer.campaignCardId
+          ? { cardId: offer.campaignCardId, campaignId: offer.campaignId }
+          : { offerId: offer.id }),
         idempotencyKey: promoIdempotencyKeyRef.current,
         quantity,
         customerName: customerName.trim(),

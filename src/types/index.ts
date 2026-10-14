@@ -173,6 +173,13 @@ export interface PromotionalCard {
   id: string;
   tenantId: string;
   source?: 'OFFER' | 'CAMPAIGN_CARD';
+  /** N6: card de campanha (campaign_cards) — o checkout promocional usa p_card_id/p_campaign_id. */
+  campaignId?: string;
+  campaignCardId?: string;
+  /** N6: calculado pelo servidor (limite, estoque, produto ativo). */
+  promoAvailable?: boolean;
+  promoFulfillment?: 'DELIVERY' | 'PICKUP' | 'BOTH';
+  promoMaxQtyPerOrder?: number;
   title: string;
   subtitle?: string;
   description?: string;
