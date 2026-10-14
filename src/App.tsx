@@ -39,6 +39,10 @@ import { SettingsPage } from './pages/establishment/SettingsPage';
 // Mobile / Apps
 import { ClientApp } from './pages/client/ClientApp';
 import { DriverApp } from './pages/driver/DriverApp';
+import { DriverStatusScreen } from './pages/driver/DriverStatusScreen';
+import { DriverInvitePage } from './pages/driver/DriverInvitePage';
+import { resolveDriverScreen } from './lib/membershipResolution';
+import { inviteTokenFromPath } from './utils/inviteUrl';
 
 // Icons & UI
 import { ShieldAlert, Store, LogIn, Lock, RefreshCw, AlertTriangle, ShoppingBag } from 'lucide-react';
@@ -72,6 +76,8 @@ function AppContent() {
     refreshSession,
     supabaseUser,
     signOut,
+    driverApprovalStatus,
+    pendingTenantName,
   } = useAuth();
 
   const [activeTab, setActiveTab] = useState<string>('est-dashboard');
@@ -107,7 +113,7 @@ function AppContent() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedReturnTo = sessionStorage.getItem('adegafood_auth_return_to');
-      if (savedReturnTo && savedReturnTo.startsWith('/app/') && !window.location.pathname.startsWith('/app/')) {
+      if (savedReturnTo && (savedReturnTo.startsWith('/app/') || savedReturnTo.startsWith('/entregador/convite/')) && window.location.pathname !== savedReturnTo && !window.location.pathname.startsWith('/app/')) {
         sessionStorage.removeItem('adegafood_auth_return_to');
         window.location.replace(savedReturnTo);
       }
@@ -123,8 +129,39 @@ function AppContent() {
     return <ClientApp forcedSlug={slug} />;
   }
 
-  // 2. Rota para aplicativo do entregador: /entregador
-  if (pathname === '/entregador' || activeRole === 'DRIVER') {
+  // 2a. Convite público de entregador: /entregador/convite/:token (antes das demais regras de /entregador)
+  const inviteToken = inviteTokenFromPath(pathname);
+  if (inviteToken) {
+    return <DriverInvitePage token={inviteToken} />;
+  }
+
+  // 2b. Vínculo PENDING/INACTIVE ou entregador não aprovado: tela neutra (nunca "criar estabelecimento")
+  const driverScreen = resolveDriverScreen(membershipStatus, activeRole, driverApprovalStatus);
+  if (driverScreen) {
+    return (
+      <DriverStatusScreen
+        variant={driverScreen}
+        storeName={pendingTenantName}
+        userName={currentUser?.name}
+        onRefresh={driverScreen === 'PENDING' || driverScreen === 'UNAVAILABLE' ? () => retryAuthResolution() : undefined}
+        onSignOut={async () => { await signOut(); window.location.replace('/'); }}
+      />
+    );
+  }
+
+  // 2b'. Vínculo SUSPENDED (fluxo antigo) dentro de /entregador: tela neutra em vez de app vazio
+  if (isAccountSuspended && pathname.startsWith('/entregador')) {
+    return (
+      <DriverStatusScreen
+        variant="SUSPENDED"
+        userName={currentUser?.name}
+        onSignOut={async () => { await signOut(); window.location.replace('/'); }}
+      />
+    );
+  }
+
+  // 2c. Rota para aplicativo do entregador: /entregador
+  if (pathname.startsWith('/entregador') || activeRole === 'DRIVER') {
     return <DriverApp />;
   }
 

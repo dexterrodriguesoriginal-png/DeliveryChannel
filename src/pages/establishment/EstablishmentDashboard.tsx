@@ -4,8 +4,8 @@ import { productRepository } from '../../repositories/productRepository';
 import { tenantRepository } from '../../repositories/tenantRepository';
 import { orderRepository } from '../../repositories/orderRepository';
 import { customerRepository } from '../../repositories/customerRepository';
-import { driverRepository } from '../../repositories/driverRepository';
-import { hasPermission } from '../../services/rbac';
+import { driverInviteRepository } from '../../repositories/driverRepository';
+import { canAssignDrivers } from '../../lib/driverAdmin';
 import { getPublicStorePath, isValidStoreSlug } from '../../utils/publicStoreUrl';
 import { StatCard } from '../../components/ui/StatCard';
 import { SectionCard } from '../../components/ui/SectionCard';
@@ -60,7 +60,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   // Filtro de período para o gráfico de vendas: Hoje | 7 dias | 30 dias
   const [salesPeriod, setSalesPeriod] = useState<'today' | '7d' | '30d'>('7d');
 
-  const canListDrivers = !!activeRole && hasPermission(activeRole, 'manage_drivers');
+  const canListDrivers = canAssignDrivers(activeRole);
 
   // Busca dados reais para o tenant ativo
   const fetchRealData = useCallback(async () => {
@@ -71,9 +71,9 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
       const [fetchedOrders, fetchedCustomers, fetchedDrivers, tenantProducts] = await Promise.all([
         orderRepository.getOrders(securityContext, activeTenant.id).catch(() => []),
         customerRepository.getCustomers(securityContext, activeTenant.id).catch(() => []),
-        // RLS de public.drivers só libera leitura para quem gerencia entregadores (evita 403).
+        // 0700 v3.4: list_assignable_drivers (OWNER/MANAGER/DELIVERY_MANAGER; só APPROVED elegíveis).
         canListDrivers
-          ? driverRepository.listDrivers(securityContext, activeTenant.id).catch(() => [])
+          ? driverInviteRepository.listAssignableDrivers(activeTenant.id).catch(() => [])
           : Promise.resolve([] as Driver[]),
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);

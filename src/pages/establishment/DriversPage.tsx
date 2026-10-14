@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { driverRepository } from '../../repositories/driverRepository';
+import { driverRepository, driverInviteRepository, mapDriverRpcError, DriverInviteLink, DriverInviteLinkCreated } from '../../repositories/driverRepository';
 import { teamRepository } from '../../repositories/teamRepository';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
@@ -21,10 +21,23 @@ import {
   Edit2
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { DriverApprovalBadge } from '../../components/establishment/statusBadges';
+import { DriverInviteModal } from '../../components/establishment/DriverInviteModal';
+import { PendingApplicationsSection, DriverLinkActions, InviteLinksSection } from '../../components/establishment/DriverOnboardingSections';
+import { driverPagePermissions, pendingApplications, nonPendingDrivers, DriverLinkAction } from '../../lib/driverAdmin';
 
 export const DriversPage: React.FC = () => {
-  const { activeTenant, securityContext } = useAuth();
+  const { activeTenant, securityContext, activeRole } = useAuth();
   const { showToast } = useToast();
+  const { canManageLinks, canReview } = driverPagePermissions(activeRole);
+
+  // Convites por link/QR (0700). O token só existe em `createdInvite` enquanto o modal está aberto.
+  const [inviteLinks, setInviteLinks] = useState<DriverInviteLink[]>([]);
+  const [linksError, setLinksError] = useState<string | null>(null);
+  const [createdInvite, setCreatedInvite] = useState<DriverInviteLinkCreated | null>(null);
+  const [createdMaxUses, setCreatedMaxUses] = useState<number | null>(null);
+  const [isCreatingLink, setIsCreatingLink] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -43,7 +56,8 @@ export const DriversPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   const fetchDrivers = useCallback(async () => {
-    if (!activeTenant?.id) return;
+    // list_tenant_drivers (0700 v3.3) só autoriza OWNER/MANAGER; DELIVERY_MANAGER vê só os links.
+    if (!activeTenant?.id || !canReview) return;
     setIsLoading(true);
     try {
       const data = await driverRepository.listDrivers(securityContext, activeTenant.id);
@@ -53,11 +67,26 @@ export const DriversPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [activeTenant?.id, securityContext]);
+  }, [activeTenant?.id, securityContext, canReview]);
+
+  const fetchInviteLinks = useCallback(async () => {
+    if (!activeTenant?.id || !canManageLinks) return;
+    try {
+      setInviteLinks(await driverInviteRepository.listInviteLinks(activeTenant.id));
+      setLinksError(null);
+    } catch (err: any) {
+      setInviteLinks([]);
+      setLinksError(err?.message || 'Recurso ainda não disponível.');
+    }
+  }, [activeTenant?.id, canManageLinks]);
 
   useEffect(() => {
     fetchDrivers();
   }, [fetchDrivers]);
+
+  useEffect(() => {
+    fetchInviteLinks();
+  }, [fetchInviteLinks]);
 
   if (!activeTenant) return null;
 
@@ -101,27 +130,94 @@ export const DriversPage: React.FC = () => {
     }
   };
 
-  const handleSuspendDriver = async (drv: Driver) => {
-    if (!window.confirm(`Deseja suspender as atividades operacionais de ${drv.name}? Ele não poderá receber pedidos.`)) {
-      return;
-    }
+  const showRpcError = (title: string, err: any) => {
+    showToast({ type: 'error', title, message: err?.message || mapDriverRpcError(err) });
+  };
 
+  const handleReview = async (drv: Driver, decision: 'APPROVE' | 'REJECT') => {
+    let reason: string | undefined;
+    if (decision === 'REJECT') {
+      const r = window.prompt(`Rejeitar o cadastro de ${drv.name}? Motivo (opcional):`, '');
+      if (r === null) return;
+      reason = r.trim() || undefined;
+    }
+    setBusyId(drv.id);
     try {
-      await driverRepository.suspendDriver(securityContext, activeTenant.id, drv.id);
+      await driverInviteRepository.reviewApplication(drv.id, decision, reason);
       showToast({
-        type: 'warning',
-        title: 'Motorista Suspenso',
-        message: `${drv.name} foi suspenso das atividades de entrega.`,
+        type: decision === 'APPROVE' ? 'success' : 'warning',
+        title: decision === 'APPROVE' ? 'Entregador aprovado' : 'Cadastro rejeitado',
+        message: decision === 'APPROVE' ? `${drv.name} já pode receber pedidos.` : `${drv.name} não foi aprovado.`,
       });
       await fetchDrivers();
     } catch (err: any) {
-      showToast({
-        type: 'error',
-        title: 'Erro ao Suspender',
-        message: err.message,
-      });
+      showRpcError(decision === 'APPROVE' ? 'Erro ao aprovar' : 'Erro ao rejeitar', err);
+    } finally {
+      setBusyId(null);
     }
   };
+
+  const handleLinkAction = async (drv: Driver, action: DriverLinkAction) => {
+    const confirmText = action === 'SUSPEND'
+      ? `Deseja suspender as atividades operacionais de ${drv.name}? Ele não poderá receber pedidos.`
+      : action === 'REMOVE'
+        ? `Remover ${drv.name} da equipe? Para readmitir será preciso um novo convite por e-mail.`
+        : null;
+    if (confirmText && !window.confirm(confirmText)) return;
+
+    try {
+      await driverInviteRepository.setLinkStatus(drv.id, action);
+      const titles = { SUSPEND: 'Motorista Suspenso', REACTIVATE: 'Motorista Reativado', REMOVE: 'Vínculo Encerrado' } as const;
+      showToast({ type: action === 'REACTIVATE' ? 'success' : 'warning', title: titles[action], message: drv.name });
+      await fetchDrivers();
+    } catch (err: any) {
+      showRpcError('Erro ao atualizar vínculo', err);
+    }
+  };
+
+  const handleCreateLink = async () => {
+    setIsCreatingLink(true);
+    try {
+      const created = await driverInviteRepository.createInviteLink(activeTenant.id, null, 7, null);
+      setCreatedMaxUses(null);
+      setCreatedInvite(created);
+      await fetchInviteLinks();
+    } catch (err: any) {
+      showRpcError('Erro ao gerar link', err);
+    } finally {
+      setIsCreatingLink(false);
+    }
+  };
+
+  const handleRenewLink = async (link: DriverInviteLink) => {
+    setBusyId(link.id);
+    try {
+      const created = await driverInviteRepository.renewInviteLink(link.id);
+      setCreatedMaxUses(link.maxUses);
+      setCreatedInvite(created);
+      await fetchInviteLinks();
+    } catch (err: any) {
+      showRpcError('Erro ao renovar link', err);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleRevokeLink = async (link: DriverInviteLink) => {
+    if (!window.confirm('Revogar este link? Quem ainda não se cadastrou não poderá mais usá-lo.')) return;
+    setBusyId(link.id);
+    try {
+      await driverInviteRepository.revokeInviteLink(link.id);
+      await fetchInviteLinks();
+    } catch (err: any) {
+      showRpcError('Erro ao revogar link', err);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const pendingDrivers = pendingApplications(drivers);
+  const listedDrivers = nonPendingDrivers(drivers);
 
   const handleInviteDriver = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,6 +286,17 @@ export const DriversPage: React.FC = () => {
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-700' : ''}`} />
           </button>
 
+          {canManageLinks && (
+            <Button
+              variant="outline"
+              onClick={handleCreateLink}
+              disabled={isCreatingLink}
+              className="shadow-xs text-xs"
+            >
+              {isCreatingLink ? 'Gerando...' : 'Gerar link/QR'}
+            </Button>
+          )}
+
           <Button
             variant="primary"
             onClick={() => setIsInviteModalOpen(true)}
@@ -201,8 +308,17 @@ export const DriversPage: React.FC = () => {
         </div>
       </div>
 
+      {canReview && (
+        <PendingApplicationsSection
+          drivers={pendingDrivers}
+          busyId={busyId}
+          onApprove={(d) => handleReview(d, 'APPROVE')}
+          onReject={(d) => handleReview(d, 'REJECT')}
+        />
+      )}
+
       {/* Grid de Motoristas */}
-      {drivers.length === 0 ? (
+      {listedDrivers.length === 0 ? (
         <Card className="p-8 text-center space-y-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
             <Bike className="w-6 h-6" />
@@ -222,7 +338,7 @@ export const DriversPage: React.FC = () => {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {drivers.map((drv) => (
+          {listedDrivers.map((drv) => (
             <Card key={drv.id} className="p-5 flex flex-col justify-between space-y-4">
               <div className="space-y-3">
                 <div className="flex items-start justify-between">
@@ -239,7 +355,10 @@ export const DriversPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {getStatusBadge(drv.status || 'AVAILABLE')}
+                  <div className="flex flex-col items-end gap-1">
+                    {getStatusBadge(drv.status || 'AVAILABLE')}
+                    <DriverApprovalBadge status={drv.approvalStatus ?? 'UNKNOWN'} />
+                  </div>
                 </div>
 
                 <div className="p-3 bg-gray-50 rounded-xl space-y-1.5 text-xs text-gray-700">
@@ -269,22 +388,29 @@ export const DriversPage: React.FC = () => {
                   Editar
                 </Button>
 
-                {drv.status !== 'SUSPENDED' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleSuspendDriver(drv)}
-                    leftIcon={<Ban className="w-3 h-3 text-rose-500" />}
-                    className="text-xs text-rose-600 hover:bg-rose-50"
-                  >
-                    Suspender
-                  </Button>
-                )}
+                <DriverLinkActions driver={drv} canReview={canReview} onAction={handleLinkAction} />
               </div>
             </Card>
           ))}
         </div>
       )}
+
+      {canManageLinks && (
+        <InviteLinksSection
+          links={inviteLinks}
+          error={linksError}
+          busyId={busyId}
+          onRenew={handleRenewLink}
+          onRevoke={handleRevokeLink}
+        />
+      )}
+
+      <DriverInviteModal
+        invite={createdInvite}
+        storeName={activeTenant.name}
+        maxUses={createdMaxUses}
+        onClose={() => { setCreatedInvite(null); setCreatedMaxUses(null); }}
+      />
 
       {/* Modal Convidar Entregador */}
       <Modal

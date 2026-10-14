@@ -615,7 +615,10 @@ export interface Driver {
   vehicleType?: string;
   vehicleModel?: string;
   plate: string;
+  /** Disponibilidade (drivers.status). */
   status?: DriverStatus;
+  /** Aprovação na loja (drivers.approval_status, 0700). UNKNOWN = não confirmada (sem fallback). */
+  approvalStatus?: DriverApprovalStatus | 'UNKNOWN';
   isOnline: boolean;
   activeOrderId?: string;
   completedDeliveriesToday: number;
@@ -637,6 +640,11 @@ export interface TeamInvite {
   acceptedBy?: string;
 }
 
+/** drivers.approval_status (proposta 0700). */
+export type DriverApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED' | 'REMOVED';
+
+export type TeamMemberStatus = 'ACTIVE' | 'INVITED' | 'PENDING' | 'SUSPENDED' | 'INACTIVE';
+
 export interface TeamMember {
   id: string;
   tenantId: string;
@@ -645,7 +653,8 @@ export interface TeamMember {
   email: string;
   role: RoleId;
   phone?: string;
-  status: 'ACTIVE' | 'INVITED' | 'INACTIVE';
+  /** tenant_users.status (vínculo de acesso). Não confundir com drivers.approval_status. */
+  status: TeamMemberStatus;
   createdAt: string;
 }
 

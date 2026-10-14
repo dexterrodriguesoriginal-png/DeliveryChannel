@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { User as AppUser, RoleId, Tenant, TenantTheme, TenantSettings } from '../types';
+import { User as AppUser, RoleId, Tenant, TenantTheme, TenantSettings, DriverApprovalStatus } from '../types';
 import { SecurityContext } from '../services/securityEngine';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
@@ -7,6 +7,8 @@ import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
 import { tenantSettingsColumns } from '../lib/dbColumns';
 import { isLocalDemoAllowed } from '../lib/backend';
+import { classifyMemberships, DriverApprovalLookup } from '../lib/membershipResolution';
+import { driverInviteRepository } from '../repositories/driverRepository';
 
 export interface TenantMembership {
   tenantId: string;
@@ -28,6 +30,10 @@ export type MembershipStatus =
   | 'MEMBERSHIP_LOADING'
   | 'MEMBERSHIP_RESOLVED_WITH_DATA'
   | 'MEMBERSHIP_RESOLVED_EMPTY'
+  /** F1: só vínculo(s) PENDING (cadastro de entregador aguardando aprovação). */
+  | 'MEMBERSHIP_PENDING_APPROVAL'
+  /** F1: só vínculo(s) INACTIVE/sem acesso (nunca leva ao fluxo de criar estabelecimento). */
+  | 'MEMBERSHIP_INACTIVE'
   | 'MEMBERSHIP_ERROR';
 
 export type AuthState = 
@@ -77,6 +83,10 @@ interface AuthContextType {
 
   hasTenantMembership: boolean;
   isAccountSuspended: boolean;
+  /** approval_status do próprio entregador (UNAVAILABLE = falha de leitura; null = não é DRIVER). */
+  driverApprovalStatus: DriverApprovalLookup;
+  /** Nome da loja do vínculo PENDING/INACTIVE (para a tela neutra do entregador). */
+  pendingTenantName: string | null;
   availableTenants: TenantMembership[];
   switchTenant: (tenantId: string) => Promise<boolean>;
 
@@ -274,6 +284,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [hasTenantMembership, setHasTenantMembership] = useState<boolean>(false);
   const [isAccountSuspended, setIsAccountSuspended] = useState<boolean>(false);
+  const [driverApprovalStatus, setDriverApprovalStatus] = useState<DriverApprovalLookup>(null);
+  const [pendingTenantName, setPendingTenantName] = useState<string | null>(null);
 
   // Carrega os dados reais do Tenant do banco a partir do tenant_id de forma tolerante a falhas
   const fetchTenantData = useCallback(async (tenantId: string): Promise<Tenant | null> => {
@@ -325,6 +337,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsAccountSuspended(false);
       setMembershipStatus('MEMBERSHIP_LOADING');
       setMembershipError(null);
+      setDriverApprovalStatus(null);
+      setPendingTenantName(null);
 
       // 1. Busca perfil do usuário em public.users (garante consistência de nome/avatar/telefone)
       let userName = sbUser.user_metadata?.name || sbUser.user_metadata?.full_name || sessionEmail.split('@')[0] || 'Usuário';
@@ -463,6 +477,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: sessionEmail,
           phone: userPhone,
           role: (sbUser.user_metadata?.user_type === 'customer' ? 'CUSTOMER' : null),
+          avatar: userAvatar,
+        });
+        currentResolvedUserIdRef.current = sessionUserId;
+        return;
+      }
+
+      // F1: vínculo PENDING (sem ACTIVE) tem prioridade sobre SUSPENDED e INACTIVE.
+      // INACTIVE (ou só INVITED) sem ACTIVE/SUSPENDED também nunca vira "criar estabelecimento".
+      const classified = classifyMemberships(allMemberships);
+      if (classified.kind === 'PENDING_APPROVAL' || classified.kind === 'INACTIVE') {
+        const blockedRow = classified.row!;
+        let storeName: string | null = null;
+        try {
+          const { data: tRow } = await supabase.from('tenants').select('name').eq('id', blockedRow.tenant_id).maybeSingle();
+          storeName = (tRow as any)?.name || null;
+        } catch {
+          storeName = null;
+        }
+        const approval = blockedRow.role_id === 'DRIVER'
+          ? await driverInviteRepository.getOwnApprovalStatus(blockedRow.tenant_id)
+          : null;
+        if (resolutionId !== authResolutionIdRef.current) return;
+
+        setIsAccountSuspended(false);
+        setHasTenantMembership(false);
+        setActiveRole(null);
+        setActiveTenantState(null);
+        setAvailableTenants([]);
+        setPendingTenantName(storeName);
+        setDriverApprovalStatus(approval);
+        setMembershipStatus(classified.kind === 'PENDING_APPROVAL' ? 'MEMBERSHIP_PENDING_APPROVAL' : 'MEMBERSHIP_INACTIVE');
+        setCurrentUser({
+          id: sessionUserId,
+          name: userName,
+          email: sessionEmail,
+          phone: userPhone,
+          role: null,
           avatar: userAvatar,
         });
         currentResolvedUserIdRef.current = sessionUserId;
@@ -768,6 +819,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           totalCustomers: 0,
           isDemo: false,
         };
+      }
+
+      // F1/F5: para DRIVER ativo, lê o próprio approval_status; só APPROVED confirmado abre o app.
+      if (preferredMembership.roleId === 'DRIVER') {
+        const approval = await driverInviteRepository.getOwnApprovalStatus(preferredMembership.tenantId);
+        if (resolutionId !== authResolutionIdRef.current) return;
+        setDriverApprovalStatus(approval);
+        setPendingTenantName(chosenTenant.name || null);
       }
 
       setAvailableTenants(mappedActiveTenants);
@@ -1736,6 +1795,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         hasTenantMembership,
         isAccountSuspended,
+        driverApprovalStatus,
+        pendingTenantName,
         availableTenants,
         switchTenant,
 

@@ -9,6 +9,7 @@ import { Modal } from '../../components/ui/Modal';
 import { TeamMember, TeamInvite, RoleId } from '../../types';
 import { Users, UserPlus, Trash2, Mail, Phone, Clock, RefreshCw, XCircle, Send } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { TeamMemberStatusBadge } from '../../components/establishment/statusBadges';
 
 export const TeamPage: React.FC = () => {
   const { activeTenant, securityContext } = useAuth();
@@ -218,7 +219,10 @@ export const TeamPage: React.FC = () => {
               </div>
 
               <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
-                <span>Status: <strong className="text-emerald-700">{member.status}</strong></span>
+                <span className="flex items-center gap-1.5">
+                  <TeamMemberStatusBadge status={member.status} />
+                  {member.role === 'DRIVER' && member.status === 'PENDING' && <span>Aprovar em Entregadores</span>}
+                </span>
                 <span className="font-mono">Desde {member.createdAt ? member.createdAt.split('T')[0] : 'N/A'}</span>
               </div>
             </Card>

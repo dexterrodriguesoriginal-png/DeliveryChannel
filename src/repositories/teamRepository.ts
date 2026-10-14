@@ -1,9 +1,20 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { TeamMember, TeamInvite, RoleId } from '../types';
+import { TeamMember, TeamInvite, RoleId, TeamMemberStatus } from '../types';
 import { SecurityContext } from '../services/securityEngine';
 import { isValidUuid } from '../lib/uuid';
 
-function mapRowToTeamMember(row: any): TeamMember {
+const KNOWN_MEMBER_STATUSES: readonly TeamMemberStatus[] = ['ACTIVE', 'INVITED', 'PENDING', 'SUSPENDED', 'INACTIVE'];
+
+/** Repassa os 5 status conhecidos de tenant_users; qualquer outro vira INACTIVE (aviso sem dados pessoais). */
+export function mapTeamMemberStatus(raw: unknown): TeamMemberStatus {
+  if (typeof raw === 'string' && (KNOWN_MEMBER_STATUSES as readonly string[]).includes(raw)) {
+    return raw as TeamMemberStatus;
+  }
+  console.warn('[teamRepository] status de vínculo desconhecido; tratado como INACTIVE');
+  return 'INACTIVE';
+}
+
+export function mapRowToTeamMember(row: any): TeamMember {
   const userObj = row.users || {};
   return {
     id: row.id,
@@ -13,7 +24,7 @@ function mapRowToTeamMember(row: any): TeamMember {
     email: userObj.email || '',
     phone: userObj.phone || undefined,
     role: row.role_id as RoleId,
-    status: (row.status === 'ACTIVE' ? 'ACTIVE' : row.status === 'INVITED' ? 'INVITED' : 'INACTIVE'),
+    status: mapTeamMemberStatus(row.status),
     createdAt: row.created_at || new Date().toISOString(),
   };
 }

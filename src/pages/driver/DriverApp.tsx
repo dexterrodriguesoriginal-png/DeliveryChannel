@@ -10,16 +10,19 @@ import { useToast } from '../../context/ToastContext';
 import { Order } from '../../types';
 import { computeDriverDailySummary } from '../../lib/driverSummary';
 import { filterAssignedDriverOrders } from '../../lib/driverOrders';
+import { canFetchDriverOrders } from '../../lib/membershipResolution';
 
 export const DriverApp: React.FC = () => {
-  const { activeTenant, securityContext, currentUser, signOut } = useAuth();
+  const { activeTenant, securityContext, currentUser, signOut, driverApprovalStatus } = useAuth();
+  // F5 (defesa): entregador não aprovado não busca nem assina pedidos.
+  const ordersAllowed = canFetchDriverOrders(driverApprovalStatus);
   const { showToast } = useToast();
   const [navTab, setNavTab] = useState('active-delivery');
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchDriverOrders = useCallback(async () => {
-    if (!activeTenant?.id) return;
+    if (!activeTenant?.id || !ordersAllowed) return;
     setIsLoading(true);
     try {
       const data = await orderRepository.getOrders(securityContext, activeTenant.id);
@@ -29,16 +32,16 @@ export const DriverApp: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [activeTenant?.id, securityContext]);
+  }, [activeTenant?.id, securityContext, ordersAllowed]);
 
   useEffect(() => {
     fetchDriverOrders();
-    if (!activeTenant?.id) return;
+    if (!activeTenant?.id || !ordersAllowed) return;
     const unsub = orderRepository.subscribeToOrders(activeTenant.id, () => {
       fetchDriverOrders();
     });
     return unsub;
-  }, [fetchDriverOrders, activeTenant?.id]);
+  }, [fetchDriverOrders, activeTenant?.id, ordersAllowed]);
 
   if (!activeTenant) return null;
 
