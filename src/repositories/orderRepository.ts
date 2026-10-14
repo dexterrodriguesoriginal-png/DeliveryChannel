@@ -261,10 +261,7 @@ export const orderRepository = {
     requireBackend('PDV');
     if (!isValidUuid(tenantId)) throw new BackendError('INVALID_TENANT', 'Loja inválida.');
     if (!input.items.length) throw new BackendError('EMPTY_CART', 'Adicione ao menos um item.');
-    if (!isN1N6Backend()) {
-      if (input.couponCode && input.couponCode.trim()) throw n1n6Required('Cupom no PDV');
-      return legacyPosSale(this, context, tenantId, input);
-    }
+    if (!isN1N6Backend()) throw n1n6Required('PDV (venda de balcão)');
     const { data, error } = await supabase.rpc('process_pos_sale_atomic', {
       p_tenant_id: tenantId,
       p_items: toServerItems(input.items),
@@ -521,78 +518,9 @@ async function legacyUpdateStatus(
   }
 }
 
-/**
- * legacy-020: PDV por INSERT direto sob RLS de staff — é o único caminho de venda de balcão no 001–020.
- * Preço vem do banco (products), não do navegador; prep_time fica NULL (sem default 30).
- * Riscos conhecidos (corrigidos só no N1–N6 por process_pos_sale_atomic): número do pedido por contagem
- * e baixa de estoque não atômica. Ver docs/n1-n6/ATIVACAO_FRONTEND.md.
+/*
+ * legacy-020: NÃO há caminho de servidor para venda de balcão no 001–020 — a tabela orders não tem
+ * política RLS de INSERT para staff (comprovado na integração local), e o INSERT direto do navegador
+ * só "funcionava" porque o fallback do dataStore mascarava a falha. Por isso o PDV exige n1n6
+ * (process_pos_sale_atomic). Ver docs/n1-n6/ATIVACAO_FRONTEND.md.
  */
-async function legacyPosSale(
-  repo: typeof orderRepository,
-  context: SecurityContext,
-  tenantId: string,
-  input: PosSaleInput
-): Promise<Order> {
-  const productIds = input.items.map(i => i.productId);
-  const { data: prods, error: pError } = await supabase
-    .from('products')
-    .select('id, name, price, promotional_price, stock_quantity, unit')
-    .eq('tenant_id', tenantId)
-    .in('id', productIds);
-  if (pError || !prods) throw toBackendError(pError, 'Falha ao obter produtos para o fechamento do caixa.');
-
-  const prodMap = new Map(prods.map((p: any) => [p.id, p]));
-  let subtotal = 0;
-  const lines: any[] = [];
-  for (const it of input.items) {
-    const p: any = prodMap.get(it.productId);
-    if (!p) throw new BackendError('PRODUCT_NOT_FOUND', 'Produto não encontrado nesta loja.');
-    const qty = Math.trunc(Number(it.quantity));
-    if (qty <= 0) throw new BackendError('INVALID_QUANTITY', 'Quantidade inválida.');
-    const price = Number(p.promotional_price && Number(p.promotional_price) > 0 ? p.promotional_price : p.price);
-    subtotal += price * qty;
-    lines.push({ product_id: p.id, product_name: p.name, quantity: qty, unit_price: price, total_price: price * qty, unit: p.unit || 'un' });
-  }
-
-  const { count } = await supabase.from('orders').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId);
-  const { data: inserted, error: oError } = await supabase
-    .from('orders')
-    .insert({
-      tenant_id: tenantId,
-      order_number: (count ?? 0) + 1,
-      customer_name: input.customerName?.trim() || 'Cliente balcão',
-      customer_phone: input.customerPhone?.trim() || '',
-      delivery_address: 'Retirada no Balcão / Consumo Local',
-      fulfillment_type: 'PICKUP',
-      payment_method: input.paymentMethod,
-      payment_status: 'PAID',
-      status: 'DELIVERED',
-      subtotal,
-      delivery_fee: 0,
-      discount: 0,
-      total_amount: subtotal,
-      notes: input.notes || 'Venda presencial PDV Balcão',
-      prep_time_minutes: null,
-      origin: 'direct',
-    })
-    .select('id')
-    .single();
-  if (oError || !inserted) throw toBackendError(oError, 'Falha ao registrar venda de balcão.');
-
-  const { error: iErr } = await supabase.from('order_items').insert(lines.map(l => ({ ...l, order_id: inserted.id })));
-  if (iErr) throw toBackendError(iErr, 'Venda registrada, mas os itens não foram gravados. Verifique o pedido.');
-  for (const l of lines) {
-    const p: any = prodMap.get(l.product_id);
-    const newStock = Math.max(0, Number(p.stock_quantity ?? 0) - l.quantity);
-    await supabase.from('products').update({ stock_quantity: newStock }).eq('id', l.product_id).eq('tenant_id', tenantId);
-  }
-  await supabase.from('order_status_history').insert({
-    order_id: inserted.id,
-    status: 'DELIVERED',
-    note: 'Venda de balcão finalizada pelo caixa',
-    changed_by: context.userName || 'Caixa',
-  });
-  const order = await repo.getById(context, tenantId, inserted.id);
-  if (!order) throw new BackendError('ORDER_NOT_FOUND', 'Venda registrada, mas não foi possível carregá-la.');
-  return order;
-}

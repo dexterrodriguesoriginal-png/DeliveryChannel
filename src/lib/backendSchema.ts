@@ -27,10 +27,20 @@ export function resolveBackendSchema(raw: unknown): BackendSchema {
 const env: Record<string, unknown> =
   typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env : {};
 
-export const BACKEND_SCHEMA: BackendSchema = resolveBackendSchema(env.VITE_BACKEND_SCHEMA);
+
+/** Modo efetivo (lido do ambiente do build; resolvido na chamada; em testes Node lê process.env). */
+export const currentBackendSchema = (): BackendSchema =>
+  resolveBackendSchema(
+    env.VITE_BACKEND_SCHEMA ??
+      // Node (testes/SSR): variáveis de processo; no navegador `process` não existe.
+      (typeof process !== 'undefined' && process.env ? process.env.VITE_BACKEND_SCHEMA : undefined)
+  );
+
+/** Valor no carregamento do módulo (exibição/diagnóstico). Decisões usam isN1N6Backend(). */
+export const BACKEND_SCHEMA: BackendSchema = currentBackendSchema();
 
 /** true quando o build foi feito para um banco com N1–N6 aplicadas. */
-export const isN1N6Backend = (): boolean => BACKEND_SCHEMA === 'n1n6';
+export const isN1N6Backend = (): boolean => currentBackendSchema() === 'n1n6';
 
 export const N1N6_ONLY_MESSAGE =
   'Recurso disponível após a ativação do novo backend (N1–N6). Neste ambiente ele ainda não está ativo.';

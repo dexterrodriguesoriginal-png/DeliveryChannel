@@ -235,9 +235,20 @@ export const tenantRepository = {
         const dbSettings: Record<string, unknown> = { ...settingsToDb(settingsUpdates, n1n6), updated_at: new Date().toISOString() };
         // N1: INSERT/colunas fora da lista são revogados — sempre UPDATE da linha existente.
         // legacy-020: mantém o upsert atual.
-        const { error: upsertError } = n1n6
-          ? await supabase.from('tenant_settings').update(dbSettings).eq('tenant_id', tenantId)
-          : await supabase.from('tenant_settings').upsert({ tenant_id: tenantId, ...dbSettings }, { onConflict: 'tenant_id' });
+        // legacy-020: UPDATE da linha existente (atualização parcial não viola NOT NULL de colunas
+        // ausentes); INSERT via upsert somente quando a loja ainda não tem linha de configurações.
+        let upsertError: any = null;
+        if (n1n6) {
+          ({ error: upsertError } = await supabase.from('tenant_settings').update(dbSettings).eq('tenant_id', tenantId));
+        } else {
+          const upd = await supabase.from('tenant_settings').update(dbSettings).eq('tenant_id', tenantId).select('tenant_id');
+          upsertError = upd.error;
+          if (!upd.error && (!upd.data || upd.data.length === 0)) {
+            ({ error: upsertError } = await supabase
+              .from('tenant_settings')
+              .upsert({ tenant_id: tenantId, ...dbSettings }, { onConflict: 'tenant_id' }));
+          }
+        }
 
         if (upsertError) {
           console.error('[tenantRepository] Erro ao persistir configurações no Supabase:', upsertError.message);

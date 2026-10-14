@@ -5,7 +5,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
 import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
-import { TENANT_SETTINGS_COLUMNS } from '../lib/dbColumns';
+import { tenantSettingsColumns } from '../lib/dbColumns';
 import { isLocalDemoAllowed } from '../lib/backend';
 
 export interface TenantMembership {
@@ -298,7 +298,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // N1: pix_key não tem privilégio de API; colunas explícitas (select('*') falharia).
       const { data: settingsRow } = await supabase
         .from('tenant_settings')
-        .select(TENANT_SETTINGS_COLUMNS)
+        .select(tenantSettingsColumns())
         .eq('tenant_id', tenantId)
         .maybeSingle();
 

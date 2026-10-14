@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext';
 import { orderRepository } from '../../repositories/orderRepository';
 import { validateStatusChange } from '../../repositories/orderMappers';
-import { isN1N6Backend } from '../../lib/backendSchema';
+import { isN1N6Backend, N1N6_ONLY_MESSAGE } from '../../lib/backendSchema';
 import { driverRepository } from '../../repositories/driverRepository';
 import { productRepository } from '../../repositories/productRepository';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -1078,7 +1078,10 @@ export const OrdersPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsPDVOpen(true)}
-                className="h-9 py-2 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-[13px] font-bold flex items-center gap-2 transition-colors shadow-2xs cursor-pointer"
+                disabled={!isN1N6Backend()}
+                title={isN1N6Backend() ? undefined : N1N6_ONLY_MESSAGE}
+                data-testid="open-pdv"
+                className="disabled:opacity-50 disabled:cursor-not-allowed h-9 py-2 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-[13px] font-bold flex items-center gap-2 transition-colors shadow-2xs cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Nova Venda Balcão (PDV)</span>
