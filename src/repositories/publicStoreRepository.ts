@@ -1,4 +1,12 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
+/**
+ * Com Supabase configurado (produção), a vitrine NUNCA cai em dados locais/demonstrativos: uma loja inexistente,
+ * pendente ou inativa aparece como "não encontrada" em vez de exibir a Adega Premium de demonstração
+ * (o servidor também responde 404 para o manifesto dela). Só com VITE_ENABLE_DEMO_MODE=true o fallback local volta.
+ */
+const DEMO_FALLBACK_ENABLED = import.meta.env?.VITE_ENABLE_DEMO_MODE === 'true';
+const demoFallback = (slug: string) => (DEMO_FALLBACK_ENABLED ? loadLocalStore(slug) : null);
 import { dataStore } from '../services/dataStore';
 import { mapPublicStorePayload, PublicStoreData, PublicStorePayloadError } from './publicStoreMapper';
 
@@ -96,17 +104,17 @@ export const publicStoreRepository = {
       if (error) {
         if (isNotFoundError(error.message)) {
           // Fallback gracioso para store local se o slug não existir no Supabase remoto (ex: adega-premium em desenvolvimento)
-          const local = loadLocalStore(slug);
+          const local = demoFallback(slug);
           if (local) return { status: 'ok', data: local };
           return { status: 'not_found' };
         }
         console.warn('[publicStoreRepository] RPC get_public_store retornou erro, verificando fallback local:', error.message);
-        const local = loadLocalStore(slug);
+        const local = demoFallback(slug);
         if (local) return { status: 'ok', data: local };
         return { status: 'error', message: error.message };
       }
       if (data === null || data === undefined) {
-        const local = loadLocalStore(slug);
+        const local = demoFallback(slug);
         if (local) return { status: 'ok', data: local };
         return { status: 'not_found' };
       }
@@ -127,7 +135,7 @@ export const publicStoreRepository = {
     } catch (err) {
       const message = err instanceof PublicStorePayloadError || err instanceof Error ? err.message : String(err);
       console.warn('[publicStoreRepository] Falha ao carregar a vitrine remota, verificando fallback local:', message);
-      const local = loadLocalStore(slug);
+      const local = demoFallback(slug);
       if (local) return { status: 'ok', data: local };
       return { status: 'error', message };
     }

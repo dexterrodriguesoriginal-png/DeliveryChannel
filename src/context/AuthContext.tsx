@@ -186,7 +186,9 @@ export const isGoogleVerifiedUser = (user: any): boolean => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Acesso Temporário de Desenvolvimento (Bypass de login para dono)
-  const isDevBypassedInitial = typeof window !== 'undefined' && localStorage.getItem('adegafood_dev_bypass') === 'true';
+  // Somente com VITE_ENABLE_DEMO_MODE=true. Em produção, uma marca antiga é descartada (ela prendia o painel na loja demo).
+  if (!IS_DEMO_MODE && typeof window !== 'undefined') { try { localStorage.removeItem('adegafood_dev_bypass'); } catch { /* ignora */ } }
+  const isDevBypassedInitial = IS_DEMO_MODE && typeof window !== 'undefined' && localStorage.getItem('adegafood_dev_bypass') === 'true';
   const initialDevTenant: Tenant | null = isDevBypassedInitial 
     ? (dataStore.getTenantBySlug('adega-premium') || (dataStore as any).tenants?.[0] || null) 
     : null;
@@ -1669,6 +1671,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Acesso Temporário de Desenvolvimento (Comando: Acesso direto ao painel do dono sem login)
   const bypassLoginAsOwner = useCallback(async () => {
+    if (!IS_DEMO_MODE) throw new Error('Acesso direto disponível apenas no modo de demonstração.');
     setIsLoadingAuth(false);
     setIsMembershipLoading(false);
     setIsEmailConfirmationRequired(false);
@@ -1746,7 +1749,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Restaura o bypass automaticamente ao recarregar a página se ativo
   useEffect(() => {
-    if (typeof window !== 'undefined' && localStorage.getItem('adegafood_dev_bypass') === 'true') {
+    if (IS_DEMO_MODE && typeof window !== 'undefined' && localStorage.getItem('adegafood_dev_bypass') === 'true') {
       bypassLoginAsOwner();
     }
   }, [bypassLoginAsOwner]);

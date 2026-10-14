@@ -64,6 +64,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
     signOut,
     resetPassword,
     bypassLoginAsOwner,
+    isDemoModeEnabled,
   } = useAuth();
 
   const { showToast } = useToast();
@@ -490,6 +491,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
             </div>
 
             {/* Botão Temporário de Acesso Direto para Programação */}
+      {isDemoModeEnabled && (
             <div className="p-3 bg-amber-500/10 border-2 border-amber-400 rounded-2xl text-left">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
@@ -513,6 +515,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
                 <span>{bypassLoading ? 'Acessando painel...' : '⚡ Acessar Painel sem Fazer Login'}</span>
               </button>
             </div>
+      )}
 
             {/* Botão Principal: Google OAuth */}
             <button

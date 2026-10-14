@@ -37,7 +37,8 @@ export const LoginCard: React.FC<LoginCardProps> = ({
     signUp, 
     signInWithGoogle, 
     resetPassword,
-    bypassLoginAsOwner
+    bypassLoginAsOwner,
+    isDemoModeEnabled
   } = useAuth();
   const { showToast } = useToast();
 
@@ -217,6 +218,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
       </div>
 
       {/* Botão Temporário de Acesso Direto para Programação / Dono de Estabelecimento */}
+      {isDemoModeEnabled && (
       <div className="mt-5 mb-2 p-3.5 bg-amber-500/10 border-2 border-amber-400 rounded-2xl">
         <div className="flex items-center justify-between mb-1.5">
           <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
@@ -240,6 +242,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
           <span>{bypassLoading ? 'Acessando painel...' : '⚡ Acessar Painel sem Fazer Login'}</span>
         </button>
       </div>
+      )}
 
       {/* Toggle entre Login e Cadastro */}
       {mode !== 'FORGOT' && (
