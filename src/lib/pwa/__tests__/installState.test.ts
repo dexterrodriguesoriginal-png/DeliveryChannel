@@ -79,3 +79,35 @@ describe('marca de instalado com validade', () => {
     expect(isMarkedInstalled(s, 'a', 1_000 + 31 * 864e5)).toBe(false);
   });
 });
+
+import { installPhaseCopy, nextInstallPhase } from '../installState';
+describe('acompanhamento da instalação', () => {
+  it('aceite → instalando; appinstalled → pronto; recusa → normal; 3 min → conferir tela', () => {
+    expect(nextInstallPhase('idle', 'accepted')).toBe('installing');
+    expect(nextInstallPhase('installing', 'slow-timeout')).toBe('slow');
+    expect(nextInstallPhase('slow', 'appinstalled')).toBe('done');
+    expect(nextInstallPhase('idle', 'dismissed')).toBe('idle');
+    expect(nextInstallPhase('idle', 'slow-timeout')).toBe('idle');
+  });
+  it('textos sem porcentagem', () => {
+    const c = installPhaseCopy('installing', 'Bar do Beto')!;
+    expect(c.title).toBe('Instalando o app Bar do Beto…');
+    expect(c.subtitle).toMatch(/até 2 minutos/);
+    expect(installPhaseCopy('done', 'Bar do Beto')!.title).toBe('Pronto! O app Bar do Beto está na sua tela inicial');
+    expect(installPhaseCopy('slow', 'X')!.subtitle).toMatch(/Confira sua tela inicial/);
+    expect(installPhaseCopy('idle', 'X')).toBeNull();
+    for (const p of ['installing', 'slow', 'done'] as const) expect(installPhaseCopy(p, 'X')!.title).not.toMatch(/100/);
+  });
+});
+
+import { estimatedInstallPercent } from '../installState';
+describe('porcentagem estimada da instalação', () => {
+  it('começa rápido, chega a 90% em ~90 s e para; 100% só com appinstalled', () => {
+    expect(estimatedInstallPercent(0, false)).toBe(0);
+    expect(estimatedInstallPercent(30_000, false)).toBeGreaterThan(50);
+    expect(estimatedInstallPercent(90_000, false)).toBe(90);
+    expect(estimatedInstallPercent(10 * 60_000, false)).toBe(90);
+    expect(estimatedInstallPercent(10 * 60_000, false)).toBeLessThanOrEqual(95);
+    expect(estimatedInstallPercent(1_000, true)).toBe(100);
+  });
+});

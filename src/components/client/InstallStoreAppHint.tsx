@@ -6,6 +6,7 @@ import {
   isMarkedInstalled, markInstalled, getDeferredPrompt, clearDeferredPrompt, subscribeInstall, wasAppInstalledEvent,
   decideInvite, readInvite, recordInvite, recordAccepted, isEditableFocused, onInviteTrigger, activeKey,
   InviteKind, InviteTrigger, INVITE_ACTIVE_MS, inviteSurface,
+  InstallPhase, INSTALL_SLOW_MS, INSTALL_DONE_HIDE_MS, installPhaseCopy, nextInstallPhase, estimatedInstallPercent,
 } from '../../lib/pwa/installState';
 
 interface Props { tenantId: string; storeName: string; color: string; logoUrl?: string; hidden?: boolean; busy?: boolean; }
@@ -15,6 +16,12 @@ interface Props { tenantId: string; storeName: string; color: string; logoUrl?: 
  * sem ele, card escuro compacto próprio com instruções. Volta nos momentos-chave até instalação real
  * (appinstalled / modo standalone). Nunca bloqueia a compra.
  */
+/** Somente para capturas/testes fora de produção: ?pwa_test_phase=installing|slow|done. */
+function testPhase(): InstallPhase | null {
+  if (import.meta.env.PROD) return null;
+  try { const v = new URLSearchParams(window.location.search).get('pwa_test_phase'); return v === 'installing' || v === 'slow' || v === 'done' ? v : null; } catch { return null; }
+}
+
 export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, color, logoUrl, hidden, busy }) => {
   const deferred = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
   const appInstalledEvt = useSyncExternalStore(subscribeInstall, wasAppInstalledEvent, () => false);
@@ -22,8 +29,10 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   const [invite, setInvite] = useState<{ kind: InviteKind; trigger: InviteTrigger } | null>(null);
   const [help, setHelp] = useState(false);
   const barDismissed = false; // barra não é mais dispensável: fica até instalar
-  const [phase, setPhase] = useState<'idle' | 'installing' | 'done'>('idle');
+  const [phase, setPhase] = useState<InstallPhase>(() => testPhase() || 'idle');
   const [doneClosed, setDoneClosed] = useState(false);
+  const [installStart, setInstallStart] = useState<number | null>(null);
+  const [, setTick] = useState(0);
   const standalone = isStandalone(window);
   const platform = detectPlatform(navigator.userAgent);
   const blockedRef = useRef(false);
@@ -32,8 +41,26 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   // Instalado só por appinstalled ou execução em modo standalone (nunca por clique/fechamento).
   useEffect(() => {
     if (standalone || appInstalledEvt) { markInstalled(localStorage, tenantId); setInstalled(true); }
-    if (appInstalledEvt && !standalone) setPhase('done');
+    if (appInstalledEvt && !standalone) setPhase(p => nextInstallPhase(p, 'appinstalled'));
   }, [standalone, appInstalledEvt, tenantId]);
+  // Sem appinstalled em ~3 min: só orienta conferir a tela inicial.
+  useEffect(() => {
+    if (phase !== 'installing' || testPhase()) return;
+    const id = window.setTimeout(() => setPhase(p => nextInstallPhase(p, 'slow-timeout')), INSTALL_SLOW_MS);
+    return () => window.clearTimeout(id);
+  }, [phase]);
+  // Atualiza a porcentagem estimada enquanto instala (ou aguarda) — sem nunca chegar a 100% sozinha.
+  useEffect(() => {
+    if (phase !== 'installing' && phase !== 'slow') return;
+    setInstallStart(s => s ?? Date.now());
+    const id = window.setInterval(() => setTick(t => t + 1), 500);
+    return () => window.clearInterval(id);
+  }, [phase]);
+  useEffect(() => {
+    if (phase !== 'done' || testPhase()) return;
+    const id = window.setTimeout(() => setDoneClosed(true), INSTALL_DONE_HIDE_MS);
+    return () => window.clearTimeout(id);
+  }, [phase]);
 
   // Diagnóstico: avisa no console quando o manifesto da loja não carrega (sem ele o Chrome não oferece instalação).
   useEffect(() => {
@@ -88,13 +115,34 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     return () => { window.clearInterval(id); evs.forEach(e => window.removeEventListener(e, act)); };
   }, [installed, standalone, tenantId, tryInvite]);
 
-  if (phase === 'done' && !doneClosed) {
+  const copy = installPhaseCopy(phase, storeName);
+  if (copy && !hidden && (phase !== 'done' || !doneClosed)) {
+    const isDone = phase === 'done';
     return (
-      <div data-testid="install-done" role="status" className="fixed inset-x-0 bottom-3 z-[120] px-3 flex justify-center pointer-events-none">
-        <div className="pointer-events-auto w-full max-w-sm rounded-2xl bg-[#2b2b2e] text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] px-4 py-3 flex items-center gap-3">
-          <CheckCircle2 className="h-6 w-6 text-emerald-400 shrink-0" />
-          <p className="flex-1 text-sm font-semibold">App instalado! Abra pela tela inicial.</p>
-          <button type="button" aria-label="Fechar" onClick={() => setDoneClosed(true)} className="p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>
+      <div data-testid="install-progress" data-phase={phase} role="status" aria-live="polite" className="fixed inset-x-0 bottom-2 z-[120] px-3 flex justify-center pointer-events-none">
+        <div className="pointer-events-auto w-full max-w-sm rounded-2xl bg-[#2b2b2e] text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/5 px-3 py-2.5">
+          <div className="flex items-center gap-3">
+            {isDone ? <CheckCircle2 className="h-10 w-10 p-1.5 text-emerald-400 shrink-0" />
+              : <StoreLogo logoUrl={logoUrl} name={storeName} color={color} className="w-10 h-10 shrink-0 rounded-xl" />}
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-semibold leading-tight break-words">{copy.title}</p>
+              {copy.subtitle && <p className="text-xs text-neutral-400 leading-tight mt-0.5">{copy.subtitle}</p>}
+            </div>
+            {phase !== 'installing' && <button type="button" aria-label="Fechar" onClick={() => { setDoneClosed(true); if (!isDone) setPhase('idle'); }} className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>}
+          </div>
+          {(phase === 'installing' || phase === 'slow' || isDone) && (() => {
+            const tp = testPhase();
+            const elapsed = tp ? (tp === 'installing' ? 25000 : 200000) : Date.now() - (installStart ?? Date.now());
+            const pct = estimatedInstallPercent(elapsed, isDone);
+            return (
+              <div className="mt-2.5 flex items-center gap-2" data-testid="install-percent" data-percent={pct}>
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                  <div className={`h-full rounded-full transition-[width] duration-500 ease-out ${isDone ? 'bg-emerald-400' : 'bg-[#a8c7fa]'}`} style={{ width: `${pct}%` }} />
+                </div>
+                <span className="w-9 text-right text-xs font-semibold tabular-nums text-neutral-300">{pct}%</span>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -110,7 +158,8 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     clearDeferredPrompt(); // o evento só pode ser usado uma vez
     try { await ev.prompt(); } catch { setHelp(true); return; }
     const choice = await ev.userChoice.catch(() => null);
-    if (choice?.outcome === 'accepted') { recordAccepted(localStorage, tenantId, Date.now()); setPhase('installing'); return; }
+    if (choice?.outcome === 'accepted') { recordAccepted(localStorage, tenantId, Date.now()); setDoneClosed(false); setPhase(p => nextInstallPhase(p, 'accepted')); closeModal(); return; }
+    setPhase(p => nextInstallPhase(p, 'dismissed'));
     closeModal();
   };
 
@@ -136,7 +185,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
 
   const card = surface !== 'fallback-bar';
   const t = invite?.trigger;
-  const line = phase === 'installing' ? 'Instalando… o Chrome vai mostrar o progresso' : !card ? 'Instalar app · abra a loja com um toque' : t === 'order' ? 'Acompanhe seu pedido pelo app' : t === 'cart' ? 'Peça mais rápido da próxima vez' : 'Abra a loja com um toque na tela inicial';
+  const line = !card ? 'Mais praticidade para pedir de novo.' : t === 'order' ? 'Acompanhe seu pedido pelo app' : t === 'cart' ? 'Peça mais rápido da próxima vez' : 'Abra a loja com um toque na tela inicial';
   return (
     <div data-testid={card ? 'install-store-app-card' : 'install-store-app-banner'} data-surface={surface} data-trigger={t}
       role={card ? 'dialog' : 'region'} aria-label={`Instalar app ${storeName}`}

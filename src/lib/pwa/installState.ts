@@ -153,3 +153,34 @@ export function inviteSurface(o: { installed: boolean; standalone: boolean; hidd
   // Barra compacta "Instalar app" sempre visível até instalar (com ou sem evento nativo).
   return 'fallback-bar';
 }
+
+// --- Acompanhamento após aceitar a instalação nativa (sem porcentagem e sem conclusão simulada) ---
+export type InstallPhase = 'idle' | 'installing' | 'slow' | 'done';
+/** Sem appinstalled após este tempo: só orienta conferir a tela inicial (não marca instalado). */
+export const INSTALL_SLOW_MS = 3 * 60 * 1000;
+export const INSTALL_DONE_HIDE_MS = 8000;
+export function installPhaseCopy(phase: InstallPhase, storeName: string): { title: string; subtitle: string } | null {
+  if (phase === 'installing') return { title: `Instalando o app ${storeName}…`, subtitle: 'Isso pode levar até 2 minutos. Pode continuar comprando.' };
+  if (phase === 'slow') return { title: storeName, subtitle: 'Confira sua tela inicial — o ícone deve aparecer em instantes' };
+  if (phase === 'done') return { title: `Pronto! O app ${storeName} está na sua tela inicial`, subtitle: '' };
+  return null;
+}
+/** Próxima fase a partir dos sinais reais: aceite nativo → instalando; appinstalled → pronto; recusa → normal. */
+export function nextInstallPhase(cur: InstallPhase, signal: 'accepted' | 'dismissed' | 'appinstalled' | 'slow-timeout'): InstallPhase {
+  if (signal === 'appinstalled') return 'done';
+  if (signal === 'accepted') return 'installing';
+  if (signal === 'dismissed') return cur === 'done' ? 'done' : 'idle';
+  return cur === 'installing' ? 'slow' : cur;
+}
+
+/**
+ * Porcentagem ESTIMADA exibida enquanto o Chrome instala: começa rápido e desacelera até 90% em ~90 s,
+ * e fica parada ali (nunca passa de 95%). 100% só com o evento real appinstalled.
+ */
+export const INSTALL_EST_MS = 90 * 1000;
+export function estimatedInstallPercent(elapsedMs: number, appInstalled: boolean): number {
+  if (appInstalled) return 100;
+  const t = Math.max(0, elapsedMs) / INSTALL_EST_MS;
+  const v = (90 * (1 - Math.exp(-3 * t))) / (1 - Math.exp(-3));
+  return Math.min(90, Math.max(0, Math.round(v)));
+}
