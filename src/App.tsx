@@ -161,7 +161,9 @@ function AppContent() {
   }
 
   // 2c. Rota para aplicativo do entregador: /entregador
-  if (pathname.startsWith('/entregador') || activeRole === 'DRIVER') {
+  // Fix PWA: só abre o app do entregador com papel DRIVER resolvido. Sem sessão (deep link/PWA
+  // após logout) ou com outro papel, /entregador segue o fluxo normal (login/painel) em vez de tela branca.
+  if (activeRole === 'DRIVER') {
     return <DriverApp />;
   }
 

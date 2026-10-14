@@ -9,7 +9,7 @@ import { Bike, Navigation, MapPin, Phone, CheckCircle2, AlertCircle, Clock, Pack
 import { useToast } from '../../context/ToastContext';
 import { Order } from '../../types';
 import { computeDriverDailySummary } from '../../lib/driverSummary';
-import { filterAssignedDriverOrders } from '../../lib/driverOrders';
+import { filterAssignedDriverOrders, driverOrderHistory } from '../../lib/driverOrders';
 import { canFetchDriverOrders, driverAvailabilityLabel, DriverAvailability } from '../../lib/membershipResolution';
 import { driverInviteRepository } from '../../repositories/driverRepository';
 
@@ -63,6 +63,7 @@ export const DriverApp: React.FC = () => {
   const assignedOrders = filterAssignedDriverOrders(orders, driverUserId);
 
   const dailySummary = computeDriverDailySummary(orders, driverUserId);
+  const historyOrders = driverOrderHistory(orders, driverUserId);
 
   const handleSignOut = async () => {
     await signOut();
@@ -130,6 +131,38 @@ export const DriverApp: React.FC = () => {
       </div>
 
       <div className="max-w-lg mx-auto p-4 space-y-4">
+        {navTab === 'history' && (
+          <Card className="p-4 space-y-3" data-testid="driver-history">
+            <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Histórico de Entregas</h4>
+            {historyOrders.length === 0 ? (
+              <p className="text-xs text-gray-500">Nenhuma entrega concluída ainda.</p>
+            ) : (
+              <ul className="divide-y divide-gray-100">
+                {historyOrders.map(o => (
+                  <li key={o.id} className="py-2 flex items-center justify-between text-xs">
+                    <span className="font-mono font-bold text-gray-700">#{o.orderNumber}</span>
+                    <span className="text-gray-500">{new Date(o.updatedAt || o.createdAt).toLocaleString('pt-BR')}</span>
+                    <Badge variant={o.status === 'DELIVERED' ? 'success' : 'warning'} size="sm">
+                      {o.status === 'DELIVERED' ? 'Entregue' : 'Cancelado'}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
+
+        {navTab === 'driver-profile' && (
+          <Card className="p-4 space-y-2 text-xs" data-testid="driver-profile">
+            <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Meu Perfil</h4>
+            <div><span className="text-gray-400">Nome: </span><span className="font-bold">{currentUser?.name || 'Entregador'}</span></div>
+            <div><span className="text-gray-400">Loja: </span><span className="font-bold">{activeTenant.name}</span></div>
+            <div><span className="text-gray-400">Disponibilidade: </span><span className="font-bold">{availabilityView.label}</span></div>
+            <p className="text-gray-500">A disponibilidade é definida pela loja.</p>
+          </Card>
+        )}
+
+        {navTab === 'active-delivery' && (<>
         {activeOrder ? (
           <div className="space-y-4">
             {/* Active Delivery Card */}
@@ -253,6 +286,7 @@ export const DriverApp: React.FC = () => {
             </div>
           </div>
         </Card>
+        </>)}
       </div>
 
       <MobileNavigation
