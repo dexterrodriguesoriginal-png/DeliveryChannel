@@ -40,12 +40,12 @@ import { captureInstallEvents as _cap, getDeferredPrompt as _get, clearDeferredP
 describe('prioridade ao card nativo do Chrome', () => {
   const base = { installed: false, standalone: false, hidden: false, inviteOpen: false, nativeAvailable: false, barDismissed: false };
   it('com evento nativo: nada fixo; no convite, card que chama prompt()', () => {
-    expect(inviteSurface({ ...base, nativeAvailable: true })).toBe('none');
+    expect(inviteSurface({ ...base, nativeAvailable: true })).toBe('fallback-bar');
     expect(inviteSurface({ ...base, nativeAvailable: true, inviteOpen: true })).toBe('native-card');
   });
   it('sem evento: barra escura persistente (dispensável) e card próprio no convite', () => {
     expect(inviteSurface(base)).toBe('fallback-bar');
-    expect(inviteSurface({ ...base, barDismissed: true })).toBe('none');
+    expect(inviteSurface({ ...base, barDismissed: true })).toBe('fallback-bar');
     expect(inviteSurface({ ...base, barDismissed: true, inviteOpen: true })).toBe('fallback-card');
   });
   it('instalado, standalone ou checkout: nada', () => {
@@ -62,7 +62,7 @@ describe('prioridade ao card nativo do Chrome', () => {
     const e1 = mk(); handlers.beforeinstallprompt(e1 as unknown as Event);
     expect(e1.preventDefault).not.toHaveBeenCalled(); expect(_get()).toBe(e1);
     const e2 = mk(); handlers.beforeinstallprompt(e2 as unknown as Event);
-    expect(e2.preventDefault).toHaveBeenCalled(); expect(_get()).toBe(e2);
+    expect(e2.preventDefault).not.toHaveBeenCalled(); expect(_get()).toBe(e2);
     _clr(); expect(_get()).toBeNull();
   });
 });

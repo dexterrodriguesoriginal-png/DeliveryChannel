@@ -64,7 +64,8 @@ export function subscribeInstall(l: () => void) { listeners.add(l); return () =>
  * Em ambos os casos o evento é guardado e prompt() funciona após clique real (web.dev/articles/customize-install).
  */
 export const nativeOfferedKey = (path: string) => `deliverychannel_pwa_native_offered_${path.replace(/\/+$/, '') || '/'}`;
-export function shouldSuppressNativeInfobar(alreadyOfferedThisSession: boolean) { return alreadyOfferedThisSession; }
+/** Nunca suprime o card nativo do Chrome: ele decide quando mostrar; o evento é guardado para o botão. */
+export function shouldSuppressNativeInfobar(_alreadyOfferedThisSession: boolean) { return false; }
 export function captureInstallEvents(w: Window) {
   w.addEventListener('beforeinstallprompt', (e) => {
     const key = nativeOfferedKey(safe(() => w.location.pathname, '/'));
@@ -117,8 +118,9 @@ export function decideInvite(c: InviteContext): InviteKind | null {
   if (c.installed || c.standalone || c.busy) return null;
   const first = c.record.count === 0;
   if (first) return c.trigger === 'cart' || c.trigger === 'order' ? 'sheet' : 'modal';
-  if (c.trigger === 'visit') return null; // visitas futuras: convida no primeiro momento-chave
   if (acceptedRecently(c)) return null;
+  // Até a instalação real, toda nova visita/recarga volta a mostrar o convite (sem intervalo mínimo).
+  if (c.trigger === 'visit') return 'modal';
   if (c.now - c.record.lastInviteAt < INVITE_MIN_GAP_MS) return null;
   return c.trigger === 'active' ? 'modal' : 'sheet';
 }
@@ -148,6 +150,6 @@ export type InviteSurface = 'none' | 'native-card' | 'fallback-card' | 'fallback
 export function inviteSurface(o: { installed: boolean; standalone: boolean; hidden: boolean; inviteOpen: boolean; nativeAvailable: boolean; barDismissed: boolean }): InviteSurface {
   if (o.installed || o.standalone || o.hidden) return 'none';
   if (o.inviteOpen) return o.nativeAvailable ? 'native-card' : 'fallback-card';
-  if (o.nativeAvailable || o.barDismissed) return 'none';
+  // Barra compacta "Instalar app" sempre visível até instalar (com ou sem evento nativo).
   return 'fallback-bar';
 }

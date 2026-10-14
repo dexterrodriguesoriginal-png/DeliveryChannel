@@ -11,7 +11,7 @@ describe('convite de instalação persistente', () => {
     expect(ctx(s, 1000, 'visit')).toBe('modal');
     recordInvite(s, 't1', 1000);
     expect(isMarkedInstalled(s, 't1')).toBe(false);
-    expect(ctx(s, 2000, 'visit')).toBeNull();
+    expect(ctx(s, 2000, 'visit')).toBe('modal'); // recarregar volta a convidar até instalar
   });
   it('respeita o intervalo mínimo e reconvida nos momentos-chave', () => {
     const s = mem(); recordInvite(s, 't1', 0);
@@ -32,7 +32,8 @@ describe('convite de instalação persistente', () => {
   it('visitas futuras: sem cooldown longo, convida no primeiro momento-chave', () => {
     const s = mem(); recordInvite(s, 't1', 0); recordInvite(s, 't1', 60_000);
     const nextDay = 24 * 3600_000;
-    expect(ctx(s, nextDay, 'visit')).toBeNull();
+    expect(ctx(s, nextDay, 'visit')).toBe('modal');
+    expect(ctx(s, nextDay, 'visit', { installed: true })).toBeNull();
     expect(ctx(s, nextDay, 'product')).toBe('sheet');
   });
   it('aceite nativo só pausa (aguarda appinstalled), sem marcar instalado', () => {

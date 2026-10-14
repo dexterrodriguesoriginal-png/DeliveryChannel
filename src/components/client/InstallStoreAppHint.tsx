@@ -21,7 +21,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   const [installed, setInstalled] = useState(() => isMarkedInstalled(localStorage, tenantId));
   const [invite, setInvite] = useState<{ kind: InviteKind; trigger: InviteTrigger } | null>(null);
   const [help, setHelp] = useState(false);
-  const [barDismissed, setBarDismissed] = useState(false);
+  const barDismissed = false; // barra não é mais dispensável: fica até instalar
   const [phase, setPhase] = useState<'idle' | 'installing' | 'done'>('idle');
   const [doneClosed, setDoneClosed] = useState(false);
   const standalone = isStandalone(window);
@@ -63,7 +63,8 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     setInvite({ kind, trigger });
   }, [tenantId]);
 
-  useEffect(() => { tryInvite('visit'); }, [tryInvite]);
+  // Cada carregamento/visita: convite após a identidade da loja carregar (pequeno atraso).
+  useEffect(() => { const id = window.setTimeout(() => tryInvite('visit'), 1200); return () => window.clearTimeout(id); }, [tryInvite]);
   useEffect(() => onInviteTrigger(tryInvite), [tryInvite]);
   // Fecha convites abertos se o checkout/form abrir.
   useEffect(() => { if (hidden || busy) setInvite(null); }, [hidden, busy]);
@@ -102,7 +103,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   const surface = inviteSurface({ installed, standalone, hidden: !!hidden, inviteOpen: !!invite, nativeAvailable: !!deferred, barDismissed });
   if (surface === 'none') return null;
 
-  const closeModal = () => { setInvite(null); setHelp(false); setBarDismissed(true); };
+  const closeModal = () => { setInvite(null); setHelp(false); };
   const install = async () => {
     const ev = getDeferredPrompt();
     if (!ev) { setHelp(true); return; }
@@ -133,9 +134,9 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     </div>
   );
 
-  const t = invite?.trigger;
-  const line = phase === 'installing' ? 'Instalando… o Chrome vai mostrar o progresso' : t === 'order' ? 'Acompanhe seu pedido pelo app' : t === 'cart' ? 'Peça mais rápido da próxima vez' : 'Abra a loja com um toque na tela inicial';
   const card = surface !== 'fallback-bar';
+  const t = invite?.trigger;
+  const line = phase === 'installing' ? 'Instalando… o Chrome vai mostrar o progresso' : !card ? 'Instalar app · abra a loja com um toque' : t === 'order' ? 'Acompanhe seu pedido pelo app' : t === 'cart' ? 'Peça mais rápido da próxima vez' : 'Abra a loja com um toque na tela inicial';
   return (
     <div data-testid={card ? 'install-store-app-card' : 'install-store-app-banner'} data-surface={surface} data-trigger={t}
       role={card ? 'dialog' : 'region'} aria-label={`Instalar app ${storeName}`}
@@ -149,9 +150,10 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
           </div>
           {phase !== 'installing' && <button type="button" onClick={install} data-testid="install-primary" aria-pressed={help}
             className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition active:scale-95 active:brightness-90 hover:brightness-105 ${help ? 'bg-[#7fa6e8] text-[#041e49] ring-2 ring-white/30' : 'bg-[#a8c7fa] text-[#062e6f]'}`}>Instalar</button>}
-          <button type="button" aria-label="Fechar" data-testid="install-continue"
-            onClick={() => { if (card) closeModal(); else { setBarDismissed(true); setHelp(false); } }}
+          {card ? <button type="button" aria-label="Fechar" data-testid="install-continue" onClick={closeModal}
             className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>
+            : help ? <button type="button" aria-label="Fechar instruções" onClick={() => setHelp(false)}
+            className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button> : null}
         </div>
         {help && instructions}
       </div>
