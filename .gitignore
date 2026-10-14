@@ -6,3 +6,12 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Supabase CLI (estado local/link do projeto — nunca versionar)
+supabase/.temp/
+supabase/.branches/
+supabase/.env
+supabase/.env.*
+supabase/functions/.env
+*.pem
+*.key
