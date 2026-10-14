@@ -108,13 +108,15 @@ describe('porcentagem estimada da instalação', () => {
     expect(estimatedInstallPercent(60_000, null)).toBe(90);
     expect(estimatedInstallPercent(10 * 60_000, null)).toBe(90);
   });
-  it('appinstalled cedo não salta: sobe gradual até 100% só aos 60 s', () => {
+  it('appinstalled cedo não salta: sobe gradual até 100% só aos 75 s', () => {
     const at1 = estimatedInstallPercent(1_000, 1_000);
     expect(at1).toBeLessThan(10);
     let prev = 0;
-    for (let t = 1_000; t <= 60_000; t += 1_000) { const p = estimatedInstallPercent(t, 1_000); expect(p).toBeGreaterThanOrEqual(prev); prev = p; }
+    for (let t = 1_000; t <= 75_000; t += 1_000) { const p = estimatedInstallPercent(t, 1_000); expect(p).toBeGreaterThanOrEqual(prev); prev = p; }
     expect(estimatedInstallPercent(59_000, 1_000)).toBeLessThan(100);
-    expect(estimatedInstallPercent(60_000, 1_000)).toBe(100);
+    expect(estimatedInstallPercent(60_000, 1_000)).toBeLessThan(100);
+    expect(estimatedInstallPercent(74_000, 1_000)).toBeLessThan(100);
+    expect(estimatedInstallPercent(75_000, 1_000)).toBe(100);
   });
   it('appinstalled tardio: de 90% a 100% em 8 s, sem salto', () => {
     expect(estimatedInstallPercent(120_000, 120_000)).toBe(90);

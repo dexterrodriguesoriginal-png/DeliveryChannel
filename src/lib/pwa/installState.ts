@@ -175,15 +175,15 @@ export function nextInstallPhase(cur: InstallPhase, signal: 'accepted' | 'dismis
 }
 
 /**
- * Porcentagem exibida enquanto o Chrome instala, baseada no tempo (duração mínima ~60 s).
+ * Porcentagem exibida enquanto o Chrome instala, baseada no tempo (duração mínima ~75 s).
  * Sem appinstalled: segue a curva e para em 90%. Com appinstalled (que o Chrome dispara antes do
- * ícone ficar pronto): nunca salta — sobe gradualmente até 100% no mínimo aos 60 s (ou +8 s se chegar depois).
+ * ícone ficar pronto): nunca salta — sobe gradualmente até 100% no mínimo aos 75 s (ou +8 s se chegar depois).
  * `installedAtMs` = tempo decorrido (desde o início) em que o appinstalled chegou, ou null.
  */
-export const INSTALL_MIN_MS = 60 * 1000;
+export const INSTALL_MIN_MS = 75 * 1000;
 export const INSTALL_FINISH_MIN_MS = 8 * 1000;
-/** Após 100%, espera antes de liberar o botão "Abrir app" (o WebAPK ainda finaliza no aparelho). */
-export const OPEN_APP_ENABLE_DELAY_MS = 15 * 1000;
+/** Botão "Abrir app" liberado imediatamente ao chegar a 100% (o tempo mínimo de 75 s já cobre a finalização no aparelho). */
+export const OPEN_APP_ENABLE_DELAY_MS = 0;
 export const INSTALL_EST_MS = INSTALL_MIN_MS;
 function baseCurve(elapsedMs: number): number {
   const t = Math.min(1, Math.max(0, elapsedMs) / INSTALL_MIN_MS);

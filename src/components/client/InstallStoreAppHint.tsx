@@ -8,7 +8,7 @@ import {
   isMarkedInstalled, markInstalled, getDeferredPrompt, clearDeferredPrompt, subscribeInstall, wasAppInstalledEvent,
   decideInvite, readInvite, recordInvite, recordAccepted, isEditableFocused, onInviteTrigger, activeKey,
   InviteKind, InviteTrigger, INVITE_ACTIVE_MS, inviteSurface,
-  InstallPhase, INSTALL_SLOW_MS, installPhaseCopy, nextInstallPhase, estimatedInstallPercent, OPEN_APP_ENABLE_DELAY_MS,
+  InstallPhase, INSTALL_SLOW_MS, installPhaseCopy, nextInstallPhase, estimatedInstallPercent,
 } from '../../lib/pwa/installState';
 
 interface Props { tenantId: string; storeName: string; color: string; logoUrl?: string; hidden?: boolean; busy?: boolean; }
@@ -77,19 +77,14 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     const id = window.setInterval(() => setTick(t => t + 1), 500);
     return () => window.clearInterval(id);
   }, [phase]);
-  // 100% (só com appinstalled e após o tempo mínimo) → "Finalizando no seu celular…"; botão liberado após ~15 s.
+  // 100% (só com appinstalled e após o tempo mínimo) → "Pronto!" com o botão "Abrir app" já liberado.
   useEffect(() => {
     if ((phase !== 'installing' && phase !== 'slow') || installStart == null || installedAt == null || testPhase()) return;
     const id = window.setInterval(() => {
-      if (estimatedInstallPercent(Date.now() - installStart, installedAt - installStart) >= 100) setPhase('finishing');
+      if (estimatedInstallPercent(Date.now() - installStart, installedAt - installStart) >= 100) setPhase('done');
     }, 250);
     return () => window.clearInterval(id);
   }, [phase, installStart, installedAt]);
-  useEffect(() => {
-    if (phase !== 'finishing' || testPhase()) return;
-    const id = window.setTimeout(() => setPhase('done'), OPEN_APP_ENABLE_DELAY_MS);
-    return () => window.clearTimeout(id);
-  }, [phase]);
   // Visitas posteriores no navegador: detecta o app já instalado (Chrome Android, via related_applications).
   useEffect(() => {
     if (standalone) return;
