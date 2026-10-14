@@ -2,12 +2,18 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
+import { checkBuildEnv } from './src/lib/deployGuard';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  // Guarda staging × produção (src/lib/deployGuard.ts): falha o build/dev se a configuração for perigosa.
+  const guardErrors = checkBuildEnv({ ...loadEnv(mode, process.cwd(), 'VITE_'), ...pickVite(process.env) });
+  if (guardErrors.length) {
+    throw new Error('Configuração de build recusada:\n - ' + guardErrors.join('\n - '));
+  }
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -27,3 +33,7 @@ export default defineConfig(() => {
     },
   };
 });
+
+function pickVite(e: NodeJS.ProcessEnv): Record<string, string | undefined> {
+  return Object.fromEntries(Object.entries(e).filter(([k]) => k.startsWith('VITE_')));
+}
