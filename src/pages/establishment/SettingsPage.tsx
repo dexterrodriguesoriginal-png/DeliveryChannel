@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { tenantRepository } from '../../repositories/tenantRepository';
-import { dataStore } from '../../services/dataStore';
+import { PixPaymentSettingsCard } from '../../components/establishment/PixPaymentSettingsCard';
+import { isN1N6Backend } from '../../lib/backendSchema';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -35,14 +36,14 @@ export const SettingsPage: React.FC = () => {
 
   // RBAC: Somente OWNER, MANAGER ou administradores executivos podem editar configurações
   const canEdit = activeRole === 'OWNER' || activeRole === 'MANAGER' || activeRole === 'CEO' || activeRole === 'SUPER_ADMIN';
+  // F2: configuração de pagamento (tabela nova da N1) é exclusiva de OWNER/MANAGER — sem CEO/SUPER_ADMIN.
+  const canEditPayment = activeRole === 'OWNER' || activeRole === 'MANAGER';
 
-  const [form, setForm] = useState<TenantSettings>({
-    ...activeTenant.settings,
-    defaultPrepTimeMinutes: activeTenant.settings?.defaultPrepTimeMinutes ?? 30,
-  });
+  // Decisão 34: tempo de preparo NULL = não configurado (sem default 30).
+  const [form, setForm] = useState<TenantSettings>({ ...activeTenant.settings });
 
   const [prepTimeInput, setPrepTimeInput] = useState<string>(
-    String(activeTenant.settings?.defaultPrepTimeMinutes ?? 30)
+    activeTenant.settings?.defaultPrepTimeMinutes ? String(activeTenant.settings.defaultPrepTimeMinutes) : ''
   );
   const [prepTimeError, setPrepTimeError] = useState<string | null>(null);
   const [savingPrep, setSavingPrep] = useState(false);
@@ -54,20 +55,17 @@ export const SettingsPage: React.FC = () => {
     let isSubscribed = true;
     if (activeTenant?.id) {
       // 1. Inicializa imediatamente com os dados locais
-      const minutes = activeTenant.settings?.defaultPrepTimeMinutes ?? 30;
-      setForm({
-        ...activeTenant.settings,
-        defaultPrepTimeMinutes: minutes,
-      });
-      setPrepTimeInput(String(minutes));
+      const minutes = activeTenant.settings?.defaultPrepTimeMinutes;
+      setForm({ ...activeTenant.settings });
+      setPrepTimeInput(minutes ? String(minutes) : '');
       setPrepTimeError(null);
 
       // 2. Consulta direta à fonte da verdade no Supabase (garantia de reload e dados frescos)
       tenantRepository.getSettings(securityContext, activeTenant.id).then(freshSettings => {
         if (isSubscribed && freshSettings) {
-          const freshMinutes = freshSettings.defaultPrepTimeMinutes ?? 30;
+          const freshMinutes = freshSettings.defaultPrepTimeMinutes;
           setForm(freshSettings);
-          setPrepTimeInput(String(freshMinutes));
+          setPrepTimeInput(freshMinutes ? String(freshMinutes) : '');
           if (setActiveTenant) {
             setActiveTenant({
               ...activeTenant,
@@ -134,7 +132,6 @@ export const SettingsPage: React.FC = () => {
       };
 
       await tenantRepository.updateSettings(securityContext, activeTenant.id, updatedSettings);
-      dataStore.updateTenantSettings(securityContext, activeTenant.id, updatedSettings);
 
       const newFullSettings: TenantSettings = {
         ...form,
@@ -178,8 +175,10 @@ export const SettingsPage: React.FC = () => {
       return;
     }
 
-    const validation = validatePrepMinutes(prepTimeInput);
-    if (!validation.valid || validation.value === undefined) {
+    // Tempo de preparo só existe no N1–N6 (default_prep_time_minutes); vazio = não configurado.
+    const n1n6 = isN1N6Backend();
+    const validation = n1n6 && prepTimeInput.trim() ? validatePrepMinutes(prepTimeInput) : { valid: true as const, value: undefined };
+    if (!validation.valid) {
       setPrepTimeError(validation.error || 'Valor de tempo de preparo inválido.');
       return;
     }
@@ -195,8 +194,11 @@ export const SettingsPage: React.FC = () => {
     const newPrepMinutes = validation.value;
     const finalForm: TenantSettings = {
       ...form,
-      defaultPrepTimeMinutes: newPrepMinutes,
+      defaultPrepTimeMinutes: n1n6 ? newPrepMinutes : undefined,
     };
+    // Chave PIX (legacy-020): somente OWNER/MANAGER gravam; no N1–N6 ela fica em tenant_payment_settings.
+    if (!n1n6 && !canEditPayment) delete (finalForm as Partial<TenantSettings>).pixKey;
+    if (n1n6) delete (finalForm as Partial<TenantSettings>).pixKey;
 
     try {
       await tenantRepository.updateSettings(
@@ -204,7 +206,6 @@ export const SettingsPage: React.FC = () => {
         activeTenant.id,
         stripUnchangedFulfillment(finalForm, activeTenant.settings),
       );
-      dataStore.updateTenantSettings(securityContext, activeTenant.id, finalForm);
       if (setActiveTenant) {
         setActiveTenant({
           ...activeTenant,
@@ -247,6 +248,7 @@ export const SettingsPage: React.FC = () => {
       {/* ========================================================================= */}
       {/* SEÇÃO PRINCIPAL: TEMPO DE PREPARO E ENTREGA                               */}
       {/* ========================================================================= */}
+      {isN1N6Backend() && (
       <Card className="p-5 space-y-4 border-2 border-emerald-100 bg-white shadow-xs">
         <div className="pb-2 border-b border-gray-100 flex items-center justify-between">
           <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -320,7 +322,7 @@ export const SettingsPage: React.FC = () => {
                     ? 'border-rose-400 focus:ring-rose-200 text-rose-900 bg-rose-50/30'
                     : 'border-gray-300 focus:ring-emerald-200 focus:border-emerald-600 text-gray-900 bg-white'
                 } ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                placeholder="30"
+                placeholder="Ex.: 25"
               />
             </div>
             <span className="text-xs font-bold text-gray-500 shrink-0">minutos</span>
@@ -348,7 +350,7 @@ export const SettingsPage: React.FC = () => {
 
         <div className="pt-2 flex items-center justify-between border-t border-gray-100">
           <span className="text-[11px] text-gray-500">
-            Valor atual salvo: <strong className="text-gray-800">{form.defaultPrepTimeMinutes ?? 30} min</strong>
+            Valor atual salvo: <strong className="text-gray-800">{form.defaultPrepTimeMinutes ? `${form.defaultPrepTimeMinutes} min` : 'não configurado'}</strong>
           </span>
           <Button
             type="button"
@@ -363,6 +365,7 @@ export const SettingsPage: React.FC = () => {
           </Button>
         </div>
       </Card>
+      )}
 
       {/* Formulário complementar de regras operacionais */}
       <form onSubmit={handleSaveAll} className="space-y-5">
@@ -435,12 +438,14 @@ export const SettingsPage: React.FC = () => {
                 value={form.phoneWhatsApp}
                 onChange={(e) => setForm({ ...form, phoneWhatsApp: e.target.value })}
               />
-              <Input
-                label="Chave PIX da Empresa"
-                disabled={!canEdit}
-                value={form.pixKey || ''}
-                onChange={(e) => setForm({ ...form, pixKey: e.target.value })}
-              />
+              {!isN1N6Backend() && (
+                <Input
+                  label="Chave PIX da Empresa"
+                  disabled={!canEditPayment}
+                  value={form.pixKey || ''}
+                  onChange={(e) => setForm({ ...form, pixKey: e.target.value })}
+                />
+              )}
             </div>
           </div>
         </Card>
@@ -457,6 +462,9 @@ export const SettingsPage: React.FC = () => {
           </Button>
         </div>
       </form>
+
+      {/* PIX: tabela tenant_payment_settings (N1), salva por RPC auditada — fora do formulário acima. */}
+      {isN1N6Backend() && <PixPaymentSettingsCard tenantId={activeTenant.id} canEdit={canEditPayment} />}
     </div>
   );
 };

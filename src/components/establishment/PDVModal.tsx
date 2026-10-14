@@ -1,9 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { isN1N6Backend } from '../../lib/backendSchema';
+import { promotionRepository, normalizeCouponCode } from '../../repositories/promotionRepository';
+import { newIdempotencyKey } from '../../lib/backend';
 import { Barcode, Search, X, Plus, Minus, ShoppingBag, DollarSign } from 'lucide-react';
 import { Product } from '../../types';
 
 interface PDVModalProps {
   isOpen: boolean;
+  /** Loja ativa — cupom é validado no servidor (validate_coupon_pos). */
+  tenantId: string;
   products: Product[];
   onClose: () => void;
   onSubmit: (data: {
@@ -12,19 +17,30 @@ interface PDVModalProps {
     items: Array<{ productId: string; quantity: number; notes?: string }>;
     paymentMethod: 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'PIX';
     notes?: string;
+    couponCode?: string;
+    idempotencyKey: string;
   }) => Promise<void>;
 }
 
 export const PDVModal: React.FC<PDVModalProps> = ({
   isOpen,
+  tenantId,
   products,
   onClose,
   onSubmit,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<Array<{ product: Product; quantity: number }>>([]);
-  const [customerName, setCustomerName] = useState('Consumidor Balcão');
-  const [customerPhone, setCustomerPhone] = useState('(00) 00000-0000');
+  // Sem nome/telefone fictícios: em branco, o servidor registra "Cliente Balcão" sem telefone.
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [couponInput, setCouponInput] = useState('');
+  const [couponPreview, setCouponPreview] = useState<{ code: string; discount: number } | null>(null);
+  const [couponMsg, setCouponMsg] = useState<string | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const saleKey = useRef<string>(newIdempotencyKey());
+  // Cupom no PDV só existe no N1–N6 (validate_coupon_pos / process_pos_sale_atomic).
+  const couponsEnabled = isN1N6Backend();
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'PIX'>('PIX');
   const [cashChange, setCashChange] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -64,7 +80,41 @@ export const PDVModal: React.FC<PDVModalProps> = ({
     });
   };
 
-  const totalAmount = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  // Prévia: o total oficial (preço efetivo, cupom) é calculado em process_pos_sale_atomic.
+  const subtotalPreview = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const totalAmount = Math.max(0, subtotalPreview - (couponPreview?.discount || 0));
+
+  // A prévia do cupom vale para o carrinho validado; qualquer mudança exige validar de novo.
+  useEffect(() => {
+    setCouponPreview(null);
+  }, [cart]);
+
+  const handleApplyCoupon = async () => {
+    const code = normalizeCouponCode(couponInput);
+    if (!code || cart.length === 0) return;
+    setCouponLoading(true);
+    setCouponMsg(null);
+    try {
+      const res = await promotionRepository.validateCouponPos(
+        tenantId,
+        code,
+        cart.map(i => ({ productId: i.product.id, quantity: i.quantity })),
+        undefined
+      );
+      if (res.valid) {
+        setCouponPreview({ code: res.code || code, discount: res.discount });
+        setCouponMsg(res.message);
+      } else {
+        setCouponPreview(null);
+        setCouponMsg(res.message);
+      }
+    } catch (err: any) {
+      setCouponPreview(null);
+      setCouponMsg(err.message || 'Falha ao validar cupom.');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
 
   const handleFinishSale = async () => {
     if (cart.length === 0 || isSubmitting) return;
@@ -76,10 +126,12 @@ export const PDVModal: React.FC<PDVModalProps> = ({
         : 'Venda direta realizada pela frente de caixa (PDV).';
 
       await onSubmit({
-        customerName: customerName.trim() || 'Consumidor Balcão',
-        customerPhone: customerPhone.trim() || '(00) 00000-0000',
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
         paymentMethod,
         notes,
+        couponCode: couponPreview?.code,
+        idempotencyKey: saleKey.current,
         items: cart.map(i => ({
           productId: i.product.id,
           quantity: i.quantity,
@@ -87,6 +139,10 @@ export const PDVModal: React.FC<PDVModalProps> = ({
       });
 
       setCart([]);
+      setCouponPreview(null);
+      setCouponInput('');
+      setCouponMsg(null);
+      saleKey.current = newIdempotencyKey();
       onClose();
     } finally {
       setIsSubmitting(false);
@@ -247,10 +303,41 @@ export const PDVModal: React.FC<PDVModalProps> = ({
               </div>
             </div>
 
+            {/* Cupom (CASHIER pode aplicar; criar/editar é só OWNER/MANAGER) */}
+            {couponsEnabled && (
+            <div className="space-y-1.5 pt-2 border-t border-zinc-800">
+              <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block font-bold">Cupom</label>
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={couponInput}
+                  onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponPreview(null); setCouponMsg(null); }}
+                  placeholder="CÓDIGO"
+                  className="flex-1 bg-[#121214] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyCoupon}
+                  disabled={couponLoading || !couponInput.trim() || cart.length === 0}
+                  className="px-3 py-2 rounded-xl text-[10px] font-bold bg-zinc-800 text-zinc-200 disabled:opacity-50 cursor-pointer"
+                >
+                  {couponLoading ? '...' : 'Aplicar'}
+                </button>
+              </div>
+              {couponMsg && <p className={`text-[10px] ${couponPreview ? 'text-emerald-400' : 'text-rose-400'}`}>{couponMsg}</p>}
+            </div>
+            )}
+
             {/* Total e Fechar */}
             <div className="pt-3 border-t border-zinc-800 space-y-3">
+              {couponPreview && (
+                <div className="flex justify-between items-center font-mono text-[11px] text-emerald-400">
+                  <span>Desconto ({couponPreview.code})</span>
+                  <span>- R$ {couponPreview.discount.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center font-mono">
-                <span className="text-zinc-400 text-xs">TOTAL A PAGAR:</span>
+                <span className="text-zinc-400 text-xs">TOTAL (prévia):</span>
                 <span className="text-xl font-black text-emerald-400">
                   R$ {totalAmount.toFixed(2)}
                 </span>

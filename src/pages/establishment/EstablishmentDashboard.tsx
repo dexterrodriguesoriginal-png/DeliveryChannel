@@ -114,8 +114,9 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
 
   // Status da Operação (pedidos em andamento, entregas em andamento, alertas de estoque)
   const isStoreOpen = storeIsOpen;
-  const defaultPrepMinutes = activeTenant.settings?.defaultPrepTimeMinutes ?? 30;
-  const estimatedPrepTimeStr = `${defaultPrepMinutes} min`;
+  // Decisão 34: sem default 30 — NULL = não configurado.
+  const defaultPrepMinutes = activeTenant.settings?.defaultPrepTimeMinutes;
+  const estimatedPrepTimeStr = defaultPrepMinutes ? `${defaultPrepMinutes} min` : 'não configurado';
   const pendingOrPreparingCount = orders.filter(o => ['PENDING', 'CONFIRMED', 'PREPARING', 'READY'].includes(o.status)).length;
   const inDeliveryCount = orders.filter(o => o.status === 'OUT_FOR_DELIVERY').length;
   const activeDriversCount = remoteDrivers ? remoteDrivers.filter(d => d.isOnline).length : 0;

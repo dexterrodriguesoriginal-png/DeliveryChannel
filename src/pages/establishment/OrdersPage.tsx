@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { orderRepository } from '../../repositories/orderRepository';
+import { validateStatusChange } from '../../repositories/orderMappers';
+import { isN1N6Backend } from '../../lib/backendSchema';
 import { driverRepository } from '../../repositories/driverRepository';
 import { productRepository } from '../../repositories/productRepository';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { Skeleton } from '../../components/ui/Skeleton';
-import { Order, OrderStatus, Driver, Product } from '../../types';
+import { Order, OrderStatus, PaymentStatus, Driver, Product } from '../../types';
 import { playNewOrderSound } from '../../utils/audio';
 import { ThermalReceiptModal } from '../../components/establishment/ThermalReceiptModal';
 import { PDVModal } from '../../components/establishment/PDVModal';
@@ -229,11 +231,39 @@ export const OrdersPage: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [assigningOrder, cancellingOrder, orderToPrint]);
 
+  // Pagamento (N1–N6): update_order_payment_status — OWNER/MANAGER/CASHIER, validado no servidor.
+  const canChangePayment = activeRole === 'OWNER' || activeRole === 'MANAGER' || activeRole === 'CASHIER';
+  const handleUpdatePayment = async (order: Order, next: PaymentStatus) => {
+    if (!activeTenant?.id) return;
+    let note: string | undefined;
+    if (next === 'REFUNDED') {
+      // Servidor exige motivo e só aceita OWNER/MANAGER para estorno.
+      const reason = window.prompt(`Motivo do estorno do pedido #${order.orderNumber}:`);
+      if (!reason || !reason.trim()) return;
+      note = reason.trim().slice(0, 500);
+    }
+    try {
+      const updated = await orderRepository.updatePaymentStatus(securityContext, activeTenant.id, order.id, next, note);
+      setSelectedOrder(updated);
+      showToast({ type: 'success', title: 'Pagamento atualizado', message: next === 'PAID' ? 'Pagamento marcado como recebido.' : 'Estorno registrado.' });
+      await fetchOrders(true);
+    } catch (err: any) {
+      showToast({ type: 'error', title: 'Falha no pagamento', message: err.message || 'Não foi possível atualizar o pagamento.' });
+    }
+  };
+
   // Atualização de status operacional
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus, note?: string) => {
     if (!activeTenant?.id) return;
+    const current = (remoteOrders || []).find(o => o.id === orderId)?.status;
+    // F5: cancelado é final; cancelamento exige motivo (o servidor reforça as mesmas regras).
+    const check = validateStatusChange(current, newStatus, note);
+    if (!check.ok) {
+      showToast({ type: 'warning', title: 'Alteração não permitida', message: check.message });
+      return;
+    }
     try {
-      await orderRepository.updateStatus(securityContext, activeTenant.id, orderId, newStatus, note);
+      await orderRepository.updateStatus(securityContext, activeTenant.id, orderId, newStatus, check.note || undefined, current);
       showToast({
         type: 'success',
         title: 'Status Atualizado',
@@ -253,6 +283,15 @@ export const OrdersPage: React.FC = () => {
   const handleKanbanDrop = async (orderId: string, targetStatus: OrderStatus) => {
     const targetOrder = allOrders.find(o => o.id === orderId);
     if (!targetOrder || targetOrder.status === targetStatus) return;
+    if (targetOrder.status === 'CANCELLED') {
+      showToast({ type: 'warning', title: 'Pedido cancelado', message: 'Pedido cancelado não pode ser reaberto.' });
+      return;
+    }
+    if (targetStatus === 'CANCELLED') {
+      // Cancelamento sempre pelo modal (motivo obrigatório + estorno).
+      setCancellingOrder(targetOrder);
+      return;
+    }
 
     if (targetStatus === 'OUT_FOR_DELIVERY' && !targetOrder.driverId && targetOrder.fulfillmentType !== 'PICKUP') {
       setAssigningOrder(targetOrder);
@@ -268,14 +307,21 @@ export const OrdersPage: React.FC = () => {
   const handleConfirmCancel = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cancellingOrder || !activeTenant?.id) return;
+    const reason = (cancellationReason || '').trim();
+    const check = validateStatusChange(cancellingOrder.status, 'CANCELLED', reason);
+    if (!check.ok) {
+      showToast({ type: 'warning', title: 'Cancelamento', message: check.message });
+      return;
+    }
 
     try {
       await orderRepository.updateStatus(
-        securityContext, 
-        activeTenant.id, 
-        cancellingOrder.id, 
-        'CANCELLED', 
-        `Cancelado: ${cancellationReason}`
+        securityContext,
+        activeTenant.id,
+        cancellingOrder.id,
+        'CANCELLED',
+        `Cancelado: ${reason}`.slice(0, 500),
+        cancellingOrder.status
       );
       showToast({
         type: 'success',
@@ -334,14 +380,20 @@ export const OrdersPage: React.FC = () => {
     items: Array<{ productId: string; quantity: number; notes?: string }>;
     paymentMethod: 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'PIX';
     notes?: string;
+    couponCode?: string;
+    idempotencyKey: string;
   }) => {
     if (!activeTenant?.id) return;
     try {
-      await orderRepository.createDirectOrder(
-        securityContext,
-        activeTenant.id,
-        data
-      );
+      // F4: process_pos_sale_atomic aceita só OWNER/MANAGER/CASHIER; preço e cupom no servidor.
+      await orderRepository.createPosSale(securityContext, activeTenant.id, {
+        customerName: data.customerName || undefined,
+        customerPhone: data.customerPhone || undefined,
+        items: data.items,
+        paymentMethod: data.paymentMethod,
+        couponCode: data.couponCode,
+        idempotencyKey: data.idempotencyKey,
+      });
       showToast({
         type: 'success',
         title: 'Venda Balcão Registrada',
@@ -839,6 +891,29 @@ export const OrdersPage: React.FC = () => {
                   </span>
                   <ChevronRight className="w-2.5 h-2.5 text-slate-400 shrink-0" />
                 </button>
+
+                {isN1N6Backend() && canChangePayment && selectedOrder.status !== 'CANCELLED' && selectedOrder.paymentStatus !== 'PAID' && selectedOrder.paymentStatus !== 'REFUNDED' && (
+                  <button
+                    type="button"
+                    data-testid="mark-paid"
+                    onClick={() => handleUpdatePayment(selectedOrder, 'PAID')}
+                    className="w-full p-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 flex items-center justify-between text-[8.5px] font-bold text-emerald-900 transition-colors cursor-pointer"
+                  >
+                    <span className="truncate">Marcar pagamento como recebido</span>
+                    <ChevronRight className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
+                  </button>
+                )}
+                {isN1N6Backend() && (activeRole === 'OWNER' || activeRole === 'MANAGER') && selectedOrder.paymentStatus === 'PAID' && (
+                  <button
+                    type="button"
+                    data-testid="mark-refunded"
+                    onClick={() => handleUpdatePayment(selectedOrder, 'REFUNDED')}
+                    className="w-full p-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 flex items-center justify-between text-[8.5px] font-bold text-rose-800 transition-colors cursor-pointer"
+                  >
+                    <span className="truncate">Registrar estorno (reverte cupom/promoção no servidor)</span>
+                    <ChevronRight className="w-2.5 h-2.5 text-rose-400 shrink-0" />
+                  </button>
+                )}
 
                 {selectedOrder.customerPhone && (
                   <a
@@ -1963,6 +2038,7 @@ export const OrdersPage: React.FC = () => {
       {/* Frente de Caixa PDV */}
       <PDVModal
         isOpen={isPDVOpen}
+        tenantId={activeTenant?.id || ''}
         products={storeProducts}
         onClose={() => setIsPDVOpen(false)}
         onSubmit={handlePDVSubmit}

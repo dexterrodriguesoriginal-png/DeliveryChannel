@@ -1,5 +1,15 @@
+/**
+ * Lojas, configurações e tema. Sem fallback local com Supabase configurado (erro do servidor vira erro).
+ * - tenant_settings: colunas explícitas por esquema (src/lib/dbColumns.ts). No N1–N6 pix_key não é legível.
+ * - PIX: legacy-020 usa tenant_settings.pix_key (caminho atual); n1n6 usa tenant_payment_settings
+ *   (leitura OWNER/MANAGER via RLS) + RPC upsert_tenant_payment_settings.
+ * - Tempo de preparo: NULL = não configurado (sem default 30); coluna só existe no N1–N6.
+ */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { Tenant, TenantTheme, TenantSettings } from '../types';
+import { Tenant, TenantTheme, TenantSettings, TenantPaymentSettings } from '../types';
+import { BackendError, requireBackend, requireBackendOrLocalDemo, toBackendError } from '../lib/backend';
+import { tenantSettingsColumns } from '../lib/dbColumns';
+import { isN1N6Backend, N1N6_ONLY_MESSAGE } from '../lib/backendSchema';
 import { dataStore } from '../services/dataStore';
 import { SecurityContext } from '../services/securityEngine';
 import { publicStoreRepository } from './publicStoreRepository';
@@ -12,9 +22,9 @@ function mapRowToTenant(row: any, settingsRow?: any, themeRow?: any): Tenant {
     slug: row.slug,
     name: row.name,
     legalName: row.legal_name || row.name,
-    document: row.document || '00.000.000/0001-00',
-    phone: row.phone || '(11) 99999-9999',
-    email: row.email || 'contato@adegafood.com.br',
+    document: row.document || '',
+    phone: row.phone || '',
+    email: row.email || '',
     category: row.category || 'ADEGA',
     status: row.status || 'ACTIVE',
     planTier: row.plan_tier || 'STANDARD',
@@ -31,11 +41,11 @@ function mapRowToTenant(row: any, settingsRow?: any, themeRow?: any): Tenant {
       estimatedDeliveryTime: settingsRow?.estimated_delivery_time || '30-45 min',
       defaultPrepTimeMinutes: settingsRow?.default_prep_time_minutes !== undefined && settingsRow?.default_prep_time_minutes !== null
         ? Number(settingsRow.default_prep_time_minutes)
-        : 30,
-      address: settingsRow?.address || 'Av. Principal, 1000 - Centro',
-      city: settingsRow?.city || 'São Paulo',
-      phoneWhatsApp: settingsRow?.phone_whatsapp || '(11) 99999-9999',
-      pixKey: settingsRow?.pix_key || 'adega@pix.com.br',
+        : undefined,
+      address: settingsRow?.address || '',
+      city: settingsRow?.city || '',
+      phoneWhatsApp: settingsRow?.phone_whatsapp || '',
+      pixKey: settingsRow?.pix_key || undefined,
       ...fulfillmentFieldsFromRaw(settingsRow || {}),
     },
     theme: {
@@ -55,51 +65,65 @@ function mapRowToTenant(row: any, settingsRow?: any, themeRow?: any): Tenant {
   };
 }
 
+const tenantSelect = () => `*, tenant_settings(${tenantSettingsColumns()}), tenant_themes(*)`;
+
+export function maskPixKey(key?: string | null): string | undefined {
+  if (!key) return undefined;
+  const k = String(key);
+  if (k.length <= 4) return '****';
+  return `${k.slice(0, 2)}${'*'.repeat(Math.max(3, k.length - 4))}${k.slice(-2)}`;
+}
+
+/** Colunas de tenant_settings que o esquema ativo aceita gravar (N1 restringe UPDATE por coluna). */
+export function settingsToDb(u: Partial<TenantSettings>, n1n6: boolean): Record<string, unknown> {
+  const db: Record<string, unknown> = {};
+  if (u.isOpen !== undefined) db.is_open = u.isOpen;
+  if (u.minOrderValue !== undefined) db.min_order_value = u.minOrderValue;
+  if (u.deliveryFee !== undefined) db.delivery_fee = u.deliveryFee;
+  if (u.freeDeliveryThreshold !== undefined) db.free_delivery_threshold = u.freeDeliveryThreshold ?? null;
+  if (u.estimatedDeliveryTime !== undefined) db.estimated_delivery_time = u.estimatedDeliveryTime;
+  if (u.address !== undefined) db.address = u.address;
+  if (u.city !== undefined) db.city = u.city;
+  if (u.phoneWhatsApp !== undefined) db.phone_whatsapp = u.phoneWhatsApp;
+  if (n1n6) {
+    if (u.defaultPrepTimeMinutes !== undefined) db.default_prep_time_minutes = u.defaultPrepTimeMinutes ?? null;
+  } else if (u.pixKey !== undefined) {
+    db.pix_key = u.pixKey ? u.pixKey.trim() : null;
+  }
+  return db;
+}
+
 export const tenantRepository = {
   async getTenants(context: SecurityContext): Promise<Tenant[]> {
     if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase
-          .from('tenants')
-          .select('*, tenant_settings(*), tenant_themes(*)')
-          .order('name');
-
-        if (!error && data && data.length > 0) {
-          return data.map(row => 
-            mapRowToTenant(
-              row, 
-              Array.isArray(row.tenant_settings) ? row.tenant_settings[0] : row.tenant_settings, 
-              Array.isArray(row.tenant_themes) ? row.tenant_themes[0] : row.tenant_themes
-            )
-          );
-        }
-      } catch (err) {
-        console.warn('[tenantRepository] Fallback para dataStore:', err);
-      }
+      const { data, error } = await supabase.from('tenants').select(tenantSelect()).order('name');
+      if (error) throw toBackendError(error, 'Falha ao carregar lojas.');
+      return (data || []).map((row: any) =>
+        mapRowToTenant(
+          row,
+          Array.isArray(row.tenant_settings) ? row.tenant_settings[0] : row.tenant_settings,
+          Array.isArray(row.tenant_themes) ? row.tenant_themes[0] : row.tenant_themes
+        )
+      );
     }
+    requireBackendOrLocalDemo('lojas');
     return dataStore.getTenants(context);
   },
 
   async getById(context: SecurityContext, tenantId: string): Promise<Tenant | undefined> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const { data, error } = await supabase
-          .from('tenants')
-          .select('*, tenant_settings(*), tenant_themes(*)')
-          .eq('id', tenantId)
-          .single();
-
-        if (!error && data) {
-          return mapRowToTenant(
-            data,
-            Array.isArray(data.tenant_settings) ? data.tenant_settings[0] : data.tenant_settings,
-            Array.isArray(data.tenant_themes) ? data.tenant_themes[0] : data.tenant_themes
-          );
-        }
-      } catch (err) {
-        console.warn('[tenantRepository] Erro ao buscar tenant por ID:', err);
-      }
+    if (isSupabaseConfigured) {
+      if (!isValidUuid(tenantId)) return undefined;
+      const { data, error } = await supabase.from('tenants').select(tenantSelect()).eq('id', tenantId).maybeSingle();
+      if (error) throw toBackendError(error, 'Falha ao carregar a loja.');
+      if (!data) return undefined;
+      const row: any = data;
+      return mapRowToTenant(
+        row,
+        Array.isArray(row.tenant_settings) ? row.tenant_settings[0] : row.tenant_settings,
+        Array.isArray(row.tenant_themes) ? row.tenant_themes[0] : row.tenant_themes
+      );
     }
+    requireBackendOrLocalDemo('lojas');
     return dataStore.getTenantById(context, tenantId);
   },
 
@@ -114,9 +138,9 @@ export const tenantRepository = {
             slug: store.tenant.slug,
             name: store.tenant.name,
             legalName: store.tenant.name,
-            document: '00.000.000/0001-00',
+            document: '',
             phone: store.tenant.phone,
-            email: 'contato@adegafood.com.br',
+            email: '',
             category: (store.tenant.category as any) || 'ADEGA',
             status: store.tenant.status as any,
             planTier: 'STANDARD',
@@ -129,10 +153,13 @@ export const tenantRepository = {
             theme: store.theme,
           };
         }
+        return undefined;
       } catch (err) {
         console.warn('[tenantRepository] Erro ao buscar tenant por slug no Supabase:', err);
+        throw toBackendError(err, 'Falha ao carregar a loja.');
       }
     }
+    requireBackendOrLocalDemo('lojas');
     return dataStore.getTenantBySlug(slug);
   },
 
@@ -153,47 +180,48 @@ export const tenantRepository = {
         if (themeUpdates.borderRadius !== undefined) dbTheme.border_radius = themeUpdates.borderRadius;
         if (themeUpdates.fontFamily !== undefined) dbTheme.font_family = themeUpdates.fontFamily;
 
-        // Upsert na tabela tenant_themes
-        await supabase
+        const { error } = await supabase
           .from('tenant_themes')
           .upsert({ tenant_id: tenantId, ...dbTheme }, { onConflict: 'tenant_id' });
+        if (error) throw toBackendError(error, 'Falha ao salvar o tema.');
       } catch (err) {
-        console.warn('[tenantRepository] Erro ao persistir tema no Supabase:', err);
+        throw toBackendError(err, 'Falha ao salvar o tema.');
       }
+      return;
     }
+    requireBackendOrLocalDemo('tema');
     dataStore.updateTenantTheme(context, tenantId, themeUpdates);
   },
 
   async getSettings(context: SecurityContext, tenantId: string): Promise<TenantSettings | null> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const { data, error } = await supabase
-          .from('tenant_settings')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .maybeSingle();
-
-        if (!error && data) {
-          return {
-            isOpen: data.is_open !== undefined ? Boolean(data.is_open) : true,
-            minOrderValue: Number(data.min_order_value ?? 0),
-            deliveryFee: Number(data.delivery_fee ?? 0),
-            freeDeliveryThreshold: data.free_delivery_threshold ? Number(data.free_delivery_threshold) : undefined,
-            estimatedDeliveryTime: data.estimated_delivery_time || '30-45 min',
-            defaultPrepTimeMinutes: data.default_prep_time_minutes !== undefined && data.default_prep_time_minutes !== null
-              ? Number(data.default_prep_time_minutes)
-              : 30,
-            address: data.address || '',
-            city: data.city || 'São Paulo',
-            phoneWhatsApp: data.phone_whatsapp || '',
-            pixKey: data.pix_key || undefined,
-            ...fulfillmentFieldsFromRaw(data),
-          };
-        }
-      } catch (err) {
-        console.warn('[tenantRepository] Erro ao consultar tenant_settings no Supabase:', err);
-      }
+    if (isSupabaseConfigured) {
+      if (!isValidUuid(tenantId)) return null;
+      const { data, error } = await supabase
+        .from('tenant_settings')
+        .select(tenantSettingsColumns())
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      if (error) throw toBackendError(error, 'Falha ao carregar configurações.');
+      if (!data) return null;
+      const row: any = data;
+      return {
+        isOpen: row.is_open !== undefined ? Boolean(row.is_open) : true,
+        minOrderValue: Number(row.min_order_value ?? 0),
+        deliveryFee: Number(row.delivery_fee ?? 0),
+        freeDeliveryThreshold: row.free_delivery_threshold ? Number(row.free_delivery_threshold) : undefined,
+        estimatedDeliveryTime: row.estimated_delivery_time || '30-45 min',
+        defaultPrepTimeMinutes:
+          row.default_prep_time_minutes !== undefined && row.default_prep_time_minutes !== null
+            ? Number(row.default_prep_time_minutes)
+            : undefined,
+        address: row.address || '',
+        city: row.city || '',
+        phoneWhatsApp: row.phone_whatsapp || '',
+        pixKey: row.pix_key || undefined,
+        ...fulfillmentFieldsFromRaw(row),
+      };
     }
+    requireBackendOrLocalDemo('configurações');
     const tenant = dataStore.getTenantById(context, tenantId);
     return tenant?.settings || null;
   },
@@ -203,25 +231,17 @@ export const tenantRepository = {
     if (fulfillmentError) throw new Error(fulfillmentError);
     if (isSupabaseConfigured && isValidUuid(tenantId)) {
       try {
-        const dbSettings: any = { updated_at: new Date().toISOString() };
-        if (settingsUpdates.isOpen !== undefined) dbSettings.is_open = settingsUpdates.isOpen;
-        if (settingsUpdates.minOrderValue !== undefined) dbSettings.min_order_value = settingsUpdates.minOrderValue;
-        if (settingsUpdates.deliveryFee !== undefined) dbSettings.delivery_fee = settingsUpdates.deliveryFee;
-        if (settingsUpdates.freeDeliveryThreshold !== undefined) dbSettings.free_delivery_threshold = settingsUpdates.freeDeliveryThreshold;
-        if (settingsUpdates.estimatedDeliveryTime !== undefined) dbSettings.estimated_delivery_time = settingsUpdates.estimatedDeliveryTime;
-        if (settingsUpdates.defaultPrepTimeMinutes !== undefined) dbSettings.default_prep_time_minutes = settingsUpdates.defaultPrepTimeMinutes;
-        if (settingsUpdates.address !== undefined) dbSettings.address = settingsUpdates.address;
-        if (settingsUpdates.city !== undefined) dbSettings.city = settingsUpdates.city;
-        if (settingsUpdates.phoneWhatsApp !== undefined) dbSettings.phone_whatsapp = settingsUpdates.phoneWhatsApp;
-        if (settingsUpdates.pixKey !== undefined) dbSettings.pix_key = settingsUpdates.pixKey;
-
-        const { error: upsertError } = await supabase
-          .from('tenant_settings')
-          .upsert({ tenant_id: tenantId, ...dbSettings }, { onConflict: 'tenant_id' });
+        const n1n6 = isN1N6Backend();
+        const dbSettings: Record<string, unknown> = { ...settingsToDb(settingsUpdates, n1n6), updated_at: new Date().toISOString() };
+        // N1: INSERT/colunas fora da lista são revogados — sempre UPDATE da linha existente.
+        // legacy-020: mantém o upsert atual.
+        const { error: upsertError } = n1n6
+          ? await supabase.from('tenant_settings').update(dbSettings).eq('tenant_id', tenantId)
+          : await supabase.from('tenant_settings').upsert({ tenant_id: tenantId, ...dbSettings }, { onConflict: 'tenant_id' });
 
         if (upsertError) {
           console.error('[tenantRepository] Erro ao persistir configurações no Supabase:', upsertError.message);
-          throw new Error(upsertError.message || 'Falha ao salvar configurações no servidor.');
+          throw toBackendError(upsertError, 'Falha ao salvar configurações no servidor.');
         }
 
         // Modalidades/desconto de retirada: colunas da PROPOSTA 20261013000100 (ainda não aplicada).
@@ -243,49 +263,70 @@ export const tenantRepository = {
         console.warn('[tenantRepository] Erro ao persistir configurações no Supabase:', err);
         throw err;
       }
+      return;
     }
+    requireBackendOrLocalDemo('configurações');
     dataStore.updateTenantSettings(context, tenantId, settingsUpdates);
   },
 
-  /**
-   * Remove com segurança apenas os registros marcados com is_demo = true no tenant
-   */
-  async removeDemoCatalog(tenantId: string): Promise<{ success: boolean; deletedOffers: number; deletedProducts: number; deletedCategories: number }> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const { data, error } = await supabase.rpc('remove_demo_catalog_for_current_tenant', {
-          p_tenant_id: tenantId,
-        });
-
-        if (error) {
-          console.error('[tenantRepository] Erro ao executar remove_demo_catalog_for_current_tenant:', error.message);
-          throw new Error(`Falha ao remover catálogo de demonstração: ${error.message}`);
-        }
-
-        return data as { success: boolean; deletedOffers: number; deletedProducts: number; deletedCategories: number };
-      } catch (err: any) {
-        console.warn('[tenantRepository] Erro ao remover catálogo demo no Supabase:', err);
-      }
-    }
-    return { success: true, deletedOffers: 0, deletedProducts: 0, deletedCategories: 0 };
+  /** Configuração PIX (n1n6; somente OWNER/MANAGER via RLS). Retorna null sem linha. */
+  async getPaymentSettings(tenantId: string): Promise<TenantPaymentSettings | null> {
+    requireBackend('configurações de pagamento');
+    if (!isN1N6Backend()) throw new BackendError('N1N6_REQUIRED', N1N6_ONLY_MESSAGE);
+    const { data, error } = await supabase
+      .from('tenant_payment_settings')
+      .select('tenant_id, pix_enabled, pix_key_type, pix_key, pix_merchant_name, pix_merchant_city, updated_at')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (error) throw toBackendError(error, 'Falha ao carregar configurações de pagamento.');
+    if (!data) return null;
+    return {
+      tenantId: data.tenant_id,
+      pixEnabled: Boolean(data.pix_enabled),
+      pixKeyType: data.pix_key_type || undefined,
+      pixKeyMasked: maskPixKey(data.pix_key),
+      merchantName: data.pix_merchant_name || undefined,
+      merchantCity: data.pix_merchant_city || undefined,
+      updatedAt: data.updated_at,
+    };
   },
 
-  /**
-   * Semeia catálogo de demonstração no tenant
-   */
+  /** Salva a configuração PIX pelo servidor (n1n6; validação da chave no PostgreSQL; auditado). */
+  async savePaymentSettings(
+    tenantId: string,
+    input: { pixEnabled: boolean; pixKeyType?: string; pixKey?: string; merchantName?: string; merchantCity?: string }
+  ): Promise<TenantPaymentSettings> {
+    requireBackend('configurações de pagamento');
+    if (!isN1N6Backend()) throw new BackendError('N1N6_REQUIRED', N1N6_ONLY_MESSAGE);
+    const { data, error } = await supabase.rpc('upsert_tenant_payment_settings', {
+      p_tenant_id: tenantId,
+      p_pix_enabled: input.pixEnabled,
+      p_pix_key_type: input.pixKeyType || null,
+      p_pix_key: input.pixKey?.trim() || null,
+      p_merchant_name: input.merchantName?.trim() || null,
+      p_merchant_city: input.merchantCity?.trim() || null,
+    });
+    if (error) throw toBackendError(error, 'Falha ao salvar a configuração PIX.');
+    return {
+      tenantId: data.tenant_id,
+      pixEnabled: Boolean(data.pix_enabled),
+      pixKeyType: data.pix_key_type || undefined,
+      pixKeyMasked: data.pix_key_masked || undefined,
+      merchantName: data.pix_merchant_name || undefined,
+      merchantCity: data.pix_merchant_city || undefined,
+    };
+  },
+
+  async removeDemoCatalog(tenantId: string): Promise<{ success: boolean; deletedOffers: number; deletedProducts: number; deletedCategories: number }> {
+    requireBackend('catálogo demo');
+    const { data, error } = await supabase.rpc('remove_demo_catalog_for_current_tenant', { p_tenant_id: tenantId });
+    if (error) throw toBackendError(error, 'Falha ao remover catálogo de demonstração.');
+    return data as { success: boolean; deletedOffers: number; deletedProducts: number; deletedCategories: number };
+  },
+
   async seedDemoCatalog(tenantId: string): Promise<void> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const { error } = await supabase.rpc('seed_tenant_demo_catalog', {
-          p_tenant_id: tenantId,
-        });
-        if (error) {
-          console.error('[tenantRepository] Erro ao semear catálogo demo:', error.message);
-          throw new Error(`Falha ao carregar catálogo demo: ${error.message}`);
-        }
-      } catch (err: any) {
-        console.warn('[tenantRepository] Erro ao semear catálogo demo:', err);
-      }
-    }
-  }
+    requireBackend('catálogo demo');
+    const { error } = await supabase.rpc('seed_tenant_demo_catalog', { p_tenant_id: tenantId });
+    if (error) throw toBackendError(error, 'Falha ao carregar catálogo demo.');
+  },
 };

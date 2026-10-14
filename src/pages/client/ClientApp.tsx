@@ -10,6 +10,8 @@ import { promotionRepository } from '../../repositories/promotionRepository';
 import { orderRepository } from '../../repositories/orderRepository';
 import { customerRepository } from '../../repositories/customerRepository';
 import { orderService } from '../../services/orderService';
+import { OrderPixPanel } from '../../components/client/OrderPixPanel';
+import { isN1N6Backend } from '../../lib/backendSchema';
 import { OfferCarousel } from '../../components/common/OfferCarousel';
 import { buildStorefrontCards } from '../../utils/storefrontCards';
 import { PromotionalCheckoutModal } from '../../components/client/PromotionalCheckoutModal';
@@ -983,15 +985,17 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     }
   };
 
+  // legacy-020: não existe BR Code por pedido no servidor; exibimos só a chave PIX que a própria loja
+  // publicou (get_public_store), para cópia manual. Nenhum código PIX é montado no navegador.
+  const legacyStorePixKey = storeData?.settings?.pixKey?.trim() || '';
   const handleCopyPix = () => {
-    if (!storeData) return;
-    const pixCode = `00020126580014br.gov.bcb.pix0136adegafood-${storeData.tenant.slug}-${completedOrder?.orderNumber || '0000'}5204000053039865405${completedOrder?.totalAmount.toFixed(2)}5802BR5913${storeData.tenant.name.substring(0, 13)}6009Sao Paulo62070503***6304`;
-    navigator.clipboard.writeText(pixCode);
+    if (!legacyStorePixKey) return;
+    navigator.clipboard.writeText(legacyStorePixKey);
     setCopiedPix(true);
     showToast({
       type: 'success',
-      title: 'Código PIX Copiado!',
-      message: 'Abra o app do seu banco e cole o código para efetuar o pagamento.',
+      title: 'Chave PIX copiada!',
+      message: `Pague R$ ${completedOrder?.totalAmount.toFixed(2) ?? ''} no app do seu banco usando a chave da loja.`,
     });
     setTimeout(() => setCopiedPix(false), 3000);
   };
@@ -2387,24 +2391,31 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             </div>
           )}
 
-          {/* Se PIX, exibe código Copia e Cola */}
-          {completedOrder?.paymentMethod === 'PIX' && (
+          {/* PIX: n1n6 = BR Code gerado pelo servidor para este pedido; legacy-020 = chave publicada pela loja. */}
+          {completedOrder?.paymentMethod === 'PIX' && completedOrder.id && isN1N6Backend() && <OrderPixPanel orderId={completedOrder.id} />}
+          {completedOrder?.paymentMethod === 'PIX' && !isN1N6Backend() && (
             <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-2xl space-y-2 text-left">
               <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950">
                 <QrCode className="w-4 h-4 text-emerald-700" />
-                <span>Pagamento via PIX Instantâneo</span>
+                <span>Pagamento via PIX</span>
               </div>
-              <p className="text-[11px] text-gray-600">
-                Copie o código abaixo e efetue o pagamento no aplicativo do seu banco:
-              </p>
-              <Button
-                size="sm"
-                onClick={handleCopyPix}
-                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
-              >
-                {copiedPix ? <Check className="w-4 h-4 mr-1.5" /> : <Copy className="w-4 h-4 mr-1.5" />}
-                {copiedPix ? 'Código PIX Copiado!' : 'Copiar Código PIX'}
-              </Button>
+              {legacyStorePixKey ? (
+                <>
+                  <p className="text-[11px] text-gray-600">
+                    Pague <strong>R$ {completedOrder.totalAmount.toFixed(2)}</strong> usando a chave PIX da loja:
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={handleCopyPix}
+                    className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                  >
+                    {copiedPix ? <Check className="w-4 h-4 mr-1.5" /> : <Copy className="w-4 h-4 mr-1.5" />}
+                    {copiedPix ? 'Chave PIX copiada!' : 'Copiar chave PIX da loja'}
+                  </Button>
+                </>
+              ) : (
+                <p className="text-[11px] text-gray-600">A loja enviará os dados do PIX pelo WhatsApp.</p>
+              )}
             </div>
           )}
 
