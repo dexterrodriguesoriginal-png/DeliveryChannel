@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Share, X, MoreVertical, Download, CheckCircle2 } from 'lucide-react';
 import { StoreLogo } from './StoreLogo';
+import { openInstalledApp, detectInstalledApp } from '../../lib/pwa/openInstalledApp';
+import { storeStartUrl } from '../../lib/pwa/storeManifest';
 import {
   detectPlatform, isStandalone,
   isMarkedInstalled, markInstalled, getDeferredPrompt, clearDeferredPrompt, subscribeInstall, wasAppInstalledEvent,
   decideInvite, readInvite, recordInvite, recordAccepted, isEditableFocused, onInviteTrigger, activeKey,
   InviteKind, InviteTrigger, INVITE_ACTIVE_MS, inviteSurface,
-  InstallPhase, INSTALL_SLOW_MS, INSTALL_DONE_HIDE_MS, installPhaseCopy, nextInstallPhase, estimatedInstallPercent,
+  InstallPhase, INSTALL_SLOW_MS, installPhaseCopy, nextInstallPhase, estimatedInstallPercent,
 } from '../../lib/pwa/installState';
 
 interface Props { tenantId: string; storeName: string; color: string; logoUrl?: string; hidden?: boolean; busy?: boolean; }
@@ -16,6 +18,16 @@ interface Props { tenantId: string; storeName: string; color: string; logoUrl?: 
  * sem ele, card escuro compacto próprio com instruções. Volta nos momentos-chave até instalação real
  * (appinstalled / modo standalone). Nunca bloqueia a compra.
  */
+/** URL inicial da loja atual (/app/<slug>/?source=pwa), usada pelo botão "Abrir app". */
+function currentStartPath(): string {
+  const m = window.location.pathname.match(/^\/app\/([^/]+)/);
+  return m ? storeStartUrl(decodeURIComponent(m[1])) : '/';
+}
+/** Somente fora de produção: ?pwa_test_phase=open força a barra "Abrir app" (capturas). */
+function testOpenBar(): boolean {
+  if (import.meta.env.PROD) return false;
+  try { return new URLSearchParams(window.location.search).get('pwa_test_phase') === 'open'; } catch { return false; }
+}
 /** Somente para capturas/testes fora de produção: ?pwa_test_phase=installing|slow|done. */
 function testPhase(): InstallPhase | null {
   if (import.meta.env.PROD) return null;
@@ -33,6 +45,8 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   const [doneClosed, setDoneClosed] = useState(false);
   const [installStart, setInstallStart] = useState<number | null>(null);
   const [, setTick] = useState(0);
+  const [appDetected, setAppDetected] = useState(() => testOpenBar());
+  const [openBarClosed, setOpenBarClosed] = useState(false);
   const standalone = isStandalone(window);
   const platform = detectPlatform(navigator.userAgent);
   const blockedRef = useRef(false);
@@ -56,11 +70,18 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     const id = window.setInterval(() => setTick(t => t + 1), 500);
     return () => window.clearInterval(id);
   }, [phase]);
+  // Visitas posteriores no navegador: detecta o app já instalado (Chrome Android, via related_applications).
   useEffect(() => {
-    if (phase !== 'done' || testPhase()) return;
-    const id = window.setTimeout(() => setDoneClosed(true), INSTALL_DONE_HIDE_MS);
-    return () => window.clearTimeout(id);
-  }, [phase]);
+    if (standalone) return;
+    let alive = true;
+    detectInstalledApp().then(v => { if (alive && v) setAppDetected(true); });
+    return () => { alive = false; };
+  }, [standalone, tenantId]);
+  const openApp = () => { openInstalledApp(currentStartPath()); };
+  const openButton = (
+    <button type="button" onClick={openApp} data-testid="open-installed-app"
+      className="shrink-0 rounded-full bg-[#a8c7fa] px-4 py-1.5 text-sm font-semibold text-[#062e6f] transition active:scale-95 active:brightness-90 hover:brightness-105">Abrir app</button>
+  );
 
   // Diagnóstico: avisa no console quando o manifesto da loja não carrega (sem ele o Chrome não oferece instalação).
   useEffect(() => {
@@ -128,8 +149,10 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
               <p className="text-[15px] font-semibold leading-tight break-words">{copy.title}</p>
               {copy.subtitle && <p className="text-xs text-neutral-400 leading-tight mt-0.5">{copy.subtitle}</p>}
             </div>
+            {isDone && openButton}
             {phase !== 'installing' && <button type="button" aria-label="Fechar" onClick={() => { setDoneClosed(true); if (!isDone) setPhase('idle'); }} className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>}
           </div>
+          {isDone && <p data-testid="open-app-hint" className="mt-1.5 text-xs text-neutral-400 leading-snug">Se não abrir, toque no ícone {storeName} na sua tela inicial</p>}
           {(phase === 'installing' || phase === 'slow' || isDone) && (() => {
             const tp = testPhase();
             const elapsed = tp ? (tp === 'installing' ? 25000 : 200000) : Date.now() - (installStart ?? Date.now());
@@ -143,6 +166,26 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
               </div>
             );
           })()}
+        </div>
+      </div>
+    );
+  }
+
+  // App já instalado (marca local ou detectado) e aberto no navegador: barra "Abrir app" no lugar de "Instalar".
+  if (!standalone && !hidden && !openBarClosed && (appDetected || (installed && phase === 'idle'))) {
+    return (
+      <div data-testid="open-app-bar" role="region" aria-label={`Abrir app ${storeName}`} className="fixed inset-x-0 bottom-2 z-[120] px-3 flex justify-center pointer-events-none">
+        <div className="pointer-events-auto w-full max-w-sm rounded-2xl bg-[#2b2b2e] text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/5 px-3 py-2.5">
+          <div className="flex items-center gap-3">
+            <StoreLogo logoUrl={logoUrl} name={storeName} color={color} className="w-10 h-10 shrink-0 rounded-xl" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-semibold leading-tight break-words">{storeName}</p>
+              <p className="text-xs text-neutral-400 leading-tight mt-0.5">Você já tem o app. Peça por ele.</p>
+            </div>
+            {openButton}
+            <button type="button" aria-label="Fechar" onClick={() => setOpenBarClosed(true)} className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>
+          </div>
+          <p className="mt-1.5 text-xs text-neutral-400 leading-snug">Se não abrir, toque no ícone {storeName} na sua tela inicial</p>
         </div>
       </div>
     );

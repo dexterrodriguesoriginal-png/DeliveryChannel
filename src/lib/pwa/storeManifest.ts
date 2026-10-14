@@ -39,6 +39,13 @@ export interface StoreManifest {
   theme_color: string;
   lang: string;
   icons: ManifestIcon[];
+  /** Chrome: reutiliza a janela do app instalado ao abrir links da loja. */
+  launch_handler: { client_mode: string[] };
+  /** Chrome (link capturing): links do escopo abrem preferencialmente no app instalado. */
+  handle_links: 'preferred';
+  /** Auto-referência para navigator.getInstalledRelatedApps() detectar o app instalado. */
+  related_applications: { platform: 'webapp'; url: string }[];
+  prefer_related_applications: false;
 }
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -76,6 +83,10 @@ export function storeScope(slug: string): string {
 }
 export function storeStartUrl(slug: string): string {
   return `${storeScope(slug)}?source=pwa`;
+}
+/** Caminho do manifesto servido pelo servidor da loja. */
+export function storeManifestPath(slug: string): string {
+  return `/app/${encodeURIComponent(slug)}/manifest.webmanifest`;
 }
 /** Identificador estável: derivado do ID interno do tenant (não muda se o nome mudar). */
 export function storeAppId(tenantId: string): string {
@@ -127,6 +138,10 @@ export function buildStoreManifest(store: StoreIdentityInput, origin: string, ic
     theme_color: theme,
     lang: 'pt-BR',
     icons: icons && icons.length ? icons : fallbackIcons(name, theme),
+    launch_handler: { client_mode: ['navigate-existing', 'auto'] },
+    handle_links: 'preferred',
+    related_applications: [{ platform: 'webapp', url: `${o}${storeManifestPath(store.slug)}` }],
+    prefer_related_applications: false,
   };
 }
 
