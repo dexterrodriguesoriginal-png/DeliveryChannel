@@ -10,7 +10,12 @@ import { useToast } from '../../context/ToastContext';
 import { Order } from '../../types';
 import { computeDriverDailySummary } from '../../lib/driverSummary';
 import { filterAssignedDriverOrders } from '../../lib/driverOrders';
-import { canFetchDriverOrders } from '../../lib/membershipResolution';
+import { canFetchDriverOrders, driverAvailabilityLabel, DriverAvailability } from '../../lib/membershipResolution';
+import { driverInviteRepository } from '../../repositories/driverRepository';
+
+const AVAIL_DOT: Record<string, string> = {
+  emerald: 'bg-emerald-500 animate-pulse', amber: 'bg-amber-500', gray: 'bg-gray-400', rose: 'bg-rose-500',
+};
 
 export const DriverApp: React.FC = () => {
   const { activeTenant, securityContext, currentUser, signOut, driverApprovalStatus } = useAuth();
@@ -20,13 +25,19 @@ export const DriverApp: React.FC = () => {
   const [navTab, setNavTab] = useState('active-delivery');
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  // Fix R3: presença (app aberto) ≠ disponibilidade operacional (drivers.status no servidor).
+  const [availability, setAvailability] = useState<DriverAvailability>('UNKNOWN');
 
   const fetchDriverOrders = useCallback(async () => {
     if (!activeTenant?.id || !ordersAllowed) return;
     setIsLoading(true);
     try {
-      const data = await orderRepository.getOrders(securityContext, activeTenant.id);
+      const [data, av] = await Promise.all([
+        orderRepository.getOrders(securityContext, activeTenant.id),
+        driverInviteRepository.getOwnAvailability(activeTenant.id),
+      ]);
       setOrders(data);
+      setAvailability(av);
     } catch (err) {
       console.warn('[DriverApp] Erro ao carregar pedidos do Supabase:', err);
     } finally {
@@ -44,6 +55,8 @@ export const DriverApp: React.FC = () => {
   }, [fetchDriverOrders, activeTenant?.id, ordersAllowed]);
 
   if (!activeTenant) return null;
+
+  const availabilityView = driverAvailabilityLabel(availability);
 
   // Filtra ordens atribuídas a este motorista
   const driverUserId = currentUser?.id || securityContext.userId;
@@ -89,8 +102,13 @@ export const DriverApp: React.FC = () => {
           <div>
             <h1 className="text-sm font-bold text-gray-900 leading-tight">AdegaFood Entregador</h1>
             <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Status: Online • {currentUser?.name || 'Entregador'}</span>
+              <span
+                data-testid="driver-availability-dot"
+                className={`w-2 h-2 rounded-full ${AVAIL_DOT[availabilityView.tone]}`}
+              />
+              <span data-testid="driver-availability">
+                Conectado • {availabilityView.label} • {currentUser?.name || 'Entregador'}
+              </span>
             </div>
           </div>
         </div>

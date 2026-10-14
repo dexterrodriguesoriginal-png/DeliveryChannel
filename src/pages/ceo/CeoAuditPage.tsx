@@ -4,6 +4,7 @@ import { dataStore } from '../../services/dataStore';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Input } from '../../components/ui/Input';
+import { canonicalAuditAction, auditActionMatches } from '../../lib/auditActions';
 import { FileText, Search, ShieldCheck, Filter, AlertTriangle } from 'lucide-react';
 
 export const CeoAuditPage: React.FC = () => {
@@ -12,7 +13,7 @@ export const CeoAuditPage: React.FC = () => {
   const auditLogs = dataStore.getAuditLogs(securityContext);
 
   const filtered = auditLogs.filter(l => 
-    l.action.toLowerCase().includes(filter.toLowerCase()) ||
+    auditActionMatches(l.action, filter) ||
     l.userName.toLowerCase().includes(filter.toLowerCase()) ||
     l.details.toLowerCase().includes(filter.toLowerCase()) ||
     (l.tenantName && l.tenantName.toLowerCase().includes(filter.toLowerCase()))
@@ -68,7 +69,7 @@ export const CeoAuditPage: React.FC = () => {
                   </td>
                   <td className="p-3 whitespace-nowrap">
                     <span className="font-bold font-mono text-[11px] text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      {log.action}
+                      <span title={log.action}>{canonicalAuditAction(log.action)}</span>
                     </span>
                   </td>
                   <td className="p-3 whitespace-nowrap">

@@ -1,11 +1,12 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Driver, DriverStatus, DriverApprovalStatus } from '../types';
-import { normalizeApprovalStatus, parseOwnApprovalResponse, DriverApprovalLookup } from '../lib/membershipResolution';
+import { normalizeApprovalStatus, parseOwnApprovalResponse, DriverApprovalLookup, parseOwnAvailabilityResponse, DriverAvailability } from '../lib/membershipResolution';
 import { SecurityContext } from '../services/securityEngine';
 import { teamRepository } from './teamRepository';
 import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
 import { localOnly } from '../lib/backend';
+import { mapStrictRpcError, RpcBusinessError } from '../lib/rpcErrors';
 import { buildDeliveryCountByUserId, deliveryCountForDriver } from '../lib/driverDeliveryCounts';
 
 export function mapRowToDriver(row: any, completedToday = 0): Driver {
@@ -60,27 +61,9 @@ export interface DriverInviteLink {
 export interface DriverInvitePreview { valid: boolean; storeName?: string; storeLogo?: string | null; expiresAt?: string }
 export interface DriverRedeemResult { status: 'INVALID' | 'PENDING' | DriverApprovalStatus; consumed: boolean; tenantId?: string }
 
-const RPC_ERROR_MESSAGES: Record<string, string> = {
-  P0410: 'Conflito de papel: esta conta já faz parte da equipe da loja e não pode ser entregador.',
-  P0412: 'Este usuário já faz parte da equipe.',
-  P0413: 'Já existe um convite pendente para este e-mail.',
-  P0414: 'Entregador não aprovado.',
-  P0416: 'Vínculo inconsistente. Fale com a loja.',
-  P0417: 'Transição inválida.',
-  P0418: 'Entregador está com pedido em rota; desatribua antes.',
-  P0429: 'Muitas tentativas. Aguarde e tente novamente.',
-  '42501': 'Sem permissão para esta ação.',
-};
-
 /** Mensagem amigável para erros das RPCs de entregador. Nunca inclui token. */
 export function mapDriverRpcError(err: any): string {
-  const code = err?.code as string | undefined;
-  if (code && RPC_ERROR_MESSAGES[code]) return RPC_ERROR_MESSAGES[code];
-  const msg = String(err?.message || '');
-  if (code === 'PGRST202' || code === '42883' || /could not find the function|does not exist/i.test(msg)) {
-    return 'Recurso ainda não disponível.';
-  }
-  return 'Não foi possível concluir a ação. Tente novamente.';
+  return mapStrictRpcError(err);
 }
 
 class DriverRpcError extends Error {
@@ -151,6 +134,18 @@ export const driverInviteRepository = {
     const { data, error } = await supabase.rpc('list_assignable_drivers', { p_tenant_id: tenantId });
     if (error) throw new Error(mapDriverRpcError(error));
     return ((data || []) as any[]).map(r => mapAssignableRow(r, tenantId));
+  },
+
+  /** Disponibilidade operacional da PRÓPRIA linha (chave `availability`, migration 1000). Falha → 'UNKNOWN'. */
+  async getOwnAvailability(tenantId: string): Promise<DriverAvailability> {
+    if (!isSupabaseConfigured || !isValidUuid(tenantId)) return 'UNKNOWN';
+    try {
+      const { data, error } = await supabase.rpc('get_my_driver_approval', { p_tenant_id: tenantId });
+      if (error) return 'UNKNOWN';
+      return parseOwnAvailabilityResponse(data);
+    } catch {
+      return 'UNKNOWN';
+    }
   },
 
   async getOwnApprovalStatus(tenantId: string): Promise<Exclude<DriverApprovalLookup, null>> {
@@ -225,7 +220,7 @@ export const driverRepository = {
       });
 
       if (error) {
-        throw new Error(error.message);
+        throw new RpcBusinessError(error);
       }
       return;
     }
@@ -253,7 +248,7 @@ export const driverRepository = {
       });
 
       if (error) {
-        throw new Error(error.message);
+        throw new RpcBusinessError(error);
       }
       return;
     }
@@ -275,7 +270,7 @@ export const driverRepository = {
       });
 
       if (error) {
-        throw new Error(error.code === 'P0414' ? mapDriverRpcError(error) : error.message);
+        throw new RpcBusinessError(error);
       }
       return;
     }
@@ -291,7 +286,7 @@ export const driverRepository = {
       });
 
       if (error) {
-        throw new Error(error.message);
+        throw new RpcBusinessError(error);
       }
       return;
     }

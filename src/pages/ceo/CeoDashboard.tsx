@@ -20,6 +20,7 @@ import {
   Headphones
 } from 'lucide-react';
 import { Tenant } from '../../types';
+import { canonicalAuditAction } from '../../lib/auditActions';
 
 export const CeoDashboard: React.FC<{ onNavigate: (tabId: string) => void }> = ({ onNavigate }) => {
   const { securityContext, enterCeoSupportMode } = useAuth();
@@ -257,7 +258,7 @@ export const CeoDashboard: React.FC<{ onNavigate: (tabId: string) => void }> = (
                 >
                   <div className="flex items-center justify-between gap-1">
                     <span className="font-bold text-[11px] uppercase tracking-wider">
-                      {log.action}
+                      {canonicalAuditAction(log.action)}
                     </span>
                     <span className="text-[10px] text-gray-400 font-mono">
                       {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { TeamMember, TeamInvite, RoleId, TeamMemberStatus } from '../types';
 import { SecurityContext } from '../services/securityEngine';
 import { isValidUuid } from '../lib/uuid';
+import { RpcBusinessError } from '../lib/rpcErrors';
 
 const KNOWN_MEMBER_STATUSES: readonly TeamMemberStatus[] = ['ACTIVE', 'INVITED', 'PENDING', 'SUSPENDED', 'INACTIVE'];
 
@@ -124,7 +125,7 @@ export const teamRepository = {
       });
 
       if (error) {
-        throw new Error(error.message);
+        throw new RpcBusinessError(error);
       }
 
       if (data && data.inviteId) {
@@ -153,7 +154,7 @@ export const teamRepository = {
       });
 
       if (error) {
-        throw new Error(error.message);
+        throw new RpcBusinessError(error);
       }
       return;
     }
@@ -170,7 +171,7 @@ export const teamRepository = {
       });
 
       if (error) {
-        throw new Error(error.message);
+        throw new RpcBusinessError(error);
       }
       return;
     }
@@ -187,7 +188,7 @@ export const teamRepository = {
       });
 
       if (error) {
-        throw new Error(error.message);
+        throw new RpcBusinessError(error);
       }
       return data;
     }

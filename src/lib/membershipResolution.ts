@@ -89,3 +89,27 @@ export function resolveDriverScreen(
 export function canFetchDriverOrders(approval: DriverApprovalLookup): boolean {
   return approval === 'APPROVED';
 }
+
+/**
+ * Disponibilidade operacional da PRÓPRIA linha em drivers (fix R3, 0700+1000: chave `availability`
+ * de get_my_driver_approval). Separada de presença (app aberto/sessão): estar logado NÃO é estar
+ * disponível. Qualquer coisa fora do contrato (RPC antiga sem a chave, erro, nulo) = 'UNKNOWN',
+ * que nunca é exibido como disponível.
+ */
+export type DriverAvailability = 'AVAILABLE' | 'ON_DELIVERY' | 'UNAVAILABLE' | 'SUSPENDED' | 'UNKNOWN';
+const KNOWN_AVAILABILITY: readonly string[] = ['AVAILABLE', 'ON_DELIVERY', 'UNAVAILABLE', 'SUSPENDED'];
+
+export function parseOwnAvailabilityResponse(data: unknown): DriverAvailability {
+  const raw = (data && typeof data === 'object') ? (data as any).availability : undefined;
+  return typeof raw === 'string' && KNOWN_AVAILABILITY.includes(raw) ? (raw as DriverAvailability) : 'UNKNOWN';
+}
+
+export function driverAvailabilityLabel(a: DriverAvailability): { label: string; tone: 'emerald' | 'amber' | 'gray' | 'rose' } {
+  switch (a) {
+    case 'AVAILABLE': return { label: 'Disponível', tone: 'emerald' };
+    case 'ON_DELIVERY': return { label: 'Em entrega', tone: 'amber' };
+    case 'UNAVAILABLE': return { label: 'Indisponível', tone: 'gray' };
+    case 'SUSPENDED': return { label: 'Suspenso', tone: 'rose' };
+    default: return { label: 'Disponibilidade não confirmada', tone: 'gray' };
+  }
+}
