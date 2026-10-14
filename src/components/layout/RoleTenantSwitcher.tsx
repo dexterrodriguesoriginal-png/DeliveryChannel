@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { RoleId } from '../../types';
+import { viewModeFor, SwitcherViewMode } from './switcherViewMode';
 
 // Tradução comercial dos papéis de acesso para o usuário final
 const ROLE_LABELS: Record<RoleId, string> = {
@@ -69,7 +70,9 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
   // Estados de visualização do Modal
   // Se logado: 'ACCOUNT'
   // Se deslogado: 'LOGIN' | 'SIGNUP' | 'FORGOT'
-  const [viewMode, setViewMode] = useState<'LOGIN' | 'SIGNUP' | 'FORGOT' | 'ACCOUNT'>('LOGIN');
+  // Inicia já no modo correto: com 'LOGIN' fixo, o efeito de fechamento automático abaixo
+  // fechava o modal no mesmo ciclo em que ele abria para um usuário autenticado.
+  const [viewMode, setViewMode] = useState<SwitcherViewMode>(() => viewModeFor(isSupabaseAuth));
 
   // Campos do formulário
   const [email, setEmail] = useState('');
@@ -88,11 +91,10 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
     if (isOpen) {
       setFormError(null);
       setFormSuccess(null);
-      if (isSupabaseAuth) {
-        setViewMode('ACCOUNT');
-      } else {
-        setViewMode('LOGIN');
-      }
+      setViewMode(viewModeFor(isSupabaseAuth));
+    } else {
+      // Fechado: deixa o modo pronto para a próxima abertura (evita abrir em 'LOGIN' já autenticado).
+      setViewMode(viewModeFor(isSupabaseAuth));
     }
   }, [isOpen, isSupabaseAuth]);
 
