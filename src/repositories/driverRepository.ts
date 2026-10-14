@@ -136,6 +136,18 @@ export const driverInviteRepository = {
     return ((data || []) as any[]).map(r => mapAssignableRow(r, tenantId));
   },
 
+  /**
+   * Alterna a PRÓPRIA disponibilidade (RPC set_my_availability, migration 1100). Servidor identifica
+   * por auth.uid(); só AVAILABLE/UNAVAILABLE. Erro sempre lança (mensagem amigável via rpcErrors).
+   */
+  async setMyAvailability(tenantId: string, availability: 'AVAILABLE' | 'UNAVAILABLE'): Promise<DriverAvailability> {
+    if (!isSupabaseConfigured || !isValidUuid(tenantId)) throw new RpcBusinessError({ code: 'P0417' });
+    const d = await callRpc<any>('set_my_availability', { p_tenant_id: tenantId, p_availability: availability });
+    const av = parseOwnAvailabilityResponse(d);
+    if (av !== availability) throw new RpcBusinessError({ code: 'UNEXPECTED' }, 'Resposta inesperada do servidor.');
+    return av;
+  },
+
   /** Disponibilidade operacional da PRÓPRIA linha (chave `availability`, migration 1000). Falha → 'UNKNOWN'. */
   async getOwnAvailability(tenantId: string): Promise<DriverAvailability> {
     if (!isSupabaseConfigured || !isValidUuid(tenantId)) return 'UNKNOWN';

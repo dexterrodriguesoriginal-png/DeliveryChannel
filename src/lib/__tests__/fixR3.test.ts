@@ -50,3 +50,14 @@ describe('fix R3 — disponibilidade', () => {
     expect(parseOwnApprovalResponse({ approval_status: 'APPROVED', availability: 'AVAILABLE' })).toBe('APPROVED');
   });
 });
+
+import { availabilityToggleTarget } from '../membershipResolution';
+describe('toggle de disponibilidade (1100)', () => {
+  it('só alterna entre AVAILABLE e UNAVAILABLE', () => {
+    expect(availabilityToggleTarget('AVAILABLE')).toBe('UNAVAILABLE');
+    expect(availabilityToggleTarget('UNAVAILABLE')).toBe('AVAILABLE');
+    expect(availabilityToggleTarget('ON_DELIVERY')).toBeNull();
+    expect(availabilityToggleTarget('SUSPENDED')).toBeNull();
+    expect(availabilityToggleTarget('UNKNOWN')).toBeNull();
+  });
+});

@@ -198,3 +198,26 @@ describe('0700 v3.4: listAssignableDrivers via list_assignable_drivers', () => {
     expect((await repo.listAssignableDrivers(T))[0].approvalStatus).toBe('UNKNOWN');
   });
 });
+
+describe('set_my_availability (1100)', () => {
+  const T = '00000000-0000-4000-8000-00000000000a';
+  it('chama a RPC só com loja e valor; devolve o estado confirmado', async () => {
+    rpc.mockResolvedValue({ data: { availability: 'UNAVAILABLE', changed: true }, error: null });
+    await expect(repo.setMyAvailability(T, 'UNAVAILABLE')).resolves.toBe('UNAVAILABLE');
+    expect(rpc).toHaveBeenCalledWith('set_my_availability', { p_tenant_id: T, p_availability: 'UNAVAILABLE' });
+  });
+  it.each([['P0418', 'pedido em rota'], ['P0414', 'não aprovado'], ['P0417', 'Transição inválida']])('%s lança mensagem amigável', async (code, txt) => {
+    rpc.mockResolvedValue({ data: null, error: { code, message: 'x' } });
+    await expect(repo.setMyAvailability(T, 'AVAILABLE')).rejects.toThrow(txt);
+  });
+  it('resposta fora do contrato nunca vira sucesso', async () => {
+    rpc.mockResolvedValue({ data: { availability: 'ONLINE' }, error: null });
+    await expect(repo.setMyAvailability(T, 'AVAILABLE')).rejects.toThrow(/inesperada/);
+    rpc.mockResolvedValue({ data: null, error: null });
+    await expect(repo.setMyAvailability(T, 'AVAILABLE')).rejects.toThrow();
+  });
+  it('tenant inválido não chama a RPC', async () => {
+    await expect(repo.setMyAvailability('x', 'AVAILABLE')).rejects.toThrow();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});

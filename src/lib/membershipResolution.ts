@@ -113,3 +113,10 @@ export function driverAvailabilityLabel(a: DriverAvailability): { label: string;
     default: return { label: 'Disponibilidade não confirmada', tone: 'gray' };
   }
 }
+
+/** Para onde o botão do PWA alterna (fix 1100). Só entre AVAILABLE ↔ UNAVAILABLE; demais estados não alternam. */
+export function availabilityToggleTarget(a: DriverAvailability): 'AVAILABLE' | 'UNAVAILABLE' | null {
+  if (a === 'AVAILABLE') return 'UNAVAILABLE';
+  if (a === 'UNAVAILABLE') return 'AVAILABLE';
+  return null;
+}

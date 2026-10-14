@@ -10,7 +10,7 @@ import { useToast } from '../../context/ToastContext';
 import { Order } from '../../types';
 import { computeDriverDailySummary } from '../../lib/driverSummary';
 import { filterAssignedDriverOrders, driverOrderHistory } from '../../lib/driverOrders';
-import { canFetchDriverOrders, driverAvailabilityLabel, DriverAvailability } from '../../lib/membershipResolution';
+import { canFetchDriverOrders, driverAvailabilityLabel, DriverAvailability, availabilityToggleTarget } from '../../lib/membershipResolution';
 import { driverInviteRepository } from '../../repositories/driverRepository';
 
 const AVAIL_DOT: Record<string, string> = {
@@ -27,6 +27,7 @@ export const DriverApp: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   // Fix R3: presença (app aberto) ≠ disponibilidade operacional (drivers.status no servidor).
   const [availability, setAvailability] = useState<DriverAvailability>('UNKNOWN');
+  const [availSaving, setAvailSaving] = useState(false);
 
   const fetchDriverOrders = useCallback(async () => {
     if (!activeTenant?.id || !ordersAllowed) return;
@@ -158,7 +159,42 @@ export const DriverApp: React.FC = () => {
             <div><span className="text-gray-400">Nome: </span><span className="font-bold">{currentUser?.name || 'Entregador'}</span></div>
             <div><span className="text-gray-400">Loja: </span><span className="font-bold">{activeTenant.name}</span></div>
             <div><span className="text-gray-400">Disponibilidade: </span><span className="font-bold">{availabilityView.label}</span></div>
-            <p className="text-gray-500">A disponibilidade é definida pela loja.</p>
+            {(() => {
+              const next = availabilityToggleTarget(availability);
+              if (!next) {
+                return (
+                  <p className="text-gray-500" data-testid="availability-toggle-hint">
+                    {availability === 'ON_DELIVERY'
+                      ? 'Conclua a entrega em andamento para alterar sua disponibilidade.'
+                      : 'Disponibilidade indisponível para alteração no momento.'}
+                  </p>
+                );
+              }
+              return (
+                <Button
+                  data-testid="availability-toggle"
+                  size="sm"
+                  variant={next === 'AVAILABLE' ? 'primary' : 'outline'}
+                  disabled={availSaving}
+                  className="w-full text-xs"
+                  onClick={async () => {
+                    setAvailSaving(true);
+                    try {
+                      const av = await driverInviteRepository.setMyAvailability(activeTenant.id, next);
+                      setAvailability(av);
+                      showToast({ type: 'success', title: av === 'AVAILABLE' ? 'Você está disponível' : 'Você está indisponível', message: 'Disponibilidade atualizada.' });
+                    } catch (err: any) {
+                      showToast({ type: 'error', title: 'Não foi possível alterar', message: err?.message || 'Tente novamente.' });
+                      setAvailability(await driverInviteRepository.getOwnAvailability(activeTenant.id));
+                    } finally {
+                      setAvailSaving(false);
+                    }
+                  }}
+                >
+                  {availSaving ? 'Salvando...' : next === 'AVAILABLE' ? 'Ficar disponível' : 'Ficar indisponível'}
+                </Button>
+              );
+            })()}
           </Card>
         )}
 
