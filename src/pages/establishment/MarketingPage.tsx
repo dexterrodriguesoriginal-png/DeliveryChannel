@@ -6,7 +6,7 @@ import { offerRepository } from '../../repositories/offerRepository';
 import { productRepository } from '../../repositories/productRepository';
 import { categoryRepository } from '../../repositories/categoryRepository';
 import { promotionRepository } from '../../repositories/promotionRepository';
-import { orderRepository } from '../../repositories/orderRepository';
+import { PromoPerformancePanel } from '../../components/marketing/PromoPerformancePanel';
 import { QRCodeCard } from '../../components/common/QRCodeCard';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -19,7 +19,6 @@ import {
   Category,
   PromotionCarousel,
   PromotionCarouselItem,
-  Order,
   CardFormat, 
   CardMediaType, 
   CardDisplayMode,
@@ -149,7 +148,6 @@ export const MarketingPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [promotionCarousels, setPromotionCarousels] = useState<PromotionCarousel[]>([]);
-  const [tenantOrders, setTenantOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Modal do Editor
@@ -266,16 +264,14 @@ export const MarketingPage: React.FC = () => {
     if (!activeTenant?.id) return;
     setIsLoading(true);
     try {
-      const [offersData, prodsData, ordersData, catsData, carouselsData] = await Promise.all([
+      const [offersData, prodsData, catsData, carouselsData] = await Promise.all([
         offerRepository.getOffers(securityContext, activeTenant.id),
         productRepository.getProducts(securityContext, activeTenant.id),
-        orderRepository.getOrders(securityContext, activeTenant.id).catch(() => []),
         categoryRepository.getCategories(securityContext, activeTenant.id).catch(() => []),
         promotionRepository.getCarousels(securityContext, activeTenant.id).catch(() => []),
       ]);
       setOffers(offersData);
       setProducts(prodsData);
-      setTenantOrders(ordersData);
       setCategories(catsData);
       setPromotionCarousels(carouselsData);
     } catch (err) {
@@ -1135,26 +1131,6 @@ export const MarketingPage: React.FC = () => {
     }
   };
 
-  // --------------------------------------------------------------------------
-  // MÉTRICAS E DESEMPENHO REAL DAS PROMOÇÕES
-  // --------------------------------------------------------------------------
-  const promoMetrics = useMemo(() => {
-    const promoOrders = tenantOrders.filter(o => o.origin === 'promotional_checkout' || o.offerId);
-    const totalRevenue = promoOrders.reduce((acc, o) => acc + (o.totalAmount || 0), 0);
-    const totalOrders = promoOrders.length;
-    const totalDiscounts = promoOrders.reduce((acc, o) => acc + (o.discount || 0), 0);
-    const limitedCards = offers.filter(o => o.promoUsageLimit && o.promoUsageLimit > 0);
-    const totalRedemptions = offers.reduce((acc, o) => acc + (o.promoTimesUsed || 0), 0);
-
-    return {
-      totalOrders,
-      totalRevenue,
-      totalDiscounts,
-      limitedCardsCount: limitedCards.length,
-      totalRedemptions,
-      averageTicket: totalOrders > 0 ? (totalRevenue / totalOrders) : 0,
-    };
-  }, [tenantOrders, offers]);
 
   if (!activeTenant) return null;
 
@@ -1509,129 +1485,12 @@ export const MarketingPage: React.FC = () => {
       {/* ABA 2: DESEMPENHO & MÉTRICAS REAIS DAS PROMOÇÕES                     */}
       {/* ==================================================================== */}
       {activeTab === 'performance' && (
-        <div className="space-y-6">
-          {/* Cards de Métricas Reais */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="p-4 space-y-2 border-emerald-100 bg-emerald-50/40">
-              <div className="flex items-center justify-between text-emerald-800">
-                <span className="text-xs font-bold uppercase tracking-wider">Pedidos via Promoção</span>
-                <ShoppingCart className="w-4 h-4" />
-              </div>
-              <div className="text-2xl font-black font-mono text-gray-900">
-                {promoMetrics.totalOrders}
-              </div>
-              <p className="text-[11px] text-gray-500">Pedidos gerados diretamente por cards promocionais</p>
-            </Card>
-
-            <Card className="p-4 space-y-2 border-blue-100 bg-blue-50/40">
-              <div className="flex items-center justify-between text-blue-800">
-                <span className="text-xs font-bold uppercase tracking-wider">Faturamento Promocional</span>
-                <DollarSign className="w-4 h-4" />
-              </div>
-              <div className="text-2xl font-black font-mono text-gray-900">
-                R$ {promoMetrics.totalRevenue.toFixed(2)}
-              </div>
-              <p className="text-[11px] text-gray-500">Receita bruta proveniente de campanhas</p>
-            </Card>
-
-            <Card className="p-4 space-y-2 border-amber-100 bg-amber-50/40">
-              <div className="flex items-center justify-between text-amber-800">
-                <span className="text-xs font-bold uppercase tracking-wider">Benefícios Resgatados</span>
-                <Flame className="w-4 h-4" />
-              </div>
-              <div className="text-2xl font-black font-mono text-gray-900">
-                {promoMetrics.totalRedemptions}
-              </div>
-              <p className="text-[11px] text-gray-500">Resgates atômicos em promoções com limite</p>
-            </Card>
-
-            <Card className="p-4 space-y-2 border-purple-100 bg-purple-50/40">
-              <div className="flex items-center justify-between text-purple-800">
-                <span className="text-xs font-bold uppercase tracking-wider">Ticket Médio</span>
-                <TrendingUp className="w-4 h-4" />
-              </div>
-              <div className="text-2xl font-black font-mono text-gray-900">
-                R$ {promoMetrics.averageTicket.toFixed(2)}
-              </div>
-              <p className="text-[11px] text-gray-500">Valor médio por compra promocional</p>
-            </Card>
-          </div>
-
-          {/* Tabela de Campanhas & Pedidos */}
-          <Card className="p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-emerald-600" />
-                <span>Desempenho por Card / Oferta</span>
-              </h3>
-              <span className="text-xs text-gray-500 font-mono">
-                {offers.length} cards cadastrados
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider">
-                    <th className="pb-3">Card / Oferta</th>
-                    <th className="pb-3">Destino</th>
-                    <th className="pb-3">Status</th>
-                    <th className="pb-3">Preço</th>
-                    <th className="pb-3">Usos / Limite</th>
-                    <th className="pb-3 text-right">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {offers.map(card => {
-                    const status = calculatePromoCardStatus(card);
-                    const statusMeta = getPromoStatusMeta(status);
-                    const dest = card.destinationType || (card.hasPromoCheckout ? 'CUSTOM_OFFER' : card.productId ? 'PRODUCT' : 'BANNER_ONLY');
-
-                    return (
-                      <tr key={card.id} className="hover:bg-gray-50">
-                        <td className="py-3 font-semibold text-gray-900 flex items-center gap-2">
-                          <span className="w-8 h-8 rounded-lg overflow-hidden bg-gray-100 shrink-0">
-                            {card.mediaUrl ? (
-                              <img src={card.mediaUrl} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="w-full h-full flex items-center justify-center text-gray-400">🖼️</span>
-                            )}
-                          </span>
-                          <span className="line-clamp-1">{card.title}</span>
-                        </td>
-                        <td className="py-3 font-medium">
-                          {dest === 'CUSTOM_OFFER' ? (
-                            <span className="text-amber-800 font-bold">Checkout Próprio</span>
-                          ) : dest === 'PRODUCT' ? (
-                            <span className="text-blue-800 font-bold">Produto</span>
-                          ) : (
-                            <span className="text-gray-600">Visual</span>
-                          )}
-                        </td>
-                        <td className="py-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${statusMeta.badgeClass}`}>
-                            {statusMeta.label}
-                          </span>
-                        </td>
-                        <td className="py-3 font-mono font-bold text-gray-900">
-                          {card.promoPrice ? `R$ ${card.promoPrice.toFixed(2)}` : (card.promotionalPrice ? `R$ ${card.promotionalPrice.toFixed(2)}` : '—')}
-                        </td>
-                        <td className="py-3 font-mono">
-                          {card.promoUsageLimit ? `${card.promoTimesUsed || 0} / ${card.promoUsageLimit}` : 'Ilimitado'}
-                        </td>
-                        <td className="py-3 text-right">
-                          <Button size="sm" variant="outline" onClick={() => handleOpenEdit(card)}>
-                            Editar
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
+        <PromoPerformancePanel
+          tenantId={activeTenant.id}
+          securityContext={securityContext}
+          offers={offers}
+          onEditCard={handleOpenEdit}
+        />
       )}
 
       {/* ==================================================================== */}
