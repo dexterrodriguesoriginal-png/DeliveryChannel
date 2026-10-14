@@ -32,12 +32,23 @@ interface SuggestionItem {
   raw: any;
 }
 
+/** Nenhuma etapa da busca pode prender o carregamento: estoura em `ms` e segue para o próximo recurso. */
+export const ADDRESS_STEP_TIMEOUT_MS = 6000;
+export function withTimeout<T>(p: Promise<T>, ms = ADDRESS_STEP_TIMEOUT_MS, label = 'busca de endereço'): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Tempo esgotado: ${label}`)), ms);
+    p.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
+const timedFetch = (url: string, init?: RequestInit) =>
+  fetch(url, { ...init, signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(ADDRESS_STEP_TIMEOUT_MS) : undefined });
+
 // Helpers de fallback para território brasileiro (ViaCEP e OpenStreetMap Nominatim)
 const fetchViaCepFallback = async (query: string): Promise<SuggestionItem[]> => {
   const digits = query.replace(/\D/g, '');
   if (digits.length !== 8) return [];
   try {
-    const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+    const res = await timedFetch(`https://viacep.com.br/ws/${digits}/json/`);
     if (!res.ok) return [];
     const data = await res.json();
     if (data.erro) return [];
@@ -56,7 +67,7 @@ const fetchViaCepFallback = async (query: string): Promise<SuggestionItem[]> => 
 const fetchNominatimFallback = async (query: string): Promise<SuggestionItem[]> => {
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=br&limit=5&addressdetails=1`;
-    const res = await fetch(url, {
+    const res = await timedFetch(url, {
       headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' },
     });
     if (!res.ok) return [];
@@ -93,6 +104,9 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
   const [isApiReady, setIsApiReady] = useState(false);
   const [mapsError, setMapsError] = useState<string | null>(null);
+  const [noResults, setNoResults] = useState(false);
+  const googleBlockedRef = useRef(false);
+  const requestSeqRef = useRef(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -129,6 +143,7 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
       const specificError = `Google Maps AuthFailure: Falha na autenticação da chave para o host "${currentHost}". Verifique se https://${currentHost}/* está adicionado às restrições de URL da API Key ou se as APIs Maps JavaScript e Places API (New) estão ativas.`;
       console.warn('[MAPS DEBUG]', specificError);
       setMapsError(specificError);
+      googleBlockedRef.current = true; // chave recusada neste domínio: usa só ViaCEP/OpenStreetMap
       if (typeof prevAuthFailure === 'function') {
         prevAuthFailure();
       }
@@ -229,8 +244,11 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
         setIsOpen(false);
         return;
       }
+      const seq = ++requestSeqRef.current;
+      const stale = () => seq !== requestSeqRef.current;
+      setNoResults(false);
 
-      if (!isApiReady && !placesLibRef.current && !win.google?.maps?.places) {
+      if (googleBlockedRef.current || (!isApiReady && !placesLibRef.current && !win.google?.maps?.places)) {
         setIsLoadingSuggestions(true);
         try {
           let fallbackItems: SuggestionItem[] = [];
@@ -240,11 +258,13 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
           if (fallbackItems.length === 0) {
             fallbackItems = await fetchNominatimFallback(cleanQuery);
           }
+          if (stale()) return;
           setSuggestions(fallbackItems);
           setIsOpen(fallbackItems.length > 0);
+          setNoResults(fallbackItems.length === 0);
           setHighlightedIndex(-1);
         } catch {} finally {
-          setIsLoadingSuggestions(false);
+          if (!stale()) setIsLoadingSuggestions(false);
         }
         return;
       }
@@ -271,7 +291,7 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
           };
 
           try {
-            const response = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+            const response = await withTimeout<any>(placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions(request), ADDRESS_STEP_TIMEOUT_MS, 'Google Places');
             const rawSuggestions = response.suggestions || [];
 
             items = rawSuggestions
@@ -305,7 +325,8 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
           }
 
           const service = new googlePlaces.AutocompleteService();
-          await new Promise<void>((resolve) => {
+          // Com a chave bloqueada para o domínio, o callback pode nunca ser chamado: limita o tempo.
+          await withTimeout(new Promise<void>((resolve) => {
             service.getPlacePredictions(
               {
                 input: cleanQuery,
@@ -329,7 +350,7 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
                 resolve();
               }
             );
-          });
+          }), ADDRESS_STEP_TIMEOUT_MS, 'Google Places (clássico)').catch((e: any) => { currentError = e?.message || String(e); });
         }
 
         // 3. Fallback geográfico brasileiro inteligente (ViaCEP & OpenStreetMap)
@@ -359,8 +380,10 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
           setMapsError(null);
         }
 
+        if (stale()) return;
         setSuggestions(items);
         setIsOpen(items.length > 0);
+        setNoResults(items.length === 0);
         setHighlightedIndex(-1);
       } catch (err: any) {
         const errorMsg = err?.message || 'Erro inesperado no autocomplete.';
@@ -376,10 +399,12 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
           suggestionCount: 0,
           autocompleteError: errorMsg,
         });
+        if (stale()) return;
         setSuggestions([]);
         setIsOpen(false);
+        setNoResults(true);
       } finally {
-        setIsLoadingSuggestions(false);
+        if (!stale()) setIsLoadingSuggestions(false);
       }
     },
     [isApiReady, mapsError]
@@ -399,6 +424,9 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
         fetchSuggestions(val);
       }, 300);
     } else {
+      requestSeqRef.current++;
+      setIsLoadingSuggestions(false);
+      setNoResults(false);
       setSuggestions([]);
       setIsOpen(false);
     }
@@ -448,9 +476,9 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
       } else if (item.raw && typeof item.raw.toPlace === 'function') {
         // 1. Places API (New): toPlace() e fetchFields()
         const place = item.raw.toPlace();
-        await place.fetchFields({
+        await withTimeout(place.fetchFields({
           fields: ['addressComponents', 'formattedAddress', 'location', 'id', 'displayName'],
-        });
+        }), ADDRESS_STEP_TIMEOUT_MS, 'detalhes do endereço');
 
         placeId = place.id;
         formattedAddress = place.formattedAddress || item.fullText;
@@ -491,7 +519,7 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
       } else if (item.id && win.google?.maps?.places?.PlacesService) {
         // 2. Fallback para getDetails do SDK clássico
         const googlePlaces = win.google.maps.places;
-        await new Promise<void>((resolve) => {
+        await withTimeout(new Promise<void>((resolve) => {
           const service = new googlePlaces.PlacesService(document.createElement('div'));
           service.getDetails(
             {
@@ -533,7 +561,7 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
               resolve();
             }
           );
-        });
+        }), ADDRESS_STEP_TIMEOUT_MS, 'detalhes do endereço');
       }
 
       // Se o logradouro foi identificado, usa ele; senão usa o texto principal da sugestão
@@ -626,6 +654,13 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
         <div className="flex items-center gap-1.5 text-[11px] text-slate-600 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
           <Info className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
           <span>Busca inteligente ativa por rua ou CEP. Você também pode preencher os campos manualmente.</span>
+        </div>
+      )}
+
+      {noResults && !isLoadingSuggestions && value.trim().length >= 3 && (
+        <div data-testid="address-no-results" className="flex items-center gap-1.5 text-[11px] text-amber-800 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          <span>Não encontramos sugestões agora. Continue digitando o endereço e preencha número, bairro, cidade e CEP abaixo.</span>
         </div>
       )}
 
