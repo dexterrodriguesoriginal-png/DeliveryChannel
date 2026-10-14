@@ -186,7 +186,7 @@ export const INSTALL_MIN_MS = 75 * 1000;
 /** Duração da aceleração final após a confirmação. */
 export const INSTALL_FINISH_MIN_MS = 3 * 1000;
 /** Mínimo absoluto, desde o aceite, para chegar a 100%. */
-export const INSTALL_DONE_MIN_MS = 20 * 1000;
+export const INSTALL_DONE_MIN_MS = 75 * 1000;
 export const INSTALL_EST_MS = INSTALL_MIN_MS;
 const INSTALL_CAP = 90;
 // [tempo ms, %, easing do trecho]: 'out' = rápido→lento, 'in' = lento→rápido.

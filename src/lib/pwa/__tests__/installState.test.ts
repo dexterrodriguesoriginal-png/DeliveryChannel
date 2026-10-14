@@ -116,20 +116,19 @@ describe('porcentagem estimada da instalação (estilo player)', () => {
     const start = rate(0, 4_000), slow = rate(10_000, 20_000), again = rate(28_000, 36_000), end = rate(65_000, 75_000);
     expect(start).toBeGreaterThan(slow); expect(again).toBeGreaterThan(slow); expect(again).toBeGreaterThan(end);
   });
-  it('confirmação cedo: nunca 100% antes de 20 s desde o aceite; monotônica', () => {
+  it('confirmação cedo: nunca 100% antes de 75 s desde o aceite; monotônica', () => {
     let prev = -1;
-    for (let t = 0; t <= 30_000; t += 100) { const p = estimatedInstallPercent(t, 1_000); expect(p).toBeGreaterThanOrEqual(prev); prev = p; if (t < 20_000) expect(p).toBeLessThan(100); }
+    for (let t = 0; t <= 80_000; t += 100) { const p = estimatedInstallPercent(t, 1_000); expect(p).toBeGreaterThanOrEqual(prev); prev = p; if (t < 75_000) expect(p).toBeLessThan(100); }
     expect(estimatedInstallPercent(1_000, 1_000)).toBeLessThan(10);
-    expect(estimatedInstallPercent(19_900, 1_000)).toBeLessThan(100);
-    expect(estimatedInstallPercent(20_000, 1_000)).toBe(100);
+    expect(estimatedInstallPercent(74_900, 1_000)).toBeLessThan(100);
+    expect(estimatedInstallPercent(75_000, 1_000)).toBe(100);
   });
-  it('confirmação depois de 20 s: acelera até 100% em ~3 s, sem salto', () => {
-    const before = estimatedInstallPercent(30_000, 30_000);
-    expect(before).toBeLessThan(70);
-    let prev = before;
-    for (let t = 30_000; t <= 33_000; t += 100) { const p = estimatedInstallPercent(t, 30_000); expect(p).toBeGreaterThanOrEqual(prev); prev = p; }
-    expect(estimatedInstallPercent(32_900, 30_000)).toBeLessThan(100);
-    expect(estimatedInstallPercent(33_000, 30_000)).toBe(100);
+  it('confirmação aos 30 s: segue a curva e só chega a 100% aos 75 s, sem salto', () => {
+    let prev = estimatedInstallPercent(30_000, 30_000);
+    expect(prev).toBeLessThan(70);
+    for (let t = 30_000; t <= 75_000; t += 100) { const p = estimatedInstallPercent(t, 30_000); expect(p).toBeGreaterThanOrEqual(prev); prev = p; }
+    expect(estimatedInstallPercent(74_900, 30_000)).toBeLessThan(100);
+    expect(estimatedInstallPercent(75_000, 30_000)).toBe(100);
   });
   it('confirmação tardia: de 90% a 100% em 3 s', () => {
     expect(estimatedInstallPercent(120_000, 120_000)).toBe(89);
