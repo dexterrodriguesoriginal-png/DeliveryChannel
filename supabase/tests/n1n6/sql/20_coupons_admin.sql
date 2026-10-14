@@ -1,0 +1,47 @@
+-- Administração de cupons: só OWNER/MANAGER do tenant (decisões 29, 30, 31).
+SET ROLE authenticated;
+SELECT t.login('a0000000-0000-0000-0000-000000000001');
+SELECT t.lives($$INSERT INTO public.coupons (tenant_id, code, discount_type, discount_value) VALUES ('10000000-0000-0000-0000-00000000000a',' novo 5 ','FIXED_AMOUNT',5)$$, 'OWNER cria cupom');
+SELECT t.is(t.sq($$SELECT code FROM public.coupons WHERE tenant_id='10000000-0000-0000-0000-00000000000a' AND code='NOVO5'$$), 'NOVO5', 'código normalizado (maiúsculas, sem espaço)');
+SELECT t.throws($$INSERT INTO public.coupons (tenant_id, code, discount_type, discount_value, times_used) VALUES ('10000000-0000-0000-0000-00000000000a','HACK1','FIXED_AMOUNT',5,0)$$, 'permission denied', 'times_used não é gravável na criação');
+SELECT t.throws($$UPDATE public.coupons SET times_used = 0 WHERE code='VINTE20'$$, 'permission denied', 'times_used não é gravável (contador só no servidor)');
+SELECT t.lives($$UPDATE public.coupons SET description = 'x' WHERE code='NOVO5'$$, 'OWNER edita cupom');
+SELECT t.throws($$INSERT INTO public.coupons (tenant_id, code, discount_type, discount_value) VALUES ('10000000-0000-0000-0000-00000000000b','INVADE','FIXED_AMOUNT',5)$$, 'row-level security', 'OWNER A não cria cupom em B');
+SELECT t.is(t.visible($$SELECT * FROM public.coupons WHERE tenant_id='10000000-0000-0000-0000-00000000000b'$$), 0::bigint, 'OWNER A não vê cupons de B');
+SELECT t.throws($$INSERT INTO public.coupons (tenant_id, code, discount_type, discount_value) VALUES ('10000000-0000-0000-0000-00000000000a','PCT','PERCENTAGE',150)$$, 'coupons_percentage_max', 'percentual > 100 recusado');
+SELECT t.lives($$DELETE FROM public.coupons WHERE code='NOVO5'$$, 'OWNER exclui cupom sem histórico');
+SELECT t.login('a0000000-0000-0000-0000-000000000002');
+SELECT t.lives($$INSERT INTO public.coupons (tenant_id, code, discount_type, discount_value) VALUES ('10000000-0000-0000-0000-00000000000a','GERENTE','FIXED_AMOUNT',1)$$, 'MANAGER cria cupom');
+SELECT t.ok(t.visible($$SELECT * FROM public.coupon_redemptions$$) >= 0, 'MANAGER lê histórico de resgates');
+-- CASHIER: aplica (RPC) mas não administra
+SELECT t.login('a0000000-0000-0000-0000-000000000004');
+SELECT t.is(t.visible($$SELECT * FROM public.coupons$$), 0::bigint, 'CASHIER não lê a tabela de cupons');
+SELECT t.throws($$INSERT INTO public.coupons (tenant_id, code, discount_type, discount_value) VALUES ('10000000-0000-0000-0000-00000000000a','CAIXA','FIXED_AMOUNT',1)$$, 'row-level security', 'CASHIER não cria cupom');
+SELECT t.lives($$UPDATE public.coupons SET discount_value = 99 WHERE code='DEZ10'$$, 'CASHIER UPDATE não afeta linhas (RLS)');
+SELECT t.lives($$DELETE FROM public.coupons WHERE code='GERENTE'$$, 'CASHIER DELETE não afeta linhas (RLS)');
+SELECT t.is(t.visible($$SELECT * FROM public.coupon_redemptions$$), 0::bigint, 'CASHIER não lê resgates');
+-- OPERATOR, DRIVER, DELIVERY_MANAGER, CUSTOMER, CEO, SUPER_ADMIN
+SELECT t.login('a0000000-0000-0000-0000-000000000003');
+SELECT t.throws($$INSERT INTO public.coupons (tenant_id, code, discount_type, discount_value) VALUES ('10000000-0000-0000-0000-00000000000a','OPER','FIXED_AMOUNT',1)$$, 'row-level security', 'OPERATOR não cria cupom');
+SELECT t.is(t.visible($$SELECT * FROM public.coupons$$), 0::bigint, 'OPERATOR não lê cupons');
+SELECT t.login('a0000000-0000-0000-0000-000000000005');
+SELECT t.throws($$INSERT INTO public.coupons (tenant_id, code, discount_type, discount_value) VALUES ('10000000-0000-0000-0000-00000000000a','DRV','FIXED_AMOUNT',1)$$, 'row-level security', 'DRIVER não cria cupom');
+SELECT t.login('a0000000-0000-0000-0000-000000000006');
+SELECT t.is(t.visible($$SELECT * FROM public.coupons$$), 0::bigint, 'DELIVERY_MANAGER não lê cupons');
+SELECT t.login('a0000000-0000-0000-0000-000000000007');
+SELECT t.is(t.visible($$SELECT * FROM public.coupons$$), 0::bigint, 'CUSTOMER não lê cupons');
+SELECT t.throws($$INSERT INTO public.coupons (tenant_id, code, discount_type, discount_value) VALUES ('10000000-0000-0000-0000-00000000000a','CLI','FIXED_AMOUNT',1)$$, 'row-level security', 'CUSTOMER não cria cupom');
+SELECT t.throws($$SELECT public.validate_coupon_pos('10000000-0000-0000-0000-00000000000a','DEZ10','[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]')$$, 'POS_FORBIDDEN', 'CUSTOMER não usa validação de PDV');
+SELECT t.login('c0000000-0000-0000-0000-000000000001');
+SELECT t.is(t.visible($$SELECT * FROM public.coupons$$), 0::bigint, 'F2: CEO não lê cupons');
+SELECT t.is(t.visible($$SELECT * FROM public.coupon_redemptions$$), 0::bigint, 'F2: CEO não lê resgates');
+SELECT t.throws($$INSERT INTO public.coupons (tenant_id, code, discount_type, discount_value) VALUES ('10000000-0000-0000-0000-00000000000a','CEO1','FIXED_AMOUNT',1)$$, 'row-level security', 'F2: CEO não cria cupom');
+SELECT t.login('c0000000-0000-0000-0000-000000000002');
+SELECT t.is(t.visible($$SELECT * FROM public.coupons$$), 0::bigint, 'F2: SUPER_ADMIN não lê cupons');
+RESET ROLE;
+SET ROLE anon;
+SELECT t.login(NULL);
+SELECT t.is(t.visible($$SELECT * FROM public.coupons$$), -1::bigint, 'anon sem privilégio em coupons');
+SELECT t.throws($$SELECT public.validate_coupon('adega-a','DEZ10','[]')$$, 'permission denied', 'anon não valida cupom (compra exige login)');
+RESET ROLE;
+SELECT t.is(t.sq($$SELECT discount_value FROM public.coupons WHERE code='DEZ10'$$), '10.00', 'cupom não foi alterado por CASHIER');

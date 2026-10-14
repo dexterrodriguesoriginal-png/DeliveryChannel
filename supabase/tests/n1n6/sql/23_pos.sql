@@ -1,0 +1,37 @@
+-- PDV (F4: OWNER, MANAGER, CASHIER; sem OPERATOR)
+\set A '\'10000000-0000-0000-0000-00000000000a\''
+SET ROLE authenticated;
+SELECT t.login('a0000000-0000-0000-0000-000000000004');
+SELECT set_config('t.p1', public.process_pos_sale_atomic(:A, '[{"productId":"d0000000-0000-0000-0000-0000000000a5","quantity":2}]', 'CASH', NULL, NULL, NULL, 'VINTE20', '22222222-2222-2222-2222-222222222222')::text, false);
+SELECT t.is((current_setting('t.p1')::jsonb ->> 'total_amount')::numeric, 95.00, 'PDV: preço do servidor (2×50) − cupom fixo 5');
+SELECT t.is((current_setting('t.p1')::jsonb ->> 'status'), 'DELIVERED', 'PDV: pedido DELIVERED');
+SELECT t.is((current_setting('t.p1')::jsonb ->> 'payment_status'), 'PAID', 'PDV: dinheiro = PAID');
+SELECT t.is((public.process_pos_sale_atomic(:A, '[{"productId":"d0000000-0000-0000-0000-0000000000a5","quantity":2}]', 'CASH', NULL, NULL, NULL, 'VINTE20', '22222222-2222-2222-2222-222222222222') ->> 'replayed')::boolean, true, 'PDV: idempotente');
+SELECT t.throws($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000a', '[{"productId":"d0000000-0000-0000-0000-0000000000a5","quantity":1,"unit_price":1}]', 'CASH')$$, 'UNEXPECTED_FIELD', 'PDV: preço do front rejeitado');
+SELECT set_config('t.p2', public.process_pos_sale_atomic(:A, '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'PIX')::text, false);
+SELECT t.is((current_setting('t.p2')::jsonb ->> 'payment_status'), 'PENDING', 'PDV PIX: aguardando pagamento até confirmação');
+SELECT t.ok((public.get_order_pix_payload((current_setting('t.p2')::jsonb ->> 'order_id')::uuid) ->> 'brcode') LIKE '000201%', 'PDV PIX: QR gerado no servidor para o balcão');
+SELECT t.lives(format($$SELECT public.update_order_payment_status(%L,'PAID')$$, current_setting('t.p2')::jsonb ->> 'order_id'), 'PDV PIX: caixa confirma pagamento');
+SELECT t.throws($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000a', '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'CASH', NULL, NULL, NULL, 'UMAVEZ')$$, 'COUPON_REQUIRES_IDENTIFIED_CUSTOMER', 'PDV: cupom por cliente exige cliente');
+SELECT t.throws($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000a', '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'CASH', NULL, NULL, 'f0000000-0000-0000-0000-0000000000ff')$$, 'CUSTOMER_NOT_FOUND', 'PDV: cliente de fora do tenant recusado');
+SELECT t.login('a0000000-0000-0000-0000-000000000003');
+SELECT t.throws($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000a', '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'CASH')$$, 'POS_FORBIDDEN', 'F4: OPERATOR sem PDV');
+SELECT t.login('a0000000-0000-0000-0000-000000000005');
+SELECT t.throws($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000a', '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'CASH')$$, 'POS_FORBIDDEN', 'F4: DRIVER sem PDV');
+SELECT t.login('a0000000-0000-0000-0000-000000000006');
+SELECT t.throws($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000a', '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'CASH')$$, 'POS_FORBIDDEN', 'F4: DELIVERY_MANAGER sem PDV');
+SELECT t.login('a0000000-0000-0000-0000-000000000007');
+SELECT t.throws($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000a', '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'CASH')$$, 'POS_FORBIDDEN', 'F4: CUSTOMER sem PDV');
+SELECT t.login('c0000000-0000-0000-0000-000000000001');
+SELECT t.throws($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000a', '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'CASH')$$, 'POS_FORBIDDEN', 'F2/F4: CEO sem PDV');
+SELECT t.login('b0000000-0000-0000-0000-000000000004');
+SELECT t.throws($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000a', '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'CASH')$$, 'POS_FORBIDDEN', 'CASHIER de B sem PDV em A');
+SELECT t.throws($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000b', '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'CASH')$$, 'PRODUCT_NOT_FOUND', 'CASHIER de B não vende produto de A');
+SELECT t.login('a0000000-0000-0000-0000-000000000001');
+SELECT t.lives($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000a', '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'DEBIT_CARD', 'Fulano', '11955554444', 'f0000000-0000-0000-0000-0000000000a7', 'UMAVEZ')$$, 'OWNER: PDV com cliente identificado e cupom por cliente');
+SELECT t.login('a0000000-0000-0000-0000-000000000002');
+SELECT t.lives($$SELECT public.process_pos_sale_atomic('10000000-0000-0000-0000-00000000000a', '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', 'CREDIT_CARD')$$, 'MANAGER: PDV');
+RESET ROLE;
+SELECT t.is(t.sq(format($$SELECT channel || '/' || (applied_by = 'a0000000-0000-0000-0000-000000000004') FROM public.coupon_redemptions WHERE order_id = %L$$, current_setting('t.p1')::jsonb ->> 'order_id')), 'POS/true', 'PDV: resgate canal POS com applied_by = caixa');
+SELECT t.is(t.sq(format($$SELECT origin || '/' || fulfillment_type || '/' || COALESCE(prep_time_minutes::text,'NULL') FROM public.orders WHERE id = %L$$, current_setting('t.p1')::jsonb ->> 'order_id')), 'pos/PICKUP/NULL', 'PDV: origin pos, PICKUP, prep_time NULL (sem ?? 30)');
+SELECT t.ok((SELECT count(DISTINCT order_number) = count(*) FROM public.orders), 'order_number único (SERIAL, não count)');
