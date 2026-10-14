@@ -1,0 +1,17 @@
+name: migration-quarantine-guard
+# Verificação estática: impede que 021–027 voltem para supabase/migrations.
+# Não usa segredos, não conecta em Supabase nem em banco, não faz deploy.
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checar quarentena das migrations 021–027
+        run: bash scripts/ci/check_migration_quarantine.sh
+      - name: Autoteste da guarda (violações simuladas em cópia temporária)
+        run: bash scripts/ci/test_migration_quarantine_guard.sh
