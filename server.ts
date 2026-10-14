@@ -8,6 +8,8 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { createPwaRouter } from './server/pwa/routes';
+import fs from 'node:fs/promises';
+import { injectStoreHead, storeSlugFromPath, withTimeout } from './server/pwa/storeHtml';
 import { demoResolver, StoreResolver, supabaseEnvFrom, supabaseResolver } from './server/pwa/storeSource';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -26,7 +28,15 @@ async function start() {
   const distDir = path.resolve(process.cwd(), 'dist');
   const { resolver, mode } = pickResolver();
 
-  app.use(createPwaRouter({ resolveStore: resolver, publicDir: isProd ? distDir : path.resolve(process.cwd(), 'public') }));
+  const pwa = createPwaRouter({ resolveStore: resolver, publicDir: isProd ? distDir : path.resolve(process.cwd(), 'public') });
+  app.use(pwa);
+
+  /** HTML das vitrines (/app/<slug>...) já sai com o manifesto da loja no <head> (nunca o global). */
+  async function storeHtml(req: express.Request, rawHtml: string, slug: string): Promise<string> {
+    const store = await withTimeout(pwa.lookupStore(slug), 1500, null);
+    return injectStoreHead(rawHtml, slug, store);
+  }
+  const isHtmlNav = (req: express.Request) => req.method === 'GET' && !path.extname(req.path);
 
   if (!isProd) {
     const { createServer } = await import('vite');
@@ -34,8 +44,18 @@ async function start() {
       server: { middlewareMode: true, hmr: process.env.DISABLE_HMR !== 'true' },
       appType: 'spa',
     });
+    app.get('/app/*', async (req, res, next) => {
+      const slug = storeSlugFromPath(req.path);
+      if (!slug || !isHtmlNav(req)) return next();
+      try {
+        const raw = await vite.transformIndexHtml(req.originalUrl, await fs.readFile(path.resolve(process.cwd(), 'index.html'), 'utf8'));
+        res.setHeader('Cache-Control', 'no-cache');
+        res.type('html').send(await storeHtml(req, raw, slug));
+      } catch (e) { next(e); }
+    });
     app.use(vite.middlewares);
   } else {
+    let indexHtml: Promise<string> | undefined;
     // Nunca servir o bundle do servidor como arquivo estático.
     app.use((req, res, next) => (/^\/server\.cjs(\.map)?$/i.test(req.path) ? res.status(404).end() : next()));
     app.use(express.static(distDir, { index: false, maxAge: '1h', setHeaders: (res, file) => {
@@ -44,7 +64,10 @@ async function start() {
     app.get('*', (req, res, next) => {
       if (req.method !== 'GET' || path.extname(req.path)) return next();
       res.setHeader('Cache-Control', 'no-cache');
-      res.sendFile(path.join(distDir, 'index.html'));
+      const slug = storeSlugFromPath(req.path);
+      if (!slug) { res.sendFile(path.join(distDir, 'index.html')); return; }
+      indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
+      indexHtml.then((raw) => storeHtml(req, raw, slug)).then((h) => res.type('html').send(h), next);
     });
   }
 

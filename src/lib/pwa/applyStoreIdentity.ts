@@ -96,6 +96,15 @@ export async function fetchServedManifest(store: StoreIdentityInput, fetchImpl: 
 export async function applyStoreIdentity(store: StoreIdentityInput): Promise<AppliedIdentity> {
   const name = storeDisplayName(store);
   const themeColor = safeColor(store.theme?.primaryColor, FALLBACK_THEME_COLOR);
+  // Manifesto já injetado pelo servidor no HTML desta loja: mantê-lo (o Chrome já o leu no carregamento).
+  const injected = document.head.querySelector('link[rel="manifest"][data-server-injected]') as HTMLLinkElement | null;
+  const ownHref = `/app/${encodeURIComponent(store.slug)}/manifest.webmanifest`;
+  if (injected && injected.getAttribute('href') === ownHref) {
+    injected.setAttribute('data-store-id', store.id);
+    const touch = (document.head.querySelector('link[rel="apple-touch-icon"]') as HTMLLinkElement | null)?.getAttribute('href');
+    applyHeadMeta(name, name, themeColor, touch && touch.startsWith(`/app/`) ? touch : `/app/${encodeURIComponent(store.slug)}/icons/icon-192.png`);
+    return { manifestHref: ownHref, usedFallbackIcon: false, served: true };
+  }
   // Uma nova tentativa evita trocar o manifesto servido por um data: numa falha momentânea.
   const served = (await fetchServedManifest(store)) || (await fetchServedManifest(store));
   if (served) {

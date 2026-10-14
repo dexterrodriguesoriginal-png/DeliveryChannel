@@ -17,6 +17,7 @@ import { MobileNavigation } from '../../components/layout/MobileNavigation';
 import { AddressAutocompleteInput, ParsedAddress } from '../../components/onboarding/AddressAutocompleteInput';
 import { Card } from '../../components/ui/Card';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
+import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
 import { cartStorageKey } from '../../lib/pwa/storeManifest';
 import { Badge } from '../../components/ui/Badge';
@@ -202,6 +203,17 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // Submissão do Pedido
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
+
+  // Momentos-chave do convite de instalação (produto aberto, item na sacola, pedido concluído).
+  const inviteCartCountRef = useRef(0);
+  const inviteMountedAtRef = useRef(Date.now());
+  useEffect(() => { if (selectedProductModal) { const t = setTimeout(() => emitInviteTrigger('product'), 1200); return () => clearTimeout(t); } }, [selectedProductModal]);
+  useEffect(() => {
+    const n = cart.reduce((a, i) => a + (Number((i as { quantity?: number }).quantity) || 1), 0);
+    if (n > inviteCartCountRef.current && Date.now() - inviteMountedAtRef.current > 2000) emitInviteTrigger('cart'); // ignora a sacola restaurada
+    inviteCartCountRef.current = n;
+  }, [cart]);
+  useEffect(() => { if (completedOrder) { const t = setTimeout(() => emitInviteTrigger('order'), 800); return () => clearTimeout(t); } }, [completedOrder]);
   const [completedCouponRedemption, setCompletedCouponRedemption] = useState<RedeemCouponResult | null>(null);
   const [copiedPix, setCopiedPix] = useState(false);
 
@@ -1112,7 +1124,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         storeName={theme.storeName || storeData.tenant.name}
         color={theme.primaryColor || '#334155'}
         logoUrl={theme.logoUrl}
-        hidden={isCheckoutOpen}
+        hidden={isCheckoutOpen || isPromoCheckoutOpen}
       />
       {/* Barra de Retorno ao Painel (Facilita Testes do Dono Sem Precisar Publicar) */}
       <div className="bg-slate-950 text-white text-xs px-3.5 py-2 flex items-center justify-between border-b border-slate-800 z-40 relative">

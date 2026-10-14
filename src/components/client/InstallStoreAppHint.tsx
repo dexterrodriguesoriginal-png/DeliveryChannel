@@ -1,41 +1,90 @@
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Download, Share, X, MoreVertical, Smartphone } from 'lucide-react';
 import { StoreLogo } from './StoreLogo';
 import {
-  detectPlatform, isStandalone, promoVisibility, hasSeenInstallModal, markInstallModalSeen,
+  detectPlatform, isStandalone,
   isMarkedInstalled, markInstalled, getDeferredPrompt, clearDeferredPrompt, subscribeInstall, wasAppInstalledEvent,
+  decideInvite, readInvite, recordInvite, recordAccepted, isEditableFocused, onInviteTrigger, activeKey,
+  InviteKind, InviteTrigger, INVITE_ACTIVE_MS,
 } from '../../lib/pwa/installState';
 
-interface Props { tenantId: string; storeName: string; color: string; logoUrl?: string; hidden?: boolean; }
+interface Props { tenantId: string; storeName: string; color: string; logoUrl?: string; hidden?: boolean; busy?: boolean; }
 
 /**
  * Promoção de instalação do app da loja: modal na 1ª visita (por loja) e banner fixo depois,
  * até a instalação ser confirmada (appinstalled / aceite / modo standalone). Nunca bloqueia a compra.
  */
-export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, color, logoUrl, hidden }) => {
+export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, color, logoUrl, hidden, busy }) => {
   const deferred = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
   const appInstalledEvt = useSyncExternalStore(subscribeInstall, wasAppInstalledEvent, () => false);
-  const [modalSeen, setModalSeen] = useState(() => hasSeenInstallModal(localStorage, tenantId));
   const [installed, setInstalled] = useState(() => isMarkedInstalled(localStorage, tenantId));
+  const [invite, setInvite] = useState<{ kind: InviteKind; trigger: InviteTrigger } | null>(null);
   const [help, setHelp] = useState(false);
   const standalone = isStandalone(window);
   const platform = detectPlatform(navigator.userAgent);
+  const blockedRef = useRef(false);
+  blockedRef.current = !!hidden || !!busy;
 
+  // Instalado só por appinstalled ou execução em modo standalone (nunca por clique/fechamento).
   useEffect(() => {
     if (standalone || appInstalledEvt) { markInstalled(localStorage, tenantId); setInstalled(true); }
   }, [standalone, appInstalledEvt, tenantId]);
+  // Se o app foi removido do aparelho, o navegador volta a oferecer beforeinstallprompt: volta a convidar.
+  useEffect(() => {
+    if (deferred && installed && !standalone && !appInstalledEvt) {
+      try { localStorage.removeItem(`deliverychannel_pwa_installed_${tenantId}`); } catch { /* ignora */ }
+      setInstalled(false);
+    }
+  }, [deferred, installed, standalone, appInstalledEvt, tenantId]);
 
-  const vis = promoVisibility({ installed, standalone, modalSeen, checkoutOpen: !!hidden });
+  const tryInvite = useCallback((trigger: InviteTrigger) => {
+    const kind = decideInvite({
+      now: Date.now(), trigger, record: readInvite(localStorage, tenantId),
+      installed: isMarkedInstalled(localStorage, tenantId) || wasAppInstalledEvent(), standalone: isStandalone(window),
+      busy: blockedRef.current || isEditableFocused(document),
+    });
+    if (!kind) return;
+    recordInvite(localStorage, tenantId, Date.now());
+    setHelp(false);
+    setInvite({ kind, trigger });
+  }, [tenantId]);
+
+  useEffect(() => { tryInvite('visit'); }, [tryInvite]);
+  useEffect(() => onInviteTrigger(tryInvite), [tryInvite]);
+  // Fecha convites abertos se o checkout/form abrir.
+  useEffect(() => { if (hidden || busy) setInvite(null); }, [hidden, busy]);
+
+  // Navegação ativa: aba visível + interação nos últimos 30 s; a cada 3 min ativos, tenta convidar.
+  useEffect(() => {
+    if (installed || standalone) return;
+    const key = activeKey(tenantId);
+    let lastAct = Date.now();
+    const act = () => { lastAct = Date.now(); };
+    const evs = ['pointerdown', 'keydown', 'scroll', 'touchstart'] as const;
+    evs.forEach(e => window.addEventListener(e, act, { passive: true }));
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastAct > 30000) return;
+      let ms = 0;
+      try { ms = Number(sessionStorage.getItem(key)) || 0; } catch { /* ignora */ }
+      ms += 5000;
+      if (ms >= INVITE_ACTIVE_MS) { ms = 0; tryInvite('active'); }
+      try { sessionStorage.setItem(key, String(ms)); } catch { /* ignora */ }
+    }, 5000);
+    return () => { window.clearInterval(id); evs.forEach(e => window.removeEventListener(e, act)); };
+  }, [installed, standalone, tenantId, tryInvite]);
+
+  if (installed || standalone) return null;
+  const vis: 'modal' | 'sheet' | 'banner' | 'none' = hidden ? 'none' : invite ? invite.kind : 'banner';
   if (vis === 'none') return null;
 
-  const closeModal = () => { markInstallModalSeen(localStorage, tenantId); setModalSeen(true); setHelp(false); };
+  const closeModal = () => { setInvite(null); setHelp(false); };
   const install = async () => {
     const ev = getDeferredPrompt();
     if (!ev) { setHelp(true); return; }
-    await ev.prompt();
+    clearDeferredPrompt(); // o evento só pode ser usado uma vez
+    try { await ev.prompt(); } catch { setHelp(true); return; }
     const choice = await ev.userChoice.catch(() => null);
-    clearDeferredPrompt();
-    if (choice?.outcome === 'accepted') { markInstalled(localStorage, tenantId); setInstalled(true); }
+    if (choice?.outcome === 'accepted') recordAccepted(localStorage, tenantId, Date.now());
     closeModal();
   };
 
@@ -68,6 +117,32 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
           <button type="button" onClick={closeModal} data-testid="install-continue" className="mt-2 w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100">
             Continuar no navegador
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (vis === 'sheet') {
+    const order = invite?.trigger === 'order';
+    return (
+      <div data-testid="install-store-app-sheet" data-trigger={invite?.trigger} role="dialog" aria-label={`Instalar app ${storeName}`}
+        className="fixed inset-x-0 bottom-0 z-[120] p-3 sm:flex sm:justify-center pointer-events-none">
+        <div className="pointer-events-auto w-full sm:max-w-sm bg-white rounded-2xl border border-slate-200 shadow-2xl p-4 relative">
+          <button type="button" aria-label="Fechar" onClick={closeModal} className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+          <div className="flex items-center gap-3 pr-6">
+            <StoreLogo logoUrl={logoUrl} name={storeName} color={color} className="w-12 h-12 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-900">{order ? 'Acompanhe seu pedido pelo app' : invite?.trigger === 'cart' ? 'Peça mais rápido da próxima vez' : `Tenha o app da ${storeName} no seu celular`}</p>
+              <p className="text-xs text-slate-600">{order ? `Instale o app da ${storeName} e volte à loja com um toque.` : `Instale o app da ${storeName} e compre direto pela tela inicial.`}</p>
+            </div>
+          </div>
+          {help && instructions}
+          <div className="mt-3 flex gap-2">
+            <button type="button" onClick={install} data-testid="install-sheet-primary" className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-white text-sm font-bold" style={{ backgroundColor: color }}>
+              <Download className="h-4 w-4" /> Instalar aplicativo
+            </button>
+            <button type="button" onClick={closeModal} data-testid="install-sheet-continue" className="rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Agora não</button>
+          </div>
         </div>
       </div>
     );

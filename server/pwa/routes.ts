@@ -41,7 +41,9 @@ export function serverManifest(store: StoreIdentityInput) {
   return buildStoreManifest(store, '', icons);
 }
 
-export function createPwaRouter(opts: PwaRouteOptions): Router {
+export type PwaRouter = Router & { lookupStore: (slug: string) => Promise<StoreIdentityInput | null> };
+
+export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   const ttl = opts.ttlMs ?? 5 * 60 * 1000;
   const storeCache = new Map<string, { at: number; v: Awaited<ReturnType<StoreResolver>> }>();
   const iconCache = new Map<string, Buffer>();
@@ -119,5 +121,10 @@ export function createPwaRouter(opts: PwaRouteOptions): Router {
     res.send(png);
   });
 
-  return router;
+  const lookupStore = async (slug: string) => {
+    if (!isValidSlug(slug)) return null;
+    const r = await lookup(slug);
+    return r.status === 'ok' && r.store.slug === slug ? r.store : null;
+  };
+  return Object.assign(router, { lookupStore });
 }
