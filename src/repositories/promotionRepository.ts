@@ -1,549 +1,441 @@
+/**
+ * Carrosséis promocionais (N4) e cupons (N2) — tabelas que SÓ existem no N1–N6.
+ * Em VITE_BACKEND_SCHEMA=legacy-020 (padrão): leituras devolvem lista vazia e escritas/validações
+ * lançam N1N6_REQUIRED (sem cair para dataStore/localStorage).
+ * — somente OWNER/MANAGER administram (RLS).
+ * CASHIER apenas APLICA cupom no PDV (validate_coupon_pos / process_pos_sale_atomic).
+ * DRIVER, OPERATOR, CUSTOMER e anon não administram cupons; CEO/SUPER_ADMIN não têm acesso (F2).
+ *
+ * Sem fallback local com Supabase configurado. O consumo de cupom acontece SOMENTE dentro
+ * do checkout/PDV no servidor (atômico); o navegador nunca "resgata" cupom (redeemCoupon removido).
+ */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { PromotionCarousel, PromotionCarouselItem, Coupon, RedeemCouponResult, ValidateCouponResult } from '../types';
-import { SecurityContext } from '../services/securityEngine';
+import { PromotionCarousel, PromotionCarouselItem, Coupon, CouponPreview, ValidateCouponResult } from '../types';
+import { isN1N6Backend, N1N6_ONLY_MESSAGE } from '../lib/backendSchema';
 import { dataStore } from '../services/dataStore';
+import { SecurityContext } from '../services/securityEngine';
 import { isValidUuid } from '../lib/uuid';
-import { mapN4CarouselItemRow, toN4CarouselItemUpdate } from '../lib/pricing/n4Campaign';
+import { BackendError, requireBackend, requireBackendOrLocalDemo, toBackendError } from '../lib/backend';
+import { mapCouponPreview, toServerItems } from './orderMappers';
 
-export const promotionRepository = {
-  // --------------------------------------------------------------------------
-  // CARROSSÉIS DE PROMOÇÃO
-  // --------------------------------------------------------------------------
-  async getCarousels(context: SecurityContext, tenantId: string): Promise<PromotionCarousel[]> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const { data, error } = await supabase
-          .from('promotion_carousels')
-          .select(`
-            *,
-            items:promotion_carousel_items(
-              *,
-              product:products(id, name, description, image_url, price, unit, is_active, stock_quantity)
-            )
-          `)
-          .eq('tenant_id', tenantId)
-          .order('display_order', { ascending: true });
+const CAROUSEL_SELECT = `*, items:promotion_carousel_items(*, product:products(id, name, description, image_url, price, unit, is_active, stock_quantity))`;
 
-        if (!error && data) {
-          return data.map((pc: any) => ({
-            id: pc.id,
-            tenantId: pc.tenant_id,
-            name: pc.name,
-            description: pc.description,
-            isActive: Boolean(pc.is_active),
-            showInStore: Boolean(pc.show_in_store),
-            displayOrder: pc.display_order,
-            createdAt: pc.created_at,
-            updatedAt: pc.updated_at,
-            // Esquema N4 (preço da campanha derivado de discount_type/discount_value; validade start_at/end_at).
-            startDate: pc.start_at || undefined,
-            endDate: pc.end_at || undefined,
-            items: (pc.items || []).map((pci: any) => ({
-              ...mapN4CarouselItemRow(pci, pci.product?.price),
-              product: pci.product ? {
-                id: pci.product.id,
+/** Preço promocional exibido no painel (prévia); a verdade é _effective_product_price no servidor. */
+export function carouselItemPreviewPrice(basePrice: number, discountType: string, discountValue: number): number {
+  let v = basePrice;
+  if (discountType === 'PERCENTAGE') v = basePrice * (1 - discountValue / 100);
+  else if (discountType === 'FIXED_AMOUNT') v = basePrice - discountValue;
+  else if (discountType === 'PROMOTIONAL_PRICE') v = discountValue;
+  v = Math.round(v * 100) / 100;
+  return v > 0 && v < basePrice ? v : basePrice;
+}
+
+function mapCarousel(pc: any): PromotionCarousel {
+  return {
+    id: pc.id,
+    tenantId: pc.tenant_id,
+    name: pc.name,
+    description: pc.description || undefined,
+    isActive: Boolean(pc.is_active),
+    showInStore: Boolean(pc.show_in_store),
+    displayOrder: Number(pc.display_order ?? 0),
+    createdAt: pc.created_at,
+    updatedAt: pc.updated_at,
+    items: (pc.items || [])
+      .map((i: any): PromotionCarouselItem => {
+        const base = Number(i.product?.price ?? 0);
+        const promo = carouselItemPreviewPrice(base, i.discount_type, Number(i.discount_value));
+        return {
+          id: i.id,
+          carouselId: i.carousel_id,
+          productId: i.product_id,
+          tenantId: i.tenant_id,
+          discountType: i.discount_type === 'NONE' ? 'PERCENTAGE' : i.discount_type,
+          discountValue: Number(i.discount_value),
+          promotionalPrice: promo,
+          calculatedDiscountPercentage: base > 0 && promo < base ? Math.round(((base - promo) / base) * 100) : 0,
+          showDiscountBadge: Boolean(i.show_discount_badge),
+          showPromotionalPrice: i.discount_type !== 'NONE',
+          startDate: i.start_at || undefined,
+          endDate: i.end_at || undefined,
+          isActive: Boolean(i.is_active),
+          displayOrder: Number(i.display_order ?? 0),
+          createdAt: i.created_at,
+          updatedAt: i.updated_at,
+          product: i.product
+            ? {
+                id: i.product.id,
                 tenantId: pc.tenant_id,
                 categoryId: '',
-                name: pci.product.name,
-                description: pci.product.description || '',
-                price: Number(pci.product.price),
-                imageUrl: pci.product.image_url,
-                unit: pci.product.unit || 'un',
-                isActive: Boolean(pci.product.is_active),
-                isAvailable: pci.product.stock_quantity > 0,
-                stockQuantity: pci.product.stock_quantity,
-              } : undefined,
-            })).sort((a: any, b: any) => a.displayOrder - b.displayOrder),
-          }));
-        }
-      } catch (err) {
-        console.warn('[promotionRepository] Fallback para dataStore getCarousels:', err);
-      }
+                name: i.product.name,
+                description: i.product.description || '',
+                price: base,
+                imageUrl: i.product.image_url || '',
+                unit: i.product.unit || 'un',
+                isActive: Boolean(i.product.is_active),
+                isAvailable: Number(i.product.stock_quantity) > 0,
+                stockQuantity: Number(i.product.stock_quantity ?? 0),
+              }
+            : undefined,
+        };
+      })
+      .sort((a: PromotionCarouselItem, b: PromotionCarouselItem) => a.displayOrder - b.displayOrder),
+  };
+}
+
+function mapCoupon(c: any): Coupon {
+  return {
+    id: c.id,
+    tenantId: c.tenant_id,
+    code: c.code,
+    description: c.description || undefined,
+    discountType: c.discount_type,
+    discountValue: Number(c.discount_value),
+    maxDiscountAmount: c.max_discount_amount !== null && c.max_discount_amount !== undefined ? Number(c.max_discount_amount) : undefined,
+    minOrderValue: c.min_order_value !== null && c.min_order_value !== undefined ? Number(c.min_order_value) : undefined,
+    usageLimit: c.usage_limit ?? undefined,
+    usageLimitPerCustomer: c.usage_limit_per_customer ?? undefined,
+    timesUsed: Number(c.times_used ?? 0),
+    firstOrderOnly: Boolean(c.first_order_only),
+    startDate: c.start_at || undefined,
+    endDate: c.end_at || undefined,
+    status: c.status,
+    campaignId: c.campaign_id || undefined,
+    isActive: c.status === 'ACTIVE',
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+  };
+}
+
+/** Normaliza o código como o servidor (normalize_coupon_code): maiúsculas, sem espaços. */
+export function normalizeCouponCode(code: string): string {
+  return (code || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function couponWritePayload(data: Partial<Coupon>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (data.code !== undefined) out.code = normalizeCouponCode(data.code);
+  if (data.description !== undefined) out.description = data.description || null;
+  if (data.discountType !== undefined) out.discount_type = data.discountType;
+  if (data.discountValue !== undefined) out.discount_value = data.discountValue;
+  if (data.maxDiscountAmount !== undefined) out.max_discount_amount = data.maxDiscountAmount || null;
+  if (data.minOrderValue !== undefined) out.min_order_value = data.minOrderValue || 0;
+  if (data.usageLimit !== undefined) out.usage_limit = data.usageLimit || null;
+  if (data.usageLimitPerCustomer !== undefined) out.usage_limit_per_customer = data.usageLimitPerCustomer || null;
+  if (data.firstOrderOnly !== undefined) out.first_order_only = Boolean(data.firstOrderOnly);
+  if (data.startDate !== undefined) out.start_at = data.startDate || null;
+  if (data.endDate !== undefined) out.end_at = data.endDate || null;
+  if (data.status !== undefined) out.status = data.status;
+  else if (data.isActive !== undefined) out.status = data.isActive ? 'ACTIVE' : 'PAUSED';
+  if (data.campaignId !== undefined) out.campaign_id = data.campaignId || null;
+  // times_used é contador do servidor: nunca enviado.
+  return out;
+}
+
+function requireN1N6(feature: string): void {
+  if (isSupabaseConfigured && !isN1N6Backend()) {
+    throw new BackendError('N1N6_REQUIRED', `${feature}: ${N1N6_ONLY_MESSAGE}`);
+  }
+}
+
+/**
+ * Converte a prévia do servidor no formato usado pela calculadora de preço da vitrine.
+ * O desconto vira valor fixo calculado pelo servidor para o carrinho enviado; o checkout
+ * recalcula e consome o cupom atomicamente (o navegador nunca decide o valor final).
+ */
+export function previewToValidateResult(preview: CouponPreview): ValidateCouponResult {
+  if (!preview.valid || !preview.code) {
+    return { isValid: false, discountAmount: 0, message: preview.message || 'Cupom inválido.' };
+  }
+  return {
+    isValid: true,
+    discountAmount: preview.discount,
+    message: preview.message || `Cupom "${preview.code}" aplicado.`,
+    coupon: {
+      id: `server-preview-${preview.code}`,
+      tenantId: '',
+      code: preview.code,
+      discountType: 'FIXED_AMOUNT',
+      discountValue: preview.discount,
+      minOrderValue: 0,
+      timesUsed: 0,
+      isActive: true,
+    },
+  };
+}
+
+export const promotionRepository = {
+  // ---------------------------------------------------------------- CARROSSÉIS (N4)
+  async getCarousels(context: SecurityContext, tenantId: string): Promise<PromotionCarousel[]> {
+    if (isSupabaseConfigured && !isN1N6Backend()) return [];
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase
+        .from('promotion_carousels')
+        .select(CAROUSEL_SELECT)
+        .eq('tenant_id', tenantId)
+        .order('display_order', { ascending: true });
+      if (error) throw toBackendError(error, 'Falha ao carregar carrosséis.');
+      return (data || []).map(mapCarousel);
     }
+    requireBackendOrLocalDemo('carrosséis');
     return dataStore.getPromotionCarousels(context, tenantId);
   },
 
-  async createCarousel(context: SecurityContext, tenantId: string, data: { name: string; description?: string; showInStore?: boolean }): Promise<PromotionCarousel> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const { data: inserted, error } = await supabase
-          .from('promotion_carousels')
-          .insert({
-            tenant_id: tenantId,
-            name: data.name,
-            description: data.description || null,
-            show_in_store: data.showInStore ?? true,
-            is_active: true,
-            display_order: 99,
-          })
-          .select()
-          .single();
+  async getCarousel(tenantId: string, carouselId: string): Promise<PromotionCarousel> {
+    requireN1N6('Carrosséis promocionais');
+    const { data, error } = await supabase
+      .from('promotion_carousels')
+      .select(CAROUSEL_SELECT)
+      .eq('tenant_id', tenantId)
+      .eq('id', carouselId)
+      .single();
+    if (error) throw toBackendError(error, 'Carrossel não encontrado.');
+    return mapCarousel(data);
+  },
 
-        if (error) throw new Error(error.message);
-        if (inserted) {
-          dataStore.createPromotionCarousel(context, tenantId, data);
-          return {
-            id: inserted.id,
-            tenantId: inserted.tenant_id,
-            name: inserted.name,
-            description: inserted.description,
-            isActive: inserted.is_active,
-            showInStore: inserted.show_in_store,
-            displayOrder: inserted.display_order,
-            items: [],
-            createdAt: inserted.created_at,
-            updatedAt: inserted.updated_at,
-          };
-        }
-      } catch (err: any) {
-        console.warn('[promotionRepository] Erro ao criar no Supabase, gravando em dataStore:', err);
-      }
-    }
-    return dataStore.createPromotionCarousel(context, tenantId, data);
+  async createCarousel(context: SecurityContext, tenantId: string, data: { name: string; description?: string; showInStore?: boolean }): Promise<PromotionCarousel> {
+    requireBackend('carrosséis');
+    requireN1N6('Carrosséis promocionais');
+    const { data: inserted, error } = await supabase
+      .from('promotion_carousels')
+      .insert({
+        tenant_id: tenantId,
+        name: data.name.trim(),
+        description: data.description?.trim() || null,
+        show_in_store: data.showInStore !== false,
+        is_active: true,
+      })
+      .select(CAROUSEL_SELECT)
+      .single();
+    if (error) throw toBackendError(error, 'Falha ao criar carrossel.');
+    return mapCarousel(inserted);
   },
 
   async updateCarousel(context: SecurityContext, tenantId: string, carouselId: string, updates: Partial<PromotionCarousel>): Promise<PromotionCarousel> {
-    if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(carouselId)) {
-      try {
-        const dbUpdates: any = { updated_at: new Date().toISOString() };
-        if (updates.name !== undefined) dbUpdates.name = updates.name;
-        if (updates.description !== undefined) dbUpdates.description = updates.description;
-        if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
-        if (updates.showInStore !== undefined) dbUpdates.show_in_store = updates.showInStore;
-        if (updates.displayOrder !== undefined) dbUpdates.display_order = updates.displayOrder;
-
-        const { error } = await supabase
-          .from('promotion_carousels')
-          .update(dbUpdates)
-          .eq('tenant_id', tenantId)
-          .eq('id', carouselId);
-
-        if (error) throw new Error(error.message);
-      } catch (err) {
-        console.warn('[promotionRepository] Erro ao atualizar carrossel no Supabase:', err);
-      }
-    }
-    return dataStore.updatePromotionCarousel(context, tenantId, carouselId, updates);
+    requireBackend('carrosséis');
+    requireN1N6('Carrosséis promocionais');
+    const db: Record<string, unknown> = {};
+    if (updates.name !== undefined) db.name = updates.name.trim();
+    if (updates.description !== undefined) db.description = updates.description || null;
+    if (updates.isActive !== undefined) db.is_active = updates.isActive;
+    if (updates.showInStore !== undefined) db.show_in_store = updates.showInStore;
+    if (updates.displayOrder !== undefined) db.display_order = updates.displayOrder;
+    const { data, error } = await supabase
+      .from('promotion_carousels')
+      .update(db)
+      .eq('tenant_id', tenantId)
+      .eq('id', carouselId)
+      .select(CAROUSEL_SELECT)
+      .single();
+    if (error) throw toBackendError(error, 'Falha ao atualizar carrossel.');
+    return mapCarousel(data);
   },
 
   async deleteCarousel(context: SecurityContext, tenantId: string, carouselId: string): Promise<void> {
-    if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(carouselId)) {
-      try {
-        const { error } = await supabase
-          .from('promotion_carousels')
-          .delete()
-          .eq('tenant_id', tenantId)
-          .eq('id', carouselId);
-
-        if (error) throw new Error(error.message);
-      } catch (err) {
-        console.warn('[promotionRepository] Erro ao excluir carrossel no Supabase:', err);
-      }
-    }
-    dataStore.deletePromotionCarousel(context, tenantId, carouselId);
+    requireBackend('carrosséis');
+    requireN1N6('Carrosséis promocionais');
+    const { error } = await supabase.from('promotion_carousels').delete().eq('tenant_id', tenantId).eq('id', carouselId);
+    if (error) throw toBackendError(error, 'Falha ao excluir carrossel.');
   },
 
   async addProductsToCarousel(context: SecurityContext, tenantId: string, carouselId: string, productIds: string[]): Promise<PromotionCarousel> {
-    if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(carouselId)) {
-      try {
-        for (const pId of productIds) {
-          if (!isValidUuid(pId)) continue;
-          // Busca preço do produto para cálculo inicial de 10%
-
-          await supabase.from('promotion_carousel_items').upsert({
-            carousel_id: carouselId,
-            product_id: pId,
-            tenant_id: tenantId,
-            // N4: o preço é derivado (10% sobre products.price), sem coluna promotional_price.
-            discount_type: 'PERCENTAGE',
-            discount_value: 10,
-            show_discount_badge: true,
-            is_active: true,
-            display_order: 99,
-          }, { onConflict: 'carousel_id,product_id' });
-        }
-      } catch (err) {
-        console.warn('[promotionRepository] Erro ao adicionar produtos no Supabase:', err);
-      }
+    requireBackend('carrosséis');
+    requireN1N6('Carrosséis promocionais');
+    const rows = productIds.filter(isValidUuid).map((productId, idx) => ({
+      tenant_id: tenantId,
+      carousel_id: carouselId,
+      product_id: productId,
+      // Sem desconto até o lojista configurar (o preço continua o do catálogo).
+      discount_type: 'NONE',
+      discount_value: 0,
+      display_order: idx,
+    }));
+    if (rows.length > 0) {
+      const { error } = await supabase.from('promotion_carousel_items').insert(rows);
+      if (error) throw toBackendError(error, 'Falha ao adicionar produtos ao carrossel.');
     }
-    return dataStore.addProductsToCarousel(context, tenantId, carouselId, productIds);
+    return this.getCarousel(tenantId, carouselId);
   },
 
   async updateCarouselItemPromotion(
-    context: SecurityContext, 
-    tenantId: string, 
-    carouselId: string, 
-    itemId: string, 
+    context: SecurityContext,
+    tenantId: string,
+    carouselId: string,
+    itemId: string,
     promotionData: Partial<PromotionCarouselItem>
   ): Promise<PromotionCarousel> {
-    if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(itemId)) {
-      try {
-        const dbUpdates: any = { updated_at: new Date().toISOString() };
-        Object.assign(dbUpdates, toN4CarouselItemUpdate(promotionData as any));
-
-        await supabase
-          .from('promotion_carousel_items')
-          .update(dbUpdates)
-          .eq('tenant_id', tenantId)
-          .eq('id', itemId);
-      } catch (err) {
-        console.warn('[promotionRepository] Erro ao atualizar item no Supabase:', err);
-      }
+    requireBackend('carrosséis');
+    requireN1N6('Carrosséis promocionais');
+    const db: Record<string, unknown> = {};
+    if (promotionData.discountType !== undefined) db.discount_type = promotionData.discountType;
+    if (promotionData.discountType === 'PROMOTIONAL_PRICE' && promotionData.promotionalPrice !== undefined) {
+      db.discount_value = promotionData.promotionalPrice;
+    } else if (promotionData.discountValue !== undefined) {
+      db.discount_value = promotionData.discountValue;
     }
-    return dataStore.updateCarouselItemPromotion(context, tenantId, carouselId, itemId, promotionData);
+    if (promotionData.showDiscountBadge !== undefined) db.show_discount_badge = promotionData.showDiscountBadge;
+    if (promotionData.startDate !== undefined) db.start_at = promotionData.startDate || null;
+    if (promotionData.endDate !== undefined) db.end_at = promotionData.endDate || null;
+    if (promotionData.isActive !== undefined) db.is_active = promotionData.isActive;
+    const { error } = await supabase
+      .from('promotion_carousel_items')
+      .update(db)
+      .eq('tenant_id', tenantId)
+      .eq('carousel_id', carouselId)
+      .eq('id', itemId);
+    if (error) throw toBackendError(error, 'Falha ao salvar a promoção do item.');
+    return this.getCarousel(tenantId, carouselId);
   },
 
   async removeProductFromCarousel(context: SecurityContext, tenantId: string, carouselId: string, itemId: string): Promise<PromotionCarousel> {
-    if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(itemId)) {
-      try {
-        await supabase
-          .from('promotion_carousel_items')
-          .delete()
-          .eq('tenant_id', tenantId)
-          .eq('id', itemId);
-      } catch (err) {
-        console.warn('[promotionRepository] Erro ao remover item no Supabase:', err);
-      }
-    }
-    return dataStore.removeProductFromCarousel(context, tenantId, carouselId, itemId);
+    requireBackend('carrosséis');
+    requireN1N6('Carrosséis promocionais');
+    const { error } = await supabase
+      .from('promotion_carousel_items')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('carousel_id', carouselId)
+      .eq('id', itemId);
+    if (error) throw toBackendError(error, 'Falha ao remover o produto.');
+    return this.getCarousel(tenantId, carouselId);
   },
 
   async reorderCarouselItems(context: SecurityContext, tenantId: string, carouselId: string, itemIds: string[]): Promise<PromotionCarousel> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        for (let i = 0; i < itemIds.length; i++) {
-          if (isValidUuid(itemIds[i])) {
-            await supabase
-              .from('promotion_carousel_items')
-              .update({ display_order: i })
-              .eq('tenant_id', tenantId)
-              .eq('id', itemIds[i]);
-          }
-        }
-      } catch (err) {
-        console.warn('[promotionRepository] Erro ao reordenar itens no Supabase:', err);
-      }
+    requireBackend('carrosséis');
+    requireN1N6('Carrosséis promocionais');
+    for (let i = 0; i < itemIds.length; i++) {
+      if (!isValidUuid(itemIds[i])) continue;
+      const { error } = await supabase
+        .from('promotion_carousel_items')
+        .update({ display_order: i })
+        .eq('tenant_id', tenantId)
+        .eq('id', itemIds[i]);
+      if (error) throw toBackendError(error, 'Falha ao reordenar.');
     }
-    return dataStore.reorderCarouselItems(context, tenantId, carouselId, itemIds);
+    return this.getCarousel(tenantId, carouselId);
   },
 
   async reorderCarousels(context: SecurityContext, tenantId: string, carouselIds: string[]): Promise<void> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        for (let i = 0; i < carouselIds.length; i++) {
-          if (isValidUuid(carouselIds[i])) {
-            await supabase
-              .from('promotion_carousels')
-              .update({ display_order: i })
-              .eq('tenant_id', tenantId)
-              .eq('id', carouselIds[i]);
-          }
-        }
-      } catch (err) {
-        console.warn('[promotionRepository] Erro ao reordenar carrosséis no Supabase:', err);
-      }
+    requireBackend('carrosséis');
+    requireN1N6('Carrosséis promocionais');
+    for (let i = 0; i < carouselIds.length; i++) {
+      if (!isValidUuid(carouselIds[i])) continue;
+      const { error } = await supabase
+        .from('promotion_carousels')
+        .update({ display_order: i })
+        .eq('tenant_id', tenantId)
+        .eq('id', carouselIds[i]);
+      if (error) throw toBackendError(error, 'Falha ao reordenar.');
     }
-    dataStore.reorderCarousels(context, tenantId, carouselIds);
   },
 
-  // --------------------------------------------------------------------------
-  // CUPONS DE DESCONTO
-  // --------------------------------------------------------------------------
+  // ---------------------------------------------------------------- CUPONS (N2)
   async getCoupons(context: SecurityContext, tenantId: string): Promise<Coupon[]> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const { data, error } = await supabase
-          .from('coupons')
-          .select('*, customer:customers(name)')
-          .eq('tenant_id', tenantId)
-          .order('created_at', { ascending: false });
-
-        if (!error && data) {
-          return data.map((c: any) => ({
-            id: c.id,
-            tenantId: c.tenant_id,
-            code: c.code,
-            discountType: c.discount_type,
-            discountValue: Number(c.discount_value),
-            minOrderValue: c.min_order_value ? Number(c.min_order_value) : 0,
-            usageLimit: c.usage_limit ? Number(c.usage_limit) : undefined,
-            usageLimitPerCustomer: c.usage_limit_per_customer ? Number(c.usage_limit_per_customer) : 1,
-            stackWithPickupDiscount: Boolean(c.stack_with_pickup_discount),
-            timesUsed: Number(c.times_used || 0),
-            customerId: c.customer_id || undefined,
-            customerName: c.customer?.name || undefined,
-            startDate: c.start_date,
-            endDate: c.end_date,
-            isActive: Boolean(c.is_active),
-            createdAt: c.created_at,
-            updatedAt: c.updated_at,
-          }));
-        }
-      } catch (err) {
-        console.warn('[promotionRepository] Fallback getCoupons para dataStore:', err);
-      }
+    if (isSupabaseConfigured && !isN1N6Backend()) return [];
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase
+        .from('coupons')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false });
+      if (error) throw toBackendError(error, 'Falha ao carregar cupons.');
+      return (data || []).map(mapCoupon);
     }
+    requireBackendOrLocalDemo('cupons');
     return dataStore.getCoupons(context, tenantId);
   },
 
   async createCoupon(context: SecurityContext, tenantId: string, data: Partial<Coupon>): Promise<Coupon> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const { data: inserted, error } = await supabase
-          .from('coupons')
-          .insert({
-            tenant_id: tenantId,
-            code: data.code!.toUpperCase().trim(),
-            discount_type: data.discountType || 'PERCENTAGE',
-            discount_value: data.discountValue || 10,
-            min_order_value: data.minOrderValue || 0,
-            usage_limit: data.usageLimit || null,
-            usage_limit_per_customer: data.usageLimitPerCustomer || 1,
-            // coluna da proposta 20261013000300 (D1); só enviada quando true para não quebrar bancos sem a coluna
-            ...(data.stackWithPickupDiscount ? { stack_with_pickup_discount: true } : {}),
-            customer_id: (data.customerId && isValidUuid(data.customerId)) ? data.customerId : null,
-            start_date: data.startDate || null,
-            end_date: data.endDate || null,
-            is_active: data.isActive ?? true,
-          })
-          .select()
-          .single();
-
-        if (error) throw new Error(error.message);
-        if (inserted) {
-          dataStore.createCoupon(context, tenantId, data);
-          return {
-            id: inserted.id,
-            tenantId: inserted.tenant_id,
-            code: inserted.code,
-            discountType: inserted.discount_type,
-            discountValue: Number(inserted.discount_value),
-            minOrderValue: inserted.min_order_value ? Number(inserted.min_order_value) : 0,
-            usageLimit: inserted.usage_limit ? Number(inserted.usage_limit) : undefined,
-            usageLimitPerCustomer: inserted.usage_limit_per_customer ? Number(inserted.usage_limit_per_customer) : 1,
-            stackWithPickupDiscount: Boolean(inserted.stack_with_pickup_discount),
-            timesUsed: Number(inserted.times_used || 0),
-            customerId: inserted.customer_id || undefined,
-            startDate: inserted.start_date,
-            endDate: inserted.end_date,
-            isActive: inserted.is_active,
-            createdAt: inserted.created_at,
-            updatedAt: inserted.updated_at,
-          };
-        }
-      } catch (err: any) {
-        console.warn('[promotionRepository] Erro ao criar cupom no Supabase:', err);
-      }
-    }
-    return dataStore.createCoupon(context, tenantId, data);
+    requireBackend('cupons');
+    requireN1N6('Cupons');
+    if (!data.code) throw new BackendError('COUPON_CODE_REQUIRED', 'Informe o código do cupom.');
+    const { data: inserted, error } = await supabase
+      .from('coupons')
+      .insert({ tenant_id: tenantId, ...couponWritePayload({ discountType: 'PERCENTAGE', ...data }) })
+      .select('*')
+      .single();
+    if (error) throw toBackendError(error, 'Falha ao criar cupom.');
+    return mapCoupon(inserted);
   },
 
   async updateCoupon(context: SecurityContext, tenantId: string, couponId: string, updates: Partial<Coupon>): Promise<Coupon> {
-    if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(couponId)) {
-      try {
-        const dbUpdates: any = { updated_at: new Date().toISOString() };
-        if (updates.code) dbUpdates.code = updates.code.toUpperCase().trim();
-        if (updates.discountType) dbUpdates.discount_type = updates.discountType;
-        if (updates.discountValue !== undefined) dbUpdates.discount_value = updates.discountValue;
-        if (updates.minOrderValue !== undefined) dbUpdates.min_order_value = updates.minOrderValue;
-        if (updates.usageLimit !== undefined) dbUpdates.usage_limit = updates.usageLimit;
-        if (updates.usageLimitPerCustomer !== undefined) dbUpdates.usage_limit_per_customer = updates.usageLimitPerCustomer;
-        if (updates.stackWithPickupDiscount !== undefined) dbUpdates.stack_with_pickup_discount = Boolean(updates.stackWithPickupDiscount);
-        if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
-        if (updates.startDate !== undefined) dbUpdates.start_date = updates.startDate || null;
-        if (updates.endDate !== undefined) dbUpdates.end_date = updates.endDate || null;
-
-        await supabase
-          .from('coupons')
-          .update(dbUpdates)
-          .eq('tenant_id', tenantId)
-          .eq('id', couponId);
-      } catch (err) {
-        console.warn('[promotionRepository] Erro ao atualizar cupom no Supabase:', err);
-      }
-    }
-    return dataStore.updateCoupon(context, tenantId, couponId, updates);
+    requireBackend('cupons');
+    requireN1N6('Cupons');
+    const { data, error } = await supabase
+      .from('coupons')
+      .update(couponWritePayload(updates))
+      .eq('tenant_id', tenantId)
+      .eq('id', couponId)
+      .select('*')
+      .single();
+    if (error) throw toBackendError(error, 'Falha ao atualizar cupom.');
+    return mapCoupon(data);
   },
 
-  async deleteCoupon(context: SecurityContext, tenantId: string, couponId: string): Promise<void> {
-    if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(couponId)) {
-      try {
-        await supabase
-          .from('coupons')
-          .delete()
-          .eq('tenant_id', tenantId)
-          .eq('id', couponId);
-      } catch (err) {
-        console.warn('[promotionRepository] Erro ao excluir cupom no Supabase:', err);
-      }
+  /**
+   * Exclui o cupom; se já tiver usos (histórico de resgates), ele é ARQUIVADO para preservar
+   * a auditoria (o histórico nunca é apagado).
+   */
+  async deleteCoupon(context: SecurityContext, tenantId: string, couponId: string): Promise<'DELETED' | 'ARCHIVED'> {
+    requireBackend('cupons');
+    requireN1N6('Cupons');
+    const { count, error: cErr } = await supabase
+      .from('coupon_redemptions')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .eq('coupon_id', couponId);
+    if (cErr) throw toBackendError(cErr, 'Falha ao verificar o histórico do cupom.');
+    if ((count ?? 0) > 0) {
+      await this.updateCoupon(context, tenantId, couponId, { status: 'ARCHIVED' });
+      return 'ARCHIVED';
     }
-    dataStore.deleteCoupon(context, tenantId, couponId);
+    const { error } = await supabase.from('coupons').delete().eq('tenant_id', tenantId).eq('id', couponId);
+    if (error) throw toBackendError(error, 'Falha ao excluir cupom.');
+    return 'DELETED';
   },
 
-  async validatePublicCoupon(
+  /** Prévia do cupom na vitrine (cliente autenticado). Não consome o cupom. */
+  async validateCoupon(
+    slug: string,
+    code: string,
+    items: Array<{ productId: string; quantity: number }>
+  ): Promise<CouponPreview> {
+    requireBackend('cupons');
+    requireN1N6('Cupons');
+    const { data, error } = await supabase.rpc('validate_coupon', {
+      p_tenant_slug: slug,
+      p_code: normalizeCouponCode(code),
+      p_items: toServerItems(items),
+    });
+    if (error) throw toBackendError(error, 'Falha ao validar cupom.');
+    return mapCouponPreview(data);
+  },
+
+  /** Prévia do cupom no PDV (OWNER/MANAGER/CASHIER). Não consome o cupom. */
+  async validateCouponPos(
     tenantId: string,
-    couponCode: string,
-    orderSubtotal: number
-  ): Promise<ValidateCouponResult> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const clean = couponCode.trim().toUpperCase();
-        const { data, error } = await supabase
-          .from('coupons')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .eq('code', clean)
-          .single();
-
-        if (!error && data) {
-          if (!data.is_active) {
-            return { isValid: false, discountAmount: 0, message: 'Este cupom foi desativado.' };
-          }
-          const now = new Date();
-          if (data.start_date && new Date(data.start_date) > now) {
-            return { isValid: false, discountAmount: 0, message: 'Este cupom ainda não é válido.' };
-          }
-          if (data.end_date && new Date(data.end_date) < now) {
-            return { isValid: false, discountAmount: 0, message: 'Este cupom já expirou.' };
-          }
-          const remainingUses = data.usage_limit !== undefined 
-            ? Math.max(0, data.usage_limit - (data.times_used || 0)) 
-            : null;
-
-          if (data.usage_limit && (data.times_used || 0) >= data.usage_limit) {
-            return { 
-              isValid: false, 
-              discountAmount: 0, 
-              remainingUses: 0,
-              message: 'Cupom esgotado! Limite de utilizações atingido.' 
-            };
-          }
-          const minVal = Number(data.min_order_value || 0);
-          if (minVal > 0 && orderSubtotal < minVal) {
-            return {
-              isValid: false,
-              discountAmount: 0,
-              remainingUses,
-              message: `Pedido mínimo de R$ ${minVal.toFixed(2)} necessário para este cupom.`,
-            };
-          }
-
-          const discVal = Number(data.discount_value);
-          let discountAmount = 0;
-          if (data.discount_type === 'PERCENTAGE') {
-            discountAmount = Number(((orderSubtotal * discVal) / 100).toFixed(2));
-          } else {
-            discountAmount = Math.min(orderSubtotal, discVal);
-          }
-
-          const urgencyNote = remainingUses !== null && remainingUses <= 10
-            ? ` Restam apenas ${remainingUses} utilizações!`
-            : '';
-
-          return {
-            isValid: true,
-            coupon: {
-              id: data.id,
-              tenantId: data.tenant_id,
-              code: data.code,
-              discountType: data.discount_type,
-              discountValue: discVal,
-              minOrderValue: minVal,
-              usageLimit: data.usage_limit,
-              usageLimitPerCustomer: data.usage_limit_per_customer,
-              stackWithPickupDiscount: Boolean(data.stack_with_pickup_discount),
-              timesUsed: data.times_used,
-              customerId: data.customer_id,
-              startDate: data.start_date,
-              endDate: data.end_date,
-              isActive: data.is_active,
-              createdAt: data.created_at,
-              updatedAt: data.updated_at,
-            },
-            discountAmount,
-            remainingUses,
-            message: `Cupom "${data.code}" aplicado com sucesso!${urgencyNote}`,
-          };
-        }
-      } catch (err) {
-        console.warn('[promotionRepository] Fallback para dataStore validatePublicCoupon:', err);
-      }
-    }
-
-    return dataStore.validatePublicCoupon(tenantId, couponCode, orderSubtotal);
+    code: string,
+    items: Array<{ productId: string; quantity: number }>,
+    customerId?: string
+  ): Promise<CouponPreview> {
+    requireBackend('cupons');
+    requireN1N6('Cupons');
+    const { data, error } = await supabase.rpc('validate_coupon_pos', {
+      p_tenant_id: tenantId,
+      p_code: normalizeCouponCode(code),
+      p_items: toServerItems(items),
+      p_customer_id: customerId && isValidUuid(customerId) ? customerId : null,
+    });
+    if (error) throw toBackendError(error, 'Falha ao validar cupom.');
+    return mapCouponPreview(data);
   },
 
-  async redeemCoupon(
-    tenantId: string, 
-    couponCode: string, 
-    orderId?: string, 
-    customerId?: string, 
-    discountApplied?: number
-  ): Promise<RedeemCouponResult> {
-    if (isSupabaseConfigured && isValidUuid(tenantId)) {
-      try {
-        const clean = couponCode.trim().toUpperCase();
-        // Fetch current coupon state with strict lock
-        const { data: couponData, error } = await supabase
-          .from('coupons')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .eq('code', clean)
-          .single();
-
-        if (!error && couponData) {
-          if (!couponData.is_active) {
-            return { success: false, message: 'Cupom inativo.' };
-          }
-          if (couponData.usage_limit && (couponData.times_used || 0) >= couponData.usage_limit) {
-            return { 
-              success: false, 
-              isExhausted: true, 
-              remainingUses: 0,
-              message: 'Cupom esgotado! Limite de utilizações atingido.' 
-            };
-          }
-
-          const nextTimesUsed = (couponData.times_used || 0) + 1;
-          const remainingUses = couponData.usage_limit ? Math.max(0, couponData.usage_limit - nextTimesUsed) : null;
-
-          await supabase
-            .from('coupons')
-            .update({ 
-              times_used: nextTimesUsed,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', couponData.id)
-            .eq('tenant_id', tenantId);
-
-          // Record redemption row
-          await supabase
-            .from('coupon_redemptions')
-            .insert({
-              tenant_id: tenantId,
-              coupon_id: couponData.id,
-              customer_id: customerId || null,
-              order_id: orderId || null,
-              redemption_number: nextTimesUsed,
-              discount_applied: discountApplied || 0,
-            });
-
-          return {
-            success: true,
-            isExhausted: remainingUses !== null && remainingUses <= 0,
-            couponId: couponData.id,
-            couponCode: couponData.code,
-            redemptionNumber: nextTimesUsed,
-            discountAmount: discountApplied,
-            remainingUses,
-            message: `Você garantiu a oferta como comprador nº ${nextTimesUsed}!`,
-          };
-        }
-      } catch (err) {
-        console.warn('[promotionRepository] Fallback para dataStore redeemCoupon:', err);
-      }
-    }
-
-    return dataStore.redeemCoupon(tenantId, couponCode, orderId, customerId, discountApplied);
+  /** Compatibilidade da vitrine: prévia no servidor (validate_coupon) no formato da calculadora de preço. */
+  async validatePublicCoupon(
+    slug: string,
+    code: string,
+    items: Array<{ productId: string; quantity: number }>
+  ): Promise<ValidateCouponResult> {
+    return previewToValidateResult(await this.validateCoupon(slug, code, items));
   },
 };

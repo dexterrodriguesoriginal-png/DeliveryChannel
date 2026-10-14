@@ -60,6 +60,7 @@ export interface TenantSettings {
   address: string;
   city: string;
   phoneWhatsApp: string;
+  /** Somente modo legacy-020 (tenant_settings.pix_key). No N1–N6 a chave fica em tenant_payment_settings. */
   pixKey?: string;
   // Modalidades de atendimento e desconto para retirada (proposta 20261013000100; opcionais = compat)
   deliveryEnabled?: boolean; // padrão true
@@ -104,6 +105,12 @@ export type CustomerOrigin =
   | 'direct'
   | 'promotional_checkout'
   | 'outros';
+
+/**
+ * Origem gravada em orders.origin pelo servidor: além das origens de cliente,
+ * 'storefront' (checkout v2 N2), 'storefront_promo' (checkout promocional N6) e 'pos' (PDV N2).
+ */
+export type OrderOrigin = CustomerOrigin | 'storefront' | 'storefront_promo' | 'pos';
 
 export interface Customer {
   id: string;
@@ -403,10 +410,18 @@ export interface CouponRedemption {
   createdAt: string;
 }
 
+export type CouponStatus = 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
+
 export interface Coupon {
   id: string;
   tenantId: string;
   code: string;
+  /** N2 */
+  description?: string;
+  maxDiscountAmount?: number;
+  firstOrderOnly?: boolean;
+  status?: CouponStatus;
+  campaignId?: string;
   discountType: CouponDiscountType;
   discountValue: number;
   minOrderValue?: number;
@@ -521,7 +536,10 @@ export interface Order {
   driverId?: string;
   driverName?: string;
   offerId?: string;
-  origin: CustomerOrigin;
+  origin: OrderOrigin;
+  couponCode?: string;
+  campaignId?: string;
+  cardId?: string;
   isDemo?: boolean;
 }
 
@@ -660,3 +678,110 @@ export interface Sponsor {
   budgetAllocated: number;
   status: 'ACTIVE' | 'PAUSED';
 }
+
+// ---------------- N1–N6 (ativos só com VITE_BACKEND_SCHEMA=n1n6) ----------------
+
+/** Configuração de recebimento PIX (N1: tabela tenant_payment_settings; só OWNER/MANAGER). */
+export interface TenantPaymentSettings {
+  tenantId: string;
+  pixEnabled: boolean;
+  pixKeyType?: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'EVP';
+  /** Chave mascarada para exibição (a chave completa nunca é devolvida ao navegador após salva). */
+  pixKeyMasked?: string;
+  merchantName?: string;
+  merchantCity?: string;
+  updatedAt?: string;
+}
+
+/** Validação de cupom pelo servidor (validate_coupon / validate_coupon_pos — prévia, não consome). */
+export interface CouponPreview {
+  valid: boolean;
+  reason?: string | null;
+  message: string;
+  code?: string | null;
+  discount: number;
+  eligibleBase: number;
+}
+
+/** BR Code PIX gerado no servidor por pedido (get_order_pix_payload). */
+export interface OrderPixPayload {
+  orderId: string;
+  orderNumber: number;
+  amount: number;
+  merchantName: string;
+  brcode: string;
+}
+
+export type CampaignCardCommercialMode = 'OFFER' | 'PRODUCT' | 'CUSTOM' | 'BANNER_ONLY';
+
+/** Gestão de campanhas (N5) — tabelas campaigns / campaign_cards (somente OWNER/MANAGER). */
+export type CampaignN5Status = 'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'ENDED' | 'ARCHIVED';
+
+export interface CampaignN5 {
+  id: string;
+  tenantId: string;
+  name: string;
+  publicTitle?: string;
+  internalNotes?: string;
+  status: CampaignN5Status;
+  startAt?: string;
+  endAt?: string;
+  timezone: string;
+  channel?: 'STOREFRONT' | 'QR' | 'LINK' | 'WHATSAPP' | 'EMAIL' | 'SOCIAL';
+  shareSlug?: string;
+  displayOrder: number;
+  publishedAt?: string;
+  endedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CampaignCardN5 {
+  id: string;
+  tenantId: string;
+  campaignId: string;
+  commercialMode: CampaignCardCommercialMode;
+  offerId?: string;
+  productId?: string;
+  couponId?: string;
+  title: string;
+  subtitle?: string;
+  ctaLabel?: string;
+  mediaAssetId?: string;
+  autoOverlay: boolean;
+  showCouponCode: boolean;
+  cardPromotionalPrice?: number;
+  customName?: string;
+  customPrice?: number;
+  customOriginalPrice?: number;
+  customUsageLimit?: number;
+  customUsageLimitPerCustomer?: number;
+  /** Somente leitura (contador do servidor). */
+  customTimesUsed: number;
+  customFulfillment?: 'DELIVERY' | 'PICKUP' | 'BOTH';
+  customMaxQtyPerOrder?: number;
+  displayOrder: number;
+  isActive: boolean;
+  startAt?: string;
+  endAt?: string;
+}
+
+/** Métricas de campanha (get_campaign_metrics): receita vem de orders válidos, nunca do navegador. */
+export interface CampaignMetrics {
+  campaignId: string;
+  from: string;
+  to: string;
+  funnelEstimate: Record<string, number>;
+  funnelIsEstimate: true;
+  orders: { validOrders: number; revenue: number; paidRevenue: number; invalidatedOrders: number };
+  revenueSource: 'orders';
+}
+
+/** Eventos aceitos por track_campaign_event (N5). PURCHASE só é gravado pelo servidor. */
+export type TrackableCampaignEvent =
+  | 'IMPRESSION'
+  | 'CARD_VIEW'
+  | 'CARD_CLICK'
+  | 'VIDEO_PLAY'
+  | 'COUPON_COPY'
+  | 'CHECKOUT_START';

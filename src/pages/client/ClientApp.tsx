@@ -529,10 +529,11 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     setCouponLoading(true);
     setCouponMessage(null);
     try {
+      // Prévia no servidor (validate_coupon); o consumo é atômico dentro do checkout (N2).
       const res = await promotionRepository.validatePublicCoupon(
-        storeData.tenant.id,
+        storeData.tenant.slug,
         clean,
-        subtotal
+        cart.map(item => ({ productId: item.product.id, quantity: item.quantity }))
       );
       if (res.isValid && res.coupon) {
         setAppliedCoupon(res.coupon);
@@ -945,25 +946,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         items: cart.map(item => toCheckoutItem(item)),
       });
 
-      // Resgate atômico do cupom de desconto se houver
-      let redemptionResult: RedeemCouponResult | null = null;
-      if (appliedCoupon && storeData?.tenant.id) {
-        try {
-          redemptionResult = await promotionRepository.redeemCoupon(
-            storeData.tenant.id,
-            appliedCoupon.code,
-            order.id,
-            supabaseUser?.id || undefined,
-            couponDiscount
-          );
-          setCompletedCouponRedemption(redemptionResult);
-        } catch (couponErr) {
-          console.warn('[ClientApp] Erro ao registrar resgate do cupom:', couponErr);
-          setCompletedCouponRedemption(null);
-        }
-      } else {
-        setCompletedCouponRedemption(null);
-      }
+      // O cupom é consumido pelo servidor dentro do checkout (sem resgate pelo navegador).
+      setCompletedCouponRedemption(null);
 
       // Limpar carrinho e exibir confirmação
       setCompletedOrder(order);

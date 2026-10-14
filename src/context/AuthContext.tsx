@@ -5,6 +5,8 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
 import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
+import { TENANT_SETTINGS_COLUMNS } from '../lib/dbColumns';
+import { isLocalDemoAllowed } from '../lib/backend';
 
 export interface TenantMembership {
   tenantId: string;
@@ -108,16 +110,14 @@ interface AuthContextType {
   // Modo Demo (ativo EXCLUSIVAMENTE quando VITE_ENABLE_DEMO_MODE=true)
   isDemoModeEnabled: boolean;
   loginAsPersona?: (role: RoleId, tenantId?: string) => void;
-
-  // Acesso Temporário de Desenvolvimento (Sem Login - Painel do Dono)
-  isDevBypassed: boolean;
-  bypassLoginAsOwner: () => Promise<void>;
-  exitDevBypass: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const IS_DEMO_MODE = import.meta.env.VITE_ENABLE_DEMO_MODE === 'true';
+// Modo demo (personas sem login) só existe em desenvolvimento local SEM Supabase.
+// Em build de produção ou com Supabase configurado ele é sempre desativado (bloqueio de bypass).
+const IS_DEMO_MODE =
+  import.meta.env.VITE_ENABLE_DEMO_MODE === 'true' && import.meta.env.DEV === true && !isSupabaseConfigured;
 
 function mapDbTenant(row: any, settingsRow?: any, themeRow?: any): Tenant {
   const settings: TenantSettings = {
@@ -126,13 +126,13 @@ function mapDbTenant(row: any, settingsRow?: any, themeRow?: any): Tenant {
     deliveryFee: Number(settingsRow?.delivery_fee ?? 0),
     freeDeliveryThreshold: settingsRow?.free_delivery_threshold ? Number(settingsRow.free_delivery_threshold) : undefined,
     estimatedDeliveryTime: settingsRow?.estimated_delivery_time || '30-45 min',
+    // Decisão 34: NULL = não configurado (sem default 30).
     defaultPrepTimeMinutes: settingsRow?.default_prep_time_minutes !== undefined && settingsRow?.default_prep_time_minutes !== null
       ? Number(settingsRow.default_prep_time_minutes)
-      : 30,
-    address: settingsRow?.address || 'Endereço Comercial',
-    city: settingsRow?.city || 'São Paulo',
+      : undefined,
+    address: settingsRow?.address || '',
+    city: settingsRow?.city || '',
     phoneWhatsApp: settingsRow?.phone_whatsapp || '',
-    pixKey: settingsRow?.pix_key || undefined,
   };
 
   const theme: TenantTheme = {
@@ -185,35 +185,26 @@ export const isGoogleVerifiedUser = (user: any): boolean => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Acesso Temporário de Desenvolvimento (Bypass de login para dono)
-  // Somente com VITE_ENABLE_DEMO_MODE=true. Em produção, uma marca antiga é descartada (ela prendia o painel na loja demo).
-  if (!IS_DEMO_MODE && typeof window !== 'undefined') { try { localStorage.removeItem('adegafood_dev_bypass'); } catch { /* ignora */ } }
-  const isDevBypassedInitial = IS_DEMO_MODE && typeof window !== 'undefined' && localStorage.getItem('adegafood_dev_bypass') === 'true';
-  const initialDevTenant: Tenant | null = isDevBypassedInitial 
-    ? (dataStore.getTenantBySlug('adega-premium') || (dataStore as any).tenants?.[0] || null) 
-    : null;
-  const initialDevUser: AppUser | null = initialDevTenant ? {
-    id: 'dev-owner-bypass',
-    name: 'Dono do Estabelecimento (Dev)',
-    email: initialDevTenant.email || 'dono.dev@adegafood.test',
-    role: 'OWNER',
-    tenantId: initialDevTenant.id,
-  } : null;
-
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(initialDevUser);
-  const [activeRole, setActiveRole] = useState<RoleId | null>(isDevBypassedInitial ? 'OWNER' : null);
-  const [activeTenant, setActiveTenantState] = useState<Tenant | null>(initialDevTenant);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [activeRole, setActiveRole] = useState<RoleId | null>(null);
+  const [activeTenant, setActiveTenantState] = useState<Tenant | null>(null);
   const [isCeoSupportMode, setIsCeoSupportMode] = useState<boolean>(false);
 
-  const [isDevBypassed, setIsDevBypassed] = useState<boolean>(isDevBypassedInitial);
-  const isDevBypassedRef = useRef<boolean>(isDevBypassedInitial);
-  isDevBypassedRef.current = isDevBypassed;
+  // Bypass de login removido (bloqueador do piloto): não existe acesso ao painel sem sessão Supabase.
+  // Limpa qualquer marcador legado deixado por versões anteriores.
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') localStorage.removeItem('adegafood_dev_bypass');
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Supabase Auth Real
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [supabaseSession, setSupabaseSession] = useState<SupabaseSession | null>(null);
-  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(!isDevBypassedInitial);
-  const [isMembershipLoading, setIsMembershipLoading] = useState<boolean>(!isDevBypassedInitial);
+  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
+  const [isMembershipLoading, setIsMembershipLoading] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Controle estrito de Confirmação de E-mail (Supabase Auth Email Confirmation)
@@ -276,29 +267,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Estados Multi-Tenant estritos e Resolução Conceitual
   const [membershipStatus, setMembershipStatus] = useState<MembershipStatus>(
-    isDevBypassedInitial ? 'MEMBERSHIP_RESOLVED_WITH_DATA' : 'AUTH_LOADING'
+    'AUTH_LOADING'
   );
   const [membershipError, setMembershipError] = useState<string | null>(null);
-  const [availableTenants, setAvailableTenants] = useState<TenantMembership[]>(() => {
-    if (initialDevTenant) {
-      return [{
-        tenantId: initialDevTenant.id,
-        roleId: 'OWNER',
-        status: 'ACTIVE',
-        tenantName: initialDevTenant.name,
-        tenantSlug: initialDevTenant.slug,
-        category: initialDevTenant.category || 'ADEGA',
-      }];
-    }
-    return [];
-  });
-  const [hasTenantMembership, setHasTenantMembership] = useState<boolean>(isDevBypassedInitial);
+  const [availableTenants, setAvailableTenants] = useState<TenantMembership[]>([]);
+
+  const [hasTenantMembership, setHasTenantMembership] = useState<boolean>(false);
   const [isAccountSuspended, setIsAccountSuspended] = useState<boolean>(false);
 
   // Carrega os dados reais do Tenant do banco a partir do tenant_id de forma tolerante a falhas
   const fetchTenantData = useCallback(async (tenantId: string): Promise<Tenant | null> => {
     if (!isValidUuid(tenantId)) {
-      return dataStore.getTenantById({ userId: 'dev-owner-bypass', userRole: 'OWNER', userName: 'Dev' }, tenantId) || dataStore.getTenantBySlug(tenantId) || null;
+      // Tenants não-UUID só existem no modo demo local (DEV sem Supabase); nunca em produção.
+      if (!isLocalDemoAllowed) return null;
+      return dataStore.getTenantById({ userId: 'local-demo', userRole: 'OWNER', userName: 'Demo' }, tenantId) || dataStore.getTenantBySlug(tenantId) || null;
     }
 
     try {
@@ -313,9 +295,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return null;
       }
 
+      // N1: pix_key não tem privilégio de API; colunas explícitas (select('*') falharia).
       const { data: settingsRow } = await supabase
         .from('tenant_settings')
-        .select('*')
+        .select(TENANT_SETTINGS_COLUMNS)
         .eq('tenant_id', tenantId)
         .maybeSingle();
 
@@ -761,9 +744,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             minOrderValue: 0,
             deliveryFee: 0,
             estimatedDeliveryTime: '30-45 min',
-            defaultPrepTimeMinutes: 30,
-            address: 'Endereço Comercial',
-            city: 'São Paulo',
+            defaultPrepTimeMinutes: undefined,
+            address: '',
+            city: '',
             phoneWhatsApp: '',
           },
           theme: {
@@ -880,21 +863,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentResolvedUserIdRef.current = null;
         if (source === 'SIGNED_OUT') {
           clearEmailConfirmation();
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('adegafood_dev_bypass');
-          }
-          setIsDevBypassed(false);
-          isDevBypassedRef.current = false;
         }
 
-        // Se o modo bypass estiver ativo, preserva o dono de desenvolvimento e não zera a sessão!
-        if (isDevBypassedRef.current || (typeof window !== 'undefined' && localStorage.getItem('adegafood_dev_bypass') === 'true')) {
-          console.log('[AuthContext] Sessão Supabase vazia ignorada: DevBypass ativo para desenvolvimento.');
-          setIsMembershipLoading(false);
-          setIsLoadingAuth(false);
-          setMembershipStatus('MEMBERSHIP_RESOLVED_WITH_DATA');
-          return;
-        }
 
         setSupabaseSession(null);
         setSupabaseUser(null);
@@ -1309,10 +1279,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Logout Oficial
   const signOut = async () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('adegafood_dev_bypass');
-    }
-    setIsDevBypassed(false);
     try {
       await supabase.auth.signOut();
     } catch (err) {
@@ -1669,98 +1635,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   } : undefined;
 
-  // Acesso Temporário de Desenvolvimento (Comando: Acesso direto ao painel do dono sem login)
-  const bypassLoginAsOwner = useCallback(async () => {
-    if (!IS_DEMO_MODE) throw new Error('Acesso direto disponível apenas no modo de demonstração.');
-    setIsLoadingAuth(false);
-    setIsMembershipLoading(false);
-    setIsEmailConfirmationRequired(false);
-    setIsTenantConfirmationRequired(false);
-    setAuthError(null);
-    setMembershipError(null);
-    setIsAccountSuspended(false);
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('adegafood_dev_bypass', 'true');
-    }
-    setIsDevBypassed(true);
-    isDevBypassedRef.current = true;
-
-    let tenant: Tenant | null = null;
-    if (isSupabaseConfigured) {
-      try {
-        const { data: tenantRows } = await supabase.from('tenants').select('*').limit(1);
-        if (tenantRows && tenantRows.length > 0) {
-          const tRow = tenantRows[0];
-          const { data: settingsRow } = await supabase.from('tenant_settings').select('*').eq('tenant_id', tRow.id).maybeSingle();
-          const { data: themeRow } = await supabase.from('tenant_themes').select('*').eq('tenant_id', tRow.id).maybeSingle();
-          tenant = mapDbTenant(tRow, settingsRow, themeRow);
-        }
-      } catch (e) {
-        console.warn('[DevBypass] Erro ao buscar tenant no Supabase:', e);
-      }
-    }
-
-    if (!tenant) {
-      tenant = dataStore.getTenantBySlug('adega-premium') || (dataStore as any).tenants?.[0] || null;
-    }
-
-    const tenantId = tenant?.id || 'tenant-adega-01';
-    const tenantName = tenant?.name || 'Adega Premium Jardins';
-    const tenantSlug = tenant?.slug || 'adega-premium';
-
-    setActiveTenantState(tenant);
-    setActiveRole('OWNER');
-    setHasTenantMembership(true);
-    setMembershipStatus('MEMBERSHIP_RESOLVED_WITH_DATA');
-    setAvailableTenants([
-      {
-        tenantId,
-        roleId: 'OWNER',
-        status: 'ACTIVE',
-        tenantName,
-        tenantSlug,
-        category: tenant?.category || 'ADEGA',
-      }
-    ]);
-
-    const devUser: AppUser = {
-      id: 'dev-owner-bypass',
-      name: 'Dono do Estabelecimento (Dev)',
-      email: tenant?.email || 'dono.dev@adegafood.test',
-      role: 'OWNER',
-      tenantId,
-    };
-    setCurrentUser(devUser);
-  }, []);
-
-  const exitDevBypass = useCallback(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('adegafood_dev_bypass');
-    }
-    setIsDevBypassed(false);
-    isDevBypassedRef.current = false;
-    setCurrentUser(null);
-    setActiveRole(null);
-    setActiveTenantState(null);
-    setHasTenantMembership(false);
-    setMembershipStatus('UNAUTHENTICATED');
-  }, []);
-
-  // Restaura o bypass automaticamente ao recarregar a página se ativo
-  useEffect(() => {
-    if (IS_DEMO_MODE && typeof window !== 'undefined' && localStorage.getItem('adegafood_dev_bypass') === 'true') {
-      bypassLoginAsOwner();
-    }
-  }, [bypassLoginAsOwner]);
-
   // Estado unificado e estrito de ciclo de vida da autenticação
   const authState: AuthState = useMemo(() => {
-    // 0. Modo Dev Bypass temporário para testes e programação do painel de dono
-    if (isDevBypassed && currentUser) {
-      return 'AUTHENTICATED_WITH_MEMBERSHIP';
-    }
-
     // 1. Falha de autenticação ou erro estrito na resolução dos vínculos (CASO B)
     if (membershipStatus === 'MEMBERSHIP_ERROR' || authError) {
       return 'AUTH_ERROR';
@@ -1822,7 +1698,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     activeTenant,
     isTenantConfirmationRequired,
     pendingConfirmationTenant,
-    isDevBypassed,
     currentUser,
   ]);
 
@@ -1837,7 +1712,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         supabaseUser,
         supabaseSession,
-        isSupabaseAuth: !!supabaseUser || isDevBypassed,
+        isSupabaseAuth: !!supabaseUser,
         isLoadingAuth,
         isMembershipLoading,
         authError,
@@ -1881,9 +1756,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isDemoModeEnabled: IS_DEMO_MODE,
         loginAsPersona,
 
-        isDevBypassed,
-        bypassLoginAsOwner,
-        exitDevBypass,
       }}
     >
       {children}

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { newIdempotencyKey } from '../../lib/backend';
 import { Offer, Order, Coupon } from '../../types';
 import type { PublicStoreData } from '../../repositories/publicStoreRepository';
 import { orderService } from '../../services/orderService';
@@ -140,9 +141,16 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
   // Ao abrir/trocar de card: reinicia o cupom e, se o card traz um cupom configurado,
   // valida-o contra o backend (nunca é considerado aplicado sem validação).
   const offerId = offer?.id;
+  // Uma chave por tentativa de compra: reenvio (ex.: rede instável) não duplica o pedido no servidor.
+  const promoIdempotencyKeyRef = useRef<string>(newIdempotencyKey());
+  useEffect(() => {
+    if (isOpen) promoIdempotencyKeyRef.current = newIdempotencyKey();
+  }, [isOpen, offerId]);
   const offerCouponCode = offer?.promoCouponCode;
   const tenantIdForCoupon = storeData.tenant.id;
   const minSubtotalForCoupon = Number(((offer?.promoPrice || offer?.promotionalPrice || offer?.originalPrice || 0) * (offer?.promoMinQuantity || 1)).toFixed(2));
+  // Prévia de cupom no servidor (validate_coupon): só produto + quantidade; o valor final é do checkout.
+  const couponItemsFor = (qty: number) => (offer?.productId ? [{ productId: offer.productId, quantity: Math.max(1, qty) }] : []);
   useEffect(() => {
     setAppliedCoupon(null);
     setCouponError(null);
@@ -150,7 +158,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
     if (!isOpen || !offerCouponCode || !tenantIdForCoupon) return;
     let cancelled = false;
     promotionRepository
-      .validatePublicCoupon(tenantIdForCoupon, offerCouponCode, minSubtotalForCoupon)
+      .validatePublicCoupon(storeData.tenant.slug, offerCouponCode, couponItemsFor(offer?.promoMinQuantity || 1))
       .then(res => {
         if (cancelled) return;
         if (res.isValid && res.coupon) {
@@ -240,9 +248,9 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
 
     try {
       const res = await promotionRepository.validatePublicCoupon(
-        storeData.tenant.id,
+        storeData.tenant.slug,
         couponCodeInput.trim(),
-        subtotal
+        couponItemsFor(quantity)
       );
 
       if (!res.isValid || !res.coupon) {
@@ -373,6 +381,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
     try {
       const result = await orderService.createPromotional(storeData.tenant.slug, {
         offerId: offer.id,
+        idempotencyKey: promoIdempotencyKeyRef.current,
         quantity,
         customerName: customerName.trim(),
         customerPhone: `+55${cleanPhone}`,
@@ -399,7 +408,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
         message: `Pedido #${result.order.orderNumber || result.order.id.slice(0, 6)} finalizado com sucesso! Total confirmado: R$ ${result.order.totalAmount.toFixed(2)}.`,
       });
 
-      onOrderCompleted(result.order, result.celebrationMessage);
+      onOrderCompleted(result.order, undefined);
       onClose();
     } catch (err: any) {
       console.error('[PromotionalCheckoutModal] Erro ao criar pedido promocional:', err);

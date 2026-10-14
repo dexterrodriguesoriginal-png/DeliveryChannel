@@ -18,7 +18,6 @@ import {
   ArrowRight,
   ShieldAlert,
   Sparkles,
-  Zap
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { RoleId } from '../../types';
@@ -63,8 +62,6 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
     signInWithGoogle,
     signOut,
     resetPassword,
-    bypassLoginAsOwner,
-    isDemoModeEnabled,
   } = useAuth();
 
   const { showToast } = useToast();
@@ -82,23 +79,9 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
   const [phone, setPhone] = useState('');
 
   const [loading, setLoading] = useState(false);
-  const [bypassLoading, setBypassLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
-  const handleDevBypass = async () => {
-    setFormError(null);
-    setBypassLoading(true);
-    try {
-      await bypassLoginAsOwner();
-      showToast('Acesso de dono ativado (Modo Dev)!', 'success');
-      onClose();
-    } catch (err: any) {
-      setFormError(err?.message || 'Não foi possível acessar o painel diretamente.');
-    } finally {
-      setBypassLoading(false);
-    }
-  };
 
   // Sincroniza visualização ao abrir
   useEffect(() => {
@@ -490,32 +473,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
               </p>
             </div>
 
-            {/* Botão Temporário de Acesso Direto para Programação */}
-      {isDemoModeEnabled && (
-            <div className="p-3 bg-amber-500/10 border-2 border-amber-400 rounded-2xl text-left">
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
-                  <span>Acesso Rápido de Programação</span>
-                </div>
-                <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-amber-200 text-amber-950 rounded-full tracking-wider">
-                  Temporário
-                </span>
-              </div>
-              <p className="text-[11px] text-amber-950/85 mb-2 leading-tight">
-                Acesse o <strong>Painel do Dono</strong> direto sem login enquanto programa o sistema:
-              </p>
-              <button
-                type="button"
-                onClick={handleDevBypass}
-                disabled={bypassLoading}
-                className="w-full py-2.5 px-3 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer border border-amber-600/30"
-              >
-                <Zap className="w-3.5 h-3.5 fill-slate-950" />
-                <span>{bypassLoading ? 'Acessando painel...' : '⚡ Acessar Painel sem Fazer Login'}</span>
-              </button>
-            </div>
-      )}
+
 
             {/* Botão Principal: Google OAuth */}
             <button

@@ -1,6 +1,6 @@
 import { Order, OrderStatus, InventoryMovement, InternalNotification } from '../types';
 import { SecurityContext } from './securityEngine';
-import { orderRepository } from '../repositories/orderRepository';
+import { orderRepository, PublicOrderInput, PromotionalOrderInput, CheckoutSummary } from '../repositories/orderRepository';
 import { inventoryRepository } from '../repositories/inventoryRepository';
 
 const ordersCache = new Map<string, Order[]>();
@@ -28,83 +28,23 @@ export const orderService = {
     return undefined;
   },
 
-  updateStatus(context: SecurityContext, tenantId: string, orderId: string, newStatus: OrderStatus, note?: string): Order {
-    orderRepository.updateStatus(context, tenantId, orderId, newStatus, note)
-      .then(updated => {
-        const cached = ordersCache.get(tenantId) || [];
-        const index = cached.findIndex(o => o.id === orderId);
-        if (index >= 0) {
-          cached[index] = updated;
-          ordersCache.set(tenantId, [...cached]);
-        }
-      })
-      .catch(err => {
-        console.warn('[orderService] Erro ao sincronizar status no Supabase:', err);
-      });
-
+  /** Mudança de status sempre pelo servidor (sem pedido fictício em caso de erro). */
+  async updateStatus(context: SecurityContext, tenantId: string, orderId: string, newStatus: OrderStatus, note?: string, currentStatus?: OrderStatus): Promise<Order> {
+    const updated = await orderRepository.updateStatus(context, tenantId, orderId, newStatus, note, currentStatus);
     const cached = ordersCache.get(tenantId) || [];
-    const existing = cached.find(o => o.id === orderId);
-    if (existing) {
-      existing.status = newStatus;
-      return existing;
+    const index = cached.findIndex(o => o.id === orderId);
+    if (index >= 0) {
+      cached[index] = updated;
+      ordersCache.set(tenantId, [...cached]);
     }
-
-    return {
-      id: orderId,
-      orderNumber: 0,
-      tenantId,
-      customerName: 'Cliente',
-      customerPhone: '',
-      deliveryAddress: '',
-      items: [],
-      subtotal: 0,
-      deliveryFee: 0,
-      discount: 0,
-      totalAmount: 0,
-      paymentMethod: 'PIX',
-      paymentStatus: 'PENDING',
-      fulfillmentType: 'DELIVERY',
-      status: newStatus,
-      statusHistory: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      origin: 'direto',
-      isDemo: false,
-    };
+    return updated;
   },
 
-  async createPublic(slug: string, orderData: {
-    customerName: string;
-    customerPhone: string;
-    customerEmail?: string;
-    deliveryAddress?: string;
-    addressDetails?: Order['addressDetails'];
-    items: Array<{ productId: string; quantity: number; notes?: string; source?: 'catalog' | 'campaign'; campaignItemId?: string }>;
-    paymentMethod: Order['paymentMethod'];
-    fulfillmentType?: Order['fulfillmentType'];
-    notes?: string;
-    origin: Order['origin'];
-    /** Chave de idempotência da tentativa (demo: respeitada; real: depende da RPC v2/proposta). */
-    idempotencyKey?: string;
-    /** Código do cupom (demo: recalculado no dataStore; real: v1 não aceita cupom). */
-    couponCode?: string;
-  }): Promise<Order> {
+  async createPublic(slug: string, orderData: PublicOrderInput): Promise<Order> {
     return orderRepository.createPublicOrder(slug, orderData);
   },
 
-  async createPromotional(slug: string, orderData: {
-    offerId: string;
-    quantity: number;
-    customerName: string;
-    customerPhone: string;
-    customerEmail?: string;
-    deliveryAddress?: string;
-    addressDetails?: Order['addressDetails'];
-    paymentMethod: Order['paymentMethod'];
-    fulfillmentType?: Order['fulfillmentType'];
-    notes?: string;
-    couponCode?: string;
-  }): Promise<{ order: Order; celebrationMessage?: string; redemptionNumber?: number; isExhausted?: boolean }> {
+  async createPromotional(slug: string, orderData: PromotionalOrderInput): Promise<{ order: Order; summary: CheckoutSummary }> {
     return orderRepository.createPromotionalOrder(slug, orderData);
   },
 

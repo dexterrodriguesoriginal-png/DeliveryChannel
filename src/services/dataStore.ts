@@ -2917,7 +2917,7 @@ export class DataStore {
         name: orderData.customerName,
         phone: orderData.customerPhone,
         email: orderData.customerEmail,
-        origin: orderData.origin,
+        origin: orderData.origin as import('../types').CustomerOrigin,
         totalOrders: 1,
         ltvAmount: totalAmount,
         firstOrderDate: new Date().toISOString().split('T')[0],

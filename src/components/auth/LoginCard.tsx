@@ -15,7 +15,6 @@ import {
   ShieldCheck,
   Store,
   Sparkles,
-  Zap
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 
@@ -37,8 +36,6 @@ export const LoginCard: React.FC<LoginCardProps> = ({
     signUp, 
     signInWithGoogle, 
     resetPassword,
-    bypassLoginAsOwner,
-    isDemoModeEnabled
   } = useAuth();
   const { showToast } = useToast();
 
@@ -50,23 +47,9 @@ export const LoginCard: React.FC<LoginCardProps> = ({
   const [phone, setPhone] = useState('');
 
   const [loading, setLoading] = useState(false);
-  const [bypassLoading, setBypassLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
-  const handleDevBypass = async () => {
-    setFormError(null);
-    setBypassLoading(true);
-    try {
-      await bypassLoginAsOwner();
-      showToast('Acesso de dono ativado (Modo Dev)!', 'success');
-      onSuccess?.();
-    } catch (err: any) {
-      setFormError(err?.message || 'Não foi possível acessar o painel diretamente.');
-    } finally {
-      setBypassLoading(false);
-    }
-  };
 
   const formatPhone = (value: string) => {
     const raw = value.replace(/\D/g, '').slice(0, 11);
@@ -217,32 +200,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
         </p>
       </div>
 
-      {/* Botão Temporário de Acesso Direto para Programação / Dono de Estabelecimento */}
-      {isDemoModeEnabled && (
-      <div className="mt-5 mb-2 p-3.5 bg-amber-500/10 border-2 border-amber-400 rounded-2xl">
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
-            <Sparkles className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
-            <span>Acesso Rápido de Programação</span>
-          </div>
-          <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-amber-200 text-amber-950 rounded-full tracking-wider shadow-2xs">
-            Temporário
-          </span>
-        </div>
-        <p className="text-[11.5px] text-amber-950/85 mb-2.5 leading-snug">
-          Acesse o <strong>Painel do Dono</strong> diretamente sem precisar fazer login toda vez enquanto configura o sistema:
-        </p>
-        <button
-          type="button"
-          onClick={handleDevBypass}
-          disabled={bypassLoading}
-          className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer border border-amber-600/30"
-        >
-          <Zap className="w-4 h-4 fill-slate-950" />
-          <span>{bypassLoading ? 'Acessando painel...' : '⚡ Acessar Painel sem Fazer Login'}</span>
-        </button>
-      </div>
-      )}
+
 
       {/* Toggle entre Login e Cadastro */}
       {mode !== 'FORGOT' && (
