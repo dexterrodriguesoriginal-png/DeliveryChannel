@@ -14,6 +14,7 @@ BEGIN;
 -- PRE: função ainda não existe; tabela e colunas esperadas
 DO $pre$ BEGIN
   IF to_regprocedure('public.list_team_invites(uuid)') IS NOT NULL THEN RAISE EXCEPTION 'PRE: list_team_invites já existe'; END IF;
+  IF to_regprocedure('public.list_my_team_invites()') IS NOT NULL THEN RAISE EXCEPTION 'PRE: list_my_team_invites já existe'; END IF;
   IF (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='team_invites'
       AND column_name IN ('id','tenant_id','email','role_id','invited_by','status','expires_at','created_at')) <> 8 THEN
     RAISE EXCEPTION 'PRE: colunas de team_invites divergem'; END IF;
