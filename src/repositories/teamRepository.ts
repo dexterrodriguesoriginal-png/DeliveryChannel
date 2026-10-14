@@ -29,6 +29,19 @@ export function mapRowToTeamMember(row: any): TeamMember {
   };
 }
 
+/** Linha de list_team_invites (0900) → TeamInvite. */
+export function mapInviteRpcRow(row: any): TeamInvite {
+  return mapRowToTeamInvite({ ...row, inviter: { name: row.invited_by_name } });
+}
+
+/** Linha de list_my_team_invites (0900; sem e-mail nem invited_by) → TeamInvite + nome da loja. */
+export function mapReceivedInviteRpcRow(row: any): TeamInvite & { tenantName?: string } {
+  return {
+    ...mapRowToTeamInvite({ ...row, email: '', invited_by: '', inviter: { name: row.invited_by_name } }),
+    tenantName: row.tenant_name || 'Estabelecimento Parceiro',
+  };
+}
+
 function mapRowToTeamInvite(row: any): TeamInvite {
   const inviter = row.inviter || {};
   return {
@@ -80,21 +93,13 @@ export const teamRepository = {
   async listPendingInvites(context: SecurityContext, tenantId: string): Promise<TeamInvite[]> {
     if (isSupabaseConfigured && isValidUuid(tenantId)) {
       try {
-        const { data, error } = await supabase
-          .from('team_invites')
-          .select('*, inviter:invited_by(name)')
-          .eq('tenant_id', tenantId)
-          .eq('status', 'PENDING')
-          .order('created_at', { ascending: false });
-
+        // 0900: leitura por RPC (team_invites não tem SELECT para authenticated desde a 0800).
+        const { data, error } = await supabase.rpc('list_team_invites', { p_tenant_id: tenantId });
         if (error) {
           console.warn('[teamRepository] Erro ao listar convites no Supabase:', error);
           return [];
         }
-
-        if (data) {
-          return data.map(mapRowToTeamInvite);
-        }
+        return Array.isArray(data) ? data.map(mapInviteRpcRow) : [];
       } catch (err) {
         console.warn('[teamRepository] Falha ao consultar convites no Supabase:', err);
       }
@@ -194,23 +199,13 @@ export const teamRepository = {
    */
   async listMyReceivedInvites(): Promise<Array<TeamInvite & { tenantName?: string }>> {
     if (isSupabaseConfigured) {
-      const { data, error } = await supabase
-        .from('team_invites')
-        .select('*, tenant:tenant_id(name, slug), inviter:invited_by(name)')
-        .eq('status', 'PENDING')
-        .order('created_at', { ascending: false });
-
+      // 0900: convites do e-mail da própria conta, resolvido no servidor.
+      const { data, error } = await supabase.rpc('list_my_team_invites');
       if (error) {
         console.error('[teamRepository] Erro ao buscar convites recebidos:', error);
         return [];
       }
-
-      if (data) {
-        return data.map((row: any) => ({
-          ...mapRowToTeamInvite(row),
-          tenantName: row.tenant?.name || 'Estabelecimento Parceiro',
-        }));
-      }
+      return Array.isArray(data) ? data.map(mapReceivedInviteRpcRow) : [];
     }
     return [];
   }
