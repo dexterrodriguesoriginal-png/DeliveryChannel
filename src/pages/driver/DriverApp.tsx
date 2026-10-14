@@ -12,6 +12,7 @@ import { computeDriverDailySummary } from '../../lib/driverSummary';
 import { filterAssignedDriverOrders, driverOrderHistory } from '../../lib/driverOrders';
 import { canFetchDriverOrders, driverAvailabilityLabel, DriverAvailability, availabilityToggleTarget } from '../../lib/membershipResolution';
 import { driverInviteRepository } from '../../repositories/driverRepository';
+import { DriverDeliveryMap } from '../../components/driver/DriverDeliveryMap';
 
 const AVAIL_DOT: Record<string, string> = {
   emerald: 'bg-emerald-500 animate-pulse', amber: 'bg-amber-500', gray: 'bg-gray-400', rose: 'bg-rose-500',
@@ -215,21 +216,11 @@ export const DriverApp: React.FC = () => {
                 </span>
               </div>
 
-              {/* Simulated Map View */}
-              <div className="relative h-44 rounded-2xl overflow-hidden bg-emerald-950/90 border border-gray-200 flex items-center justify-center">
-                {/* Vector Simulated Map roads and route */}
-                <svg className="absolute inset-0 w-full h-full opacity-40" viewBox="0 0 300 150">
-                  <path d="M 10 30 Q 80 50 150 30 T 290 80" stroke="#10b981" strokeWidth="4" fill="none" strokeDasharray="6 4" />
-                  <path d="M 50 100 Q 150 120 250 110" stroke="#6ee7b7" strokeWidth="2" fill="none" />
-                  <circle cx="80" cy="45" r="7" fill="#f59e0b" />
-                  <circle cx="230" cy="65" r="8" fill="#10b981" />
-                </svg>
-
-                <div className="relative z-10 bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl text-white text-xs flex items-center gap-2">
-                  <Navigation className="w-4 h-4 text-emerald-400 animate-spin" />
-                  <span>Trajeto GPS: 2.4 km • ~8 minutos</span>
-                </div>
-              </div>
+              {/* Real Delivery Map and Navigation */}
+              <DriverDeliveryMap
+                tenant={activeTenant}
+                order={activeOrder}
+              />
 
               {/* Destination Address */}
               <div className="space-y-2 text-xs">
