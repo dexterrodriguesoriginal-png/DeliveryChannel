@@ -355,35 +355,41 @@ export const orderRepository = {
       customerEmail?: string;
       deliveryAddress?: string;
       addressDetails?: Order['addressDetails'];
-      items: Array<{ productId: string; quantity: number; notes?: string }>;
+      items: Array<{ productId: string; quantity: number; notes?: string; source?: 'catalog' | 'campaign'; campaignItemId?: string }>;
       paymentMethod: Order['paymentMethod'];
       fulfillmentType?: Order['fulfillmentType'];
       notes?: string;
       origin: Order['origin'];
+      idempotencyKey?: string;
+      couponCode?: string;
     }
   ): Promise<Order> {
     if (isSupabaseConfigured) {
-      // 1. Chamada atômica RPC ao Supabase (validação de estoque FOR UPDATE, preço oficial e vínculo estrito ao auth.uid())
-      const { data: orderId, error: rpcError } = await supabase.rpc('process_checkout_atomic', {
+      // Checkout real via process_checkout_atomic_v2 (N2): cupom + idempotência + _checkout_core.
+      // O navegador envia SÓ { productId, quantity, notes } e, para itens de campanha, { source, campaignItemId }.
+      // Preço, desconto de retirada, cupom (D1–D3) e frete (D6) são recalculados no servidor.
+      // Itens de campanha dependem da proposta 20261013000300 (N4 + _price_items_by_origin); sem ela o servidor recusa
+      // (N2 pura: UNEXPECTED_FIELD; proposta 0200: CAMPAIGN_SOURCE_UNAVAILABLE) — nunca cobra outro preço em silêncio.
+      const { data: v2Result, error: rpcError } = await supabase.rpc('process_checkout_atomic_v2', {
         p_tenant_slug: slug,
         p_customer_name: orderData.customerName,
         p_customer_phone: orderData.customerPhone,
-        p_customer_email: orderData.customerEmail || null,
-        p_delivery_address: orderData.deliveryAddress || (orderData.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : 'Endereço de entrega'),
+        p_delivery_address: orderData.deliveryAddress || (orderData.fulfillmentType === 'PICKUP' ? '' : 'Endereço de entrega'),
         p_address_details: orderData.addressDetails || {},
         p_payment_method: orderData.paymentMethod,
         p_fulfillment_type: orderData.fulfillmentType || 'DELIVERY',
         p_notes: orderData.notes || '',
-        p_origin: orderData.origin || 'direct',
-        p_items: orderData.items.map(i => ({
-          productId: i.productId,
-          quantity: i.quantity,
-          notes: i.notes || null,
-        })),
+        p_items: orderData.items.map(i => (i.source === 'campaign' && i.campaignItemId
+          ? { productId: i.productId, quantity: i.quantity, notes: i.notes || null, source: 'campaign', campaignItemId: i.campaignItemId }
+          : { productId: i.productId, quantity: i.quantity, notes: i.notes || null })),
+        p_coupon_code: orderData.couponCode || null,
+        p_idempotency_key: orderData.idempotencyKey && isValidUuid(orderData.idempotencyKey) ? orderData.idempotencyKey : null,
+        p_card_id: null,
       });
+      const orderId: string | null = v2Result && typeof v2Result === 'object' ? (v2Result as any).order_id || null : null;
 
       if (rpcError) {
-        console.error('[orderRepository] Erro no RPC process_checkout_atomic:', rpcError.message);
+        console.error('[orderRepository] Erro no RPC process_checkout_atomic_v2:', rpcError.message);
         throw new Error(rpcError.message || 'Falha ao processar checkout no servidor.');
       }
 

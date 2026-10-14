@@ -28,6 +28,13 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import {
+  computeFulfillmentPricing,
+  COUPON_REJECTED_TEXT,
+  fulfillmentSettingsFromTenant,
+  offerToPricingLine,
+  resolveAvailableModes,
+} from '../../lib/pricing/fulfillmentPricing';
 
 interface PromotionalCheckoutModalProps {
   isOpen: boolean;
@@ -52,15 +59,16 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
   const maxQty = offer?.promoMaxQuantityPerCustomer || 10;
   const [quantity, setQuantity] = useState(minQty);
 
-  // Fulfillment Types permitidos
-  const allowedFulfillment = useMemo(() => {
-    return offer?.promoFulfillmentTypes && offer.promoFulfillmentTypes.length > 0
-      ? offer.promoFulfillmentTypes
-      : ['DELIVERY', 'PICKUP'];
-  }, [offer]);
+  // Modalidades = configuração da loja ∩ restrição antiga gravada no card (compatibilidade; vazio = sem restrição)
+  const fulfillmentSettings = useMemo(() => fulfillmentSettingsFromTenant(storeData.settings), [storeData.settings]);
+  const availableModes = useMemo(
+    () => resolveAvailableModes(fulfillmentSettings, offer?.promoFulfillmentTypes),
+    [fulfillmentSettings, offer],
+  );
+  const allowedFulfillment = availableModes.modes;
 
   const [fulfillmentType, setFulfillmentType] = useState<'DELIVERY' | 'PICKUP'>(() => {
-    return allowedFulfillment.includes('DELIVERY') ? 'DELIVERY' : 'PICKUP';
+    return allowedFulfillment.includes('DELIVERY') || allowedFulfillment.length === 0 ? 'DELIVERY' : 'PICKUP';
   });
 
   // Atualiza fulfillment caso a oferta mude
@@ -71,7 +79,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
     if (offer?.promoMinQuantity) {
       setQuantity(offer.promoMinQuantity);
     }
-  }, [offer, allowedFulfillment]);
+  }, [offer, allowedFulfillment.join(',')]);
 
   // Payment Methods permitidos
   const allowedPaymentMethods = useMemo(() => {
@@ -171,28 +179,27 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
 
   const subtotal = Number((unitPrice * quantity).toFixed(2));
   
-  // Taxa de Entrega
-  const isFreeDelivery = Boolean(
-    storeData.settings.freeDeliveryThreshold &&
-    subtotal >= storeData.settings.freeDeliveryThreshold
-  );
-  const deliveryFee = fulfillmentType === 'DELIVERY'
-    ? (isFreeDelivery ? 0 : Number(storeData.settings.deliveryFee || 0))
-    : 0;
-
-  // Prévia do desconto (mesma regra do backend: percentual sobre o subtotal, ou valor fixo limitado ao subtotal).
+  // Retirada/Delivery, desconto de retirada, cupom e taxa: fonte única (lib/pricing/fulfillmentPricing).
+  // Apenas exibição — o servidor recalcula (o navegador envia oferta, quantidade, modalidade e cupom).
   const appliedCouponCode = appliedCoupon?.code || null;
-  const couponMinNotReached = Boolean(appliedCoupon?.minOrderValue && subtotal < appliedCoupon.minOrderValue);
-  const couponDiscount = !appliedCoupon || couponMinNotReached
-    ? 0
-    : Number(Math.min(
-        subtotal,
-        appliedCoupon.discountType === 'PERCENTAGE'
-          ? (subtotal * appliedCoupon.discountValue) / 100
-          : appliedCoupon.discountValue
-      ).toFixed(2));
-
-  const finalTotal = Math.max(0, Number((subtotal + deliveryFee - couponDiscount).toFixed(2)));
+  const pricing = computeFulfillmentPricing({
+    mode: fulfillmentType,
+    lines: [offerToPricingLine(offer, unitPrice, quantity)],
+    settings: fulfillmentSettings,
+    coupon: appliedCoupon
+      ? { code: appliedCoupon.code, discountType: appliedCoupon.discountType, discountValue: appliedCoupon.discountValue, minOrderValue: appliedCoupon.minOrderValue, stackWithPickupDiscount: appliedCoupon.stackWithPickupDiscount }
+      : null,
+    couponBase: 'LINKED_OFFER',
+    linkedCouponCode: offer?.promoCouponCode || null,
+  });
+  const isFreeDelivery = pricing.isFreeDelivery;
+  const deliveryFee = pricing.deliveryFee;
+  const pickupDiscount = pricing.pickupDiscount;
+  const couponMinNotReached = pricing.couponRejectedReason === 'COUPON_MIN_ORDER';
+  const couponRejectedText = appliedCoupon && pricing.couponRejectedReason && pricing.couponRejectedReason !== 'COUPON_MIN_ORDER'
+    ? COUPON_REJECTED_TEXT[pricing.couponRejectedReason] : null;
+  const couponDiscount = pricing.couponDiscount;
+  const finalTotal = pricing.total;
 
   // Validação de esgotado
   const isSoldOut = Boolean(
@@ -327,6 +334,11 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
       return;
     }
 
+    if (!allowedFulfillment.includes(fulfillmentType)) {
+      showToast({ type: 'error', title: 'Modalidade Indisponível', message: availableModes.blockedReason || 'Modalidade indisponível.' });
+      return;
+    }
+
     if (fulfillmentType === 'DELIVERY') {
       if (!streetAddress.trim() || !addressNumber.trim()) {
         showToast({ type: 'warning', title: 'Endereço Incompleto', message: 'Rua e número são obrigatórios para entrega.' });
@@ -353,7 +365,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
       ? `${orderNotes ? `${orderNotes} | ` : ''}Troco para: R$ ${cashChange}`
       : orderNotes;
 
-    const finalNotes = appliedCouponCode && !couponMinNotReached
+    const finalNotes = appliedCouponCode && !couponMinNotReached && !couponRejectedText
       ? `${notesWithCash ? `${notesWithCash} | ` : ''}[Oferta: ${offer.title} | Cupom: ${appliedCouponCode}]`
       : `${notesWithCash ? `${notesWithCash} | ` : ''}[Oferta: ${offer.title}]`;
 
@@ -378,7 +390,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
         paymentMethod,
         fulfillmentType,
         notes: finalNotes,
-        couponCode: appliedCouponCode && !couponMinNotReached ? appliedCouponCode : undefined,
+        couponCode: appliedCouponCode && !couponMinNotReached && !couponRejectedText ? appliedCouponCode : undefined,
       });
 
       showToast({
@@ -670,9 +682,14 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                 {/* MODALIDADE DE ENTREGA */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">
-                    Tipo de Recebimento
+                    Como você quer receber?
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  {allowedFulfillment.length === 0 && (
+                    <p className="p-2.5 rounded-xl border border-rose-200 bg-rose-50 text-xs text-rose-700 font-semibold" data-testid="promo-no-fulfillment">
+                      {availableModes.blockedReason}
+                    </p>
+                  )}
+                  <div className={`grid gap-2 ${allowedFulfillment.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     {allowedFulfillment.includes('DELIVERY') && (
                       <button
                         type="button"
@@ -685,7 +702,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                       >
                         <Truck className="w-4 h-4 shrink-0 text-emerald-700" />
                         <div className="text-left">
-                          <span className="text-xs block">Entrega</span>
+                          <span className="text-xs block">Receber em casa</span>
                           <span className="text-[10px] text-gray-500">
                             {isFreeDelivery ? 'Grátis' : `Taxa: R$ ${Number(storeData.settings.deliveryFee || 0).toFixed(2)}`}
                           </span>
@@ -705,13 +722,26 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                       >
                         <Store className="w-4 h-4 shrink-0 text-emerald-700" />
                         <div className="text-left">
-                          <span className="text-xs block">Retirar no Balcão</span>
-                          <span className="text-[10px] text-gray-500">Sem taxa de entrega</span>
+                          <span className="text-xs block">Retirar na loja</span>
+                          <span className="text-[10px] text-gray-500">
+                            Sem taxa de entrega
+                            {pricing.mode === 'PICKUP' && pickupDiscount > 0 ? ` • ${pricing.pickupDiscountPercent}% off` : ''}
+                          </span>
                         </div>
                       </button>
                     )}
                   </div>
                 </div>
+
+                {fulfillmentType === 'PICKUP' && allowedFulfillment.includes('PICKUP') && (
+                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs space-y-1">
+                    <div className="font-bold text-gray-800">Retirada no estabelecimento:</div>
+                    <p className="text-gray-600">{storeData.settings.address}</p>
+                    {fulfillmentSettings.pickupInstructions && (
+                      <p className="text-gray-700 whitespace-pre-line">{fulfillmentSettings.pickupInstructions}</p>
+                    )}
+                  </div>
+                )}
 
                 {/* CAMPOS DE ENDEREÇO SE DELIVERY */}
                 {fulfillmentType === 'DELIVERY' && (
@@ -865,6 +895,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                     </Button>
                   </div>
                   {couponError && <p className="text-[11px] text-rose-600">{couponError}</p>}
+                  {couponRejectedText && <p className="text-[11px] text-amber-700">{couponRejectedText}</p>}
                   {appliedCoupon && couponMinNotReached && (
                     <p className="text-[11px] text-amber-700">
                       Pedido mínimo de R$ {Number(appliedCoupon.minOrderValue).toFixed(2)} para o cupom {appliedCoupon.code}.
@@ -914,6 +945,20 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                     </div>
                   )}
 
+                  {pickupDiscount > 0 && (
+                    <div className="flex items-center justify-between text-xs text-emerald-300" data-testid="promo-pickup-discount-line">
+                      <span>Desconto Retirada ({pricing.pickupDiscountPercent}%)</span>
+                      <span className="font-mono font-bold">- R$ {pickupDiscount.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  {fulfillmentType === 'PICKUP' && (
+                    <div className="flex items-center justify-between text-xs text-gray-300">
+                      <span>Taxa de Entrega</span>
+                      <span className="font-mono font-bold">R$ 0,00 (retirada)</span>
+                    </div>
+                  )}
+
                   {couponDiscount > 0 && (
                     <div className="flex items-center justify-between text-xs text-amber-300">
                       <span>Desconto Cupom ({appliedCouponCode})</span>
@@ -935,7 +980,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                 {/* BOTÃO FINALIZAR PEDIDO */}
                 <Button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || allowedFulfillment.length === 0}
                   className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (

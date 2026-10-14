@@ -8,6 +8,22 @@ import { Button } from '../../components/ui/Button';
 import { TenantSettings } from '../../types';
 import { Settings, Save, Check, Clock, AlertCircle, ShieldAlert } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { FulfillmentSettingsCard } from '../../components/establishment/FulfillmentSettingsCard';
+import { validateFulfillmentSettingsUpdate } from '../../lib/pricing/fulfillmentPricing';
+
+const FULFILLMENT_KEYS = [
+  'deliveryEnabled', 'pickupEnabled', 'pickupDiscountEnabled', 'pickupDiscountPercent',
+  'pickupDiscountExcludePromotional', 'pickupDiscountExcludedProductIds', 'pickupDiscountExcludedOfferIds', 'pickupInstructions',
+] as const;
+
+/** Envia ao backend apenas os campos de modalidade que mudaram (as colunas dependem de migration nova). */
+function stripUnchangedFulfillment(next: TenantSettings, base: TenantSettings): Partial<TenantSettings> {
+  const out: any = { ...next };
+  for (const k of FULFILLMENT_KEYS) {
+    if (JSON.stringify((next as any)[k] ?? null) === JSON.stringify((base as any)[k] ?? null)) delete out[k];
+  }
+  return out;
+}
 
 const PREP_TIME_PRESETS = [15, 20, 25, 30, 40, 50, 60];
 
@@ -169,6 +185,12 @@ export const SettingsPage: React.FC = () => {
     }
     setPrepTimeError(null);
 
+    const fulfillmentError = validateFulfillmentSettingsUpdate(form as any);
+    if (fulfillmentError) {
+      showToast({ type: 'error', title: 'Desconto para Retirada', message: fulfillmentError });
+      return;
+    }
+
     setSavingGlobal(true);
     const newPrepMinutes = validation.value;
     const finalForm: TenantSettings = {
@@ -177,7 +199,11 @@ export const SettingsPage: React.FC = () => {
     };
 
     try {
-      await tenantRepository.updateSettings(securityContext, activeTenant.id, finalForm);
+      await tenantRepository.updateSettings(
+        securityContext,
+        activeTenant.id,
+        stripUnchangedFulfillment(finalForm, activeTenant.settings),
+      );
       dataStore.updateTenantSettings(securityContext, activeTenant.id, finalForm);
       if (setActiveTenant) {
         setActiveTenant({
@@ -381,6 +407,14 @@ export const SettingsPage: React.FC = () => {
             />
           </div>
         </Card>
+
+        <FulfillmentSettingsCard
+          form={form}
+          setForm={setForm}
+          canEdit={canEdit}
+          tenantId={activeTenant.id}
+          securityContext={securityContext}
+        />
 
         <Card className="p-5 space-y-4">
           <h3 className="text-sm font-bold text-gray-900 pb-2 border-b border-gray-100">

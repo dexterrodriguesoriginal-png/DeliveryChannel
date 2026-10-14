@@ -87,6 +87,7 @@ export const PromotionsPage: React.FC = () => {
     minOrderValue: 0,
     usageLimit: '',
     usageLimitPerCustomer: '1',
+    stackWithPickupDiscount: false,
     customerId: '',
     startDate: '',
     endDate: '',
@@ -432,6 +433,7 @@ export const PromotionsPage: React.FC = () => {
         minOrderValue: coupon.minOrderValue || 0,
         usageLimit: coupon.usageLimit ? String(coupon.usageLimit) : '',
         usageLimitPerCustomer: String(coupon.usageLimitPerCustomer || 1),
+        stackWithPickupDiscount: Boolean(coupon.stackWithPickupDiscount),
         customerId: coupon.customerId || '',
         startDate: coupon.startDate ? coupon.startDate.slice(0, 16) : '',
         endDate: coupon.endDate ? coupon.endDate.slice(0, 16) : '',
@@ -446,6 +448,7 @@ export const PromotionsPage: React.FC = () => {
         minOrderValue: 0,
         usageLimit: '',
         usageLimitPerCustomer: '1',
+        stackWithPickupDiscount: false,
         customerId: '',
         startDate: '',
         endDate: '',
@@ -478,6 +481,7 @@ export const PromotionsPage: React.FC = () => {
         minOrderValue: Number(couponForm.minOrderValue) || 0,
         usageLimit: couponForm.usageLimit ? parseInt(couponForm.usageLimit, 10) : undefined,
         usageLimitPerCustomer: parseInt(couponForm.usageLimitPerCustomer, 10) || 1,
+        stackWithPickupDiscount: Boolean(couponForm.stackWithPickupDiscount),
         customerId: couponForm.customerId || undefined,
         startDate: couponForm.startDate ? new Date(couponForm.startDate).toISOString() : undefined,
         endDate: couponForm.endDate ? new Date(couponForm.endDate).toISOString() : undefined,
@@ -1351,6 +1355,16 @@ export const PromotionsPage: React.FC = () => {
               required
             />
           </div>
+
+          <label className="flex items-start gap-2 text-xs text-slate-700">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={Boolean(couponForm.stackWithPickupDiscount)}
+              onChange={(e) => setCouponForm({ ...couponForm, stackWithPickupDiscount: e.target.checked })}
+            />
+            <span>Acumula com o desconto de retirada (se desmarcado, o cupom não incide sobre itens que já receberam o desconto de retirada)</span>
+          </label>
 
           <div className="grid grid-cols-2 gap-3">
             <Input

@@ -16,6 +16,7 @@
  * Nada aqui usa `any` ou cast frouxo: cada campo é lido e validado; o que não pertence
  * ao tenant do slug é descartado (defesa em profundidade além do filtro do servidor).
  */
+import { fulfillmentFieldsFromRaw } from '../lib/pricing/fulfillmentPricing';
 import {
   Campaign,
   CampaignCard,
@@ -172,6 +173,7 @@ export function mapSettings(raw: unknown): TenantSettings {
     city: str(pick(s, 'city')) || 'São Paulo',
     phoneWhatsApp: str(pick(s, 'phoneWhatsApp', 'phone_whatsapp')) || '',
     pixKey: str(pick(s, 'pixKey', 'pix_key')),
+    ...fulfillmentFieldsFromRaw(s),
   };
 }
 
@@ -332,6 +334,8 @@ function mapCarousel(raw: unknown): PromotionCarousel | null {
     isActive: bool(c.isActive, true),
     showInStore: bool(c.showInStore, true),
     displayOrder: num(c.displayOrder) ?? 0,
+    startDate: str(c.startDate),
+    endDate: str(c.endDate),
     items: arr(c.items).map(mapCarouselItem).filter((x): x is PromotionCarouselItem => x !== null),
   };
 }

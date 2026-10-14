@@ -4,6 +4,7 @@ import { dataStore } from '../services/dataStore';
 import { SecurityContext } from '../services/securityEngine';
 import { publicStoreRepository } from './publicStoreRepository';
 import { isValidUuid } from '../lib/uuid';
+import { fulfillmentFieldsFromRaw, fulfillmentFieldsToDb, validateFulfillmentSettingsUpdate } from '../lib/pricing/fulfillmentPricing';
 
 function mapRowToTenant(row: any, settingsRow?: any, themeRow?: any): Tenant {
   return {
@@ -35,6 +36,7 @@ function mapRowToTenant(row: any, settingsRow?: any, themeRow?: any): Tenant {
       city: settingsRow?.city || 'São Paulo',
       phoneWhatsApp: settingsRow?.phone_whatsapp || '(11) 99999-9999',
       pixKey: settingsRow?.pix_key || 'adega@pix.com.br',
+      ...fulfillmentFieldsFromRaw(settingsRow || {}),
     },
     theme: {
       storeName: themeRow?.store_name || row.name,
@@ -185,6 +187,7 @@ export const tenantRepository = {
             city: data.city || 'São Paulo',
             phoneWhatsApp: data.phone_whatsapp || '',
             pixKey: data.pix_key || undefined,
+            ...fulfillmentFieldsFromRaw(data),
           };
         }
       } catch (err) {
@@ -196,6 +199,8 @@ export const tenantRepository = {
   },
 
   async updateSettings(context: SecurityContext, tenantId: string, settingsUpdates: Partial<TenantSettings>): Promise<void> {
+    const fulfillmentError = validateFulfillmentSettingsUpdate(settingsUpdates as Record<string, any>);
+    if (fulfillmentError) throw new Error(fulfillmentError);
     if (isSupabaseConfigured && isValidUuid(tenantId)) {
       try {
         const dbSettings: any = { updated_at: new Date().toISOString() };
@@ -217,6 +222,22 @@ export const tenantRepository = {
         if (upsertError) {
           console.error('[tenantRepository] Erro ao persistir configurações no Supabase:', upsertError.message);
           throw new Error(upsertError.message || 'Falha ao salvar configurações no servidor.');
+        }
+
+        // Modalidades/desconto de retirada: colunas da PROPOSTA 20261013000100 (ainda não aplicada).
+        // Gravação separada para não quebrar o salvamento das configurações existentes se as colunas não existirem.
+        const fulfillmentDb = fulfillmentFieldsToDb(settingsUpdates as Record<string, any>);
+        if (Object.keys(fulfillmentDb).length > 0) {
+          const { error: fulfillmentErr } = await supabase
+            .from('tenant_settings')
+            .update(fulfillmentDb)
+            .eq('tenant_id', tenantId);
+          if (fulfillmentErr) {
+            throw new Error(
+              'As configurações de Delivery/Retirada ainda não estão disponíveis no banco (migration de modalidades pendente): ' +
+              fulfillmentErr.message
+            );
+          }
         }
       } catch (err: any) {
         console.warn('[tenantRepository] Erro ao persistir configurações no Supabase:', err);

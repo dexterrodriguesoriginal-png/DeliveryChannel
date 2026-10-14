@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { canPreviewCheckoutWithoutLogin } from '../../lib/demoCheckoutPreview';
+
+// Prévia da sacola sem login: SOMENTE demo local (sem Supabase). Ver src/lib/demoCheckoutPreview.ts.
+const DEMO_CHECKOUT_PREVIEW = canPreviewCheckoutWithoutLogin(isSupabaseConfigured, import.meta.env.VITE_ENABLE_DEMO_MODE);
 import { publicStoreRepository, PublicStoreData } from '../../repositories/publicStoreRepository';
 import { promotionRepository } from '../../repositories/promotionRepository';
 import { orderRepository } from '../../repositories/orderRepository';
@@ -12,6 +16,9 @@ import { PromotionalCheckoutModal } from '../../components/client/PromotionalChe
 import { MobileNavigation } from '../../components/layout/MobileNavigation';
 import { AddressAutocompleteInput, ParsedAddress } from '../../components/onboarding/AddressAutocompleteInput';
 import { Card } from '../../components/ui/Card';
+import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
+import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
+import { cartStorageKey } from '../../lib/pwa/storeManifest';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -57,11 +64,34 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import {
+  computeFulfillmentPricing,
+  fulfillmentSettingsFromTenant,
+  productToPricingLine,
+  resolveAvailableModes,
+} from '../../lib/pricing/fulfillmentPricing';
+import {
+  CATALOG_ORIGIN,
+  CAMPAIGN_REASON_TEXT,
+  PurchaseOrigin,
+  addToOriginCart,
+  cartLineKey,
+  decrementOriginCart,
+  hydrateOriginCart,
+  priceLineByOrigin,
+  revalidateOriginCart,
+  toCheckoutItem,
+} from '../../lib/pricing/purchaseOrigin';
+import { StoreLogo } from '../../components/client/StoreLogo';
+import { newIdempotencyKey } from '../../lib/pricing/idempotency';
 
+// Linha do carrinho: produto + ORIGEM da compra (catálogo ou item de campanha). Chave = produto + origem.
 interface CartItem {
+  key: string;
   product: Product;
   quantity: number;
   notes?: string;
+  origin: PurchaseOrigin;
 }
 
 const GoogleIcon: React.FC = () => (
@@ -111,6 +141,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const [searchTerm, setSearchTerm] = useState('');
   const [navTab, setNavTab] = useState<'home' | 'orders' | 'cart' | 'account'>('home');
   const [selectedProductModal, setSelectedProductModal] = useState<Product | null>(null);
+  // Origem com que o detalhe do produto foi aberto (catálogo ou item de campanha do carrossel).
+  const [selectedProductOrigin, setSelectedProductOrigin] = useState<PurchaseOrigin>(CATALOG_ORIGIN);
   const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null);
 
   // 4. Carrinho estritamente isolado pelo tenant.id real
@@ -163,7 +195,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // Cupom de Desconto (COMANDO 138)
   const [couponCodeInput, setCouponCodeInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
-  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [, setCouponDiscount] = useState(0); // valor exibido vem de computeFulfillmentPricing (abaixo)
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponMessage, setCouponMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -200,8 +232,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         setStoreData(data);
         // Carrega carrinho específico deste estabelecimento
         try {
-          const savedCart = localStorage.getItem(`adegafood_cart_${data.tenant.id}`);
-          if (savedCart) setCart(JSON.parse(savedCart));
+          const savedCart = localStorage.getItem(cartStorageKey(data.tenant.id));
+          if (savedCart) setCart(hydrateOriginCart<Product>(JSON.parse(savedCart)) as CartItem[]);
           else setCart([]);
         } catch {
           setCart([]);
@@ -243,11 +275,20 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     loadStore();
   }, [loadStore]);
 
+  // PWA white-label: manifesto/ícone/nome/cores da loja ativa (somente rotas /app/<slug>)
+  useEffect(() => {
+    const t = storeData?.tenant;
+    if (!t) return;
+    applyStoreIdentity({ id: t.id, slug: t.slug, name: t.name, theme: storeData?.theme }).catch(err => {
+      console.warn('[ClientApp] Falha ao aplicar identidade PWA da loja:', err);
+    });
+  }, [storeData?.tenant, storeData?.theme]);
+
   // Persistir carrinho no localStorage sob o ID oficial do tenant
   useEffect(() => {
     if (storeData?.tenant.id) {
       try {
-        localStorage.setItem(`adegafood_cart_${storeData.tenant.id}`, JSON.stringify(cart));
+        localStorage.setItem(cartStorageKey(storeData.tenant.id), JSON.stringify(cart));
       } catch {
         // ignore
       }
@@ -336,7 +377,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     order.items.forEach(it => {
       const prod = storeData?.products.find(p => p.id === it.productId);
       if (prod) {
-        newItems.push({ product: prod, quantity: it.quantity });
+        newItems.push({ key: cartLineKey(prod.id, CATALOG_ORIGIN), product: prod, quantity: it.quantity, origin: CATALOG_ORIGIN });
       } else {
         newItems.push({
           product: {
@@ -352,7 +393,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             stockQuantity: 99,
             unit: it.unit || 'un'
           },
-          quantity: it.quantity
+          quantity: it.quantity,
+          key: cartLineKey(it.productId, CATALOG_ORIGIN),
+          origin: CATALOG_ORIGIN,
         });
       }
     });
@@ -403,12 +446,36 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // --------------------------------------------------------------------------
   const cartTotalCount = cart.reduce((acc, item) => acc + item.quantity, 0);
 
-  const subtotal = cart.reduce((acc, item) => {
-    const price = item.product.promotionalPrice && item.product.promotionalPrice > 0
-      ? item.product.promotionalPrice
-      : item.product.price;
-    return acc + (price * item.quantity);
-  }, 0);
+  // Preço de cada linha conforme a ORIGEM da compra (catálogo => preço do produto; campanha => preço do item
+  // de campanha selecionado, se válido). Nunca o menor preço entre fontes. O servidor revalida tudo.
+  const campaignsForPricing = storeData?.promotionCarousels || [];
+  const tenantIdForPricing = storeData?.tenant.id || '';
+  const priceCartItem = (item: CartItem) => {
+    const r = priceLineByOrigin({ product: item.product, quantity: item.quantity, origin: item.origin, campaigns: campaignsForPricing, tenantId: tenantIdForPricing });
+    // Linha de campanha inválida é convertida pelo efeito de revalidação; até lá, exibe preço de catálogo.
+    return r.ok ? r.line : productToPricingLine(item.product, item.quantity);
+  };
+  const pricedLines = cart.map(priceCartItem);
+  const subtotal = pricedLines.reduce((acc, l) => acc + l.unitPrice * l.quantity, 0);
+
+  // Revalida linhas de campanha (expirada/inativa/outra loja): converte para catálogo e avisa o cliente.
+  useEffect(() => {
+    if (!storeData || cart.length === 0) return;
+    const { cart: next, converted } = revalidateOriginCart<Product>(cart, storeData.promotionCarousels || [], storeData.tenant.id);
+    if (converted.length > 0) {
+      setCart(next as CartItem[]);
+      const names = converted.map((c) => {
+        const p = storeData.products.find((x) => x.id === c.productId);
+        return `"${p?.name || 'produto'}" (${CAMPAIGN_REASON_TEXT[c.reason]})`;
+      });
+      showToast({
+        type: 'warning',
+        title: 'Oferta indisponível',
+        message: `${names.join(', ')}: o item segue na sacola pelo preço normal do catálogo.`,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, storeData]);
 
   // Recalcular desconto de cupom quando o subtotal do carrinho mudar
   useEffect(() => {
@@ -479,16 +546,33 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     setCouponMessage(null);
   };
 
-  const freeThreshold = storeData?.settings.freeDeliveryThreshold;
-  const isFreeDelivery = fulfillmentType === 'DELIVERY' && 
-    Boolean(freeThreshold && subtotal >= freeThreshold);
+  // Modalidade + desconto de retirada + cupom + taxa: fonte única em lib/pricing/fulfillmentPricing.
+  // Apenas EXIBIÇÃO; o servidor recalcula tudo (o navegador envia só itens, quantidades e modalidade).
+  const fulfillmentSettings = fulfillmentSettingsFromTenant(storeData?.settings);
+  const availableModes = resolveAvailableModes(fulfillmentSettings);
+  const pricing = computeFulfillmentPricing({
+    mode: fulfillmentType,
+    lines: pricedLines,
+    settings: fulfillmentSettings,
+    coupon: appliedCoupon
+      ? { code: appliedCoupon.code, discountType: appliedCoupon.discountType, discountValue: appliedCoupon.discountValue, minOrderValue: appliedCoupon.minOrderValue, stackWithPickupDiscount: appliedCoupon.stackWithPickupDiscount }
+      : null,
+  });
+  const couponDiscount = pricing.couponDiscount;
+  const pickupDiscount = pricing.pickupDiscount;
+  const deliveryFee = pricing.deliveryFee;
+  const grandTotal = pricing.total;
+  const modeKey = availableModes.modes.join(',');
 
-  const deliveryFee = fulfillmentType === 'PICKUP'
-    ? 0
-    : (subtotal > 0 ? (isFreeDelivery ? 0 : (storeData?.settings.deliveryFee || 0)) : 0);
+  useEffect(() => {
+    if (availableModes.modes.length > 0 && !availableModes.modes.includes(fulfillmentType)) {
+      setFulfillmentType(availableModes.modes[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modeKey]);
 
-  const discountedSubtotal = Math.max(0, subtotal - couponDiscount);
-  const grandTotal = discountedSubtotal + deliveryFee;
+  // Chave de idempotência por tentativa de checkout (renovada após pedido concluído).
+  const checkoutIdempotencyKeyRef = useRef<string>(newIdempotencyKey());
 
   // Normalização de telefone / WhatsApp com máscara brasileira
   const handlePhoneChange = (val: string) => {
@@ -503,7 +587,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   };
 
   // Manipulação de Carrinho
-  const handleAddToCart = (product: Product) => {
+  const handleAddToCart = (product: Product, origin: PurchaseOrigin = CATALOG_ORIGIN) => {
     const isAvailable = product.isAvailable !== undefined ? product.isAvailable : (product.stockQuantity > 0);
     if (!isAvailable) {
       showToast({
@@ -514,15 +598,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       return;
     }
 
-    setCart((prev) => {
-      const existing = prev.find(item => item.product.id === product.id);
-      if (existing) {
-        return prev.map(item =>
-          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
-      }
-      return [...prev, { product, quantity: 1 }];
-    });
+    // Sempre guarda o produto CANÔNICO do catálogo (o preço da campanha vem da origem, nunca de um produto alterado).
+    const canonical = storeData?.products.find((x) => x.id === product.id && x.tenantId === storeData.tenant.id) || product;
+    // Mesmo produto de origens diferentes = linhas diferentes (não mescla catálogo com campanha).
+    setCart((prev) => addToOriginCart<Product>(prev, canonical, origin) as CartItem[]);
 
     showToast({
       type: 'success',
@@ -531,16 +610,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     });
   };
 
-  const handleRemoveFromCart = (productId: string) => {
-    setCart((prev) => {
-      const existing = prev.find(item => item.product.id === productId);
-      if (existing && existing.quantity > 1) {
-        return prev.map(item =>
-          item.product.id === productId ? { ...item, quantity: item.quantity - 1 } : item
-        );
-      }
-      return prev.filter(item => item.product.id !== productId);
-    });
+  // Remove/decrementa pela CHAVE da linha (produto + origem); a origem nunca se perde ao mudar a quantidade.
+  const handleRemoveFromCart = (lineKey: string) => {
+    setCart((prev) => decrementOriginCart<Product>(prev, lineKey) as CartItem[]);
   };
 
   // --------------------------------------------------------------------------
@@ -564,7 +636,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       return;
     }
 
-    // 1. Abre o modal com os dados detalhados do produto
+    // 1. Abre o modal com os dados detalhados do produto (origem: catálogo)
+    setSelectedProductOrigin(CATALOG_ORIGIN);
     setSelectedProductModal(product);
 
     // 2. Garante que o card esteja acessível na vitrine (limpa busca e ajusta filtro de categoria)
@@ -775,6 +848,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       return;
     }
 
+    if (!availableModes.modes.includes(fulfillmentType)) {
+      showToast({
+        type: 'error',
+        title: 'Modalidade Indisponível',
+        message: availableModes.blockedReason || 'A modalidade escolhida não está disponível neste estabelecimento.',
+      });
+      return;
+    }
+
     if (fulfillmentType === 'DELIVERY') {
       if (!streetAddress.trim() || !addressNumber.trim()) {
         showToast({
@@ -845,11 +927,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         fulfillmentType,
         notes: finalNotes,
         origin,
-        items: cart.map(item => ({
-          productId: item.product.id,
-          quantity: item.quantity,
-          notes: item.notes,
-        })),
+        idempotencyKey: checkoutIdempotencyKeyRef.current,
+        couponCode: appliedCoupon && couponDiscount > 0 ? appliedCoupon.code : undefined,
+        // Sem preço: só produto, quantidade, observação e (para itens de campanha) a referência da origem.
+        items: cart.map(item => toCheckoutItem(item)),
       });
 
       // Resgate atômico do cupom de desconto se houver
@@ -874,6 +955,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
       // Limpar carrinho e exibir confirmação
       setCompletedOrder(order);
+      checkoutIdempotencyKeyRef.current = newIdempotencyKey();
       setCart([]);
       setAppliedCoupon(null);
       setCouponDiscount(0);
@@ -1025,6 +1107,11 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         fontFamily: theme.fontFamily || 'Inter'
       }}
     >
+      <InstallStoreAppHint
+        tenantId={storeData.tenant.id}
+        storeName={theme.storeName || storeData.tenant.name}
+        color={theme.primaryColor || '#334155'}
+      />
       {/* Barra de Retorno ao Painel (Facilita Testes do Dono Sem Precisar Publicar) */}
       <div className="bg-slate-950 text-white text-xs px-3.5 py-2 flex items-center justify-between border-b border-slate-800 z-40 relative">
         <div className="flex items-center gap-2 min-w-0">
@@ -1052,20 +1139,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         style={{ backgroundColor: `${theme.cardColor || '#ffffff'}f2` }}
       >
         <div className="flex items-center gap-3 min-w-0">
-          {theme.logoUrl ? (
-            <img
-              src={theme.logoUrl}
-              alt={storeData.tenant.name}
-              className="w-10 h-10 rounded-xl object-cover border border-gray-200 shadow-2xs"
-            />
-          ) : (
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-base shadow-xs"
-              style={{ backgroundColor: primaryColor }}
-            >
-              {storeData.tenant.name.substring(0, 2).toUpperCase()}
-            </div>
-          )}
+          <StoreLogo logoUrl={theme.logoUrl} name={theme.storeName || storeData.tenant.name} color={primaryColor} />
           <div className="min-w-0">
             <h1 className="font-extrabold text-sm text-gray-900 truncate flex items-center gap-1.5">
               <span>{storeData.tenant.name}</span>
@@ -1412,7 +1486,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                       {carousel.items.map((item) => {
                         if (!item.product) return null;
                         const p = item.product;
-                        const inCart = cart.find(i => i.product.id === p.id);
+                        const campaignOrigin: PurchaseOrigin = { source: 'campaign', campaignItemId: item.id, carouselId: carousel.id };
+                        const campaignKey = cartLineKey(p.id, campaignOrigin);
+                        const inCart = cart.find(i => i.key === campaignKey);
                         const isOutOfStock = p.isAvailable !== undefined ? !p.isAvailable : ((p.stockQuantity ?? 1) <= 0);
                         const discountPct = item.calculatedDiscountPercentage > 0 
                           ? item.calculatedDiscountPercentage 
@@ -1429,6 +1505,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                           <div
                             key={item.id}
                             onClick={() => {
+                              setSelectedProductOrigin(campaignOrigin);
                               setSelectedProductModal(promoProduct);
                             }}
                             className={`w-40 sm:w-44 shrink-0 bg-white border rounded-2xl p-2.5 flex flex-col justify-between shadow-2xs hover:shadow-md transition-all cursor-pointer snap-start relative group ${
@@ -1508,7 +1585,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                                   <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 shadow-2xs">
                                     <button
                                       type="button"
-                                      onClick={() => handleRemoveFromCart(p.id)}
+                                      onClick={() => handleRemoveFromCart(campaignKey)}
                                       className="w-5 h-5 rounded bg-white flex items-center justify-center text-gray-700 hover:bg-gray-200 cursor-pointer shadow-xs"
                                     >
                                       <Minus className="w-2.5 h-2.5" />
@@ -1516,7 +1593,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                                     <span className="text-[11px] font-black font-mono px-0.5">{inCart.quantity}</span>
                                     <button
                                       type="button"
-                                      onClick={() => handleAddToCart(promoProduct)}
+                                      onClick={() => handleAddToCart(p, campaignOrigin)}
                                       className="w-5 h-5 rounded text-white flex items-center justify-center cursor-pointer shadow-xs"
                                       style={{ backgroundColor: buttonColor }}
                                     >
@@ -1526,7 +1603,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                                 ) : (
                                   <button
                                     type="button"
-                                    onClick={() => handleAddToCart(promoProduct)}
+                                    onClick={() => handleAddToCart(p, campaignOrigin)}
                                     className="h-6 px-2 rounded-lg text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-xs hover:opacity-95 transition-opacity"
                                     style={{ backgroundColor: buttonColor }}
                                   >
@@ -1601,7 +1678,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               </div>
             ) : (
               filteredProducts.map((p) => {
-                const inCart = cart.find(i => i.product.id === p.id);
+                const inCart = cart.find(i => i.key === cartLineKey(p.id, CATALOG_ORIGIN));
                 const isOutOfStock = p.isAvailable !== undefined ? !p.isAvailable : p.stockQuantity <= 0;
 
                 return (
@@ -1669,7 +1746,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                       ) : inCart ? (
                         <div className="flex items-center gap-1.5 bg-gray-100 rounded-xl p-1 shadow-2xs">
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleRemoveFromCart(p.id); }}
+                            onClick={(e) => { e.stopPropagation(); handleRemoveFromCart(cartLineKey(p.id, CATALOG_ORIGIN)); }}
                             className="w-6 h-6 rounded-lg bg-white flex items-center justify-center text-gray-700 hover:bg-gray-200 cursor-pointer shadow-xs"
                           >
                             <Minus className="w-3 h-3" />
@@ -1741,8 +1818,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         size="md"
       >
         <div className="space-y-4">
-          {/* BARREIRA OBRIGATÓRIA DE LOGIN: NÃO EXISTE CHECKOUT ANÔNIMO */}
-          {!supabaseUser ? (
+          {/* BARREIRA OBRIGATÓRIA DE LOGIN: NÃO EXISTE CHECKOUT ANÔNIMO (exceto PRÉVIA no demo local; confirmar continua exigindo login em handleFinishOrder) */}
+          {!supabaseUser && !DEMO_CHECKOUT_PREVIEW ? (
             <div className="space-y-4 py-2">
               <div className="text-center space-y-1.5">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto">
@@ -1850,6 +1927,11 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             /* CLIENTE AUTENTICADO: FORMULÁRIO OPERACIONAL DO PEDIDO */
             <form onSubmit={handleFinishOrder} className="space-y-4">
               {/* Badge de Cliente Autenticado */}
+              {!supabaseUser ? (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+                  <span className="font-bold">Prévia (modo demonstração local):</span> confira modalidade e totais. Para confirmar o pedido é preciso entrar na sua conta.
+                </div>
+              ) : (
               <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-[10px]">
@@ -1868,6 +1950,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                   Trocar
                 </button>
               </div>
+              )}
 
               {/* Resumo dos Itens da Sacola */}
               <div className="space-y-2">
@@ -1876,15 +1959,16 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                   <span>Subtotal: R$ {subtotal.toFixed(2)}</span>
                 </div>
                 <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 divide-y divide-gray-100">
-                  {cart.map((item) => {
-                    const price = item.product.promotionalPrice && item.product.promotionalPrice > 0
-                      ? item.product.promotionalPrice
-                      : item.product.price;
+                  {cart.map((item, idx) => {
+                    const price = pricedLines[idx]?.unitPrice ?? item.product.price;
                     return (
-                      <div key={item.product.id} className="pt-1.5 first:pt-0 flex items-center justify-between text-xs">
+                      <div key={item.key} className="pt-1.5 first:pt-0 flex items-center justify-between text-xs" data-testid="cart-line" data-origin={item.origin.source}>
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="font-bold font-mono text-emerald-800">{item.quantity}x</span>
                           <span className="text-gray-800 truncate">{item.product.name}</span>
+                          {item.origin.source === 'campaign' && (
+                            <span className="text-[9px] font-bold uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1 rounded shrink-0">Oferta</span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="font-mono font-bold text-gray-900">
@@ -1892,7 +1976,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                           </span>
                           <button
                             type="button"
-                            onClick={() => handleRemoveFromCart(item.product.id)}
+                            onClick={() => handleRemoveFromCart(item.key)}
                             className="text-gray-400 hover:text-rose-600 p-0.5 cursor-pointer"
                           >
                             <Minus className="w-3 h-3" />
@@ -1904,37 +1988,52 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                 </div>
               </div>
 
-              {/* Opção de Retirada vs Entrega */}
-              <div className="space-y-1.5 pt-2 border-t border-gray-100">
+              {/* Modalidade de atendimento (configuração da loja) */}
+              <div className="space-y-1.5 pt-2 border-t border-gray-100" data-testid="fulfillment-mode-selector">
                 <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                  Tipo de Atendimento
+                  Como você quer receber?
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFulfillmentType('DELIVERY')}
-                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
-                      fulfillmentType === 'DELIVERY'
-                        ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Bike className="w-4 h-4" />
-                    Entrega em Domicílio
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFulfillmentType('PICKUP')}
-                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
-                      fulfillmentType === 'PICKUP'
-                        ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Store className="w-4 h-4" />
-                    Retirada no Balcão
-                  </button>
-                </div>
+                {availableModes.modes.length === 0 ? (
+                  <p className="p-2.5 rounded-xl border border-rose-200 bg-rose-50 text-xs text-rose-700 font-semibold">
+                    {availableModes.blockedReason}
+                  </p>
+                ) : (
+                  <div className={`grid gap-2 ${availableModes.modes.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                    {availableModes.modes.includes('DELIVERY') && (
+                      <button
+                        type="button"
+                        onClick={() => setFulfillmentType('DELIVERY')}
+                        className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                          fulfillmentType === 'DELIVERY'
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        <Bike className="w-4 h-4" />
+                        Receber em casa
+                      </button>
+                    )}
+                    {availableModes.modes.includes('PICKUP') && (
+                      <button
+                        type="button"
+                        onClick={() => setFulfillmentType('PICKUP')}
+                        className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                          fulfillmentType === 'PICKUP'
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        <Store className="w-4 h-4" />
+                        <span>
+                          Retirar na loja
+                          {fulfillmentSettings.pickupDiscountEnabled && fulfillmentSettings.pickupDiscountPercent > 0 && (
+                            <span className="block text-[10px] text-emerald-700">{fulfillmentSettings.pickupDiscountPercent}% de desconto</span>
+                          )}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Dados Obrigatórios do Cliente */}
@@ -2040,6 +2139,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                     Retirada no Estabelecimento:
                   </div>
                   <p className="text-gray-600">{storeData.settings.address}</p>
+                  {fulfillmentSettings.pickupInstructions && (
+                    <p className="text-gray-700 whitespace-pre-line" data-testid="pickup-instructions">{fulfillmentSettings.pickupInstructions}</p>
+                  )}
                   <p className="text-[11px] text-emerald-700 font-bold">
                     Taxa de entrega: Grátis (R$ 0,00)
                   </p>
@@ -2173,6 +2275,24 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                   <span>Subtotal</span>
                   <span className="font-mono">R$ {subtotal.toFixed(2)}</span>
                 </div>
+                {pickupDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-semibold" data-testid="pickup-discount-line">
+                    <span className="flex items-center gap-1">
+                      <Store className="w-3 h-3" />
+                      Desconto retirada ({pricing.pickupDiscountPercent}%)
+                    </span>
+                    <span className="font-mono">- R$ {pickupDiscount.toFixed(2)}</span>
+                  </div>
+                )}
+                {appliedCoupon && pricing.couponRejectedReason && (
+                  <div className="text-[11px] text-amber-700">
+                    {pricing.couponRejectedReason === 'COUPON_NO_ELIGIBLE_ITEMS'
+                      ? 'O cupom vale apenas para itens fora de promoção.'
+                      : pricing.couponRejectedReason === 'COUPON_NOT_STACKABLE_WITH_PICKUP'
+                      ? 'Este cupom não acumula com o desconto de retirada. Escolha "Receber em casa" ou use outro cupom.'
+                      : `O cupom exige R$ ${(appliedCoupon.minOrderValue || 0).toFixed(2)} em itens fora de promoção.`}
+                  </div>
+                )}
                 {couponDiscount > 0 && (
                   <div className="flex justify-between text-emerald-700 font-semibold">
                     <span className="flex items-center gap-1">
@@ -2183,7 +2303,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                   </div>
                 )}
                 <div className="flex justify-between text-gray-600">
-                  <span>Taxa de Entrega</span>
+                  <span>{fulfillmentType === 'PICKUP' ? 'Taxa de Entrega (retirada)' : 'Taxa de Entrega'}</span>
                   <span className="font-mono text-emerald-700 font-bold">
                     {deliveryFee === 0 ? 'Grátis' : `R$ ${deliveryFee.toFixed(2)}`}
                   </span>
@@ -2197,7 +2317,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               {/* Botão de Confirmação do Pedido */}
               <Button
                 type="submit"
-                disabled={isSubmittingOrder || cart.length === 0}
+                disabled={isSubmittingOrder || cart.length === 0 || availableModes.modes.length === 0}
                 className="w-full text-white font-extrabold text-sm py-3 rounded-xl shadow-md cursor-pointer"
                 style={{ backgroundColor: buttonColor }}
               >
@@ -2206,6 +2326,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span>Processando seu pedido no servidor...</span>
                   </div>
+                ) : !supabaseUser ? (
+                  `Entre para finalizar • R$ ${grandTotal.toFixed(2)}`
                 ) : (
                   `Confirmar Pedido • R$ ${grandTotal.toFixed(2)}`
                 )}
@@ -2596,7 +2718,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             {/* Botão de Ação / Adicionar ao Carrinho */}
             <div className="pt-1 flex items-center gap-3">
               {(() => {
-                const inCart = cart.find(i => i.product.id === selectedProductModal.id);
+                const modalKey = cartLineKey(selectedProductModal.id, selectedProductOrigin);
+                const inCart = cart.find(i => i.key === modalKey);
                 const isOutOfStock = selectedProductModal.isAvailable === false || selectedProductModal.stockQuantity <= 0;
 
                 if (isOutOfStock) {
@@ -2620,14 +2743,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => handleRemoveFromCart(selectedProductModal.id)}
+                          onClick={() => handleRemoveFromCart(modalKey)}
                           className="w-8 h-8 rounded-lg bg-white border border-emerald-300 flex items-center justify-center text-emerald-900 hover:bg-emerald-100 cursor-pointer shadow-xs"
                         >
                           <Minus className="w-4 h-4" />
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleAddToCart(selectedProductModal)}
+                          onClick={() => handleAddToCart(selectedProductModal, selectedProductOrigin)}
                           className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center hover:bg-emerald-800 cursor-pointer shadow-xs"
                         >
                           <Plus className="w-4 h-4" />
@@ -2640,7 +2763,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                 return (
                   <Button
                     className="w-full text-xs font-bold py-2.5 rounded-xl cursor-pointer"
-                    onClick={() => handleAddToCart(selectedProductModal)}
+                    onClick={() => handleAddToCart(selectedProductModal, selectedProductOrigin)}
                     leftIcon={<Plus className="w-4 h-4" />}
                     style={{ backgroundColor: buttonColor }}
                   >

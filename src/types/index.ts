@@ -61,6 +61,15 @@ export interface TenantSettings {
   city: string;
   phoneWhatsApp: string;
   pixKey?: string;
+  // Modalidades de atendimento e desconto para retirada (proposta 20261013000100; opcionais = compat)
+  deliveryEnabled?: boolean; // padrão true
+  pickupEnabled?: boolean; // padrão true
+  pickupDiscountEnabled?: boolean; // padrão false
+  pickupDiscountPercent?: number; // 0–50, padrão 0
+  pickupDiscountExcludePromotional?: boolean; // padrão false
+  pickupDiscountExcludedProductIds?: string[];
+  pickupDiscountExcludedOfferIds?: string[];
+  pickupInstructions?: string;
 }
 
 export interface Tenant {
@@ -373,6 +382,9 @@ export interface PromotionCarousel {
   isActive: boolean;
   showInStore: boolean;
   displayOrder: number;
+  /** N4: janela de validade da campanha inteira (start_at/end_at). */
+  startDate?: string;
+  endDate?: string;
   items: PromotionCarouselItem[];
   createdAt?: string;
   updatedAt?: string;
@@ -400,6 +412,8 @@ export interface Coupon {
   minOrderValue?: number;
   usageLimit?: number; // Quantidade máxima de cupons (ex: 20)
   usageLimitPerCustomer?: number; // Limite por cliente (1 ou ilimitado)
+  /** D1: acumula com o desconto de retirada (padrão false). Coluna proposta coupons.stack_with_pickup_discount. */
+  stackWithPickupDiscount?: boolean;
   timesUsed: number;
   customerId?: string;
   customerName?: string;
@@ -493,6 +507,11 @@ export interface Order {
   paymentMethod: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'CASH';
   paymentStatus: PaymentStatus;
   fulfillmentType: FulfillmentType;
+  /** Parcela do desconto referente à retirada (proposta orders.pickup_discount). `discount` = total de descontos. */
+  pickupDiscount?: number;
+  /** Parcela do desconto referente ao cupom. */
+  couponDiscount?: number;
+  idempotencyKey?: string;
   notes?: string;
   prepTimeMinutes?: number;
   status: OrderStatus;

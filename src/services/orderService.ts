@@ -79,11 +79,15 @@ export const orderService = {
     customerEmail?: string;
     deliveryAddress?: string;
     addressDetails?: Order['addressDetails'];
-    items: Array<{ productId: string; quantity: number; notes?: string }>;
+    items: Array<{ productId: string; quantity: number; notes?: string; source?: 'catalog' | 'campaign'; campaignItemId?: string }>;
     paymentMethod: Order['paymentMethod'];
     fulfillmentType?: Order['fulfillmentType'];
     notes?: string;
     origin: Order['origin'];
+    /** Chave de idempotência da tentativa (demo: respeitada; real: depende da RPC v2/proposta). */
+    idempotencyKey?: string;
+    /** Código do cupom (demo: recalculado no dataStore; real: v1 não aceita cupom). */
+    couponCode?: string;
   }): Promise<Order> {
     return orderRepository.createPublicOrder(slug, orderData);
   },

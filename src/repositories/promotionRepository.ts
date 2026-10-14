@@ -3,6 +3,7 @@ import { PromotionCarousel, PromotionCarouselItem, Coupon, RedeemCouponResult, V
 import { SecurityContext } from '../services/securityEngine';
 import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
+import { mapN4CarouselItemRow, toN4CarouselItemUpdate } from '../lib/pricing/n4Campaign';
 
 export const promotionRepository = {
   // --------------------------------------------------------------------------
@@ -29,31 +30,16 @@ export const promotionRepository = {
             tenantId: pc.tenant_id,
             name: pc.name,
             description: pc.description,
-            imageUrl: pc.image_url,
             isActive: Boolean(pc.is_active),
             showInStore: Boolean(pc.show_in_store),
             displayOrder: pc.display_order,
             createdAt: pc.created_at,
             updatedAt: pc.updated_at,
+            // Esquema N4 (preço da campanha derivado de discount_type/discount_value; validade start_at/end_at).
+            startDate: pc.start_at || undefined,
+            endDate: pc.end_at || undefined,
             items: (pc.items || []).map((pci: any) => ({
-              id: pci.id,
-              carouselId: pci.carousel_id,
-              productId: pci.product_id,
-              tenantId: pci.tenant_id,
-              discountType: pci.discount_type,
-              discountValue: Number(pci.discount_value),
-              promotionalPrice: Number(pci.promotional_price),
-              calculatedDiscountPercentage: pci.product?.price 
-                ? Math.round(((Number(pci.product.price) - Number(pci.promotional_price)) / Number(pci.product.price)) * 100)
-                : 0,
-              showDiscountBadge: Boolean(pci.show_discount_badge),
-              showPromotionalPrice: Boolean(pci.show_promotional_price),
-              startDate: pci.start_date,
-              endDate: pci.end_date,
-              isActive: Boolean(pci.is_active),
-              displayOrder: pci.display_order,
-              createdAt: pci.created_at,
-              updatedAt: pci.updated_at,
+              ...mapN4CarouselItemRow(pci, pci.product?.price),
               product: pci.product ? {
                 id: pci.product.id,
                 tenantId: pc.tenant_id,
@@ -101,7 +87,6 @@ export const promotionRepository = {
             tenantId: inserted.tenant_id,
             name: inserted.name,
             description: inserted.description,
-            imageUrl: inserted.image_url,
             isActive: inserted.is_active,
             showInStore: inserted.show_in_store,
             displayOrder: inserted.display_order,
@@ -164,19 +149,15 @@ export const promotionRepository = {
         for (const pId of productIds) {
           if (!isValidUuid(pId)) continue;
           // Busca preço do produto para cálculo inicial de 10%
-          const { data: prod } = await supabase.from('products').select('price').eq('id', pId).single();
-          const basePrice = prod ? Number(prod.price) : 10;
-          const promoPrice = Math.max(0.01, Number((basePrice * 0.9).toFixed(2)));
 
           await supabase.from('promotion_carousel_items').upsert({
             carousel_id: carouselId,
             product_id: pId,
             tenant_id: tenantId,
+            // N4: o preço é derivado (10% sobre products.price), sem coluna promotional_price.
             discount_type: 'PERCENTAGE',
             discount_value: 10,
-            promotional_price: promoPrice,
             show_discount_badge: true,
-            show_promotional_price: true,
             is_active: true,
             display_order: 99,
           }, { onConflict: 'carousel_id,product_id' });
@@ -198,14 +179,7 @@ export const promotionRepository = {
     if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(itemId)) {
       try {
         const dbUpdates: any = { updated_at: new Date().toISOString() };
-        if (promotionData.discountType !== undefined) dbUpdates.discount_type = promotionData.discountType;
-        if (promotionData.discountValue !== undefined) dbUpdates.discount_value = promotionData.discountValue;
-        if (promotionData.promotionalPrice !== undefined) dbUpdates.promotional_price = promotionData.promotionalPrice;
-        if (promotionData.showDiscountBadge !== undefined) dbUpdates.show_discount_badge = promotionData.showDiscountBadge;
-        if (promotionData.showPromotionalPrice !== undefined) dbUpdates.show_promotional_price = promotionData.showPromotionalPrice;
-        if (promotionData.startDate !== undefined) dbUpdates.start_date = promotionData.startDate || null;
-        if (promotionData.endDate !== undefined) dbUpdates.end_date = promotionData.endDate || null;
-        if (promotionData.isActive !== undefined) dbUpdates.is_active = promotionData.isActive;
+        Object.assign(dbUpdates, toN4CarouselItemUpdate(promotionData as any));
 
         await supabase
           .from('promotion_carousel_items')
@@ -294,6 +268,7 @@ export const promotionRepository = {
             minOrderValue: c.min_order_value ? Number(c.min_order_value) : 0,
             usageLimit: c.usage_limit ? Number(c.usage_limit) : undefined,
             usageLimitPerCustomer: c.usage_limit_per_customer ? Number(c.usage_limit_per_customer) : 1,
+            stackWithPickupDiscount: Boolean(c.stack_with_pickup_discount),
             timesUsed: Number(c.times_used || 0),
             customerId: c.customer_id || undefined,
             customerName: c.customer?.name || undefined,
@@ -324,6 +299,8 @@ export const promotionRepository = {
             min_order_value: data.minOrderValue || 0,
             usage_limit: data.usageLimit || null,
             usage_limit_per_customer: data.usageLimitPerCustomer || 1,
+            // coluna da proposta 20261013000300 (D1); só enviada quando true para não quebrar bancos sem a coluna
+            ...(data.stackWithPickupDiscount ? { stack_with_pickup_discount: true } : {}),
             customer_id: (data.customerId && isValidUuid(data.customerId)) ? data.customerId : null,
             start_date: data.startDate || null,
             end_date: data.endDate || null,
@@ -344,6 +321,7 @@ export const promotionRepository = {
             minOrderValue: inserted.min_order_value ? Number(inserted.min_order_value) : 0,
             usageLimit: inserted.usage_limit ? Number(inserted.usage_limit) : undefined,
             usageLimitPerCustomer: inserted.usage_limit_per_customer ? Number(inserted.usage_limit_per_customer) : 1,
+            stackWithPickupDiscount: Boolean(inserted.stack_with_pickup_discount),
             timesUsed: Number(inserted.times_used || 0),
             customerId: inserted.customer_id || undefined,
             startDate: inserted.start_date,
@@ -370,6 +348,7 @@ export const promotionRepository = {
         if (updates.minOrderValue !== undefined) dbUpdates.min_order_value = updates.minOrderValue;
         if (updates.usageLimit !== undefined) dbUpdates.usage_limit = updates.usageLimit;
         if (updates.usageLimitPerCustomer !== undefined) dbUpdates.usage_limit_per_customer = updates.usageLimitPerCustomer;
+        if (updates.stackWithPickupDiscount !== undefined) dbUpdates.stack_with_pickup_discount = Boolean(updates.stackWithPickupDiscount);
         if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
         if (updates.startDate !== undefined) dbUpdates.start_date = updates.startDate || null;
         if (updates.endDate !== undefined) dbUpdates.end_date = updates.endDate || null;
@@ -472,6 +451,7 @@ export const promotionRepository = {
               minOrderValue: minVal,
               usageLimit: data.usage_limit,
               usageLimitPerCustomer: data.usage_limit_per_customer,
+              stackWithPickupDiscount: Boolean(data.stack_with_pickup_discount),
               timesUsed: data.times_used,
               customerId: data.customer_id,
               startDate: data.start_date,

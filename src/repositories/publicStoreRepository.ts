@@ -110,7 +110,20 @@ export const publicStoreRepository = {
         if (local) return { status: 'ok', data: local };
         return { status: 'not_found' };
       }
-      return { status: 'ok', data: mapPublicStorePayload(data, Date.now()) };
+      const mapped = mapPublicStorePayload(data, Date.now());
+      // Campanhas N4 com preço AUTORIZADO pelo servidor (proposta 20261013000300: get_public_campaign_carousels).
+      // Só usado quando o get_public_store atual não traz carrosséis; se a RPC não existir, a vitrine segue sem campanhas.
+      if (mapped.promotionCarousels.length === 0) {
+        try {
+          const { data: camp, error: campErr } = await supabase.rpc('get_public_campaign_carousels', { p_slug: slug });
+          if (!campErr && Array.isArray(camp)) {
+            mapped.promotionCarousels = mapPublicStorePayload({ ...(data as any), promotionCarousels: camp }, Date.now()).promotionCarousels;
+          }
+        } catch {
+          // RPC ausente (proposta não aplicada): sem campanhas na vitrine; checkout de campanha recusado no servidor.
+        }
+      }
+      return { status: 'ok', data: mapped };
     } catch (err) {
       const message = err instanceof PublicStorePayloadError || err instanceof Error ? err.message : String(err);
       console.warn('[publicStoreRepository] Falha ao carregar a vitrine remota, verificando fallback local:', message);

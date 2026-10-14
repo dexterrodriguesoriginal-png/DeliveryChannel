@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { initialPromoFulfillmentTypes, promoFulfillmentTypesForSave } from '../../utils/promoCardFulfillment';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, ensureValidSession } from '../../lib/supabase';
 import { offerRepository } from '../../repositories/offerRepository';
@@ -699,7 +700,7 @@ export const MarketingPage: React.FC = () => {
     setPromoMinQuantity(card.promoMinQuantity ? card.promoMinQuantity.toString() : '1');
     setPromoMaxQuantityPerCustomer(card.promoMaxQuantityPerCustomer ? card.promoMaxQuantityPerCustomer.toString() : '10');
     setPromoNotes(card.promoNotes || '');
-    setPromoFulfillmentTypes(card.promoFulfillmentTypes || ['DELIVERY', 'PICKUP']);
+    setPromoFulfillmentTypes(initialPromoFulfillmentTypes(card));
     setPromoPaymentMethods(card.promoPaymentMethods || ['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'CASH']);
     setPromoCouponCode(card.promoCouponCode || '');
     setPromoUsageLimit(card.promoUsageLimit ? card.promoUsageLimit.toString() : '');
@@ -799,14 +800,6 @@ export const MarketingPage: React.FC = () => {
           type: 'error',
           title: 'Título da Promoção Obrigatório',
           message: 'Informe o título que o cliente visualizará no checkout.',
-        });
-        return;
-      }
-      if (promoFulfillmentTypes.length === 0) {
-        showToast({
-          type: 'error',
-          title: 'Entrega Obrigatória',
-          message: 'Selecione pelo menos um tipo de entrega permitido (Entrega ou Retirada).',
         });
         return;
       }
@@ -965,7 +958,8 @@ export const MarketingPage: React.FC = () => {
         promoMinQuantity: destinationType === 'CUSTOM_OFFER' ? (parseInt(promoMinQuantity, 10) || 1) : 1,
         promoMaxQuantityPerCustomer: destinationType === 'CUSTOM_OFFER' ? (parseInt(promoMaxQuantityPerCustomer, 10) || 10) : 10,
         promoNotes: destinationType === 'CUSTOM_OFFER' ? promoNotes.trim() : undefined,
-        promoFulfillmentTypes: destinationType === 'CUSTOM_OFFER' ? promoFulfillmentTypes : ['DELIVERY', 'PICKUP'],
+        // Compat: preserva o valor gravado no card (ou ambos para cards novos); a escolha real ocorre no checkout.
+        promoFulfillmentTypes: promoFulfillmentTypesForSave(destinationType, promoFulfillmentTypes, editingCard),
         promoPaymentMethods: destinationType === 'CUSTOM_OFFER' ? promoPaymentMethods : ['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'CASH'],
         promoCouponCode: destinationType === 'CUSTOM_OFFER' && promoCouponCode ? promoCouponCode.trim().toUpperCase() : undefined,
         promoUsageLimit: destinationType === 'CUSTOM_OFFER' ? parsedUsageLimit : undefined,
@@ -2419,7 +2413,7 @@ export const MarketingPage: React.FC = () => {
                       <Badge variant="warning" size="sm">Oferta Independente</Badge>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-1 gap-2.5">
                       <Input
                         label="Nome da Oferta *"
                         value={promoTitle}
@@ -2545,47 +2539,24 @@ export const MarketingPage: React.FC = () => {
                       />
                     </div>
 
-                    {/* Modalidades de Entrega e Cupom */}
+                    {/* Cupom vinculado. A modalidade (Delivery/Retirada) agora é escolhida pelo cliente no checkout,
+                        conforme as Configurações da Loja. Restrições antigas de modalidade gravadas no card são
+                        preservadas intactas (compatibilidade) e respeitadas no checkout como interseção. */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-amber-200">
-                      <div className="space-y-1">
-                        <span className="text-[11px] font-bold text-gray-700 block">
-                          Modalidades Aceitas:
-                        </span>
-                        <div className="flex items-center gap-3">
-                          <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={promoFulfillmentTypes.includes('DELIVERY')}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setPromoFulfillmentTypes(prev => [...prev, 'DELIVERY']);
-                                } else {
-                                  setPromoFulfillmentTypes(prev => prev.filter(t => t !== 'DELIVERY'));
-                                }
-                              }}
-                              className="rounded text-amber-600 focus:ring-amber-500"
-                            />
-                            <span>Delivery</span>
-                          </label>
-
-                          <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={promoFulfillmentTypes.includes('PICKUP')}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setPromoFulfillmentTypes(prev => [...prev, 'PICKUP']);
-                                } else {
-                                  setPromoFulfillmentTypes(prev => prev.filter(t => t !== 'PICKUP'));
-                                }
-                              }}
-                              className="rounded text-amber-600 focus:ring-amber-500"
-                            />
-                            <span>Retirada</span>
-                          </label>
+                      {promoFulfillmentTypes.length > 0 && promoFulfillmentTypes.length < 2 && (
+                        <div className="sm:col-span-2 p-2 rounded-lg bg-amber-100/70 border border-amber-300 text-[11px] text-amber-900 flex flex-wrap items-center justify-between gap-2" data-testid="legacy-fulfillment-restriction">
+                          <span>
+                            Card antigo restrito a <strong>{promoFulfillmentTypes[0] === 'PICKUP' ? 'Retirada' : 'Delivery'}</strong>. O checkout respeita essa restrição junto com as Configurações da Loja.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setPromoFulfillmentTypes(['DELIVERY', 'PICKUP'])}
+                            className="px-2 py-0.5 rounded-md bg-white border border-amber-400 font-bold hover:bg-amber-50"
+                          >
+                            Usar configuração da loja
+                          </button>
                         </div>
-                      </div>
-
+                      )}
                       <div>
                         <Input
                           label="Cupom Vinculado (Opcional)"
@@ -3003,7 +2974,7 @@ export const MarketingPage: React.FC = () => {
                           </div>
 
                           <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
-                            <span>Entrega: {promoFulfillmentTypes.join(', ')}</span>
+                            <span>Entrega/Retirada: escolha no checkout</span>
                             <span className="font-bold text-amber-400">Checkout Atômico</span>
                           </div>
                         </div>

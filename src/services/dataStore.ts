@@ -1,3 +1,5 @@
+import { computeFulfillmentPricing, COUPON_REJECTED_TEXT, fulfillmentSettingsFromTenant, resolveAvailableModes, PricingLine, FulfillmentMode } from '../lib/pricing/fulfillmentPricing';
+import { CATALOG_ORIGIN, CAMPAIGN_REASON_TEXT, priceLineByOrigin } from '../lib/pricing/purchaseOrigin';
 import { 
   Tenant, 
   Product, 
@@ -64,6 +66,15 @@ const INITIAL_TENANTS: Tenant[] = [
       minOrderValue: 30.00,
       deliveryFee: 7.90,
       freeDeliveryThreshold: 150.00,
+      // Demo D1–D6: delivery + retirada com 15% (proposta 20261013000100)
+      deliveryEnabled: true,
+      pickupEnabled: true,
+      pickupDiscountEnabled: true,
+      pickupDiscountPercent: 15,
+      pickupDiscountExcludePromotional: false,
+      pickupDiscountExcludedProductIds: [],
+      pickupDiscountExcludedOfferIds: [],
+      pickupInstructions: 'Retire no balcão da Alameda Lorena, 1420. Apresente o número do pedido.',
       estimatedDeliveryTime: '25-40 min',
       defaultPrepTimeMinutes: 30,
       address: 'Alameda Lorena, 1420 - Jardins, São Paulo - SP',
@@ -156,6 +167,92 @@ const INITIAL_TENANTS: Tenant[] = [
       city: 'São Paulo',
       phoneWhatsApp: '5511991234567',
       pixKey: 'pagamento@forneriapizza.com.br',
+    }
+  },
+  {
+    id: 'tenant-padaria-04',
+    slug: 'padaria-do-joao',
+    name: 'Padaria do João',
+    legalName: 'Padaria do João Ltda (demo)',
+    document: '29.331.876/0001-40',
+    phone: '(11) 99123-4567',
+    email: 'contato@padariadojoao.demo',
+    category: 'RESTAURANTE',
+    status: 'ACTIVE',
+    planTier: 'PRO',
+    createdAt: '2026-02-10T12:00:00Z',
+    gmvMonthly: 98450.00,
+    activeOrdersToday: 51,
+    totalCustomers: 1640,
+    isDemo: true,
+    theme: {
+      primaryColor: '#b45309',
+      secondaryColor: '#15803d',
+      backgroundColor: '#fffbeb',
+      cardColor: '#ffffff',
+      buttonColor: '#b45309',
+      textColor: '#1e293b',
+      borderRadius: '1.25rem',
+      fontFamily: 'Inter',
+      storeName: 'Padaria do João',
+      tagline: 'Pão quentinho toda hora. (Demo PWA white-label)',
+      logoUrl: '/demo/padaria-do-joao-logo.svg',
+      bannerUrl: 'https://images.unsplash.com/photo-1590947132387-155cc02f3212?w=1200&auto=format&fit=crop&q=80',
+    },
+    settings: {
+      isOpen: true,
+      minOrderValue: 40.00,
+      deliveryFee: 8.00,
+      freeDeliveryThreshold: 160.00,
+      estimatedDeliveryTime: '40-55 min',
+      defaultPrepTimeMinutes: 45,
+      address: 'Rua dos Pinheiros, 450 - Pinheiros, São Paulo - SP',
+      city: 'São Paulo',
+      phoneWhatsApp: '5511991234567',
+      pixKey: 'contato@padariadojoao.demo',
+    }
+  },
+  {
+    id: 'tenant-mercado-05',
+    slug: 'mercadinho-sem-logo',
+    name: 'Mercadinho Bom Preço',
+    legalName: 'Mercadinho Bom Preço Ltda (demo)',
+    document: '29.331.876/0001-40',
+    phone: '(11) 99123-4567',
+    email: 'contato@mercadinho.demo',
+    category: 'MERCADO',
+    status: 'ACTIVE',
+    planTier: 'PRO',
+    createdAt: '2026-02-10T12:00:00Z',
+    gmvMonthly: 98450.00,
+    activeOrdersToday: 51,
+    totalCustomers: 1640,
+    isDemo: true,
+    theme: {
+      primaryColor: '#7c3aed',
+      secondaryColor: '#15803d',
+      backgroundColor: '#faf5ff',
+      cardColor: '#ffffff',
+      buttonColor: '#7c3aed',
+      textColor: '#1e293b',
+      borderRadius: '1.25rem',
+      fontFamily: 'Inter',
+      storeName: 'Mercadinho Bom Preço',
+      tagline: 'Demo de fallback de ícone (logo inválido).',
+      logoUrl: 'https://invalid.invalid/logo-inexistente.png',
+      bannerUrl: 'https://images.unsplash.com/photo-1590947132387-155cc02f3212?w=1200&auto=format&fit=crop&q=80',
+    },
+    settings: {
+      isOpen: true,
+      minOrderValue: 40.00,
+      deliveryFee: 8.00,
+      freeDeliveryThreshold: 160.00,
+      estimatedDeliveryTime: '40-55 min',
+      defaultPrepTimeMinutes: 45,
+      address: 'Rua dos Pinheiros, 450 - Pinheiros, São Paulo - SP',
+      city: 'São Paulo',
+      phoneWhatsApp: '5511991234567',
+      pixKey: 'contato@mercadinho.demo',
     }
   }
 ];
@@ -388,6 +485,15 @@ const INITIAL_OFFERS: Offer[] = [
     promotionalPrice: 69.90,
     productId: 'prod-adega-1',
     internalLink: '/app/adega-premium?product=prod-adega-1',
+    // Demo D3/D4: checkout promocional independente com cupom vinculado (não acumula com retirada); sem restrição => herda a loja (D5)
+    hasPromoCheckout: true,
+    promoTitle: 'Cabernet Seleção — oferta do card',
+    promoPrice: 59.90,
+    promoOriginalPrice: 69.90,
+    promoUnit: 'garrafa',
+    promoMinQuantity: 1,
+    promoPaymentMethods: ['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'CASH'],
+    promoCouponCode: 'VINHO5',
     order: 1,
     startDate: '2026-09-01',
     endDate: '2026-12-31',
@@ -415,6 +521,15 @@ const INITIAL_OFFERS: Offer[] = [
     discountPercentage: 18,
     originalPrice: 24.50,
     promotionalPrice: 19.90,
+    // Demo D5: card antigo restrito a DELIVERY => retirada indisponível neste card (interseção com a loja)
+    hasPromoCheckout: true,
+    promoTitle: 'IPA gelada — oferta do card',
+    promoPrice: 17.90,
+    promoOriginalPrice: 19.90,
+    promoUnit: 'lata',
+    promoMinQuantity: 1,
+    promoFulfillmentTypes: ['DELIVERY'],
+    promoPaymentMethods: ['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'CASH'],
     productId: 'prod-adega-2',
     internalLink: '/app/adega-premium?product=prod-adega-2',
     order: 2,
@@ -663,6 +778,35 @@ const INITIAL_COUPONS: Coupon[] = [
     timesUsed: 16,
     isActive: true,
     createdAt: '2026-03-20T10:00:00Z',
+  },
+  {
+    // Demo D1: cupom que AUTORIZA acumular com o desconto de retirada
+    id: 'coup-5',
+    tenantId: 'tenant-adega-01',
+    code: 'RETIRA10',
+    discountType: 'PERCENTAGE',
+    discountValue: 10,
+    minOrderValue: 0,
+    usageLimit: 100,
+    usageLimitPerCustomer: 1,
+    stackWithPickupDiscount: true,
+    timesUsed: 0,
+    isActive: true,
+    createdAt: '2026-10-13T10:00:00Z',
+  },
+  {
+    // Demo D3: cupom vinculado ao card "Festival de Vinhos" (não acumula com retirada)
+    id: 'coup-6',
+    tenantId: 'tenant-adega-01',
+    code: 'VINHO5',
+    discountType: 'FIXED_AMOUNT',
+    discountValue: 5,
+    minOrderValue: 0,
+    usageLimit: 100,
+    usageLimitPerCustomer: 1,
+    timesUsed: 0,
+    isActive: true,
+    createdAt: '2026-10-13T10:00:00Z',
   },
   {
     id: 'coup-3',
@@ -1129,7 +1273,13 @@ export class DataStore {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.tenants) this.tenants = parsed.tenants;
+        if (parsed.tenants) {
+          this.tenants = parsed.tenants;
+          // Demo: acrescenta lojas demonstrativas novas (ex.: PWA white-label) sem sobrescrever as salvas
+          for (const t of INITIAL_TENANTS) {
+            if (!this.tenants.some(x => x.id === t.id)) this.tenants.push(t);
+          }
+        }
         if (parsed.categories) this.categories = parsed.categories;
         if (parsed.products) this.products = parsed.products;
         if (parsed.offers) this.offers = parsed.offers;
@@ -2166,6 +2316,7 @@ export class DataStore {
       minOrderValue: data.minOrderValue ? Number(data.minOrderValue) : 0,
       usageLimit: data.usageLimit ? Number(data.usageLimit) : undefined,
       usageLimitPerCustomer: data.usageLimitPerCustomer ? Number(data.usageLimitPerCustomer) : 1,
+      stackWithPickupDiscount: Boolean(data.stackWithPickupDiscount),
       timesUsed: 0,
       customerId: data.customerId || undefined,
       startDate: data.startDate,
@@ -2193,6 +2344,7 @@ export class DataStore {
     if (updates.minOrderValue !== undefined) coupon.minOrderValue = Number(updates.minOrderValue);
     if (updates.usageLimit !== undefined) coupon.usageLimit = updates.usageLimit ? Number(updates.usageLimit) : undefined;
     if (updates.usageLimitPerCustomer !== undefined) coupon.usageLimitPerCustomer = Number(updates.usageLimitPerCustomer);
+    if (updates.stackWithPickupDiscount !== undefined) coupon.stackWithPickupDiscount = Boolean(updates.stackWithPickupDiscount);
     if (updates.customerId !== undefined) coupon.customerId = updates.customerId || undefined;
     if (updates.startDate !== undefined) coupon.startDate = updates.startDate;
     if (updates.endDate !== undefined) coupon.endDate = updates.endDate;
@@ -2621,24 +2773,43 @@ export class DataStore {
     customerEmail?: string;
     deliveryAddress?: string;
     addressDetails?: Order['addressDetails'];
-    items: Array<{ productId: string; quantity: number; notes?: string }>;
+    items: Array<{ productId: string; quantity: number; notes?: string; source?: 'catalog' | 'campaign'; campaignItemId?: string }>;
     paymentMethod: Order['paymentMethod'];
     fulfillmentType?: Order['fulfillmentType'];
     notes?: string;
     origin: Order['origin'];
+    /** Chave de idempotência da tentativa (demo: respeitada; real: depende da RPC v2/proposta). */
+    idempotencyKey?: string;
+    /** Código do cupom (demo: recalculado no dataStore; real: v1 não aceita cupom). */
+    couponCode?: string;
   }): Order {
     const tenant = this.getTenantBySlug(slugOrTenantId);
     if (!tenant) {
       throw new Error(`Estabelecimento não encontrado.`);
     }
 
+    // Idempotência (espelho do _checkout_core N2): mesma chave + mesmo tenant => devolve o pedido já criado.
+    if (orderData.idempotencyKey) {
+      const existing = this.orders.find(o => o.tenantId === tenant.id && (o as any).idempotencyKey === orderData.idempotencyKey);
+      if (existing) return existing;
+    }
+
     if (!orderData.items || orderData.items.length === 0) {
       throw new Error('O carrinho está vazio.');
+    }
+
+    // Modalidade: validada contra a configuração DESTE estabelecimento (nunca do navegador).
+    const fulfillmentSettingsDemo = fulfillmentSettingsFromTenant(tenant.settings);
+    const requestedMode = orderData.fulfillmentType || 'DELIVERY';
+    const modesDemo = resolveAvailableModes(fulfillmentSettingsDemo);
+    if (!modesDemo.modes.includes(requestedMode)) {
+      throw new Error(modesDemo.blockedReason || `A modalidade ${requestedMode === 'PICKUP' ? 'Retirada' : 'Delivery'} não está disponível neste estabelecimento.`);
     }
 
     // 1. RECALCULAÇÃO SEGURA NO SERVIDOR & VALIDAÇÃO DE ESTOQUE ATÔMICA (REQUISITO 17 & 19)
     // Nunca confiar em preços enviados pelo frontend
     const validatedItems: Order['items'] = [];
+    const pricingLinesDemo: PricingLine[] = [];
     
     for (const itemReq of orderData.items) {
       if (itemReq.quantity <= 0) {
@@ -2655,30 +2826,29 @@ export class DataStore {
       }
 
       // Validação de estoque anti-overselling
-      if (product.stockQuantity < itemReq.quantity) {
+      // Mesmo produto pode vir em 2 linhas (catálogo + campanha): estoque validado pelo total do produto.
+      const totalQtyForProduct = orderData.items.filter(i => i.productId === product.id).reduce((a, i) => a + i.quantity, 0);
+      if (product.stockQuantity < totalQtyForProduct) {
         throw new Error(
-          `Estoque insuficiente para o produto "${product.name}". Saldo disponível: ${product.stockQuantity}, solicitado: ${itemReq.quantity}.`
+          `Estoque insuficiente para o produto "${product.name}". Saldo disponível: ${product.stockQuantity}, solicitado: ${totalQtyForProduct}.`
         );
       }
 
-      // Verifica se o produto possui desconto ativo em algum carrossel promocional da loja
-      let promoPrice: number | null = null;
-      const activeCarousels = this.getPublicPromotionCarousels(tenant.id);
-      for (const carousel of activeCarousels) {
-        const itemPromo = carousel.items.find(ci => ci.productId === product.id);
-        if (itemPromo && itemPromo.promotionalPrice > 0 && itemPromo.promotionalPrice < product.price) {
-          if (promoPrice === null || itemPromo.promotionalPrice < promoPrice) {
-            promoPrice = itemPromo.promotionalPrice;
-          }
-        }
+      // Preço por ORIGEM DA COMPRA (nunca o menor entre fontes): catálogo => preço do produto;
+      // campanha => preço do item de campanha referenciado, validado (tenant, ativo, validade, produto, preço).
+      // Campanha inválida => pedido RECUSADO com erro claro (o front revalida e converte antes de enviar).
+      const priced = priceLineByOrigin({
+        product,
+        quantity: itemReq.quantity,
+        origin: itemReq.source === 'campaign' ? { source: 'campaign', campaignItemId: itemReq.campaignItemId || '__missing__' } : CATALOG_ORIGIN,
+        campaigns: this.promotionCarousels,
+        tenantId: tenant.id,
+      });
+      if (!priced.ok) {
+        throw new Error(`CAMPAIGN_ITEM_INVALID: ${CAMPAIGN_REASON_TEXT[priced.reason]} ("${product.name}"). Atualize a sacola e tente novamente.`);
       }
-
-      const unitPrice = (promoPrice !== null)
-        ? promoPrice
-        : (product.promotionalPrice && product.promotionalPrice > 0 && product.promotionalPrice < product.price 
-            ? product.promotionalPrice 
-            : product.price);
-
+      const unitPrice = priced.line.unitPrice;
+      pricingLinesDemo.push(priced.line);
       validatedItems.push({
         productId: product.id,
         productName: product.name,
@@ -2690,19 +2860,24 @@ export class DataStore {
       });
     }
 
-    const subtotal = Number(validatedItems.reduce((acc, item) => acc + item.totalPrice, 0).toFixed(2));
-    
-    // Taxa de entrega calculada pelo servidor
-    const fulfillmentType = orderData.fulfillmentType || 'DELIVERY';
-    let deliveryFee = 0;
-    
-    if (fulfillmentType === 'DELIVERY') {
-      const isFreeDelivery = tenant.settings.freeDeliveryThreshold && subtotal >= tenant.settings.freeDeliveryThreshold;
-      deliveryFee = isFreeDelivery ? 0 : Number((tenant.settings.deliveryFee || 0).toFixed(2));
+    // Valores recalculados aqui com o MESMO módulo de regras do front (demo != validação real no banco).
+    const fulfillmentType = requestedMode;
+    const demoCoupon = orderData.couponCode
+      ? this.coupons.find(c => c.tenantId === tenant.id && c.code === orderData.couponCode!.trim().toUpperCase() && c.isActive)
+      : undefined;
+    const pricingDemo = computeFulfillmentPricing({
+      mode: fulfillmentType,
+      lines: pricingLinesDemo,
+      settings: fulfillmentSettingsDemo,
+      coupon: demoCoupon ? { code: demoCoupon.code, discountType: demoCoupon.discountType, discountValue: demoCoupon.discountValue, minOrderValue: demoCoupon.minOrderValue, stackWithPickupDiscount: demoCoupon.stackWithPickupDiscount } : null,
+    });
+    if (demoCoupon && pricingDemo.couponRejectedReason === 'COUPON_NOT_STACKABLE_WITH_PICKUP') {
+      throw new Error(`COUPON_NOT_STACKABLE_WITH_PICKUP: ${COUPON_REJECTED_TEXT.COUPON_NOT_STACKABLE_WITH_PICKUP}`);
     }
-
-    const discount = 0;
-    const totalAmount = Number((subtotal + deliveryFee - discount).toFixed(2));
+    const subtotal = pricingDemo.subtotal;
+    const deliveryFee = pricingDemo.deliveryFee;
+    const discount = pricingDemo.totalDiscount;
+    const totalAmount = pricingDemo.total;
 
     // 2. BAIXA DE ESTOQUE REAL & REGISTRO DE MOVIMENTAÇÃO (REQUISITO 17)
     for (const item of validatedItems) {
@@ -2801,7 +2976,10 @@ export class DataStore {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       origin: orderData.origin,
-    };
+      pickupDiscount: pricingDemo.pickupDiscount,
+      couponDiscount: pricingDemo.couponDiscount,
+      ...(orderData.idempotencyKey ? { idempotencyKey: orderData.idempotencyKey } : {}),
+    } as Order;
 
     this.orders.unshift(newOrder);
 
@@ -2895,6 +3073,13 @@ export class DataStore {
 
     const subtotal = Number((unitPrice * orderData.quantity).toFixed(2));
 
+    const fulfillmentType = (orderData.fulfillmentType || 'DELIVERY') as FulfillmentMode;
+    const promoSettingsDemo = fulfillmentSettingsFromTenant(tenant.settings);
+    const promoModesDemo = resolveAvailableModes(promoSettingsDemo, offer.promoFulfillmentTypes);
+    if (!promoModesDemo.modes.includes(fulfillmentType)) {
+      throw new Error(promoModesDemo.blockedReason || 'Modalidade indisponível para esta oferta.');
+    }
+
     // Abate de estoque se houver produto de catálogo vinculado
     if (offer.productId) {
       const prod = this.products.find(p => p.id === offer.productId && p.tenantId === tenant.id);
@@ -2907,16 +3092,24 @@ export class DataStore {
       }
     }
 
-    // Entrega e taxa
-    const fulfillmentType = orderData.fulfillmentType || 'DELIVERY';
-    let deliveryFee = 0;
-    if (fulfillmentType === 'DELIVERY') {
-      const isFreeDelivery = tenant.settings.freeDeliveryThreshold && subtotal >= tenant.settings.freeDeliveryThreshold;
-      deliveryFee = isFreeDelivery ? 0 : Number((tenant.settings.deliveryFee || 0).toFixed(2));
+    // Modalidade (config da loja ∩ restrição antiga do card), retirada e taxa: mesmo módulo do front.
+    const promoCouponDemo = orderData.couponCode
+      ? this.coupons.find(c => c.tenantId === tenant.id && c.code === orderData.couponCode!.trim().toUpperCase() && c.isActive)
+      : undefined;
+    const promoPricingDemo = computeFulfillmentPricing({
+      mode: fulfillmentType,
+      lines: [{ offerId: offer.id, productId: offer.productId || null, quantity: orderData.quantity, unitPrice, isPromotional: true }],
+      settings: promoSettingsDemo,
+      coupon: promoCouponDemo ? { code: promoCouponDemo.code, discountType: promoCouponDemo.discountType, discountValue: promoCouponDemo.discountValue, minOrderValue: promoCouponDemo.minOrderValue, stackWithPickupDiscount: promoCouponDemo.stackWithPickupDiscount } : null,
+      couponBase: 'LINKED_OFFER',
+      linkedCouponCode: offer.promoCouponCode || null,
+    });
+    if (promoCouponDemo && (promoPricingDemo.couponRejectedReason === 'COUPON_NOT_LINKED_TO_OFFER' || promoPricingDemo.couponRejectedReason === 'COUPON_NOT_STACKABLE_WITH_PICKUP')) {
+      throw new Error(`${promoPricingDemo.couponRejectedReason}: ${COUPON_REJECTED_TEXT[promoPricingDemo.couponRejectedReason]}`);
     }
-
-    const discount = 0;
-    const totalAmount = Number((subtotal + deliveryFee - discount).toFixed(2));
+    const deliveryFee = promoPricingDemo.deliveryFee;
+    const discount = promoPricingDemo.totalDiscount;
+    const totalAmount = promoPricingDemo.total;
 
     // Atualiza contador de usos da promoção
     const newTimesUsed = currentTimesUsed + 1;
@@ -3004,6 +3197,8 @@ export class DataStore {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       origin: 'promotional_checkout',
+      pickupDiscount: promoPricingDemo.pickupDiscount,
+      couponDiscount: promoPricingDemo.couponDiscount,
     };
 
     this.orders.unshift(newOrder);
