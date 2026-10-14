@@ -3,6 +3,8 @@ import { InventoryMovement, InventoryMovementType } from '../types';
 import { dataStore } from '../services/dataStore';
 import { SecurityContext } from '../services/securityEngine';
 import { isValidUuid } from '../lib/uuid';
+import { localOnly } from '../lib/backend';
+import { requireBackendOrLocalDemo, toBackendError, isLocalDemoAllowed } from '../lib/backend';
 
 function mapRowToMovement(row: any): InventoryMovement {
   return {
@@ -33,16 +35,16 @@ export const inventoryRepository = {
 
         if (error) {
           console.warn('[inventoryRepository] Erro ao carregar movimentações do Supabase:', error.message);
-          return dataStore.getInventoryMovements(context, tenantId);
+          return localOnly('estoque', () => dataStore.getInventoryMovements(context, tenantId));
         }
 
         return (data || []).map(mapRowToMovement);
       } catch (err) {
         console.warn('[inventoryRepository] Falha ao consultar movimentações no Supabase:', err);
-        return dataStore.getInventoryMovements(context, tenantId);
+        return localOnly('estoque', () => dataStore.getInventoryMovements(context, tenantId));
       }
     }
-    return dataStore.getInventoryMovements(context, tenantId);
+    return localOnly('estoque', () => dataStore.getInventoryMovements(context, tenantId));
   },
 
   async adjustStock(
@@ -64,14 +66,7 @@ export const inventoryRepository = {
           p_reference_id: referenceId || null,
         });
 
-        if (rpcError) {
-          console.warn('[inventoryRepository] RPC adjust_inventory retornou erro, usando dataStore:', rpcError.message);
-          const prod = dataStore.adjustProductStock(context, tenantId, productId, quantityDiff, reason);
-          return {
-            previousStock: prod.stockQuantity - quantityDiff,
-            newStock: prod.stockQuantity
-          };
-        }
+        if (rpcError) throw toBackendError(rpcError, 'Falha ao ajustar o estoque.');
 
         if (rpcResult) {
           return {
@@ -81,9 +76,12 @@ export const inventoryRepository = {
         }
       } catch (err) {
         console.warn('[inventoryRepository] Falha ao chamar adjust_inventory no Supabase:', err);
+        throw err;
       }
+      throw new Error('O servidor não confirmou o ajuste de estoque.');
     }
 
+    requireBackendOrLocalDemo('estoque');
     const prod = dataStore.adjustProductStock(context, tenantId, productId, quantityDiff, reason);
     return {
       previousStock: prod.stockQuantity - quantityDiff,

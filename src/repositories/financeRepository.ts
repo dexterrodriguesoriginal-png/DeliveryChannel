@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { SecurityContext } from '../services/securityEngine';
 import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
+import { requireBackendOrLocalDemo, toBackendError, isLocalDemoAllowed } from '../lib/backend';
 
 export interface PaymentMethodSummary {
   paymentMethod: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'CASH';
@@ -133,6 +134,7 @@ export const financeRepository = {
     }
 
     // Fallback gracioso para dataStore local
+    requireBackendOrLocalDemo('financeiro');
     const orders = dataStore.getOrders(context, tenantId);
     const validOrders = orders.filter(o => o.status !== 'CANCELLED');
     const cancelledOrders = orders.filter(o => o.status === 'CANCELLED');

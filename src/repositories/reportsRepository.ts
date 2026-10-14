@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { SecurityContext } from '../services/securityEngine';
 import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
+import { requireBackendOrLocalDemo, toBackendError, isLocalDemoAllowed } from '../lib/backend';
 
 export interface TopProductSummary {
   productId: string;
@@ -175,6 +176,7 @@ export const reportsRepository = {
     }
 
     // Fallback gracioso para dataStore
+    requireBackendOrLocalDemo('relatórios');
     const orders = dataStore.getOrders(context, tenantId);
     const validOrders = orders.filter(o => o.status !== 'CANCELLED');
     const totalOrders = validOrders.length;
@@ -258,6 +260,7 @@ export const reportsRepository = {
       }
     }
 
+    requireBackendOrLocalDemo('relatórios');
     const orders = dataStore.getOrders(context, tenantId);
     return orders
       .filter(o => o.status !== 'CANCELLED')

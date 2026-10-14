@@ -3,6 +3,8 @@ import { AuditLog } from '../types';
 import { dataStore } from '../services/dataStore';
 import { SecurityContext } from '../services/securityEngine';
 import { isValidUuid } from '../lib/uuid';
+import { localOnly } from '../lib/backend';
+import { requireBackendOrLocalDemo, toBackendError, isLocalDemoAllowed } from '../lib/backend';
 
 function mapRowToAuditLog(row: any): AuditLog {
   return {
@@ -27,7 +29,7 @@ function mapRowToAuditLog(row: any): AuditLog {
 export const auditLogRepository = {
   async getAuditLogs(context: SecurityContext, tenantId?: string): Promise<AuditLog[]> {
     if (tenantId && !isValidUuid(tenantId)) {
-      return dataStore.getAuditLogs(context, tenantId);
+      return localOnly('auditoria', () => dataStore.getAuditLogs(context, tenantId));
     }
 
     if (isSupabaseConfigured) {
@@ -49,7 +51,7 @@ export const auditLogRepository = {
         console.warn('[auditLogRepository] Fallback para dataStore:', err);
       }
     }
-    return dataStore.getAuditLogs(context, tenantId);
+    return localOnly('auditoria', () => dataStore.getAuditLogs(context, tenantId));
   },
 
   async log(entry: Omit<AuditLog, 'id' | 'timestamp'>): Promise<void> {
@@ -81,6 +83,6 @@ export const auditLogRepository = {
         // Falhas em auditoria no cliente são silenciosas para não interromper a UX
       }
     }
-    dataStore.addAuditLog(entry);
+    if (isLocalDemoAllowed) dataStore.addAuditLog(entry);
   }
 };

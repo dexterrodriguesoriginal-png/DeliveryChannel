@@ -29,12 +29,27 @@ export class BackendError extends Error {
 
 /** Garante que existe backend real ou que o modo demo local é permitido. */
 export function requireBackendOrLocalDemo(feature: string): void {
-  if (!isSupabaseConfigured && !isLocalDemoAllowed) {
+  if (isLocalDemoAllowed) return;
+  if (isSupabaseConfigured) {
+    // Com Supabase configurado nunca há cópia local (nem para tenant/id não-UUID).
     throw new BackendError(
-      'BACKEND_NOT_CONFIGURED',
-      `Servidor não configurado: "${feature}" exige o Supabase (sem fallback local em produção).`
+      'LOCAL_FALLBACK_BLOCKED',
+      `"${feature}": não foi possível usar o servidor para esta operação (sem fallback local).`
     );
   }
+  throw new BackendError(
+    'BACKEND_NOT_CONFIGURED',
+    `Servidor não configurado: "${feature}" exige o Supabase (sem fallback local em produção).`
+  );
+}
+
+/**
+ * Executa o caminho do dataStore SOMENTE no modo demonstração local (DEV sem Supabase).
+ * Com Supabase configurado lança erro: falha de servidor nunca vira dado fictício no navegador.
+ */
+export function localOnly<T>(feature: string, fn: () => T): T {
+  requireBackendOrLocalDemo(feature);
+  return fn();
 }
 
 /** Garante backend real (fluxos que nunca têm modo demo: PIX, cupons, PDV, mídia, analytics). */

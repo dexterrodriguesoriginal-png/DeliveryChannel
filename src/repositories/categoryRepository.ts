@@ -4,6 +4,8 @@ import { dataStore } from '../services/dataStore';
 import { SecurityContext } from '../services/securityEngine';
 import { publicStoreRepository } from './publicStoreRepository';
 import { isValidUuid } from '../lib/uuid';
+import { localOnly } from '../lib/backend';
+import { requireBackendOrLocalDemo, toBackendError, isLocalDemoAllowed } from '../lib/backend';
 
 function mapRowToCategory(row: any): Category {
   return {
@@ -34,16 +36,16 @@ export const categoryRepository = {
 
         if (error) {
           console.warn('[categoryRepository] Erro ao carregar categorias do Supabase:', error.message);
-          return dataStore.getCategories(context, tenantId);
+          return localOnly('categorias', () => dataStore.getCategories(context, tenantId));
         }
 
         return (data || []).map(mapRowToCategory);
       } catch (err) {
         console.warn('[categoryRepository] Falha ao consultar categorias no Supabase:', err);
-        return dataStore.getCategories(context, tenantId);
+        return localOnly('categorias', () => dataStore.getCategories(context, tenantId));
       }
     }
-    return dataStore.getCategories(context, tenantId);
+    return localOnly('categorias', () => dataStore.getCategories(context, tenantId));
   },
 
   /**
@@ -57,7 +59,7 @@ export const categoryRepository = {
       }
       return [];
     }
-    return dataStore.getPublicCategories(slug);
+    return localOnly('categorias', () => dataStore.getPublicCategories(slug));
   },
 
   /**
@@ -86,16 +88,16 @@ export const categoryRepository = {
 
         if (error) {
           console.warn('[categoryRepository] Erro ao criar categoria no Supabase:', error.message);
-          return dataStore.createCategory(context, tenantId, data);
+          return localOnly('categorias', () => dataStore.createCategory(context, tenantId, data));
         }
 
         return mapRowToCategory(inserted);
       } catch (err) {
         console.warn('[categoryRepository] Falha ao criar categoria no Supabase:', err);
-        return dataStore.createCategory(context, tenantId, data);
+        return localOnly('categorias', () => dataStore.createCategory(context, tenantId, data));
       }
     }
-    return dataStore.createCategory(context, tenantId, data);
+    return localOnly('categorias', () => dataStore.createCategory(context, tenantId, data));
   },
 
   /**
@@ -126,16 +128,16 @@ export const categoryRepository = {
 
         if (error) {
           console.warn('[categoryRepository] Erro ao atualizar categoria no Supabase:', error.message);
-          return dataStore.updateCategory(context, tenantId, categoryId, updates);
+          return localOnly('categorias', () => dataStore.updateCategory(context, tenantId, categoryId, updates));
         }
 
         return mapRowToCategory(updated);
       } catch (err) {
         console.warn('[categoryRepository] Falha ao atualizar categoria no Supabase:', err);
-        return dataStore.updateCategory(context, tenantId, categoryId, updates);
+        return localOnly('categorias', () => dataStore.updateCategory(context, tenantId, categoryId, updates));
       }
     }
-    return dataStore.updateCategory(context, tenantId, categoryId, updates);
+    return localOnly('categorias', () => dataStore.updateCategory(context, tenantId, categoryId, updates));
   },
 
   /**
@@ -150,13 +152,14 @@ export const categoryRepository = {
           .eq('tenant_id', tenantId)
           .eq('id', categoryId);
 
-        if (error) {
-          console.warn('[categoryRepository] Erro ao deletar categoria no Supabase:', error.message);
-        }
+        if (error) throw toBackendError(error, 'Falha ao excluir a categoria.');
       } catch (err) {
         console.warn('[categoryRepository] Falha ao excluir categoria no Supabase:', err);
+        throw err;
       }
+      return;
     }
+    requireBackendOrLocalDemo('categorias');
     dataStore.deleteCategory(context, tenantId, categoryId);
   },
 
@@ -187,14 +190,14 @@ export const categoryRepository = {
         );
         const results = await Promise.all(promises);
         const err = results.find(r => r.error);
-        if (err?.error) {
-          console.warn('[categoryRepository] Erro ao reordenar categorias no Supabase:', err.error.message);
-        }
+        if (err?.error) throw toBackendError(err.error, 'Falha ao reordenar categorias.');
       } catch (err) {
         console.warn('[categoryRepository] Falha ao reordenar categorias:', err);
+        throw err;
       }
       return;
     }
+    requireBackendOrLocalDemo('categorias');
     dataStore.reorderCategories(context, tenantId, orderedIds);
   }
 };

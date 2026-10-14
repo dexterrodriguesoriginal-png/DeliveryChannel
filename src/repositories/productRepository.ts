@@ -4,6 +4,8 @@ import { dataStore } from '../services/dataStore';
 import { SecurityContext } from '../services/securityEngine';
 import { publicStoreRepository } from './publicStoreRepository';
 import { isValidUuid } from '../lib/uuid';
+import { localOnly } from '../lib/backend';
+import { requireBackendOrLocalDemo, toBackendError, isLocalDemoAllowed } from '../lib/backend';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -48,16 +50,16 @@ export const productRepository = {
 
         if (error) {
           console.warn('[productRepository] Erro ao buscar produtos do Supabase:', error.message);
-          return dataStore.getProducts(context, tenantId);
+          return localOnly('produtos', () => dataStore.getProducts(context, tenantId));
         }
 
         return (data || []).map(mapRowToProduct);
       } catch (err) {
         console.warn('[productRepository] Falha ao consultar produtos no Supabase:', err);
-        return dataStore.getProducts(context, tenantId);
+        return localOnly('produtos', () => dataStore.getProducts(context, tenantId));
       }
     }
-    return dataStore.getProducts(context, tenantId);
+    return localOnly('produtos', () => dataStore.getProducts(context, tenantId));
   },
 
   /**
@@ -71,7 +73,7 @@ export const productRepository = {
       }
       return [];
     }
-    return dataStore.getPublicProducts(slug);
+    return localOnly('produtos', () => dataStore.getPublicProducts(slug));
   },
 
   /**
@@ -149,16 +151,16 @@ export const productRepository = {
 
         if (error) {
           console.warn('[productRepository] Erro ao cadastrar produto no Supabase, usando dataStore:', error.message);
-          return dataStore.createProduct(context, tenantId, data);
+          return localOnly('produtos', () => dataStore.createProduct(context, tenantId, data));
         }
 
         return mapRowToProduct(inserted);
       } catch (err) {
         console.warn('[productRepository] Falha ao cadastrar produto no Supabase:', err);
-        return dataStore.createProduct(context, tenantId, data);
+        return localOnly('produtos', () => dataStore.createProduct(context, tenantId, data));
       }
     }
-    return dataStore.createProduct(context, tenantId, data);
+    return localOnly('produtos', () => dataStore.createProduct(context, tenantId, data));
   },
 
   /**
@@ -205,16 +207,16 @@ export const productRepository = {
 
         if (error) {
           console.warn('[productRepository] Erro ao atualizar produto no Supabase, usando dataStore:', error.message);
-          return dataStore.updateProduct(context, tenantId, productId, updates);
+          return localOnly('produtos', () => dataStore.updateProduct(context, tenantId, productId, updates));
         }
 
         return mapRowToProduct(updated);
       } catch (err) {
         console.warn('[productRepository] Falha ao atualizar produto no Supabase:', err);
-        return dataStore.updateProduct(context, tenantId, productId, updates);
+        return localOnly('produtos', () => dataStore.updateProduct(context, tenantId, productId, updates));
       }
     }
-    return dataStore.updateProduct(context, tenantId, productId, updates);
+    return localOnly('produtos', () => dataStore.updateProduct(context, tenantId, productId, updates));
   },
 
   /**
@@ -229,13 +231,14 @@ export const productRepository = {
           .eq('tenant_id', tenantId)
           .eq('id', productId);
 
-        if (error) {
-          console.warn('[productRepository] Erro ao excluir produto no Supabase:', error.message);
-        }
+        if (error) throw toBackendError(error, 'Falha ao excluir o produto.');
       } catch (err) {
         console.warn('[productRepository] Falha ao excluir produto no Supabase:', err);
+        throw err;
       }
+      return;
     }
+    requireBackendOrLocalDemo('produtos');
     dataStore.deleteProduct(context, tenantId, productId);
   },
 

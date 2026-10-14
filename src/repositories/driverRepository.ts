@@ -4,6 +4,7 @@ import { SecurityContext } from '../services/securityEngine';
 import { teamRepository } from './teamRepository';
 import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
+import { localOnly } from '../lib/backend';
 
 function mapRowToDriver(row: any, completedToday = 0): Driver {
   const isOnline = row.status === 'AVAILABLE' || row.status === 'ON_DELIVERY';
@@ -41,7 +42,7 @@ export const driverRepository = {
 
         if (error) {
           console.warn('[driverRepository] Erro ao listar motoristas do Supabase:', error);
-          return dataStore.getDrivers(context, tenantId);
+          return localOnly('entregadores', () => dataStore.getDrivers(context, tenantId));
         }
 
         if (data) {
@@ -67,10 +68,10 @@ export const driverRepository = {
         }
       } catch (err) {
         console.warn('[driverRepository] Falha ao consultar motoristas no Supabase:', err);
-        return dataStore.getDrivers(context, tenantId);
+        return localOnly('entregadores', () => dataStore.getDrivers(context, tenantId));
       }
     }
-    return dataStore.getDrivers(context, tenantId);
+    return localOnly('entregadores', () => dataStore.getDrivers(context, tenantId));
   },
 
   /**

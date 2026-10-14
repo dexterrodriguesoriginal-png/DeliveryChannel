@@ -3,6 +3,8 @@ import { Customer, CustomerOrigin } from '../types';
 import { SecurityContext } from '../services/securityEngine';
 import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
+import { localOnly } from '../lib/backend';
+import { requireBackendOrLocalDemo, toBackendError, isLocalDemoAllowed } from '../lib/backend';
 
 export type CustomerLifecycleStatus = 'NOVO' | 'RECORRENTE' | 'INATIVO';
 
@@ -107,16 +109,16 @@ export const customerRepository = {
 
         if (error) {
           console.warn('[customerRepository] Erro ao listar clientes do Supabase:', error.message);
-          return dataStore.getCustomers(context, tenantId);
+          return localOnly('clientes', () => dataStore.getCustomers(context, tenantId));
         }
 
         return (data || []).map(mapRowToCustomer);
       } catch (err) {
         console.warn('[customerRepository] Falha ao consultar clientes no Supabase:', err);
-        return dataStore.getCustomers(context, tenantId);
+        return localOnly('clientes', () => dataStore.getCustomers(context, tenantId));
       }
     }
-    return dataStore.getCustomers(context, tenantId);
+    return localOnly('clientes', () => dataStore.getCustomers(context, tenantId));
   },
 
   /**
@@ -175,6 +177,7 @@ export const customerRepository = {
     }
 
     // Fallback gracioso para dataStore quando não for UUID ou quando Supabase falhar
+    requireBackendOrLocalDemo('clientes');
     const rawCustomers = dataStore.getCustomers(context, tenantId);
     let filtered = rawCustomers;
     if (searchTerm && searchTerm.trim()) {
@@ -271,6 +274,7 @@ export const customerRepository = {
       }
     }
 
+    requireBackendOrLocalDemo('histórico do cliente');
     const localOrders = dataStore.getOrders(context, tenantId).filter(o => o.customerId === customerId);
     return localOrders.map(o => ({
       id: o.id,
@@ -320,7 +324,7 @@ export const customerRepository = {
    */
   subscribeToCustomers(tenantId: string, callback: () => void): () => void {
     if (!isSupabaseConfigured || !isValidUuid(tenantId)) {
-      return dataStore.subscribe(callback);
+      return localOnly('clientes', () => dataStore.subscribe(callback));
     }
 
     const channelName = `crm_customers_realtime_${tenantId}_${Date.now()}`;
