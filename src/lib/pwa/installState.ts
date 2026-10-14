@@ -47,8 +47,21 @@ export function getDeferredPrompt() { return deferred; }
 export function wasAppInstalledEvent() { return installedFlag; }
 export function clearDeferredPrompt() { deferred = null; listeners.forEach(l => l()); }
 export function subscribeInstall(l: () => void) { listeners.add(l); return () => { listeners.delete(l); }; }
+/**
+ * 1ª ocorrência por sessão/página da loja: NÃO chama preventDefault, para que o Chrome possa mostrar o
+ * card nativo (mini-infobar). Ocorrências seguintes na mesma sessão: preventDefault (evita repetir o card nativo).
+ * Em ambos os casos o evento é guardado e prompt() funciona após clique real (web.dev/articles/customize-install).
+ */
+export const nativeOfferedKey = (path: string) => `deliverychannel_pwa_native_offered_${path.replace(/\/+$/, '') || '/'}`;
+export function shouldSuppressNativeInfobar(alreadyOfferedThisSession: boolean) { return alreadyOfferedThisSession; }
 export function captureInstallEvents(w: Window) {
-  w.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferred = e as BeforeInstallPromptEvent; listeners.forEach(l => l()); });
+  w.addEventListener('beforeinstallprompt', (e) => {
+    const key = nativeOfferedKey(safe(() => w.location.pathname, '/'));
+    const offered = safe(() => w.sessionStorage.getItem(key) === '1', false);
+    if (shouldSuppressNativeInfobar(offered)) e.preventDefault();
+    else safe(() => w.sessionStorage.setItem(key, '1'), undefined);
+    deferred = e as BeforeInstallPromptEvent; listeners.forEach(l => l());
+  });
   w.addEventListener('appinstalled', () => { installedFlag = true; deferred = null; listeners.forEach(l => l()); });
 }
 
@@ -114,3 +127,16 @@ export function onInviteTrigger(l: (t: InviteTrigger) => void) { triggerListener
 
 /** Tempo ativo acumulado na sessão (aba visível + interação recente), por loja. */
 export const activeKey = (tenantId: string) => `deliverychannel_pwa_active_ms_${tenantId}`;
+
+/**
+ * Superfície do convite. Com evento nativo disponível: nada fixo (o Chrome controla seu card nativo);
+ * nos momentos-chave, só um card escuro compacto cujo botão chama prompt(). Sem evento: card escuro
+ * próprio (convite) ou barra escura compacta persistente (dispensável na sessão).
+ */
+export type InviteSurface = 'none' | 'native-card' | 'fallback-card' | 'fallback-bar';
+export function inviteSurface(o: { installed: boolean; standalone: boolean; hidden: boolean; inviteOpen: boolean; nativeAvailable: boolean; barDismissed: boolean }): InviteSurface {
+  if (o.installed || o.standalone || o.hidden) return 'none';
+  if (o.inviteOpen) return o.nativeAvailable ? 'native-card' : 'fallback-card';
+  if (o.nativeAvailable || o.barDismissed) return 'none';
+  return 'fallback-bar';
+}
