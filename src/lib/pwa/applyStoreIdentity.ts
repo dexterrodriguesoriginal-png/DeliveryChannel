@@ -1,10 +1,11 @@
 /**
  * Aplica, no <head>, a identidade instalável da loja ativa:
- * <link rel="manifest"> (data: URL com manifesto da loja), theme-color,
+ * <link rel="manifest"> (preferencialmente /app/<slug>/manifest.webmanifest servido pelo servidor do app
+ * via HTTPS, com ícones PNG; data: URL só como fallback quando o servidor não está disponível, ex.: vite puro), theme-color,
  * apple-mobile-web-app-title, apple-touch-icon e <title>.
  * Só é usado em rotas /app/<slug>. As demais rotas mantêm o manifesto global (/manifest.json).
  */
-import { buildStoreManifest, fallbackIconSvg, manifestDataUrl, ManifestIcon, safeColor, FALLBACK_THEME_COLOR, StoreIdentityInput, storeDisplayName, svgDataUrl } from './storeManifest';
+import { buildStoreManifest, storeAppId, fallbackIconSvg, manifestDataUrl, ManifestIcon, safeColor, FALLBACK_THEME_COLOR, StoreIdentityInput, storeDisplayName, svgDataUrl } from './storeManifest';
 
 const GLOBAL_MANIFEST_HREF = '/manifest.json';
 
@@ -69,32 +70,66 @@ export function detachGlobalManifestForStoreRoute(pathname: string) {
   document.head.querySelectorAll(`link[rel="manifest"][href="${GLOBAL_MANIFEST_HREF}"]`).forEach(l => l.remove());
 }
 
-export interface AppliedIdentity { manifestHref: string; usedFallbackIcon: boolean; }
+export interface AppliedIdentity { manifestHref: string; usedFallbackIcon: boolean; served: boolean; }
+
+interface ServedManifest { href: string; shortName: string; touchIcon: string; }
+
+/**
+ * Usa o manifesto servido pelo servidor do app quando ele existe E pertence a ESTA loja
+ * (id termina em /app-id/<tenantId>); qualquer outra resposta => null (fallback data:).
+ */
+export async function fetchServedManifest(store: StoreIdentityInput, fetchImpl: typeof fetch = fetch): Promise<ServedManifest | null> {
+  const href = `/app/${encodeURIComponent(store.slug)}/manifest.webmanifest`;
+  try {
+    const res = await fetchImpl(href, { cache: 'no-cache', headers: { Accept: 'application/manifest+json' } });
+    if (!res.ok || !/manifest\+json/i.test(res.headers.get('content-type') || '')) return null;
+    const m = await res.json();
+    if (!m || typeof m.id !== 'string' || !m.id.endsWith(storeAppId(store.id))) return null;
+    const icon = Array.isArray(m.icons) ? m.icons.find((i: { src?: string; type?: string }) => i?.type === 'image/png' && typeof i.src === 'string') : null;
+    if (!icon) return null;
+    return { href, shortName: String(m.short_name || ''), touchIcon: icon.src };
+  } catch {
+    return null;
+  }
+}
 
 export async function applyStoreIdentity(store: StoreIdentityInput): Promise<AppliedIdentity> {
   const name = storeDisplayName(store);
   const themeColor = safeColor(store.theme?.primaryColor, FALLBACK_THEME_COLOR);
+  const served = await fetchServedManifest(store);
+  if (served) {
+    setManifestLink(served.href, store.id);
+    applyHeadMeta(name, served.shortName || name, themeColor, served.touchIcon);
+    return { manifestHref: served.href, usedFallbackIcon: false, served: true };
+  }
   const logoIcons = await buildLogoIcons(store.theme?.logoUrl, '#ffffff');
   const manifest = buildStoreManifest(store, window.location.origin, logoIcons || undefined);
   const href = manifestDataUrl(manifest);
 
+  setManifestLink(href, store.id);
+  const touch = logoIcons ? logoIcons[0].src : svgDataUrl(fallbackIconSvg(name, themeColor, 180));
+  applyHeadMeta(name, manifest.short_name, themeColor, touch);
+  return { manifestHref: href, usedFallbackIcon: !logoIcons, served: false };
+}
+
+function setManifestLink(href: string, storeId: string) {
   document.head.querySelectorAll('link[rel="manifest"]').forEach(l => l.remove());
   const link = document.createElement('link');
   link.rel = 'manifest';
   link.href = href;
-  link.setAttribute('data-store-id', store.id);
+  link.setAttribute('data-store-id', storeId);
   document.head.appendChild(link);
+}
 
+function applyHeadMeta(name: string, shortName: string, themeColor: string, touch: string) {
   meta('theme-color', themeColor);
-  meta('apple-mobile-web-app-title', manifest.short_name);
+  meta('apple-mobile-web-app-title', shortName);
   meta('application-name', name);
   meta('apple-mobile-web-app-capable', 'yes');
   meta('mobile-web-app-capable', 'yes');
-  const touch = logoIcons ? logoIcons[0].src : svgDataUrl(fallbackIconSvg(name, themeColor, 180));
   const apple = upsert('link[rel="apple-touch-icon"]', () => { const l = document.createElement('link'); l.rel = 'apple-touch-icon'; return l; }) as HTMLLinkElement;
   apple.href = touch;
   const fav = upsert('link[rel="icon"]', () => { const l = document.createElement('link'); l.rel = 'icon'; return l; }) as HTMLLinkElement;
   fav.href = touch;
   document.title = name;
-  return { manifestHref: href, usedFallbackIcon: !logoIcons };
 }
