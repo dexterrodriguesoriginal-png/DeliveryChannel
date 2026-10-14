@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { campaignRepository } from '../../repositories/campaignRepository';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { canPreviewCheckoutWithoutLogin } from '../../lib/demoCheckoutPreview';
@@ -117,6 +118,21 @@ const GoogleIcon: React.FC = () => (
     />
   </svg>
 );
+
+
+/** Sessão anônima da vitrine para dedupe de eventos N5 (sessionStorage; sem dados pessoais). */
+function getCampaignSessionId(): string {
+  const KEY = 'dc_campaign_session';
+  try {
+    const existing = sessionStorage.getItem(KEY);
+    if (existing && /^[0-9a-f-]{36}$/i.test(existing)) return existing;
+    const id = crypto.randomUUID();
+    sessionStorage.setItem(KEY, id);
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
 
 export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => {
   const { supabaseUser, signInWithGoogle, signInWithPassword, signUp, signOut } = useAuth();
@@ -681,6 +697,18 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     if (offer.tenantId !== storeData?.tenant.id) {
       console.warn(`[ClientApp] Oferta recusada por segurança: tenant mismatch (${offer.tenantId} != ${storeData?.tenant.id})`);
       return;
+    }
+
+    // N5 (somente n1n6): clique no card como evento de funil (estimativa; best-effort).
+    if (storeData?.tenant.slug) {
+      void campaignRepository.trackEvent({
+        storeSlug: storeData.tenant.slug,
+        eventType: 'CARD_CLICK',
+        sessionId: getCampaignSessionId(),
+        campaignId: offer.campaignId,
+        cardId: offer.campaignCardId,
+        offerId: offer.source === 'CAMPAIGN_CARD' ? undefined : offer.id,
+      });
     }
 
     // MODO 1: APENAS VISUAL (Sem abrir produto nem checkout)

@@ -5,6 +5,8 @@ import { SecurityContext } from '../services/securityEngine';
 import { publicStoreRepository } from './publicStoreRepository';
 import { isValidUuid } from '../lib/uuid';
 import { calculatePromoCardStatus } from '../utils/promoCardDateUtils';
+import { isLocalDemoAllowed } from '../lib/backend';
+import { isN1N6Backend, N1N6_ONLY_MESSAGE } from '../lib/backendSchema';
 
 /**
  * Linha da tabela public.offers (colunas reais das migrations 001–026).
@@ -59,6 +61,11 @@ export interface OfferRow {
   promo_coupon_code?: string | null;
   promo_usage_limit?: number | null;
   promo_times_used?: number | null;
+  // N4 (somente com VITE_BACKEND_SCHEMA=n1n6)
+  media_asset_id?: string | null;
+  promo_usage_limit_per_customer?: number | null;
+  promo_max_qty_per_order?: number | null;
+  promo_fulfillment?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   is_demo?: boolean | null;
@@ -153,9 +160,16 @@ export function mapRowToOffer(row: OfferRow): Offer {
     promoDiscountPercentage: optNumber(row.promo_discount_percentage),
     promoUnit: row.promo_unit || 'un',
     promoMinQuantity: row.promo_min_quantity ? Number(row.promo_min_quantity) : 1,
-    promoMaxQuantityPerCustomer: row.promo_max_quantity_per_customer ? Number(row.promo_max_quantity_per_customer) : 10,
+    promoMaxQuantityPerCustomer: row.promo_max_qty_per_order
+      ? Number(row.promo_max_qty_per_order)
+      : row.promo_max_quantity_per_customer ? Number(row.promo_max_quantity_per_customer) : 10,
     promoNotes: row.promo_notes || undefined,
-    promoFulfillmentTypes: pickEnumList(row.promo_fulfillment_types, FULFILLMENT_TYPES),
+    promoFulfillmentTypes: row.promo_fulfillment
+      ? (row.promo_fulfillment === 'BOTH' ? ['DELIVERY', 'PICKUP'] : pickEnumList([row.promo_fulfillment], FULFILLMENT_TYPES))
+      : pickEnumList(row.promo_fulfillment_types, FULFILLMENT_TYPES),
+    promoFulfillment: (row.promo_fulfillment as Offer['promoFulfillment']) || undefined,
+    promoMaxQtyPerOrder: optNumber(row.promo_max_qty_per_order),
+    mediaAssetId: row.media_asset_id || undefined,
     promoPaymentMethods: pickEnumList(row.promo_payment_methods, PAYMENT_METHODS),
     promoCouponCode: row.promo_coupon_code || undefined,
     promoUsageLimit,
@@ -176,7 +190,55 @@ export function mapRowToOffer(row: OfferRow): Offer {
  * como erro — nunca mascarada por uma cópia no navegador.
  */
 function isLocalMode(tenantId: string): boolean {
-  return !isSupabaseConfigured || !isValidUuid(tenantId);
+  if (!isSupabaseConfigured) {
+    if (isLocalDemoAllowed) return true;
+    throw new Error('Backend não configurado: cards promocionais exigem o servidor.');
+  }
+  if (!isValidUuid(tenantId)) {
+    throw new Error('Estabelecimento inválido (id não reconhecido pelo banco).');
+  }
+  return false;
+}
+
+function fulfillmentToN4(types: readonly string[] | undefined): 'DELIVERY' | 'PICKUP' | 'BOTH' | null {
+  const set = new Set(types || []);
+  if (set.has('DELIVERY') && set.has('PICKUP')) return 'BOTH';
+  if (set.has('DELIVERY')) return 'DELIVERY';
+  if (set.has('PICKUP')) return 'PICKUP';
+  return null;
+}
+
+/**
+ * Colunas N4 de offers, gravadas SOMENTE com VITE_BACKEND_SCHEMA=n1n6.
+ * Nunca envia promo_times_used (contador do servidor, protegido por trigger).
+ * Em legacy-020 retorna {} (essas colunas não existem em 001–020).
+ */
+export function n4OfferColumns(data: Partial<Offer>, onlyPresent: boolean): Record<string, unknown> {
+  if (!isN1N6Backend()) return {};
+  const has = (k: keyof Offer) => !onlyPresent || Object.prototype.hasOwnProperty.call(data, k);
+  const out: Record<string, unknown> = {};
+  if (has('mediaAssetId')) out.media_asset_id = data.mediaAssetId || null;
+  if (has('startAt') || has('startDate')) out.start_at = data.startAt || data.startDate || null;
+  if (data.noEndDate === true) out.end_at = null;
+  else if (has('endAt') || has('endDate')) out.end_at = data.endAt || data.endDate || null;
+  if (has('autoOverlay') && data.autoOverlay !== undefined) out.auto_overlay = data.autoOverlay;
+  if (has('hasPromoCheckout')) {
+    const on = Boolean(data.hasPromoCheckout);
+    out.has_promo_checkout = on;
+    out.promo_price = on ? positiveOrNull(data.promoPrice) : null;
+    out.promo_usage_limit = on ? positiveOrNull(data.promoUsageLimit) : null;
+    out.promo_max_qty_per_order = on ? positiveOrNull(data.promoMaxQuantityPerCustomer) : null;
+    out.promo_fulfillment = on ? fulfillmentToN4(data.promoFulfillmentTypes) : null;
+  }
+  return out;
+}
+
+function assertPromoCheckoutN4(data: Partial<Offer>, productId: string | null | undefined): void {
+  // legacy-020: as colunas N4 não existem; o card é salvo só com colunas 001 e a vitrine
+  // legada não oferece o checkout promocional (createPromotionalOrder exige n1n6).
+  if (!data.hasPromoCheckout || !isN1N6Backend()) return;
+  if (!productId) throw new Error('Checkout promocional exige um produto do catálogo vinculado (o estoque e o pedido são do produto).');
+  if (!data.promoPrice || data.promoPrice <= 0) throw new Error('Informe o preço promocional do checkout.');
 }
 
 function dbError(action: string, message: string): Error {
@@ -279,9 +341,12 @@ export const offerRepository = {
     }
 
     const mediaUrl = (data.mediaUrl || data.imageUrl || '').trim() || null;
-    const productId = data.destinationType === 'CUSTOM_OFFER'
-      ? null
-      : await this.validateProductBelongsToTenant(tenantId, data.productId);
+    // N4: checkout promocional exige product_id (CHECK offers_promo_checkout_requires_price).
+    const keepProduct = data.destinationType !== 'CUSTOM_OFFER' || (isN1N6Backend() && data.hasPromoCheckout);
+    const productId = keepProduct
+      ? await this.validateProductBelongsToTenant(tenantId, data.productId)
+      : null;
+    assertPromoCheckoutN4(data, productId);
     const destinationType: CardDestination = data.destinationType || (productId ? 'PRODUCT' : 'BANNER_ONLY');
     if (destinationType === 'PRODUCT' && !productId) {
       throw new Error('Selecione o produto do catálogo vinculado a este card.');
@@ -309,6 +374,7 @@ export const offerRepository = {
         background_color: data.backgroundColor || null,
         accent_color: data.accentColor || null,
         is_active: data.isActive !== undefined ? data.isActive : true,
+        ...n4OfferColumns(data, false),
       })
       .select()
       .single();
@@ -367,6 +433,10 @@ export const offerRepository = {
     if (has('productId')) {
       db.product_id = await this.validateProductBelongsToTenant(tenantId, updates.productId);
     }
+    if (has('hasPromoCheckout') && updates.hasPromoCheckout) {
+      assertPromoCheckoutN4(updates, (db.product_id as string | null | undefined) ?? updates.productId);
+    }
+    Object.assign(db, n4OfferColumns(updates, true));
 
     const { data: updated, error } = await supabase
       .from('offers')
@@ -428,7 +498,7 @@ export const offerRepository = {
     options?: UploadMediaOptions
   ): Promise<UploadMediaResult> {
     if (isLocalMode(tenantId)) {
-      // Modo demonstração/local explícito: mídia fica como Data URL no navegador.
+      // Modo demonstração/local explícito (somente DEV sem Supabase): mídia fica como Data URL no navegador.
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
@@ -438,8 +508,9 @@ export const offerRepository = {
       return { path: dataUrl };
     }
 
-    if (!isValidUuid(tenantId)) {
-      throw new Error('Tenant ID inválido para upload de mídia.');
+    if (!isN1N6Backend()) {
+      // register_marketing_asset/confirm_marketing_upload só existem na N3.
+      throw new Error(`Upload de mídia: ${N1N6_ONLY_MESSAGE} Use a opção de URL da imagem.`);
     }
 
     // 2. p_kind deve ser CREATIVE.

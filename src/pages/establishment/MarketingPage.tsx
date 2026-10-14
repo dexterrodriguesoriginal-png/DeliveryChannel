@@ -3,10 +3,13 @@ import { initialPromoFulfillmentTypes, promoFulfillmentTypesForSave } from '../.
 import { useAuth } from '../../context/AuthContext';
 import { supabase, ensureValidSession } from '../../lib/supabase';
 import { offerRepository } from '../../repositories/offerRepository';
+import { isN1N6Backend } from '../../lib/backendSchema';
 import { productRepository } from '../../repositories/productRepository';
 import { categoryRepository } from '../../repositories/categoryRepository';
 import { promotionRepository } from '../../repositories/promotionRepository';
 import { PromoPerformancePanel } from '../../components/marketing/PromoPerformancePanel';
+import { CampaignsPanel } from '../../components/marketing/CampaignsPanel';
+import { mediaRepository } from '../../repositories/mediaRepository';
 import { QRCodeCard } from '../../components/common/QRCodeCard';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -73,6 +76,7 @@ import {
   BarChart3,
   Percent,
   Flame,
+  EyeOff,
   CheckSquare,
   Square,
   Search,
@@ -138,10 +142,12 @@ export const MarketingPage: React.FC = () => {
   const { activeTenant, securityContext, activeRole } = useAuth();
   const { showToast } = useToast();
 
+  // N5: campanhas só OWNER/MANAGER (RLS; sem CEO/SUPER_ADMIN) e só com backend n1n6.
+  const canManageCampaigns = isN1N6Backend() && (activeRole === 'OWNER' || activeRole === 'MANAGER');
   const canManage = activeRole === 'OWNER' || activeRole === 'MANAGER' || activeRole === 'SUPER_ADMIN' || activeRole === 'CEO';
 
   // Navegação Interna do Módulo
-  const [activeTab, setActiveTab] = useState<'creatives' | 'materials' | 'performance'>('creatives');
+  const [activeTab, setActiveTab] = useState<'creatives' | 'materials' | 'performance' | 'campaigns'>('creatives');
 
   // Dados de Criativos e Produtos
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -782,6 +788,14 @@ export const MarketingPage: React.FC = () => {
 
     // Validação específica para CHECKOUT PROMOCIONAL (Modo 3)
     if (destinationType === 'CUSTOM_OFFER') {
+      if (isN1N6Backend() && !selectedProductId) {
+        showToast({
+          type: 'error',
+          title: 'Produto Obrigatório',
+          message: 'O checkout promocional precisa de um produto do catálogo vinculado.',
+        });
+        return;
+      }
       const priceNum = parseFloat(promoPrice);
       if (isNaN(priceNum) || priceNum <= 0) {
         showToast({
@@ -823,6 +837,7 @@ export const MarketingPage: React.FC = () => {
     try {
       // Fluxo Oficial de Publicação N3: executa somente quando há novo asset pendente de publicação
       let finalPublicMediaUrl = mediaUrl.trim();
+      let publishedAssetId: string | undefined;
 
       if (pendingMarketingAsset?.assetId) {
         const { assetId } = pendingMarketingAsset;
@@ -907,6 +922,7 @@ export const MarketingPage: React.FC = () => {
         finalPublicMediaUrl = resolvedPublicUrl;
 
         // Marca que o asset foi publicado com sucesso
+        publishedAssetId = assetId;
         setPendingMarketingAsset(null);
         setMediaUrl(finalPublicMediaUrl);
       }
@@ -938,7 +954,11 @@ export const MarketingPage: React.FC = () => {
         detectedWidth: detectedWidth || 1200,
         detectedHeight: detectedHeight || 675,
         aspectRatio: '16:9',
-        productId: destinationType === 'PRODUCT' ? selectedProductId : undefined,
+        // N4 (n1n6): o checkout promocional exige product_id; em legacy CUSTOM_OFFER segue sem produto.
+        productId: destinationType === 'PRODUCT' || (destinationType === 'CUSTOM_OFFER' && isN1N6Backend() && selectedProductId)
+          ? selectedProductId
+          : undefined,
+        mediaAssetId: isN1N6Backend() ? (publishedAssetId || editingCard?.mediaAssetId || undefined) : undefined,
         internalLink: destinationType === 'PRODUCT' && selectedProductId && activeTenant?.slug
           ? `${getPublicStorePath(activeTenant.slug)}?product=${selectedProductId}`
           : undefined,
@@ -1131,6 +1151,23 @@ export const MarketingPage: React.FC = () => {
     }
   };
 
+  /** N3 (n1n6): despublica a mídia do card (remove de marketing-public) e limpa a URL do card. */
+  const handleUnpublishMedia = async (card: Offer) => {
+    if (!activeTenant?.id || !canManage || !card.mediaAssetId) return;
+    const reason = window.prompt('Motivo da despublicação da mídia (obrigatório):');
+    if (!reason || !reason.trim()) return;
+    try {
+      await mediaRepository.unpublish(card.mediaAssetId, reason);
+      const updated = await offerRepository.update(securityContext, activeTenant.id, card.id, {
+        mediaUrl: '',
+        imageUrl: '',
+      });
+      setOffers(prev => prev.map(o => (o.id === card.id ? updated : o)));
+      showToast({ type: 'success', title: 'Mídia Despublicada', message: 'A mídia saiu da vitrine pública.' });
+    } catch (err: any) {
+      showToast({ type: 'error', title: 'Erro ao Despublicar', message: err.message || 'Não foi possível despublicar.' });
+    }
+  };
 
   if (!activeTenant) return null;
 
@@ -1187,6 +1224,21 @@ export const MarketingPage: React.FC = () => {
           <BarChart3 className="w-4 h-4" />
           <span>Desempenho & Vendas</span>
         </button>
+
+        {canManageCampaigns && (
+          <button
+            data-testid="tab-campaigns"
+            onClick={() => setActiveTab('campaigns')}
+            className={`pb-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'campaigns'
+                ? 'border-emerald-600 text-emerald-800'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Flame className="w-4 h-4" />
+            <span>Campanhas</span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab('materials')}
@@ -1461,6 +1513,17 @@ export const MarketingPage: React.FC = () => {
                                 <Copy className="w-4 h-4" />
                               </button>
 
+                              {isN1N6Backend() && card.mediaAssetId && (
+                                <button
+                                  data-testid="unpublish-media"
+                                  onClick={() => handleUnpublishMedia(card)}
+                                  className="p-1.5 text-gray-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Despublicar mídia"
+                                >
+                                  <EyeOff className="w-4 h-4" />
+                                </button>
+                              )}
+
                               <button
                                 onClick={() => handleDeleteCard(card)}
                                 className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
@@ -1496,6 +1559,10 @@ export const MarketingPage: React.FC = () => {
       {/* ==================================================================== */}
       {/* ABA 3: MATERIAIS & QR CODE OFICIAL (PRESERVADA 100%)                  */}
       {/* ==================================================================== */}
+      {activeTab === 'campaigns' && canManageCampaigns && (
+        <CampaignsPanel tenantId={activeTenant.id} offers={offers} products={products} />
+      )}
+
       {activeTab === 'materials' && (
         <div className="space-y-6">
           <QRCodeCard
@@ -2273,6 +2340,27 @@ export const MarketingPage: React.FC = () => {
                     </div>
 
                     <div className="grid grid-cols-1 gap-2.5">
+                      {isN1N6Backend() && (
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-gray-700 block">
+                            Produto do catálogo vendido neste checkout *
+                          </label>
+                          <select
+                            data-testid="promo-checkout-product"
+                            value={selectedProductId}
+                            onChange={(e) => setSelectedProductId(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white"
+                          >
+                            <option value="">Selecione o produto…</option>
+                            {products.map(p => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </select>
+                          <p className="text-[11px] text-gray-500">
+                            O pedido e a baixa de estoque são do produto; preço e limites são validados pelo servidor.
+                          </p>
+                        </div>
+                      )}
                       <Input
                         label="Nome da Oferta *"
                         value={promoTitle}

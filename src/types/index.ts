@@ -180,6 +180,8 @@ export interface PromotionalCard {
   promoAvailable?: boolean;
   promoFulfillment?: 'DELIVERY' | 'PICKUP' | 'BOTH';
   promoMaxQtyPerOrder?: number;
+  /** N3/N4: asset publicado em marketing-public referenciado por offers.media_asset_id (n1n6). */
+  mediaAssetId?: string;
   title: string;
   subtitle?: string;
   description?: string;
