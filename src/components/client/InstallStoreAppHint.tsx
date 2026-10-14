@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Share, X, MoreVertical } from 'lucide-react';
+import { Share, X, MoreVertical, Download, CheckCircle2 } from 'lucide-react';
 import { StoreLogo } from './StoreLogo';
 import {
   detectPlatform, isStandalone,
@@ -22,6 +22,8 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   const [invite, setInvite] = useState<{ kind: InviteKind; trigger: InviteTrigger } | null>(null);
   const [help, setHelp] = useState(false);
   const [barDismissed, setBarDismissed] = useState(false);
+  const [phase, setPhase] = useState<'idle' | 'installing' | 'done'>('idle');
+  const [doneClosed, setDoneClosed] = useState(false);
   const standalone = isStandalone(window);
   const platform = detectPlatform(navigator.userAgent);
   const blockedRef = useRef(false);
@@ -30,7 +32,17 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   // Instalado só por appinstalled ou execução em modo standalone (nunca por clique/fechamento).
   useEffect(() => {
     if (standalone || appInstalledEvt) { markInstalled(localStorage, tenantId); setInstalled(true); }
+    if (appInstalledEvt && !standalone) setPhase('done');
   }, [standalone, appInstalledEvt, tenantId]);
+
+  // Diagnóstico: avisa no console quando o manifesto da loja não carrega (sem ele o Chrome não oferece instalação).
+  useEffect(() => {
+    const href = document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.href;
+    if (!href || href.startsWith('data:') || typeof fetch !== 'function') return;
+    fetch(href, { credentials: 'same-origin' }).then(r => {
+      if (!r.ok) console.warn(`[PWA] Manifesto da loja indisponível (HTTP ${r.status}): ${href}. O Chrome não oferecerá a instalação nativa.`);
+    }).catch(err => console.warn('[PWA] Falha ao buscar o manifesto da loja:', href, err));
+  }, [tenantId]);
   // Se o app foi removido do aparelho, o navegador volta a oferecer beforeinstallprompt: volta a convidar.
   useEffect(() => {
     if (deferred && installed && !standalone && !appInstalledEvt) {
@@ -75,6 +87,18 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     return () => { window.clearInterval(id); evs.forEach(e => window.removeEventListener(e, act)); };
   }, [installed, standalone, tenantId, tryInvite]);
 
+  if (phase === 'done' && !doneClosed) {
+    return (
+      <div data-testid="install-done" role="status" className="fixed inset-x-0 bottom-3 z-[120] px-3 flex justify-center pointer-events-none">
+        <div className="pointer-events-auto w-full max-w-sm rounded-2xl bg-[#2b2b2e] text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] px-4 py-3 flex items-center gap-3">
+          <CheckCircle2 className="h-6 w-6 text-emerald-400 shrink-0" />
+          <p className="flex-1 text-sm font-semibold">App instalado! Abra pela tela inicial.</p>
+          <button type="button" aria-label="Fechar" onClick={() => setDoneClosed(true)} className="p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>
+        </div>
+      </div>
+    );
+  }
+
   const surface = inviteSurface({ installed, standalone, hidden: !!hidden, inviteOpen: !!invite, nativeAvailable: !!deferred, barDismissed });
   if (surface === 'none') return null;
 
@@ -85,22 +109,32 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     clearDeferredPrompt(); // o evento só pode ser usado uma vez
     try { await ev.prompt(); } catch { setHelp(true); return; }
     const choice = await ev.userChoice.catch(() => null);
-    if (choice?.outcome === 'accepted') recordAccepted(localStorage, tenantId, Date.now());
+    if (choice?.outcome === 'accepted') { recordAccepted(localStorage, tenantId, Date.now()); setPhase('installing'); return; }
     closeModal();
   };
 
+  const steps = platform === 'android-chrome' || platform === 'android-other';
   const instructions = (
-    <div data-testid="install-instructions" className="mt-3 rounded-xl bg-white/5 border border-white/10 p-3 text-[13px] leading-snug text-neutral-200 text-left space-y-1">
+    <div data-testid="install-instructions" className="mt-3 rounded-xl bg-white/5 border border-white/10 p-3.5 text-[13px] leading-snug text-neutral-200 text-left">
+      {steps && <>
+        <p className="text-[15px] font-semibold text-white mb-2.5">Instale em 2 toques</p>
+        {platform === 'android-other' && <p className="mb-2 text-neutral-300">Funciona melhor no <b>Google Chrome</b>.</p>}
+        <ol className="space-y-2">
+          <li className="flex items-center gap-2.5"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10"><MoreVertical className="h-4 w-4" /></span><span><b>1.</b> Toque em <b>⋮</b> no canto superior direito</span></li>
+          <li className="flex items-center gap-2.5"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10"><Download className="h-4 w-4" /></span><span><b>2.</b> Toque em <b>“Instalar app”</b> ou <b>“Adicionar à tela inicial”</b></span></li>
+        </ol>
+      </>}
       {platform === 'ios-safari' && <p className="flex flex-wrap items-center gap-1">No Safari, toque em <Share className="inline h-4 w-4" /> <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</p>}
       {platform === 'ios-other' && <p>No iPhone, a instalação é feita pelo <b>Safari</b>. Abra este link no Safari, toque em <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b>.</p>}
-      {platform === 'android-chrome' && <><p>O Chrome ainda não liberou a instalação automática nesta página.</p><p className="flex flex-wrap items-center gap-1">Toque no menu <MoreVertical className="inline h-4 w-4" /> e escolha <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.</p></>}
-      {platform === 'android-other' && <p>Este navegador pode não permitir instalar apps. Para a melhor experiência, abra o link no <b>Google Chrome</b> e use o menu ⋮ → <b>Instalar app</b>.</p>}
       {platform === 'desktop' && <p>Abra este link no navegador do seu celular (Chrome no Android ou Safari no iPhone) para instalar o app da loja.</p>}
+      <p className="mt-3 text-xs text-neutral-400">É rápido, gratuito e não ocupa quase nada de espaço.</p>
+      <button type="button" data-testid="install-help-ok" onClick={() => setHelp(false)}
+        className="mt-3 w-full rounded-full bg-white/10 py-2 text-sm font-semibold text-white active:scale-[0.98] active:bg-white/20 transition">Entendi</button>
     </div>
   );
 
   const t = invite?.trigger;
-  const line = t === 'order' ? 'Acompanhe seu pedido pelo app' : t === 'cart' ? 'Peça mais rápido da próxima vez' : 'Abra a loja com um toque na tela inicial';
+  const line = phase === 'installing' ? 'Instalando… o Chrome vai mostrar o progresso' : t === 'order' ? 'Acompanhe seu pedido pelo app' : t === 'cart' ? 'Peça mais rápido da próxima vez' : 'Abra a loja com um toque na tela inicial';
   const card = surface !== 'fallback-bar';
   return (
     <div data-testid={card ? 'install-store-app-card' : 'install-store-app-banner'} data-surface={surface} data-trigger={t}
@@ -113,8 +147,8 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
             <p className="text-[15px] font-semibold leading-tight break-words">{storeName}</p>
             <p className="text-xs text-neutral-400 leading-tight mt-0.5">{line}</p>
           </div>
-          <button type="button" onClick={install} data-testid="install-primary"
-            className="shrink-0 rounded-full bg-[#a8c7fa] text-[#062e6f] px-4 py-1.5 text-sm font-semibold hover:brightness-105">Instalar</button>
+          {phase !== 'installing' && <button type="button" onClick={install} data-testid="install-primary" aria-pressed={help}
+            className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition active:scale-95 active:brightness-90 hover:brightness-105 ${help ? 'bg-[#7fa6e8] text-[#041e49] ring-2 ring-white/30' : 'bg-[#a8c7fa] text-[#062e6f]'}`}>Instalar</button>}
           <button type="button" aria-label="Fechar" data-testid="install-continue"
             onClick={() => { if (card) closeModal(); else { setBarDismissed(true); setHelp(false); } }}
             className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>
