@@ -5,6 +5,7 @@ import { teamRepository } from './teamRepository';
 import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
 import { localOnly } from '../lib/backend';
+import { buildDeliveryCountByUserId, deliveryCountForDriver } from '../lib/driverDeliveryCounts';
 
 function mapRowToDriver(row: any, completedToday = 0): Driver {
   const isOnline = row.status === 'AVAILABLE' || row.status === 'ON_DELIVERY';
@@ -55,16 +56,10 @@ export const driverRepository = {
             .eq('status', 'DELIVERED')
             .gte('created_at', todayStr);
 
-          const deliveryCountMap: Record<string, number> = {};
-          if (deliveries) {
-            deliveries.forEach((d: any) => {
-              if (d.driver_id) {
-                deliveryCountMap[d.driver_id] = (deliveryCountMap[d.driver_id] || 0) + 1;
-              }
-            });
-          }
+          // orders.driver_id = auth user id do motorista (drivers.user_id)
+          const deliveryCountMap = buildDeliveryCountByUserId(deliveries);
 
-          return data.map(row => mapRowToDriver(row, deliveryCountMap[row.id] || 0));
+          return data.map(row => mapRowToDriver(row, deliveryCountForDriver(deliveryCountMap, row)));
         }
       } catch (err) {
         console.warn('[driverRepository] Falha ao consultar motoristas no Supabase:', err);

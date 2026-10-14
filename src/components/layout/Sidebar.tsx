@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { getPublicStorePath, isValidStoreSlug } from '../../utils/publicStoreUrl';
+import { canAccessEstTab } from '../../lib/navPermissions';
 
 export interface SidebarProps {
   currentTab: string;
@@ -148,7 +149,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
-  const groups = (activeRole === 'CEO' || activeRole === 'SUPER_ADMIN') ? ceoGroups : establishmentGroups;
+  const groups = (activeRole === 'CEO' || activeRole === 'SUPER_ADMIN')
+    ? ceoGroups
+    : establishmentGroups
+        .map(g => ({ ...g, items: g.items.filter(it => canAccessEstTab(activeRole, it.id)) }))
+        .filter(g => g.items.length > 0);
 
   return (
     <>

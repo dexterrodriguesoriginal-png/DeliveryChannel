@@ -4,6 +4,7 @@ import { orderRepository } from '../../repositories/orderRepository';
 import { validateStatusChange } from '../../repositories/orderMappers';
 import { isN1N6Backend, N1N6_ONLY_MESSAGE } from '../../lib/backendSchema';
 import { driverRepository } from '../../repositories/driverRepository';
+import { hasPermission } from '../../services/rbac';
 import { productRepository } from '../../repositories/productRepository';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
@@ -154,6 +155,8 @@ export const OrdersPage: React.FC = () => {
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
   const [cancellationReason, setCancellationReason] = useState<string>('Cliente solicitou cancelamento');
 
+  const canListDrivers = !!activeRole && hasPermission(activeRole, 'manage_drivers');
+
   // Busca os pedidos e motoristas
   const fetchOrders = useCallback(async (silent = false) => {
     if (!activeTenant?.id) return;
@@ -165,7 +168,11 @@ export const OrdersPage: React.FC = () => {
       setSyncError(null);
       const [orderData, driverData, productsData] = await Promise.all([
         orderRepository.getOrders(securityContext, activeTenant.id),
-        driverRepository.listDrivers(securityContext, activeTenant.id).catch(() => []),
+        // RLS de public.drivers só libera leitura para OWNER/MANAGER/DELIVERY_MANAGER
+        // (p_drivers_admin_select); CASHIER/OPERATOR não consultam (evita 403).
+        canListDrivers
+          ? driverRepository.listDrivers(securityContext, activeTenant.id).catch(() => [])
+          : Promise.resolve([] as Driver[]),
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);
       setRemoteOrders(orderData);
@@ -194,7 +201,7 @@ export const OrdersPage: React.FC = () => {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [activeTenant, securityContext, remoteOrders, soundEnabled]);
+  }, [activeTenant, securityContext, remoteOrders, soundEnabled, canListDrivers]);
 
   // Inscrição Realtime
   useEffect(() => {

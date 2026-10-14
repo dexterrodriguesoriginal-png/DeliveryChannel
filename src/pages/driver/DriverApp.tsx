@@ -5,12 +5,14 @@ import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { MobileNavigation } from '../../components/layout/MobileNavigation';
-import { Bike, Navigation, MapPin, Phone, CheckCircle2, AlertCircle, Clock, PackageCheck, RefreshCw } from 'lucide-react';
+import { Bike, Navigation, MapPin, Phone, CheckCircle2, AlertCircle, Clock, PackageCheck, RefreshCw, LogOut } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { Order } from '../../types';
+import { computeDriverDailySummary } from '../../lib/driverSummary';
+import { filterAssignedDriverOrders } from '../../lib/driverOrders';
 
 export const DriverApp: React.FC = () => {
-  const { activeTenant, securityContext, currentUser } = useAuth();
+  const { activeTenant, securityContext, currentUser, signOut } = useAuth();
   const { showToast } = useToast();
   const [navTab, setNavTab] = useState('active-delivery');
   const [orders, setOrders] = useState<Order[]>([]);
@@ -42,12 +44,14 @@ export const DriverApp: React.FC = () => {
 
   // Filtra ordens atribuídas a este motorista
   const driverUserId = currentUser?.id || securityContext.userId;
-  const assignedOrders = orders.filter(o => 
-    o.driverId === driverUserId || 
-    o.driverId === currentUser?.id || 
-    o.status === 'OUT_FOR_DELIVERY' || 
-    o.status === 'PREPARING'
-  );
+  const assignedOrders = filterAssignedDriverOrders(orders, driverUserId);
+
+  const dailySummary = computeDriverDailySummary(orders, driverUserId);
+
+  const handleSignOut = async () => {
+    await signOut();
+    window.location.replace('/');
+  };
 
   // Pedido em rota ou aguardando retirada
   const activeOrder = assignedOrders.find(o => o.status === 'OUT_FOR_DELIVERY') || assignedOrders.find(o => o.status === 'PREPARING');
@@ -88,9 +92,20 @@ export const DriverApp: React.FC = () => {
           </div>
         </div>
 
-        <Badge variant="warning" size="sm">
-          MOTOPACK
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="warning" size="sm">
+            MOTOPACK
+          </Badge>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleSignOut}
+            leftIcon={<LogOut className="w-3.5 h-3.5" />}
+            className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 cursor-pointer"
+          >
+            Sair
+          </Button>
+        </div>
       </div>
 
       <div className="max-w-lg mx-auto p-4 space-y-4">
@@ -209,11 +224,11 @@ export const DriverApp: React.FC = () => {
           <div className="grid grid-cols-2 gap-3 text-center text-xs">
             <div className="p-3 bg-gray-50 rounded-xl">
               <span className="text-gray-400 text-[10px]">Entregas Feitas</span>
-              <div className="text-lg font-black text-gray-900 mt-0.5">8</div>
+              <div className="text-lg font-black text-gray-900 mt-0.5">{dailySummary.deliveredCount}</div>
             </div>
             <div className="p-3 bg-gray-50 rounded-xl">
               <span className="text-gray-400 text-[10px]">Ganhos em Taxas</span>
-              <div className="text-lg font-black text-emerald-800 mt-0.5">R$ 56,00</div>
+              <div className="text-lg font-black text-emerald-800 mt-0.5">R$ {dailySummary.feesTotal.toFixed(2).replace('.', ',')}</div>
             </div>
           </div>
         </Card>

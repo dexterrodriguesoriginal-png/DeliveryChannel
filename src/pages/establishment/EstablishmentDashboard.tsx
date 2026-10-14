@@ -5,6 +5,7 @@ import { tenantRepository } from '../../repositories/tenantRepository';
 import { orderRepository } from '../../repositories/orderRepository';
 import { customerRepository } from '../../repositories/customerRepository';
 import { driverRepository } from '../../repositories/driverRepository';
+import { hasPermission } from '../../services/rbac';
 import { getPublicStorePath, isValidStoreSlug } from '../../utils/publicStoreUrl';
 import { StatCard } from '../../components/ui/StatCard';
 import { SectionCard } from '../../components/ui/SectionCard';
@@ -36,7 +37,7 @@ interface EstablishmentDashboardProps {
 }
 
 export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ onNavigate }) => {
-  const { activeTenant, currentUser, securityContext } = useAuth();
+  const { activeTenant, currentUser, securityContext, activeRole } = useAuth();
   const { showToast } = useToast();
 
   // Estados de dados reais do Supabase / Repositórios
@@ -59,6 +60,8 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   // Filtro de período para o gráfico de vendas: Hoje | 7 dias | 30 dias
   const [salesPeriod, setSalesPeriod] = useState<'today' | '7d' | '30d'>('7d');
 
+  const canListDrivers = !!activeRole && hasPermission(activeRole, 'manage_drivers');
+
   // Busca dados reais para o tenant ativo
   const fetchRealData = useCallback(async () => {
     if (!activeTenant?.id) return;
@@ -68,7 +71,10 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
       const [fetchedOrders, fetchedCustomers, fetchedDrivers, tenantProducts] = await Promise.all([
         orderRepository.getOrders(securityContext, activeTenant.id).catch(() => []),
         customerRepository.getCustomers(securityContext, activeTenant.id).catch(() => []),
-        driverRepository.listDrivers(securityContext, activeTenant.id).catch(() => []),
+        // RLS de public.drivers só libera leitura para quem gerencia entregadores (evita 403).
+        canListDrivers
+          ? driverRepository.listDrivers(securityContext, activeTenant.id).catch(() => [])
+          : Promise.resolve([] as Driver[]),
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);
       setRemoteOrders(fetchedOrders);
@@ -81,7 +87,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
     } finally {
       setIsLoading(false);
     }
-  }, [activeTenant?.id, securityContext]);
+  }, [activeTenant?.id, securityContext, canListDrivers]);
 
   useEffect(() => {
     fetchRealData();

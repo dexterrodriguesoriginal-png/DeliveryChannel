@@ -44,6 +44,7 @@ import { DriverApp } from './pages/driver/DriverApp';
 import { ShieldAlert, Store, LogIn, Lock, RefreshCw, AlertTriangle, ShoppingBag } from 'lucide-react';
 import { Button } from './components/ui/Button';
 import { cn } from './utils/cn';
+import { canAccessEstTab } from './lib/navPermissions';
 
 function AppContent() {
   const { 
@@ -369,6 +370,11 @@ function AppContent() {
 
   // 10. Área Administrativa Liberada (CEO ou Usuário com Vínculo Ativo)
   const renderMainView = () => {
+    // Guard de UI por papel (RLS continua sendo a autorização real)
+    const isCeoRole = activeRole === 'CEO' || activeRole === 'SUPER_ADMIN';
+    if (!isCeoRole && activeTab.startsWith('est-') && !canAccessEstTab(activeRole, activeTab)) {
+      return <EstablishmentDashboard onNavigate={setActiveTab} />;
+    }
     switch (activeTab) {
       // Security Lab (área estritamente técnica/CEO)
       case 'security-lab': {
