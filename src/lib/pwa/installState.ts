@@ -175,27 +175,48 @@ export function nextInstallPhase(cur: InstallPhase, signal: 'accepted' | 'dismis
 }
 
 /**
- * Porcentagem exibida enquanto o Chrome instala, baseada no tempo (duração mínima ~75 s).
- * Sem appinstalled: segue a curva e para em 90%. Com appinstalled (que o Chrome dispara antes do
- * ícone ficar pronto): nunca salta — sobe gradualmente até 100% no mínimo aos 75 s (ou +8 s se chegar depois).
- * `installedAtMs` = tempo decorrido (desde o início) em que o appinstalled chegou, ou null.
+ * Porcentagem exibida enquanto o Chrome instala, em estilo "player": arranque rápido (~40% em 8 s),
+ * desacelera, acelera de novo, desacelera e se aproxima de 90% perto dos 75 s. Sem confirmação real
+ * (appinstalled / app detectado) nunca passa de 90%.
+ * Com confirmação: acelera até 100% em ~3 s, mas nunca antes de 20 s desde o aceite
+ * (o appinstalled do Chrome chega antes do ícone existir).
+ * `installedAtMs` = tempo decorrido (desde o aceite) em que a confirmação chegou, ou null.
  */
 export const INSTALL_MIN_MS = 75 * 1000;
-export const INSTALL_FINISH_MIN_MS = 8 * 1000;
-/** Botão "Abrir app" liberado imediatamente ao chegar a 100% (o tempo mínimo de 75 s já cobre a finalização no aparelho). */
-export const OPEN_APP_ENABLE_DELAY_MS = 0;
+/** Duração da aceleração final após a confirmação. */
+export const INSTALL_FINISH_MIN_MS = 3 * 1000;
+/** Mínimo absoluto, desde o aceite, para chegar a 100%. */
+export const INSTALL_DONE_MIN_MS = 20 * 1000;
 export const INSTALL_EST_MS = INSTALL_MIN_MS;
-function baseCurve(elapsedMs: number): number {
-  const t = Math.min(1, Math.max(0, elapsedMs) / INSTALL_MIN_MS);
-  return (100 * (1 - Math.exp(-3 * t))) / (1 - Math.exp(-3));
+const INSTALL_CAP = 90;
+// [tempo ms, %, easing do trecho]: 'out' = rápido→lento, 'in' = lento→rápido.
+const KEYS: [number, number, 'out' | 'in'][] = [
+  [0, 0, 'out'], [8_000, 40, 'out'], [28_000, 55, 'in'], [45_000, 76, 'out'], [INSTALL_MIN_MS, 89, 'out'],
+];
+export function baseCurve(elapsedMs: number): number {
+  const e = Math.max(0, elapsedMs);
+  for (let i = 1; i < KEYS.length; i++) {
+    const [t1, p1, ease] = KEYS[i]; const [t0, p0] = KEYS[i - 1];
+    if (e <= t1) {
+      const u = (e - t0) / (t1 - t0);
+      const k = ease === 'out' ? 1 - (1 - u) * (1 - u) : u * u;
+      return p0 + (p1 - p0) * k;
+    }
+  }
+  // Depois de 75 s: aproxima lentamente de 90% sem ultrapassar.
+  const last = KEYS[KEYS.length - 1][1];
+  return last + (INSTALL_CAP - last) * Math.min(1, (e - INSTALL_MIN_MS) / 60_000);
 }
 export function estimatedInstallPercent(elapsedMs: number, installedAtMs: number | null): number {
   const e = Math.max(0, elapsedMs);
-  if (installedAtMs == null) return Math.min(90, Math.round(baseCurve(e)));
+  if (installedAtMs == null) return Math.min(INSTALL_CAP, Math.floor(baseCurve(e)));
   const tI = Math.max(0, Math.min(installedAtMs, e));
-  const p0 = Math.min(90, baseCurve(tI));
-  const end = Math.max(INSTALL_MIN_MS, tI + INSTALL_FINISH_MIN_MS);
+  const rampStart = Math.max(tI, INSTALL_DONE_MIN_MS - INSTALL_FINISH_MIN_MS);
+  const end = rampStart + INSTALL_FINISH_MIN_MS;
   if (e >= end) return 100;
-  const v = p0 + (100 - p0) * ((e - tI) / (end - tI));
-  return Math.min(99, Math.max(0, Math.floor(v)));
+  const capped = (t: number) => Math.min(INSTALL_CAP, baseCurve(t));
+  if (e <= rampStart) return Math.floor(capped(e));
+  const p0 = capped(rampStart);
+  const u = (e - rampStart) / INSTALL_FINISH_MIN_MS;
+  return Math.min(99, Math.floor(p0 + (100 - p0) * u));
 }

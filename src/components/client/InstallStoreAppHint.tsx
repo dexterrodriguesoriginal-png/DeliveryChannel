@@ -85,6 +85,17 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     }, 250);
     return () => window.clearInterval(id);
   }, [phase, installStart, installedAt]);
+  // Durante a instalação: app detectado (getInstalledRelatedApps) ou modo standalone também confirmam.
+  useEffect(() => {
+    if ((phase !== 'installing' && phase !== 'slow') || installedAt != null || testPhase()) return;
+    let alive = true;
+    const check = () => {
+      if (isStandalone(window)) { setInstalledAt(a => a ?? Date.now()); return; }
+      detectInstalledApp().then(v => { if (alive && v) setInstalledAt(a => a ?? Date.now()); }).catch(() => {});
+    };
+    const id = window.setInterval(check, 2000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, [phase, installedAt]);
   // Visitas posteriores no navegador: detecta o app já instalado (Chrome Android, via related_applications).
   useEffect(() => {
     if (standalone) return;

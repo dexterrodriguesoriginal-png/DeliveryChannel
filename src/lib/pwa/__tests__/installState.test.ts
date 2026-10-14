@@ -101,26 +101,38 @@ describe('acompanhamento da instalação', () => {
 });
 
 import { estimatedInstallPercent } from '../installState';
-describe('porcentagem estimada da instalação', () => {
-  it('começa rápido, chega a 90% em ~90 s e para; 100% só com appinstalled', () => {
+describe('porcentagem estimada da instalação (estilo player)', () => {
+  it('sem confirmação: monotônica, arranque rápido (~40% em 8 s), perto de 90% aos 75 s, nunca passa de 90%', () => {
+    let prev = -1;
+    for (let t = 0; t <= 10 * 60_000; t += 250) { const p = estimatedInstallPercent(t, null); expect(p).toBeGreaterThanOrEqual(prev); expect(p).toBeLessThanOrEqual(90); prev = p; }
     expect(estimatedInstallPercent(0, null)).toBe(0);
-    expect(estimatedInstallPercent(20_000, null)).toBeGreaterThan(40);
-    expect(estimatedInstallPercent(60_000, null)).toBe(90);
+    expect(estimatedInstallPercent(8_000, null)).toBeGreaterThanOrEqual(38);
+    expect(estimatedInstallPercent(8_000, null)).toBeLessThanOrEqual(42);
+    expect(estimatedInstallPercent(75_000, null)).toBeGreaterThanOrEqual(87);
     expect(estimatedInstallPercent(10 * 60_000, null)).toBe(90);
   });
-  it('appinstalled cedo não salta: sobe gradual até 100% só aos 75 s', () => {
-    const at1 = estimatedInstallPercent(1_000, 1_000);
-    expect(at1).toBeLessThan(10);
-    let prev = 0;
-    for (let t = 1_000; t <= 75_000; t += 1_000) { const p = estimatedInstallPercent(t, 1_000); expect(p).toBeGreaterThanOrEqual(prev); prev = p; }
-    expect(estimatedInstallPercent(59_000, 1_000)).toBeLessThan(100);
-    expect(estimatedInstallPercent(60_000, 1_000)).toBeLessThan(100);
-    expect(estimatedInstallPercent(74_000, 1_000)).toBeLessThan(100);
-    expect(estimatedInstallPercent(75_000, 1_000)).toBe(100);
+  it('desacelera e acelera de novo (ritmo variável)', () => {
+    const rate = (a: number, b: number) => (estimatedInstallPercent(b, null) - estimatedInstallPercent(a, null)) / (b - a);
+    const start = rate(0, 4_000), slow = rate(10_000, 20_000), again = rate(28_000, 36_000), end = rate(65_000, 75_000);
+    expect(start).toBeGreaterThan(slow); expect(again).toBeGreaterThan(slow); expect(again).toBeGreaterThan(end);
   });
-  it('appinstalled tardio: de 90% a 100% em 8 s, sem salto', () => {
-    expect(estimatedInstallPercent(120_000, 120_000)).toBe(90);
-    expect(estimatedInstallPercent(124_000, 120_000)).toBe(95);
-    expect(estimatedInstallPercent(128_000, 120_000)).toBe(100);
+  it('confirmação cedo: nunca 100% antes de 20 s desde o aceite; monotônica', () => {
+    let prev = -1;
+    for (let t = 0; t <= 30_000; t += 100) { const p = estimatedInstallPercent(t, 1_000); expect(p).toBeGreaterThanOrEqual(prev); prev = p; if (t < 20_000) expect(p).toBeLessThan(100); }
+    expect(estimatedInstallPercent(1_000, 1_000)).toBeLessThan(10);
+    expect(estimatedInstallPercent(19_900, 1_000)).toBeLessThan(100);
+    expect(estimatedInstallPercent(20_000, 1_000)).toBe(100);
+  });
+  it('confirmação depois de 20 s: acelera até 100% em ~3 s, sem salto', () => {
+    const before = estimatedInstallPercent(30_000, 30_000);
+    expect(before).toBeLessThan(70);
+    let prev = before;
+    for (let t = 30_000; t <= 33_000; t += 100) { const p = estimatedInstallPercent(t, 30_000); expect(p).toBeGreaterThanOrEqual(prev); prev = p; }
+    expect(estimatedInstallPercent(32_900, 30_000)).toBeLessThan(100);
+    expect(estimatedInstallPercent(33_000, 30_000)).toBe(100);
+  });
+  it('confirmação tardia: de 90% a 100% em 3 s', () => {
+    expect(estimatedInstallPercent(120_000, 120_000)).toBe(89);
+    expect(estimatedInstallPercent(123_000, 120_000)).toBe(100);
   });
 });
