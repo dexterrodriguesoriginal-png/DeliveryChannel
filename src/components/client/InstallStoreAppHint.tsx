@@ -8,7 +8,7 @@ import {
   isMarkedInstalled, markInstalled, getDeferredPrompt, clearDeferredPrompt, subscribeInstall, wasAppInstalledEvent,
   decideInvite, readInvite, recordInvite, recordAccepted, isEditableFocused, onInviteTrigger, activeKey,
   InviteKind, InviteTrigger, INVITE_ACTIVE_MS, inviteSurface,
-  InstallPhase, INSTALL_SLOW_MS, installPhaseCopy, nextInstallPhase, estimatedInstallPercent,
+  InstallPhase, INSTALL_SLOW_MS, installPhaseCopy, nextInstallPhase, estimatedInstallPercent, OPEN_APP_ENABLE_DELAY_MS,
 } from '../../lib/pwa/installState';
 
 interface Props { tenantId: string; storeName: string; color: string; logoUrl?: string; hidden?: boolean; busy?: boolean; }
@@ -28,10 +28,10 @@ function testOpenBar(): boolean {
   if (import.meta.env.PROD) return false;
   try { return new URLSearchParams(window.location.search).get('pwa_test_phase') === 'open'; } catch { return false; }
 }
-/** Somente para capturas/testes fora de produção: ?pwa_test_phase=installing|slow|done. */
+/** Somente para capturas/testes fora de produção: ?pwa_test_phase=installing|slow|finishing|done. */
 function testPhase(): InstallPhase | null {
   if (import.meta.env.PROD) return null;
-  try { const v = new URLSearchParams(window.location.search).get('pwa_test_phase'); return v === 'installing' || v === 'slow' || v === 'done' ? v : null; } catch { return null; }
+  try { const v = new URLSearchParams(window.location.search).get('pwa_test_phase'); return v === 'installing' || v === 'slow' || v === 'finishing' || v === 'done' ? v : null; } catch { return null; }
 }
 
 export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, color, logoUrl, hidden, busy }) => {
@@ -44,6 +44,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   const [phase, setPhase] = useState<InstallPhase>(() => testPhase() || 'idle');
   const [doneClosed, setDoneClosed] = useState(false);
   const [installStart, setInstallStart] = useState<number | null>(null);
+  const [installedAt, setInstalledAt] = useState<number | null>(null);
   const [, setTick] = useState(0);
   const [appDetected, setAppDetected] = useState(() => testOpenBar());
   const [openBarClosed, setOpenBarClosed] = useState(false);
@@ -55,7 +56,13 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   // Instalado só por appinstalled ou execução em modo standalone (nunca por clique/fechamento).
   useEffect(() => {
     if (standalone || appInstalledEvt) { markInstalled(localStorage, tenantId); setInstalled(true); }
-    if (appInstalledEvt && !standalone) setPhase(p => nextInstallPhase(p, 'appinstalled'));
+    // appinstalled chega antes do ícone ficar pronto: só registra o momento; a barra segue gradual.
+    if (appInstalledEvt && !standalone) {
+      const now = Date.now();
+      setInstalledAt(a => a ?? now);
+      setInstallStart(s => s ?? now);
+      setPhase(p => (p === 'idle' || p === 'slow' ? 'installing' : p));
+    }
   }, [standalone, appInstalledEvt, tenantId]);
   // Sem appinstalled em ~3 min: só orienta conferir a tela inicial.
   useEffect(() => {
@@ -69,6 +76,19 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     setInstallStart(s => s ?? Date.now());
     const id = window.setInterval(() => setTick(t => t + 1), 500);
     return () => window.clearInterval(id);
+  }, [phase]);
+  // 100% (só com appinstalled e após o tempo mínimo) → "Finalizando no seu celular…"; botão liberado após ~15 s.
+  useEffect(() => {
+    if ((phase !== 'installing' && phase !== 'slow') || installStart == null || installedAt == null || testPhase()) return;
+    const id = window.setInterval(() => {
+      if (estimatedInstallPercent(Date.now() - installStart, installedAt - installStart) >= 100) setPhase('finishing');
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [phase, installStart, installedAt]);
+  useEffect(() => {
+    if (phase !== 'finishing' || testPhase()) return;
+    const id = window.setTimeout(() => setPhase('done'), OPEN_APP_ENABLE_DELAY_MS);
+    return () => window.clearTimeout(id);
   }, [phase]);
   // Visitas posteriores no navegador: detecta o app já instalado (Chrome Android, via related_applications).
   useEffect(() => {
@@ -138,7 +158,8 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
 
   const copy = installPhaseCopy(phase, storeName);
   if (copy && !hidden && (phase !== 'done' || !doneClosed)) {
-    const isDone = phase === 'done';
+    const isDone = phase === 'done' || phase === 'finishing';
+    const openReady = phase === 'done';
     return (
       <div data-testid="install-progress" data-phase={phase} role="status" aria-live="polite" className="fixed inset-x-0 bottom-2 z-[120] px-3 flex justify-center pointer-events-none">
         <div className="pointer-events-auto w-full max-w-sm rounded-2xl bg-[#2b2b2e] text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/5 px-3 py-2.5">
@@ -149,14 +170,14 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
               <p className="text-[15px] font-semibold leading-tight break-words">{copy.title}</p>
               {copy.subtitle && <p className="text-xs text-neutral-400 leading-tight mt-0.5">{copy.subtitle}</p>}
             </div>
-            {isDone && openButton}
+            {isDone && (openReady ? openButton : <button type="button" disabled aria-disabled="true" data-testid="open-installed-app-wait" className="shrink-0 rounded-full bg-white/10 px-4 py-1.5 text-sm font-semibold text-neutral-400 cursor-not-allowed">Abrir app</button>)}
             {phase !== 'installing' && <button type="button" aria-label="Fechar" onClick={() => { setDoneClosed(true); if (!isDone) setPhase('idle'); }} className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>}
           </div>
           {isDone && <p data-testid="open-app-hint" className="mt-1.5 text-xs text-neutral-400 leading-snug">Se não abrir, toque no ícone {storeName} na sua tela inicial</p>}
           {(phase === 'installing' || phase === 'slow' || isDone) && (() => {
             const tp = testPhase();
             const elapsed = tp ? (tp === 'installing' ? 25000 : 200000) : Date.now() - (installStart ?? Date.now());
-            const pct = estimatedInstallPercent(elapsed, isDone);
+            const pct = isDone ? 100 : estimatedInstallPercent(elapsed, installedAt != null && installStart != null ? installedAt - installStart : null);
             return (
               <div className="mt-2.5 flex items-center gap-2" data-testid="install-percent" data-percent={pct}>
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>

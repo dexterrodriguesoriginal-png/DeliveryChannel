@@ -155,7 +155,7 @@ export function inviteSurface(o: { installed: boolean; standalone: boolean; hidd
 }
 
 // --- Acompanhamento após aceitar a instalação nativa (sem porcentagem e sem conclusão simulada) ---
-export type InstallPhase = 'idle' | 'installing' | 'slow' | 'done';
+export type InstallPhase = 'idle' | 'installing' | 'slow' | 'finishing' | 'done';
 /** Sem appinstalled após este tempo: só orienta conferir a tela inicial (não marca instalado). */
 export const INSTALL_SLOW_MS = 3 * 60 * 1000;
 export const INSTALL_DONE_HIDE_MS = 8000;
@@ -163,6 +163,7 @@ export function installPhaseCopy(phase: InstallPhase, storeName: string): { titl
   if (phase === 'installing') return { title: `Instalando o app ${storeName}…`, subtitle: 'Isso pode levar até 2 minutos. Pode continuar comprando.' };
   if (phase === 'slow') return { title: storeName, subtitle: 'Confira sua tela inicial — o ícone deve aparecer em instantes' };
   if (phase === 'done') return { title: `Pronto! O app ${storeName} está na sua tela inicial`, subtitle: '' };
+  if (phase === 'finishing') return { title: `Pronto! O app ${storeName} está na sua tela inicial`, subtitle: 'Finalizando no seu celular…' };
   return null;
 }
 /** Próxima fase a partir dos sinais reais: aceite nativo → instalando; appinstalled → pronto; recusa → normal. */
@@ -174,13 +175,27 @@ export function nextInstallPhase(cur: InstallPhase, signal: 'accepted' | 'dismis
 }
 
 /**
- * Porcentagem ESTIMADA exibida enquanto o Chrome instala: começa rápido e desacelera até 90% em ~90 s,
- * e fica parada ali (nunca passa de 95%). 100% só com o evento real appinstalled.
+ * Porcentagem exibida enquanto o Chrome instala, baseada no tempo (duração mínima ~60 s).
+ * Sem appinstalled: segue a curva e para em 90%. Com appinstalled (que o Chrome dispara antes do
+ * ícone ficar pronto): nunca salta — sobe gradualmente até 100% no mínimo aos 60 s (ou +8 s se chegar depois).
+ * `installedAtMs` = tempo decorrido (desde o início) em que o appinstalled chegou, ou null.
  */
-export const INSTALL_EST_MS = 90 * 1000;
-export function estimatedInstallPercent(elapsedMs: number, appInstalled: boolean): number {
-  if (appInstalled) return 100;
-  const t = Math.max(0, elapsedMs) / INSTALL_EST_MS;
-  const v = (90 * (1 - Math.exp(-3 * t))) / (1 - Math.exp(-3));
-  return Math.min(90, Math.max(0, Math.round(v)));
+export const INSTALL_MIN_MS = 60 * 1000;
+export const INSTALL_FINISH_MIN_MS = 8 * 1000;
+/** Após 100%, espera antes de liberar o botão "Abrir app" (o WebAPK ainda finaliza no aparelho). */
+export const OPEN_APP_ENABLE_DELAY_MS = 15 * 1000;
+export const INSTALL_EST_MS = INSTALL_MIN_MS;
+function baseCurve(elapsedMs: number): number {
+  const t = Math.min(1, Math.max(0, elapsedMs) / INSTALL_MIN_MS);
+  return (100 * (1 - Math.exp(-3 * t))) / (1 - Math.exp(-3));
+}
+export function estimatedInstallPercent(elapsedMs: number, installedAtMs: number | null): number {
+  const e = Math.max(0, elapsedMs);
+  if (installedAtMs == null) return Math.min(90, Math.round(baseCurve(e)));
+  const tI = Math.max(0, Math.min(installedAtMs, e));
+  const p0 = Math.min(90, baseCurve(tI));
+  const end = Math.max(INSTALL_MIN_MS, tI + INSTALL_FINISH_MIN_MS);
+  if (e >= end) return 100;
+  const v = p0 + (100 - p0) * ((e - tI) / (end - tI));
+  return Math.min(99, Math.max(0, Math.floor(v)));
 }
