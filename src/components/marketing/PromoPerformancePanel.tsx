@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3, DollarSign, Flame, ShoppingCart, TrendingUp, TrendingDown, Minus, Info, AlertTriangle,
   CalendarDays, Download, Trophy, Clock, Gauge,
@@ -10,10 +10,10 @@ import type { SecurityContext } from '../../services/securityEngine';
 import { calculatePromoCardStatus, getPromoStatusMeta } from '../../utils/promoCardDateUtils';
 import {
   buildPerformanceCsv, compareMetric, computePromoPerformance, getPromoCardKind, previousPeriod, resolvePeriod,
-  staleCheckoutCards, topCardsByRevenue, usageLimitAlerts,
-  type MetricDelta, type PeriodPreset, type PeriodRange, type PromoOrder,
+  staleCheckoutCards, summarizeServerPerformance, topCardsByRevenue, usageLimitAlerts,
+  type MetricDelta, type PeriodPreset, type PromoPerformanceSummary,
 } from '../../utils/promoPerformance';
-import { promoPerformanceRepository } from '../../repositories/promoPerformanceRepository';
+import { promoPerformanceRepository, type PromoPerformanceResult } from '../../repositories/promoPerformanceRepository';
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const toInput = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -49,41 +49,49 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
   const range = useMemo(() => resolvePeriod(preset, now, { from: customFrom, to: customTo }), [preset, now, customFrom, customTo]);
   const prevRange = useMemo(() => (range ? previousPeriod(range) : null), [range]);
 
-  const [orders, setOrders] = useState<PromoOrder[]>([]);
-  const [isDemo, setIsDemo] = useState(false);
-  const [hasAttr, setHasAttr] = useState<boolean | null>(null);
-  const [truncated, setTruncated] = useState(false);
+  const [result, setResult] = useState<PromoPerformanceResult | null>(null);
+  const requestSeq = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!range || !prevRange) return;
+    const seq = ++requestSeq.current; // descarta respostas antigas (troca rápida de período/loja)
     setLoading(true); setError(null);
     try {
-      const windows: PeriodRange[] = [{ start: prevRange.start, end: range.end }];
-      const staleStart = new Date(now.getTime() - STALE_DAYS * 864e5);
-      if (staleStart < prevRange.start || now >= range.end) windows.push({ start: staleStart, end: new Date(now.getTime() + 1000) });
-      const r = await promoPerformanceRepository.getOrders(securityContext, tenantId, windows);
-      setOrders(r.orders); setIsDemo(r.isDemo); setHasAttr(r.hasAttributionColumn); setTruncated(r.truncated);
+      const r = await promoPerformanceRepository.getPerformance(securityContext, tenantId, range, prevRange);
+      if (seq === requestSeq.current) setResult(r);
     } catch (e) {
-      setOrders([]); setError(e instanceof Error ? e.message : 'Falha ao carregar pedidos.');
-    } finally { setLoading(false); }
-  }, [range, prevRange, now, securityContext, tenantId]);
+      if (seq === requestSeq.current) { setResult(null); setError(e instanceof Error ? e.message : 'Falha ao carregar o desempenho.'); }
+    } finally { if (seq === requestSeq.current) setLoading(false); }
+  }, [range, prevRange, securityContext, tenantId]);
 
   useEffect(() => { load(); }, [load]);
 
   const tenantOffers = useMemo(() => offers.filter(o => !o.tenantId || o.tenantId === tenantId), [offers, tenantId]);
-  const summary = useMemo(() => (range ? computePromoPerformance({ tenantId, cards: tenantOffers, orders, range }) : null), [range, tenantId, tenantOffers, orders]);
-  const prevSummary = useMemo(() => (prevRange ? computePromoPerformance({ tenantId, cards: tenantOffers, orders, range: prevRange }) : null), [prevRange, tenantId, tenantOffers, orders]);
+  const build = useCallback((which: 'current' | 'previous'): PromoPerformanceSummary | null => {
+    const r = which === 'current' ? range : prevRange;
+    if (!r || !result || result.kind === 'unavailable') return null;
+    if (result.kind === 'server') return summarizeServerPerformance({ tenantId, cards: tenantOffers, rows: result[which] });
+    return computePromoPerformance({ tenantId, cards: tenantOffers, orders: result.orders, range: r });
+  }, [range, prevRange, result, tenantId, tenantOffers]);
+  const summary = useMemo(() => build('current'), [build]);
+  const prevSummary = useMemo(() => build('previous'), [build]);
+  const lastSaleByCard = useMemo(() => {
+    if (!result || result.kind === 'unavailable') return {};
+    if (result.kind === 'server') return summary?.lastSaleByCard ?? {};
+    return computePromoPerformance({ tenantId, cards: tenantOffers, orders: result.orders, range: { start: new Date(0), end: new Date(now.getTime() + 1000) } }).lastSaleByCard;
+  }, [result, summary, tenantId, tenantOffers, now]);
   const rowById = useMemo(() => new Map((summary?.rows || []).map(r => [r.cardId, r])), [summary]);
   const offerById = useMemo(() => new Map(tenantOffers.map(o => [o.id, o])), [tenantOffers]);
   const top3 = useMemo(() => topCardsByRevenue(summary?.rows || []), [summary]);
-  const stale = useMemo(() => staleCheckoutCards({ tenantId, cards: tenantOffers, orders, now, days: STALE_DAYS, isLive: c => calculatePromoCardStatus(c) === 'ACTIVE' }), [tenantId, tenantOffers, orders, now]);
+  const stale = useMemo(() => staleCheckoutCards({ tenantId, cards: tenantOffers, lastSaleByCard, now, days: STALE_DAYS, isLive: c => calculatePromoCardStatus(c) === 'ACTIVE' }), [tenantId, tenantOffers, lastSaleByCard, now]);
   const usage = useMemo(() => usageLimitAlerts(tenantOffers), [tenantOffers]);
   const hasCheckoutCards = tenantOffers.some(o => getPromoCardKind(o) === 'CUSTOM_OFFER');
+  const isDemo = result?.kind === 'demo';
+  const attributionUnavailable = !loading && !error && result?.kind === 'unavailable';
   const ready = !loading && !error && !!summary;
-  const attributionUnavailable = hasAttr === false;
-  const noAttributionData = ready && summary!.attributedOrders === 0 && summary!.cancelledOrRefunded === 0;
+  const noAttributionData = attributionUnavailable || (ready && summary!.attributedOrders === 0 && summary!.cancelledOrRefunded === 0);
 
   const d = (cur: number | null | undefined, prev: number | null | undefined) => compareMetric(cur ?? null, prev ?? null);
 
@@ -101,7 +109,7 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
   const presets: { id: PeriodPreset; label: string }[] = [
     { id: 'today', label: 'Hoje' }, { id: '7d', label: 'Últimos 7 dias' }, { id: '30d', label: 'Últimos 30 dias' }, { id: 'custom', label: 'Personalizado' },
   ];
-  const kpi = (v: React.ReactNode) => (loading ? <span className="inline-block h-7 w-20 rounded bg-gray-200 animate-pulse" /> : error ? '—' : v);
+  const kpi = (v: React.ReactNode) => (loading ? <span className="inline-block h-7 w-20 rounded bg-gray-200 animate-pulse" /> : (error || attributionUnavailable) ? '—' : v);
   const showDelta = ready && !attributionUnavailable;
 
   return (
@@ -131,7 +139,6 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
 
       {!range && <Card className="p-4 text-xs text-amber-800 bg-amber-50 border-amber-200">Selecione um período válido (data inicial menor ou igual à final).</Card>}
       {isDemo && <Card className="p-3 text-xs bg-gray-50 border-gray-200 text-gray-700 flex gap-2"><Info className="w-4 h-4 shrink-0" /> Modo local de demonstração: os números vêm de dados demonstrativos, não de vendas reais.</Card>}
-      {truncated && <Card className="p-3 text-xs bg-amber-50 border-amber-200 text-amber-800 flex gap-2"><AlertTriangle className="w-4 h-4 shrink-0" /> Período com volume muito alto: os números podem estar incompletos. Reduza o período.</Card>}
       {error && (
         <Card className="p-4 border-red-200 bg-red-50 text-red-800 text-xs flex flex-col sm:flex-row sm:items-center gap-3 justify-between" role="alert">
           <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Não foi possível carregar os pedidos do período: {error}</span>
@@ -161,12 +168,12 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
         </Card>
         <Card className="p-4 space-y-2 border-amber-100 bg-amber-50/40">
           <div className="flex items-center justify-between text-amber-800">
-            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">Benefícios Resgatados <Hint text="Resgates registrados pelo servidor (número do resgate gravado no pedido) em pedidos válidos do período. Visualizações não contam." /></span>
+            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">Benefícios Resgatados <Hint text="Unidades promocionais efetivamente consumidas em pedidos válidos do período (mesma unidade do limite de usos). Cancelados/estornados devolvem o uso. Visualizações não contam." /></span>
             <Flame className="w-4 h-4" />
           </div>
           <div className="text-2xl font-black font-mono text-gray-900" data-testid="kpi-redemptions">{kpi(summary?.redemptions ?? 0)}</div>
           {showDelta && <Delta d={d(summary?.redemptions, prevSummary?.redemptions)} testId="delta-redemptions" />}
-          <p className="text-[11px] text-gray-500">Resgates válidos no período</p>
+          <p className="text-[11px] text-gray-500">Unidades resgatadas no período</p>
         </Card>
         <Card className="p-4 space-y-2 border-purple-100 bg-purple-50/40">
           <div className="flex items-center justify-between text-purple-800">
@@ -183,9 +190,9 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
         <Card className="p-4 text-xs text-gray-700 bg-white border-dashed flex gap-2" data-testid="empty-state">
           <Info className="w-4 h-4 shrink-0 text-gray-400" />
           <div className="space-y-1">
-            <p className="font-bold text-gray-900">Nenhuma venda atribuída a cards neste período.</p>
+            <p className="font-bold text-gray-900">{attributionUnavailable ? 'Atribuição de vendas ainda não ativa.' : 'Nenhuma venda atribuída a cards neste período.'}</p>
             {attributionUnavailable ? (
-              <p>A base atual ainda não registra a origem promocional dos pedidos (migrations 026 e 027 não ativadas no banco). Os indicadores passam a funcionar após a ativação.</p>
+              <p>A atribuição de vendas aos cards ainda não está ativa neste banco (sequência N1–N6, com o N5, não aplicada). Nenhum número é exibido até a ativação; depois, os pedidos do checkout promocional aparecem aqui.</p>
             ) : !hasCheckoutCards ? (
               <p>Somente cards com <b>Checkout promocional</b> geram pedidos rastreáveis. Cards apenas visuais e de produto do catálogo ainda não têm rastreamento de origem.</p>
             ) : (
@@ -217,7 +224,7 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
           </Card>
           <Card className="p-4 space-y-3" data-testid="stale-alert">
             <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-1"><Clock className="w-4 h-4 text-red-500" /> Sem venda há {STALE_DAYS} dias <Hint text={`Cards de checkout promocional ativos há pelo menos ${STALE_DAYS} dias sem nenhum pedido válido nos últimos ${STALE_DAYS} dias (independe do período selecionado).`} /></h4>
-            {attributionUnavailable ? <p className="text-xs text-gray-500">Indisponível até a origem dos pedidos ser registrada no banco.</p>
+            {attributionUnavailable ? <p className="text-xs text-gray-500">Indisponível até a atribuição (N5) estar ativa no banco.</p>
               : !hasCheckoutCards ? <p className="text-xs text-gray-500">Só cards de checkout promocional são monitorados; nenhum cadastrado.</p>
               : stale.length === 0 ? <p className="text-xs text-gray-500">Nenhum card ativo parado. 👍</p> : (
                 <ul className="space-y-2">
