@@ -1111,6 +1111,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         tenantId={storeData.tenant.id}
         storeName={theme.storeName || storeData.tenant.name}
         color={theme.primaryColor || '#334155'}
+        logoUrl={theme.logoUrl}
+        hidden={isCheckoutOpen}
       />
       {/* Barra de Retorno ao Painel (Facilita Testes do Dono Sem Precisar Publicar) */}
       <div className="bg-slate-950 text-white text-xs px-3.5 py-2 flex items-center justify-between border-b border-slate-800 z-40 relative">

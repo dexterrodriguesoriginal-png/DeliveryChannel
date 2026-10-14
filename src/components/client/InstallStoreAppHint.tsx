@@ -1,63 +1,86 @@
-import React, { useEffect, useState } from 'react';
-import { Download, Share, X } from 'lucide-react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import { Download, Share, X, MoreVertical, Smartphone } from 'lucide-react';
+import { StoreLogo } from './StoreLogo';
+import {
+  detectPlatform, isStandalone, promoVisibility, hasSeenInstallModal, markInstallModalSeen,
+  isMarkedInstalled, markInstalled, getDeferredPrompt, clearDeferredPrompt, subscribeInstall, wasAppInstalledEvent,
+} from '../../lib/pwa/installState';
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
+interface Props { tenantId: string; storeName: string; color: string; logoUrl?: string; hidden?: boolean; }
 
 /**
- * Sugestão OPCIONAL de instalação do app da loja (nunca obrigatória; pode ser fechada).
- * Android/Chrome: usa beforeinstallprompt. iOS Safari: instrução Compartilhar → Adicionar à Tela de Início.
- * A dispensa é lembrada por loja (tenantId).
+ * Promoção de instalação do app da loja: modal na 1ª visita (por loja) e banner fixo depois,
+ * até a instalação ser confirmada (appinstalled / aceite / modo standalone). Nunca bloqueia a compra.
  */
-export const InstallStoreAppHint: React.FC<{ tenantId: string; storeName: string; color: string }> = ({ tenantId, storeName, color }) => {
-  const dismissKey = `adegafood_install_hint_dismissed_${tenantId}`;
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
-  const [dismissed, setDismissed] = useState(() => {
-    try { return localStorage.getItem(dismissKey) === '1'; } catch { return false; }
-  });
-
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-  const isIOS = /iphone|ipad|ipod/i.test(ua);
-  const isMobile = isIOS || /android|mobile/i.test(ua);
-  const standalone = typeof window !== 'undefined' &&
-    (window.matchMedia?.('(display-mode: standalone)').matches || (navigator as unknown as { standalone?: boolean }).standalone === true);
+export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, color, logoUrl, hidden }) => {
+  const deferred = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
+  const appInstalledEvt = useSyncExternalStore(subscribeInstall, wasAppInstalledEvent, () => false);
+  const [modalSeen, setModalSeen] = useState(() => hasSeenInstallModal(localStorage, tenantId));
+  const [installed, setInstalled] = useState(() => isMarkedInstalled(localStorage, tenantId));
+  const [help, setHelp] = useState(false);
+  const standalone = isStandalone(window);
+  const platform = detectPlatform(navigator.userAgent);
 
   useEffect(() => {
-    const onPrompt = (e: Event) => { e.preventDefault(); setDeferred(e as BeforeInstallPromptEvent); };
-    const onInstalled = () => setDeferred(null);
-    window.addEventListener('beforeinstallprompt', onPrompt);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => { window.removeEventListener('beforeinstallprompt', onPrompt); window.removeEventListener('appinstalled', onInstalled); };
-  }, []);
+    if (standalone || appInstalledEvt) { markInstalled(localStorage, tenantId); setInstalled(true); }
+  }, [standalone, appInstalledEvt, tenantId]);
 
-  if (dismissed || standalone || (!isMobile && !deferred)) return null;
-  if (!deferred && !isIOS) return null; // navegador sem suporte: não mostra nada
+  const vis = promoVisibility({ installed, standalone, modalSeen, checkoutOpen: !!hidden });
+  if (vis === 'none') return null;
 
-  const close = () => { setDismissed(true); try { localStorage.setItem(dismissKey, '1'); } catch { /* ignore */ } };
+  const closeModal = () => { markInstallModalSeen(localStorage, tenantId); setModalSeen(true); setHelp(false); };
+  const install = async () => {
+    const ev = getDeferredPrompt();
+    if (!ev) { setHelp(true); return; }
+    await ev.prompt();
+    const choice = await ev.userChoice.catch(() => null);
+    clearDeferredPrompt();
+    if (choice?.outcome === 'accepted') { markInstalled(localStorage, tenantId); setInstalled(true); }
+    closeModal();
+  };
+
+  const instructions = (
+    <div data-testid="install-instructions" className="mt-3 rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700 text-left space-y-1">
+      {platform === 'ios-safari' && <p className="flex flex-wrap items-center gap-1">No Safari, toque em <Share className="inline h-4 w-4" /> <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</p>}
+      {platform === 'ios-other' && <p>No iPhone, a instalação é feita pelo <b>Safari</b>. Abra este link no Safari, toque em <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b>.</p>}
+      {platform === 'android-chrome' && <><p>O Chrome ainda não liberou a instalação automática nesta página.</p><p className="flex flex-wrap items-center gap-1">Toque no menu <MoreVertical className="inline h-4 w-4" /> e escolha <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.</p></>}
+      {platform === 'android-other' && <p>Este navegador pode não permitir instalar apps. Para a melhor experiência, abra o link no <b>Google Chrome</b> e use o menu ⋮ → <b>Instalar app</b>.</p>}
+      {platform === 'desktop' && <p>Abra este link no navegador do seu celular (Chrome no Android ou Safari no iPhone) para instalar o app da loja.</p>}
+    </div>
+  );
+
+  if (vis === 'modal') {
+    return (
+      <div data-testid="install-store-app-modal" role="dialog" aria-modal="true" aria-label={`Instalar app ${storeName}`}
+        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
+        <div className="w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl text-center relative">
+          <button type="button" aria-label="Fechar" onClick={closeModal} className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
+          <div className="flex justify-center mb-3"><StoreLogo logoUrl={logoUrl} name={storeName} color={color} className="w-20 h-20" /></div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{storeName}</p>
+          <h2 className="mt-1 text-xl font-bold text-slate-900">Tenha o app da {storeName} no seu celular</h2>
+          <p className="mt-2 text-sm text-slate-600">Instale e volte à loja com um toque, direto pela tela inicial do seu aparelho.</p>
+          {help && instructions}
+          <button type="button" onClick={install} data-testid="install-primary"
+            className="mt-5 w-full inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-white text-base font-bold shadow-lg"
+            style={{ backgroundColor: color }}>
+            <Download className="h-5 w-5" /> Instalar aplicativo
+          </button>
+          <button type="button" onClick={closeModal} data-testid="install-continue" className="mt-2 w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100">
+            Continuar no navegador
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div data-testid="install-store-app-hint" className="mx-4 mt-3 rounded-2xl border bg-white p-3 shadow-sm flex items-start gap-3">
-      <div className="flex-1 text-sm text-slate-700">
-        <p className="font-semibold text-slate-900">Tenha o app de {storeName} no seu celular</p>
-        {deferred ? (
-          <p>Instale para abrir a loja direto da tela inicial. É opcional — você pode continuar comprando pelo navegador.</p>
-        ) : (
-          <p className="flex flex-wrap items-center gap-1">No Safari, toque em <Share className="inline h-4 w-4" /> <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b>. É opcional.</p>
-        )}
-        {deferred && (
-          <button
-            type="button"
-            onClick={async () => { await deferred.prompt(); await deferred.userChoice.catch(() => null); setDeferred(null); }}
-            className="mt-2 inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-white text-sm font-semibold"
-            style={{ backgroundColor: color }}
-          >
-            <Download className="h-4 w-4" /> Instalar app
-          </button>
-        )}
+    <div data-testid="install-store-app-banner" className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur px-3 py-2">
+      <div className="flex items-center gap-2">
+        <Smartphone className="h-4 w-4 shrink-0" style={{ color }} />
+        <span className="flex-1 text-sm font-semibold text-slate-800 truncate">Instale o app da {storeName}</span>
+        <button type="button" onClick={install} data-testid="install-banner-button" className="rounded-xl px-3 py-1.5 text-white text-xs font-bold" style={{ backgroundColor: color }}>Instalar</button>
       </div>
-      <button type="button" aria-label="Fechar sugestão de instalação" onClick={close} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+      {help && <div className="relative">{instructions}<button type="button" aria-label="Fechar instruções" onClick={() => setHelp(false)} className="absolute right-2 top-5 text-slate-400"><X className="h-4 w-4" /></button></div>}
     </div>
   );
 };
