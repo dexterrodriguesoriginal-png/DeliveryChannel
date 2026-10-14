@@ -15,9 +15,20 @@ export const installKeys = (tenantId: string) => ({
 export function hasSeenInstallModal(s: KV, tenantId: string) { return safe(() => s.getItem(installKeys(tenantId).modalSeen) === '1', false); }
 /** Fechar/recusar só marca o modal como visto — NUNCA como instalado. */
 export function markInstallModalSeen(s: KV, tenantId: string) { safe(() => s.setItem(installKeys(tenantId).modalSeen, '1'), undefined); }
-export function isMarkedInstalled(s: KV, tenantId: string) { return safe(() => s.getItem(installKeys(tenantId).installed) === '1', false); }
-/** Chamar somente após appinstalled ou userChoice 'accepted' ou execução em modo standalone. */
-export function markInstalled(s: KV, tenantId: string) { safe(() => s.setItem(installKeys(tenantId).installed, '1'), undefined); }
+/** Validade da marca "instalado" vista do navegador comum; cada abertura pelo ícone renova. */
+export const INSTALLED_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * Marca persistida com data. O valor legado '1' (sem data) não é mais confiável: não há como saber se o app
+ * ainda existe no aparelho, e sem beforeinstallprompt o convite ficava oculto para sempre.
+ */
+export function isMarkedInstalled(s: KV, tenantId: string, now = Date.now()) {
+  return safe(() => {
+    const ts = Number(s.getItem(installKeys(tenantId).installed));
+    return ts > 1 && now - ts < INSTALLED_TTL_MS;
+  }, false);
+}
+/** Chamar somente após appinstalled ou execução em modo standalone. */
+export function markInstalled(s: KV, tenantId: string, now = Date.now()) { safe(() => s.setItem(installKeys(tenantId).installed, String(now)), undefined); }
 
 export type Platform = 'android-chrome' | 'android-other' | 'ios-safari' | 'ios-other' | 'desktop';
 export function detectPlatform(ua: string): Platform {

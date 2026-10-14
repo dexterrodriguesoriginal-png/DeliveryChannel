@@ -66,3 +66,16 @@ describe('prioridade ao card nativo do Chrome', () => {
     _clr(); expect(_get()).toBeNull();
   });
 });
+
+describe('marca de instalado com validade', () => {
+  const mem = () => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v); } }; };
+  it('valor legado "1" não oculta mais o convite', () => {
+    const s = mem(); s.setItem(installKeys('a').installed, '1');
+    expect(isMarkedInstalled(s, 'a')).toBe(false);
+  });
+  it('expira após 30 dias sem abrir pelo ícone', () => {
+    const s = mem(); markInstalled(s, 'a', 1_000);
+    expect(isMarkedInstalled(s, 'a', 1_000 + 29 * 864e5)).toBe(true);
+    expect(isMarkedInstalled(s, 'a', 1_000 + 31 * 864e5)).toBe(false);
+  });
+});
