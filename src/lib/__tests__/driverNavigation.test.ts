@@ -140,10 +140,10 @@ describe('driverNavigation logic and address extraction', () => {
       expect(nav.originText).toBe('Rua Augusta, 1500, São Paulo');
       expect(nav.destinationText).toBe('Rua Bela Cintra, 1100 - Apto 82, Consolação');
 
-      // Google Maps with origin & destination
-      expect(nav.googleMaps).toContain('https://www.google.com/maps/dir/?api=1');
-      expect(nav.googleMaps).toContain(encodeURIComponent('Rua Augusta, 1500, São Paulo'));
-      expect(nav.googleMaps).toContain(encodeURIComponent('Rua Bela Cintra, 1100 - Apto 82, Consolação'));
+      // Google Maps in directions mode, destination only (origin = current location)
+      expect(nav.googleMaps).toBe(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent('Rua Bela Cintra, 1100 - Apto 82, Consolação')}&travelmode=driving`);
+      expect(nav.googleMaps).not.toContain('/maps/search/');
+      expect(nav.googleMaps).not.toContain('origin=');
 
       // Waze with destination query
       expect(nav.waze).toContain('https://waze.com/ul?q=');
@@ -168,7 +168,7 @@ describe('driverNavigation logic and address extraction', () => {
       expect(nav.coordinates).toEqual({ lat: -23.5589, lng: -46.6612 });
 
       // Destination in Google Maps is coordinates
-      expect(nav.googleMaps).toContain(encodeURIComponent('-23.5589,-46.6612'));
+      expect(nav.googleMaps).toBe(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent('-23.5589,-46.6612')}&travelmode=driving`);
 
       // Waze uses ll=lat,lng
       expect(nav.waze).toBe('https://waze.com/ul?ll=-23.5589,-46.6612&navigate=yes');

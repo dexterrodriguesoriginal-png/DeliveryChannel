@@ -109,11 +109,10 @@ export function buildDriverNavigation(tenant: Tenant, order: Order, apiKey?: str
   // Google Maps Direction URL:
   // If origin is present, directs from origin to destination.
   // Otherwise searches/navigates directly to destination.
+  // Google Maps directions mode (origin omitted => driver's current location).
   let googleMapsUrl = '';
-  if (originText && destinationQuery) {
-    googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originText)}&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
-  } else if (destinationQuery) {
-    googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destinationQuery)}`;
+  if (destinationQuery) {
+    googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
   }
 
   // Waze Navigation URL:
