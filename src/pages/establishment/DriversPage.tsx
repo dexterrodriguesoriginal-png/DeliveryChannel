@@ -1,35 +1,64 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { driverRepository, driverInviteRepository, mapDriverRpcError, DriverInviteLink, DriverInviteLinkCreated } from '../../repositories/driverRepository';
-import { teamRepository } from '../../repositories/teamRepository';
-import { Card } from '../../components/ui/Card';
-import { Badge } from '../../components/ui/Badge';
-import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
+import { 
+  driverRepository, 
+  driverInviteRepository, 
+  mapDriverRpcError, 
+  DriverInviteLink, 
+  DriverInviteLinkCreated 
+} from '../../repositories/driverRepository';
+import { orderRepository } from '../../repositories/orderRepository';
 import { Modal } from '../../components/ui/Modal';
-import { Driver, DriverStatus } from '../../types';
+import { Input } from '../../components/ui/Input';
+import { Button } from '../../components/ui/Button';
+import { Driver, DriverStatus, Order } from '../../types';
 import { 
   Bike, 
-  Phone, 
-  Shield, 
+  Users, 
   UserPlus, 
   RefreshCw, 
-  CheckCircle2, 
-  AlertCircle, 
-  Ban, 
-  Navigation,
-  Edit2
+  ChevronDown, 
+  Mail, 
+  Link, 
+  QrCode, 
+  MessageSquare, 
+  List, 
+  MapPin, 
+  Clock, 
+  Award, 
+  Settings, 
+  ExternalLink,
+  ShieldCheck,
+  Ban
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
-import { DriverApprovalBadge } from '../../components/establishment/statusBadges';
 import { DriverInviteModal } from '../../components/establishment/DriverInviteModal';
 import { PendingApplicationsSection, DriverLinkActions, InviteLinksSection } from '../../components/establishment/DriverOnboardingSections';
 import { driverPagePermissions, pendingApplications, nonPendingDrivers, DriverLinkAction } from '../../lib/driverAdmin';
 
-export const DriversPage: React.FC = () => {
+// Subcomponents
+import { DriverMetricsStrip } from '../../components/establishment/drivers/DriverMetricsStrip';
+import { DriverTableSection } from '../../components/establishment/drivers/DriverTableSection';
+import { DriverProfilePanel } from '../../components/establishment/drivers/DriverProfilePanel';
+import { DriverBottomSummaryCards } from '../../components/establishment/drivers/DriverBottomSummaryCards';
+import { DriverFleetMapTab } from '../../components/establishment/drivers/DriverFleetMapTab';
+import { DriverHistoryTab } from '../../components/establishment/drivers/DriverHistoryTab';
+import { DriverPerformanceTab } from '../../components/establishment/drivers/DriverPerformanceTab';
+import { DriverSettingsTab } from '../../components/establishment/drivers/DriverSettingsTab';
+
+interface DriversPageProps {
+  onNavigate?: (tab: string) => void;
+}
+
+export const DriversPage: React.FC<DriversPageProps> = ({ onNavigate }) => {
   const { activeTenant, securityContext, activeRole } = useAuth();
   const { showToast } = useToast();
   const { canManageLinks, canReview } = driverPagePermissions(activeRole);
+
+  // Active top-level tab
+  const [activeTab, setActiveTab] = useState<
+    'list' | 'map' | 'invites' | 'history' | 'performance' | 'settings'
+  >('list');
 
   // Convites por link/QR (0700). O token só existe em `createdInvite` enquanto o modal está aberto.
   const [inviteLinks, setInviteLinks] = useState<DriverInviteLink[]>([]);
@@ -39,10 +68,16 @@ export const DriversPage: React.FC = () => {
   const [isCreatingLink, setIsCreatingLink] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  // Drivers and Orders
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Modal para convidar entregador
+  // Dropdown menu "Convidar Entregador"
+  const [isInviteMenuOpen, setIsInviteMenuOpen] = useState(false);
+
+  // Modal para convidar entregador por e-mail
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
@@ -55,13 +90,19 @@ export const DriversPage: React.FC = () => {
   const [driverStatus, setDriverStatus] = useState<DriverStatus>('AVAILABLE');
   const [isSaving, setIsSaving] = useState(false);
 
+  // Fetch drivers
   const fetchDrivers = useCallback(async () => {
-    // list_tenant_drivers (0700 v3.3) só autoriza OWNER/MANAGER; DELIVERY_MANAGER vê só os links.
     if (!activeTenant?.id || !canReview) return;
     setIsLoading(true);
     try {
       const data = await driverRepository.listDrivers(securityContext, activeTenant.id);
       setDrivers(data);
+      // Auto select first driver if none selected or selected was removed
+      setSelectedDriver((prev) => {
+        if (!prev) return data.length > 0 ? data[0] : null;
+        const found = data.find((d) => d.id === prev.id);
+        return found || (data.length > 0 ? data[0] : null);
+      });
     } catch (err) {
       console.warn('[DriversPage] Erro ao carregar motoristas do Supabase:', err);
     } finally {
@@ -69,6 +110,18 @@ export const DriversPage: React.FC = () => {
     }
   }, [activeTenant?.id, securityContext, canReview]);
 
+  // Fetch orders
+  const fetchOrders = useCallback(async () => {
+    if (!activeTenant?.id) return;
+    try {
+      const data = await orderRepository.getOrders(securityContext, activeTenant.id);
+      setOrders(data);
+    } catch (err) {
+      console.warn('[DriversPage] Erro ao carregar pedidos para histórico de entregas:', err);
+    }
+  }, [activeTenant?.id, securityContext]);
+
+  // Fetch invite links
   const fetchInviteLinks = useCallback(async () => {
     if (!activeTenant?.id || !canManageLinks) return;
     try {
@@ -82,11 +135,26 @@ export const DriversPage: React.FC = () => {
 
   useEffect(() => {
     fetchDrivers();
-  }, [fetchDrivers]);
+    fetchOrders();
+  }, [fetchDrivers, fetchOrders]);
 
   useEffect(() => {
     fetchInviteLinks();
   }, [fetchInviteLinks]);
+
+  // Close invite menu on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('#invite-driver-menu-container')) {
+        setIsInviteMenuOpen(false);
+      }
+    };
+    if (isInviteMenuOpen) {
+      document.addEventListener('click', handleOutsideClick);
+      return () => document.removeEventListener('click', handleOutsideClick);
+    }
+  }, [isInviteMenuOpen]);
 
   if (!activeTenant) return null;
 
@@ -127,6 +195,26 @@ export const DriversPage: React.FC = () => {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleToggleDriverStatus = async (drv: Driver, newStatus: DriverStatus) => {
+    try {
+      await driverRepository.updateDriverProfile(securityContext, activeTenant.id, drv.id, {
+        status: newStatus,
+      });
+      showToast({
+        type: 'success',
+        title: 'Status Alterado',
+        message: `${drv.name} agora está ${newStatus === 'AVAILABLE' ? 'Disponível' : 'Indisponível'}.`,
+      });
+      await fetchDrivers();
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Erro ao alterar status',
+        message: err.message,
+      });
     }
   };
 
@@ -216,9 +304,6 @@ export const DriversPage: React.FC = () => {
     }
   };
 
-  const pendingDrivers = pendingApplications(drivers);
-  const listedDrivers = nonPendingDrivers(drivers);
-
   const handleInviteDriver = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail) return;
@@ -251,160 +336,300 @@ export const DriversPage: React.FC = () => {
     }
   };
 
-  const getStatusBadge = (status: DriverStatus) => {
-    switch (status) {
-      case 'AVAILABLE':
-        return <Badge variant="success" size="sm">DISPONÍVEL</Badge>;
-      case 'ON_DELIVERY':
-        return <Badge variant="warning" size="sm">EM ROTA</Badge>;
-      case 'SUSPENDED':
-        return <Badge variant="danger" size="sm">SUSPENSO</Badge>;
-      case 'UNAVAILABLE':
-      default:
-        return <Badge variant="neutral" size="sm">INDISPONÍVEL</Badge>;
-    }
-  };
+  const pendingDrivers = pendingApplications(drivers);
+  const pendingCount = pendingDrivers.length;
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
+      {/* ======================================================== */}
+      {/* CABEÇALHO DA PÁGINA COM AÇÕES E MENU CONVIDAR            */}
+      {/* ======================================================== */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Frota & Entregadores Próprios</h2>
-          <p className="text-xs text-gray-500">
-            Controle de motoboys vinculados, veículos, disponibilidade em tempo real e despacho seguro
+          <h2 className="text-2xl font-bold tracking-tight text-gray-900">Entregadores</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Gerencie sua equipe de entregas, acompanhe status em tempo real e convide novos entregadores
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          {/* Refresh Button */}
           <button
             type="button"
-            onClick={() => fetchDrivers()}
-            className="p-2 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer"
+            onClick={() => {
+              fetchDrivers();
+              fetchOrders();
+            }}
+            className="p-2.5 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer border border-gray-200 bg-white shadow-2xs"
             title="Atualizar dados"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-700' : ''}`} />
           </button>
 
-          {canManageLinks && (
-            <Button
-              variant="outline"
-              onClick={handleCreateLink}
-              disabled={isCreatingLink}
-              className="shadow-xs text-xs"
+          {/* Botão Verde "Convidar Entregador" com Menu Dropdown */}
+          <div className="relative" id="invite-driver-menu-container">
+            <button
+              type="button"
+              onClick={() => setIsInviteMenuOpen(!isInviteMenuOpen)}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-2 transition-all cursor-pointer active:scale-98"
             >
-              {isCreatingLink ? 'Gerando...' : 'Gerar link/QR'}
-            </Button>
-          )}
+              <UserPlus className="w-4 h-4" />
+              <span>Convidar Entregador</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isInviteMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
 
-          <Button
-            variant="primary"
-            onClick={() => setIsInviteModalOpen(true)}
-            leftIcon={<UserPlus className="w-4 h-4" />}
-            className="shadow-xs text-xs"
-          >
-            + Convidar Entregador
-          </Button>
+            {/* Dropdown Menu */}
+            {isInviteMenuOpen && (
+              <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 py-1.5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInviteMenuOpen(false);
+                    setIsInviteModalOpen(true);
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-xs font-medium text-gray-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <Mail className="w-4 h-4 text-emerald-600" />
+                  <span>Convidar por E-mail</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInviteMenuOpen(false);
+                    handleCreateLink();
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-xs font-medium text-gray-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <Link className="w-4 h-4 text-emerald-600" />
+                  <span>Gerar Link de Convite</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInviteMenuOpen(false);
+                    handleCreateLink();
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-xs font-medium text-gray-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <QrCode className="w-4 h-4 text-emerald-600" />
+                  <span>Gerar QR Code</span>
+                </button>
+
+                <div className="border-t border-gray-100 my-1" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInviteMenuOpen(false);
+                    handleCreateLink();
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-xs font-medium text-gray-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <MessageSquare className="w-4 h-4 text-emerald-600" />
+                  <span>Enviar via WhatsApp</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {canReview && (
-        <PendingApplicationsSection
-          drivers={pendingDrivers}
-          busyId={busyId}
-          onApprove={(d) => handleReview(d, 'APPROVE')}
-          onReject={(d) => handleReview(d, 'REJECT')}
-        />
-      )}
+      {/* ======================================================== */}
+      {/* 5 CARTÕES DE INDICADORES (KPIs REAIS)                     */}
+      {/* ======================================================== */}
+      <DriverMetricsStrip drivers={drivers} />
 
-      {/* Grid de Motoristas */}
-      {listedDrivers.length === 0 ? (
-        <Card className="p-8 text-center space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
-            <Bike className="w-6 h-6" />
+      {/* ======================================================== */}
+      {/* ABAS DE NAVEGAÇÃO                                         */}
+      {/* ======================================================== */}
+      <div className="flex border-b border-gray-200 overflow-x-auto gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab('list')}
+          className={`py-3 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'list'
+              ? 'border-emerald-600 text-emerald-800 bg-emerald-50/30'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <List className="w-4 h-4" />
+          <span>Lista de Entregadores</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('map')}
+          className={`py-3 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'map'
+              ? 'border-emerald-600 text-emerald-800 bg-emerald-50/30'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <MapPin className="w-4 h-4" />
+          <span>Mapa de Entregas</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('invites')}
+          className={`py-3 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'invites'
+              ? 'border-emerald-600 text-emerald-800 bg-emerald-50/30'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <UserPlus className="w-4 h-4" />
+          <span>Convites Pendentes</span>
+          {pendingCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+              {pendingCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('history')}
+          className={`py-3 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'history'
+              ? 'border-emerald-600 text-emerald-800 bg-emerald-50/30'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          <span>Histórico de Entregas</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('performance')}
+          className={`py-3 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'performance'
+              ? 'border-emerald-600 text-emerald-800 bg-emerald-50/30'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <Award className="w-4 h-4" />
+          <span>Desempenho</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('settings')}
+          className={`py-3 px-4 text-xs font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'settings'
+              ? 'border-emerald-600 text-emerald-800 bg-emerald-50/30'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          <span>Configurações</span>
+        </button>
+      </div>
+
+      {/* ======================================================== */}
+      {/* CONTEÚDO DAS ABAS                                         */}
+      {/* ======================================================== */}
+
+      {/* 1. ABA LISTA DE ENTREGADORES (Imagem 2_lista) */}
+      {activeTab === 'list' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            {/* Tabela à esquerda */}
+            <div className="lg:col-span-8">
+              <DriverTableSection
+                drivers={drivers}
+                selectedDriver={selectedDriver}
+                onSelectDriver={setSelectedDriver}
+                onOpenEdit={handleOpenEdit}
+                deliveryFee={activeTenant.settings?.deliveryFee || 6.5}
+              />
+            </div>
+
+            {/* Painel de perfil à direita */}
+            <div className="lg:col-span-4 sticky top-6">
+              <DriverProfilePanel
+                driver={selectedDriver}
+                onOpenEdit={handleOpenEdit}
+                onToggleStatus={handleToggleDriverStatus}
+                onReview={handleReview}
+                onLinkAction={handleLinkAction}
+                orders={orders}
+                canReview={canReview}
+              />
+            </div>
           </div>
-          <h3 className="font-bold text-sm text-gray-900">Nenhum entregador cadastrado</h3>
-          <p className="text-xs text-gray-500 max-w-sm mx-auto">
-            Convide motoboys para a sua equipe. Assim que aceitarem o convite com a conta deles, você poderá atribuir pedidos diretamente no despacho.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsInviteModalOpen(true)}
-            leftIcon={<UserPlus className="w-3.5 h-3.5" />}
-          >
-            Convidar Primeiro Entregador
-          </Button>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {listedDrivers.map((drv) => (
-            <Card key={drv.id} className="p-5 flex flex-col justify-between space-y-4">
-              <div className="space-y-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200">
-                      <Bike className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-sm text-gray-900">{drv.name}</h3>
-                      <p className="text-xs text-gray-500 font-mono flex items-center gap-1">
-                        <Phone className="w-3 h-3" />
-                        {drv.phone || 'Sem telefone'}
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="flex flex-col items-end gap-1">
-                    {getStatusBadge(drv.status || 'AVAILABLE')}
-                    <DriverApprovalBadge status={drv.approvalStatus ?? 'UNKNOWN'} />
-                  </div>
-                </div>
-
-                <div className="p-3 bg-gray-50 rounded-xl space-y-1.5 text-xs text-gray-700">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Veículo:</span>
-                    <span className="font-medium text-gray-900">{drv.vehicle}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Placa:</span>
-                    <span className="font-mono text-gray-900 font-semibold">{drv.plate}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Entregas hoje:</span>
-                    <span className="font-bold text-emerald-800">{drv.completedDeliveriesToday} concluídas</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleOpenEdit(drv)}
-                  leftIcon={<Edit2 className="w-3 h-3" />}
-                  className="text-xs"
-                >
-                  Editar
-                </Button>
-
-                <DriverLinkActions driver={drv} canReview={canReview} onAction={handleLinkAction} />
-              </div>
-            </Card>
-          ))}
+          {/* Linha inferior de 4 cartões */}
+          <DriverBottomSummaryCards
+            drivers={drivers}
+            orders={orders}
+            onOpenInviteModal={() => setIsInviteModalOpen(true)}
+            onGenerateLink={handleCreateLink}
+            onGenerateQr={handleCreateLink}
+            onShareWhatsapp={handleCreateLink}
+            onNavigateTab={(tab) => setActiveTab(tab as any)}
+          />
         </div>
       )}
 
-      {canManageLinks && (
-        <InviteLinksSection
-          links={inviteLinks}
-          error={linksError}
-          busyId={busyId}
-          onRenew={handleRenewLink}
-          onRevoke={handleRevokeLink}
+      {/* 2. ABA MAPA DE ENTREGAS (Imagem 1_mapa) */}
+      {activeTab === 'map' && (
+        <DriverFleetMapTab
+          tenant={activeTenant}
+          drivers={drivers}
+          orders={orders}
+          onOpenOrderKanban={onNavigate ? () => onNavigate('est-orders') : undefined}
+          onOpenEditDriver={handleOpenEdit}
         />
       )}
 
+      {/* 3. ABA CONVITES PENDENTES */}
+      {activeTab === 'invites' && (
+        <div className="space-y-6">
+          {canReview && (
+            <PendingApplicationsSection
+              drivers={pendingDrivers}
+              busyId={busyId}
+              onApprove={(d) => handleReview(d, 'APPROVE')}
+              onReject={(d) => handleReview(d, 'REJECT')}
+            />
+          )}
+
+          {canManageLinks && (
+            <InviteLinksSection
+              links={inviteLinks}
+              error={linksError}
+              busyId={busyId}
+              onRenew={handleRenewLink}
+              onRevoke={handleRevokeLink}
+            />
+          )}
+        </div>
+      )}
+
+      {/* 4. ABA HISTÓRICO DE ENTREGAS */}
+      {activeTab === 'history' && (
+        <DriverHistoryTab orders={orders} drivers={drivers} />
+      )}
+
+      {/* 5. ABA DESEMPENHO */}
+      {activeTab === 'performance' && (
+        <DriverPerformanceTab drivers={drivers} orders={orders} />
+      )}
+
+      {/* 6. ABA CONFIGURAÇÕES */}
+      {activeTab === 'settings' && (
+        <DriverSettingsTab tenant={activeTenant} />
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAIS REUTILIZADOS & PRESERVADOS                        */}
+      {/* ======================================================== */}
+
+      {/* Modal Convite por Link / QR Code */}
       <DriverInviteModal
         invite={createdInvite}
         storeName={activeTenant.name}
@@ -412,7 +637,7 @@ export const DriversPage: React.FC = () => {
         onClose={() => { setCreatedInvite(null); setCreatedMaxUses(null); }}
       />
 
-      {/* Modal Convidar Entregador */}
+      {/* Modal Convidar Entregador por E-mail */}
       <Modal
         isOpen={isInviteModalOpen}
         onClose={() => setIsInviteModalOpen(false)}
@@ -430,7 +655,7 @@ export const DriversPage: React.FC = () => {
             required
           />
 
-          <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs space-y-1">
+          <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs space-y-1 border border-emerald-100">
             <strong>Arquitetura de Segurança:</strong>
             <p className="text-[11px] text-emerald-700">
               O motorista é autenticado com a própria conta e vinculado com papel DRIVER. Somente os pedidos atribuídos a ele pelo despacho da loja serão visíveis no painel dele.
@@ -505,7 +730,9 @@ export const DriversPage: React.FC = () => {
               <option value="AVAILABLE">DISPONÍVEL (Pronto para receber pedidos)</option>
               <option value="UNAVAILABLE">INDISPONÍVEL (Fora de turno)</option>
             </select>
-            <p className="text-[10px] text-gray-400 mt-1">Para suspender o entregador e desatribuir suas entregas, utilize o botão de suspensão na listagem.</p>
+            <p className="text-[10px] text-gray-400 mt-1">
+              Para suspender o entregador e desatribuir suas entregas, utilize a opção de suspensão no perfil do entregador.
+            </p>
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">

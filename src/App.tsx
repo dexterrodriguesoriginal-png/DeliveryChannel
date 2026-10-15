@@ -468,7 +468,7 @@ function AppContent() {
       case 'est-theme':
         return <ThemePage />;
       case 'est-drivers':
-        return <DriversPage />;
+        return <DriversPage onNavigate={setActiveTab} />;
       case 'est-inventory':
         return <InventoryPage />;
       case 'est-finance':
