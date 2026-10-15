@@ -210,19 +210,21 @@ describe('driverNavigation logic and address extraction', () => {
       expect(html).toContain('Waze');
     });
 
-    it('renders official Google Maps embed iframe when a valid API key is configured', () => {
+    it('renders real driver GPS position and ETA indisponível without invented data', () => {
       const html = renderToStaticMarkup(
         React.createElement(DriverDeliveryMap, {
           tenant: mockTenant,
           order: baseOrder,
-          apiKey: 'AIzaSyFakeKeyForTesting123456',
+          driverCoords: { lat: -23.5505, lng: -46.6333 },
         })
       );
 
-      // Renders official Google Maps directions embed iframe
-      expect(html).toContain('<iframe');
-      expect(html).toContain('https://www.google.com/maps/embed/v1/directions');
-      expect(html).not.toContain('output=embed');
+      // Verifies ETA indisponível and real coordinates display
+      expect(html).toContain('ETA indisponível');
+      expect(html).toContain('Sua Posição: -23.5505, -46.6333');
+      expect(html).not.toMatch(/\d+\s*(km|min)/i);
+      expect(html).toContain('Google Maps');
+      expect(html).toContain('Waze');
     });
   });
 });

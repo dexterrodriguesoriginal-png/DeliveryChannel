@@ -138,7 +138,9 @@ describe('ideia 4/5: CSV com desconto × faturamento', () => {
     expect(csv.startsWith('\uFEFF')).toBe(true);
     const lines = csv.slice(1).trim().split('\r\n');
     expect(lines).toHaveLength(3);
-    expect(lines[1]).toBe('01/10/2026 a 14/10/2026;c1;"Combo; ""Top""";Checkout promocional;Ativo;1;0;100,00;100,00;1;25,00;0,25;3;10');
+    const lastDay = new Date(range.end.getTime() - 1);
+    const dateRangeStr = `01/10/2026 a ${String(lastDay.getDate()).padStart(2, '0')}/${String(lastDay.getMonth() + 1).padStart(2, '0')}/${lastDay.getFullYear()}`;
+    expect(lines[1]).toBe(`${dateRangeStr};c1;"Combo; ""Top""";Checkout promocional;Ativo;1;0;100,00;100,00;1;25,00;0,25;3;10`);
     expect(lines[2]).toContain(`"'=HYPERLINK()";Apenas visual;Ativo;n/a;n/a;n/a;n/a;n/a;n/a;n/a;n/a;n/a`);
   });
 });

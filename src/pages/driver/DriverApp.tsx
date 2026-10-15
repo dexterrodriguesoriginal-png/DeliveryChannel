@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { orderRepository } from '../../repositories/orderRepository';
 import { Card } from '../../components/ui/Card';
@@ -13,6 +13,8 @@ import { filterAssignedDriverOrders, driverOrderHistory } from '../../lib/driver
 import { canFetchDriverOrders, driverAvailabilityLabel, DriverAvailability, availabilityToggleTarget } from '../../lib/membershipResolution';
 import { driverInviteRepository } from '../../repositories/driverRepository';
 import { DriverDeliveryMap } from '../../components/driver/DriverDeliveryMap';
+import { useDriverLocationTracking } from '../../lib/useDriverLocationTracking';
+import { DriverLocationConsentModal } from '../../components/driver/DriverLocationConsentModal';
 
 const AVAIL_DOT: Record<string, string> = {
   emerald: 'bg-emerald-500 animate-pulse', amber: 'bg-amber-500', gray: 'bg-gray-400', rose: 'bg-rose-500',
@@ -30,30 +32,69 @@ export const DriverApp: React.FC = () => {
   const [availability, setAvailability] = useState<DriverAvailability>('UNKNOWN');
   const [availSaving, setAvailSaving] = useState(false);
 
-  const fetchDriverOrders = useCallback(async () => {
-    if (!activeTenant?.id || !ordersAllowed) return;
-    setIsLoading(true);
-    try {
-      const [data, av] = await Promise.all([
-        orderRepository.getOrders(securityContext, activeTenant.id),
-        driverInviteRepository.getOwnAvailability(activeTenant.id),
-      ]);
-      setOrders(data);
-      setAvailability(av);
-    } catch (err) {
-      console.warn('[DriverApp] Erro ao carregar pedidos do Supabase:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activeTenant?.id, securityContext, ordersAllowed]);
+  const isFetchingRef = useRef(false);
+  const hasQueuedFetchRef = useRef(false);
+  const securityContextRef = useRef(securityContext);
+  securityContextRef.current = securityContext;
 
+  const fetchDriverOrders = useCallback(
+    async (silent = false) => {
+      if (!activeTenant?.id || !ordersAllowed) return;
+      // Se já houver busca em andamento, agenda nova execução imediata ao terminar
+      if (isFetchingRef.current) {
+        hasQueuedFetchRef.current = true;
+        return;
+      }
+      isFetchingRef.current = true;
+      if (!silent) setIsLoading(true);
+      try {
+        do {
+          hasQueuedFetchRef.current = false;
+          const [data, av] = await Promise.all([
+            orderRepository.getOrders(securityContextRef.current, activeTenant.id),
+            driverInviteRepository.getOwnAvailability(activeTenant.id),
+          ]);
+          setOrders(data);
+          setAvailability(av);
+        } while (hasQueuedFetchRef.current);
+      } catch (err) {
+        console.warn('[DriverApp] Erro ao carregar pedidos do Supabase:', err);
+      } finally {
+        isFetchingRef.current = false;
+        if (!silent) setIsLoading(false);
+      }
+    },
+    [activeTenant?.id, ordersAllowed]
+  );
+
+  // Sincronização automática contínua: Carga inicial + Realtime + Polling resiliente de 15s
   useEffect(() => {
-    fetchDriverOrders();
     if (!activeTenant?.id || !ordersAllowed) return;
+
+    let isMounted = true;
+
+    // 1. Carga inicial
+    fetchDriverOrders(false);
+
+    // 2. Assinatura Realtime comprovada para detecção em tempo real
     const unsub = orderRepository.subscribeToOrders(activeTenant.id, () => {
-      fetchDriverOrders();
+      if (isMounted) {
+        fetchDriverOrders(true);
+      }
     });
-    return unsub;
+
+    // 3. Polling de 15 segundos para detecção garantida mesmo com desconexão de WebSocket/segundo plano
+    const pollTimer = setInterval(() => {
+      if (isMounted) {
+        fetchDriverOrders(true);
+      }
+    }, 15000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollTimer);
+      unsub();
+    };
   }, [fetchDriverOrders, activeTenant?.id, ordersAllowed]);
 
   if (!activeTenant) return null;
@@ -72,8 +113,38 @@ export const DriverApp: React.FC = () => {
     window.location.replace('/');
   };
 
-  // Pedido em rota ou aguardando retirada
-  const activeOrder = assignedOrders.find(o => o.status === 'OUT_FOR_DELIVERY') || assignedOrders.find(o => o.status === 'PREPARING');
+  // Pedido em rota ou aguardando retirada da loja correspondente (isolamento estrito por tenant)
+  const activeOrder =
+    assignedOrders.find(
+      (o) => o.status === 'OUT_FOR_DELIVERY' && (!o.tenantId || o.tenantId === activeTenant.id)
+    ) ||
+    assignedOrders.find(
+      (o) => o.status === 'PREPARING' && (!o.tenantId || o.tenantId === activeTenant.id)
+    );
+  // Atualizações a cada 15s SOMENTE quando houver pedido efetivamente OUT_FOR_DELIVERY da loja correspondente
+  const hasActiveOutForDelivery = Boolean(
+    assignedOrders.some(
+      (o) => o.status === 'OUT_FOR_DELIVERY' && (!o.tenantId || o.tenantId === activeTenant.id)
+    )
+  );
+
+  // Rastreamento com consentimento explícito LGPD
+  const {
+    consent,
+    isPaused,
+    currentCoords,
+    handleAcceptConsent,
+    handleRejectConsent,
+    handleTogglePause,
+  } = useDriverLocationTracking(availability, hasActiveOutForDelivery);
+
+  const [showConsentModal, setShowConsentModal] = useState(false);
+
+  useEffect(() => {
+    if (consent === 'PROMPT') {
+      setShowConsentModal(true);
+    }
+  }, [consent]);
 
   const handleAdvanceStatus = async (orderId: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'PREPARING' ? 'OUT_FOR_DELIVERY' : 'DELIVERED';
@@ -129,6 +200,54 @@ export const DriverApp: React.FC = () => {
           >
             Sair
           </Button>
+        </div>
+      </div>
+
+      {/* Faixa de Localização / Consentimento LGPD */}
+      <div className="bg-white border-b border-gray-200/80 px-4 py-2 flex items-center justify-between text-xs max-w-lg mx-auto">
+        <div className="flex items-center gap-2">
+          {consent === 'ACCEPTED' ? (
+            !isPaused ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Localização compartilhada
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                Compartilhamento pausado
+              </span>
+            )
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+              <span className="w-2 h-2 rounded-full bg-gray-400" />
+              Localização desativada
+            </span>
+          )}
+        </div>
+
+        <div>
+          {consent === 'ACCEPTED' ? (
+            <button
+              type="button"
+              onClick={handleTogglePause}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer border ${
+                !isPaused
+                  ? 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent shadow-2xs'
+              }`}
+            >
+              {!isPaused ? 'Pausar' : 'Retomar'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowConsentModal(true)}
+              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+            >
+              Ativar GPS (LGPD)
+            </button>
+          )}
         </div>
       </div>
 
@@ -220,6 +339,7 @@ export const DriverApp: React.FC = () => {
               <DriverDeliveryMap
                 tenant={activeTenant}
                 order={activeOrder}
+                driverCoords={currentCoords}
               />
 
               {/* Destination Address */}
@@ -315,6 +435,18 @@ export const DriverApp: React.FC = () => {
         </Card>
         </>)}
       </div>
+
+      <DriverLocationConsentModal
+        isOpen={showConsentModal}
+        onAccept={() => {
+          handleAcceptConsent();
+          setShowConsentModal(false);
+        }}
+        onReject={() => {
+          handleRejectConsent();
+          setShowConsentModal(false);
+        }}
+      />
 
       <MobileNavigation
         type="driver"
