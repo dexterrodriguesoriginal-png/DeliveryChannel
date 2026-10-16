@@ -31,9 +31,9 @@ const env: Record<string, unknown> =
 /** Modo efetivo (lido do ambiente do build; resolvido na chamada; em testes Node lê process.env). */
 export const currentBackendSchema = (): BackendSchema =>
   resolveBackendSchema(
-    env.VITE_BACKEND_SCHEMA ??
-      // Node (testes/SSR): variáveis de processo; no navegador `process` não existe.
-      (typeof process !== 'undefined' && process.env ? process.env.VITE_BACKEND_SCHEMA : undefined)
+    typeof process !== 'undefined' && process.env
+      ? process.env.VITE_BACKEND_SCHEMA
+      : env.VITE_BACKEND_SCHEMA
   );
 
 /** Valor no carregamento do módulo (exibição/diagnóstico). Decisões usam isN1N6Backend(). */
