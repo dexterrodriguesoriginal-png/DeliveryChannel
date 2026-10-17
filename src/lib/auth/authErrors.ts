@@ -8,3 +8,9 @@ export function isEmailRateLimitError(err: { message?: string; code?: string; st
   return err.code === 'over_email_send_rate_limit' || m.includes('email rate limit') || m.includes('over_email_send_rate_limit')
     || (err.status === 429 && m.includes('email'));
 }
+
+/** Login com e-mail ainda não confirmado (Supabase: code email_not_confirmed / "Email not confirmed"). */
+export function isEmailNotConfirmedError(err: { message?: string; code?: string } | null | undefined): boolean {
+  if (!err) return false;
+  return err.code === 'email_not_confirmed' || (err.message || '').toLowerCase().includes('email not confirmed');
+}

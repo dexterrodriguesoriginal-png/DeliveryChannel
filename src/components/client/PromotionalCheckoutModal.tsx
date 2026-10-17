@@ -29,6 +29,9 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { formatBRL } from '../../lib/pricing/money';
+import { computeCashChange, cashChangeLabel } from '../../lib/pricing/cashChange';
+import { CashChangeHint } from './CashChangeHint';
 import {
   computeFulfillmentPricing,
   COUPON_REJECTED_TEXT,
@@ -369,8 +372,14 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
       ? `${streetAddress.trim()}, ${addressNumber.trim()}${neighborhood.trim() ? ` - ${neighborhood.trim()}` : ''}${complement.trim() ? ` (${complement.trim()})` : ''}`
       : `Retirada no Balcão: ${storeData.settings.address || 'Loja Física'}`;
 
-    const notesWithCash = paymentMethod === 'CASH' && cashChange
-      ? `${orderNotes ? `${orderNotes} | ` : ''}Troco para: R$ ${cashChange}`
+    const cashInfo = paymentMethod === 'CASH' ? computeCashChange(cashChange, finalTotal) : ({ status: 'none' } as const);
+    if (cashInfo.status === 'insufficient' || cashInfo.status === 'invalid') {
+      showToast({ type: 'warning', title: 'Confira o troco', message: 'O valor para troco deve ser maior ou igual ao total do pedido (ou deixe em branco).' });
+      return;
+    }
+    const cashText = cashChangeLabel(cashInfo);
+    const notesWithCash = cashText
+      ? `${orderNotes ? `${orderNotes} | ` : ''}${cashText}`
       : orderNotes;
 
     const finalNotes = appliedCouponCode && !couponMinNotReached && !couponRejectedText
@@ -408,7 +417,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
       showToast({
         type: 'success',
         title: '🎉 Pedido Promocional Confirmado!',
-        message: `Pedido #${result.order.orderNumber || result.order.id.slice(0, 6)} finalizado com sucesso! Total confirmado: R$ ${result.order.totalAmount.toFixed(2)}.`,
+        message: `Pedido #${result.order.orderNumber || result.order.id.slice(0, 6)} finalizado com sucesso! Total confirmado: ${formatBRL(result.order.totalAmount)}.`,
       });
 
       onOrderCompleted(result.order, undefined);
@@ -484,18 +493,18 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
             <div className="sm:text-right shrink-0">
               <div className="flex sm:flex-col items-baseline sm:items-end gap-2 sm:gap-0">
                 <span className="text-2xl font-black font-mono text-emerald-700 tracking-tight">
-                  R$ {unitPrice.toFixed(2)}
+                  {formatBRL(unitPrice)}
                 </span>
                 {hasDiscount && (
                   <span className="text-xs font-mono text-gray-400 line-through">
-                    R$ {originalPrice.toFixed(2)}
+                    {formatBRL(originalPrice)}
                   </span>
                 )}
               </div>
               {hasDiscount && (
                 <div className="mt-1">
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-600 text-white shadow-2xs">
-                    Economia de R$ {economyPerUnit.toFixed(2)} ({discountPct}% OFF)
+                    Economia de {formatBRL(economyPerUnit)} ({discountPct}% OFF)
                   </span>
                 </div>
               )}
@@ -716,7 +725,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                         <div className="text-left">
                           <span className="text-xs block">Receber em casa</span>
                           <span className="text-[10px] text-gray-500">
-                            {isFreeDelivery ? 'Grátis' : `Taxa: R$ ${Number(storeData.settings.deliveryFee || 0).toFixed(2)}`}
+                            {isFreeDelivery ? 'Grátis' : `Taxa: ${formatBRL(Number(storeData.settings.deliveryFee || 0))}`}
                           </span>
                         </div>
                       </button>
@@ -872,9 +881,11 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                         label="Precisa de troco para quanto? (Deixe em branco se não precisar)"
                         value={cashChange}
                         onChange={(e) => setCashChange(e.target.value)}
-                        placeholder="Ex: 50.00"
+                        placeholder="Ex: 50,00"
+                        inputMode="decimal"
                         className="text-xs"
                       />
+                      <CashChangeHint info={computeCashChange(cashChange, finalTotal)} className="mt-1.5" />
                     </div>
                   )}
                 </div>
@@ -910,12 +921,12 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                   {couponRejectedText && <p className="text-[11px] text-amber-700">{couponRejectedText}</p>}
                   {appliedCoupon && couponMinNotReached && (
                     <p className="text-[11px] text-amber-700">
-                      Pedido mínimo de R$ {Number(appliedCoupon.minOrderValue).toFixed(2)} para o cupom {appliedCoupon.code}.
+                      Pedido mínimo de {formatBRL(Number(appliedCoupon.minOrderValue))} para o cupom {appliedCoupon.code}.
                     </p>
                   )}
                   {appliedCouponCode && couponDiscount > 0 && (
                     <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5" /> Cupom {appliedCouponCode} aplicado (-R$ {couponDiscount.toFixed(2)})
+                      <Check className="w-3.5 h-3.5" /> Cupom {appliedCouponCode} aplicado (-{formatBRL(couponDiscount)})
                     </p>
                   )}
                 </div>
@@ -938,14 +949,14 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                 <div className="p-3.5 bg-gray-900 text-white rounded-2xl space-y-2">
                   <div className="flex items-center justify-between text-xs text-gray-300">
                     <span>Subtotal da Oferta ({quantity}x {offer.promoUnit || 'un'})</span>
-                    <span className="font-mono font-bold">R$ {subtotal.toFixed(2)}</span>
+                    <span className="font-mono font-bold">{formatBRL(subtotal)}</span>
                   </div>
 
                   {fulfillmentType === 'DELIVERY' && (
                     <div className="flex items-center justify-between text-xs text-gray-300">
                       <span>Taxa de Entrega</span>
                       <span className="font-mono font-bold">
-                        {isFreeDelivery ? 'Grátis' : `R$ ${deliveryFee.toFixed(2)}`}
+                        {isFreeDelivery ? 'Grátis' : `${formatBRL(deliveryFee)}`}
                       </span>
                     </div>
                   )}
@@ -953,14 +964,14 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                   {totalEconomy > 0 && (
                     <div className="flex items-center justify-between text-xs text-emerald-400">
                       <span>Economia Total na Promoção</span>
-                      <span className="font-mono font-bold">- R$ {totalEconomy.toFixed(2)}</span>
+                      <span className="font-mono font-bold">- {formatBRL(totalEconomy)}</span>
                     </div>
                   )}
 
                   {pickupDiscount > 0 && (
                     <div className="flex items-center justify-between text-xs text-emerald-300" data-testid="promo-pickup-discount-line">
                       <span>Desconto Retirada ({pricing.pickupDiscountPercent}%)</span>
-                      <span className="font-mono font-bold">- R$ {pickupDiscount.toFixed(2)}</span>
+                      <span className="font-mono font-bold">- {formatBRL(pickupDiscount)}</span>
                     </div>
                   )}
 
@@ -974,7 +985,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                   {couponDiscount > 0 && (
                     <div className="flex items-center justify-between text-xs text-amber-300">
                       <span>Desconto Cupom ({appliedCouponCode})</span>
-                      <span className="font-mono font-bold">- R$ {couponDiscount.toFixed(2)}</span>
+                      <span className="font-mono font-bold">- {formatBRL(couponDiscount)}</span>
                     </div>
                   )}
 
@@ -984,7 +995,7 @@ export const PromotionalCheckoutModal: React.FC<PromotionalCheckoutModalProps> =
                       <span className="text-[10px] text-gray-400">Valores auditados pelo servidor</span>
                     </div>
                     <span className="text-xl font-black font-mono text-emerald-400">
-                      R$ {finalTotal.toFixed(2)}
+                      {formatBRL(finalTotal)}
                     </span>
                   </div>
                 </div>

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { isEmailRateLimitError, EMAIL_RATE_LIMIT_MSG } from '../lib/auth/authErrors';
+import { isEmailRateLimitError, EMAIL_RATE_LIMIT_MSG, isEmailNotConfirmedError } from '../lib/auth/authErrors';
+import { currentEmailRedirectUrl, DEFAULT_APP_ORIGIN } from '../lib/auth/authRedirect';
 import { User as AppUser, RoleId, Tenant, TenantTheme, TenantSettings, DriverApprovalStatus } from '../types';
 import { SecurityContext } from '../services/securityEngine';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -92,7 +93,7 @@ interface AuthContextType {
   switchTenant: (tenantId: string) => Promise<boolean>;
 
   // Métodos de autenticação
-  signInWithPassword: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signInWithPassword: (email: string, password: string) => Promise<{ success: boolean; error?: string; code?: 'EMAIL_NOT_CONFIRMED' }>;
   signUp: (email: string, password: string, name: string, phone?: string, metadata?: Record<string, any>) => Promise<{ success: boolean; requiresEmailConfirmation?: boolean; error?: string }>;
   signInWithGoogle: (options?: GoogleAuthOptions) => Promise<void>;
   signOut: () => Promise<void>;
@@ -1095,7 +1096,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [resolveSupabaseProfile]);
 
   // Login com Email e Senha no Supabase
-  const signInWithPassword = async (email: string, password: string) => {
+  const signInWithPassword = async (email: string, password: string): Promise<{ success: boolean; error?: string; code?: 'EMAIL_NOT_CONFIRMED' }> => {
     setAuthError(null);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -1107,8 +1108,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         let friendlyMessage = error.message;
         if (error.message.includes('Invalid login credentials')) {
           friendlyMessage = 'E-mail ou senha incorretos. Por favor, verifique seus dados.';
-        } else if (error.message.toLowerCase().includes('email not confirmed')) {
+        } else if (isEmailNotConfirmedError(error)) {
           friendlyMessage = 'Seu e-mail ainda não foi confirmado. Por favor, acesse o link de confirmação enviado para sua caixa de entrada.';
+          setAuthError(friendlyMessage);
+          return { success: false, error: friendlyMessage, code: 'EMAIL_NOT_CONFIRMED' };
         }
         setAuthError(friendlyMessage);
         return { success: false, error: friendlyMessage };
@@ -1139,9 +1142,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const cleanEmail = email.trim();
       const cleanPhone = phone ? phone.trim() : undefined;
-      const redirectUrl = typeof window !== 'undefined' && window.location.origin.includes('adegafood.ai.studio')
-        ? 'https://adegafood.ai.studio'
-        : (typeof window !== 'undefined' ? window.location.origin : 'https://adegafood.ai.studio');
+      // Volta para a loja de origem (/app/<slug>) quando o cadastro foi feito na vitrine.
+      const redirectUrl = currentEmailRedirectUrl();
 
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
@@ -1236,9 +1238,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const redirectUrl = typeof window !== 'undefined' && window.location.origin.includes('adegafood.ai.studio')
-        ? 'https://adegafood.ai.studio'
-        : (typeof window !== 'undefined' ? window.location.origin : 'https://adegafood.ai.studio');
+      // Volta para a loja de origem (/app/<slug>) quando o cadastro foi feito na vitrine.
+      const redirectUrl = currentEmailRedirectUrl();
 
       const { error } = await supabase.auth.resend({
         type: 'signup',
@@ -1319,9 +1320,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sessionStorage.setItem('adegafood_auth_intent', authIntent);
       }
 
-      const baseUrl = window.location.origin.includes('adegafood.ai.studio')
-        ? 'https://adegafood.ai.studio'
-        : window.location.origin;
+      const baseUrl = window.location.origin;
 
       const redirectUrl = targetPath !== '/' ? `${baseUrl}${targetPath}` : baseUrl;
 
@@ -1472,9 +1471,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Disparo REAL do Magic Link oficial do Supabase Auth para o e-mail da conta autenticada
-      const redirectUrl = typeof window !== 'undefined' && window.location.origin.includes('adegafood.ai.studio')
-        ? 'https://adegafood.ai.studio/confirmar-estabelecimento'
-        : (typeof window !== 'undefined' ? `${window.location.origin}/confirmar-estabelecimento` : 'https://adegafood.ai.studio/confirmar-estabelecimento');
+      const redirectUrl = `${typeof window !== 'undefined' ? window.location.origin : DEFAULT_APP_ORIGIN}/confirmar-estabelecimento`;
 
       let emailDispatchError: string | null = null;
       try {
@@ -1603,9 +1600,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // 2. Dispara Magic Link oficial via Supabase Auth para o e-mail da conta com shouldCreateUser: false
-      const redirectUrl = typeof window !== 'undefined' && window.location.origin.includes('adegafood.ai.studio')
-        ? 'https://adegafood.ai.studio/confirmar-estabelecimento'
-        : (typeof window !== 'undefined' ? `${window.location.origin}/confirmar-estabelecimento` : 'https://adegafood.ai.studio/confirmar-estabelecimento');
+      const redirectUrl = `${typeof window !== 'undefined' ? window.location.origin : DEFAULT_APP_ORIGIN}/confirmar-estabelecimento`;
 
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: authAccountEmail,

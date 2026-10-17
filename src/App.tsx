@@ -8,6 +8,7 @@ import { TenantIsolationTester } from './components/common/TenantIsolationTester
 import { RoleTenantSwitcher } from './components/layout/RoleTenantSwitcher';
 import { OnboardingCreateTenant } from './components/onboarding/OnboardingCreateTenant';
 import { EmailConfirmationScreen } from './components/auth/EmailConfirmationScreen';
+import { readLastStoreSlug } from './lib/auth/authRedirect';
 import { TenantEmailConfirmationScreen } from './components/auth/TenantEmailConfirmationScreen';
 import { LoginCard } from './components/auth/LoginCard';
 
@@ -341,6 +342,8 @@ function AppContent() {
   if (authState === 'AUTHENTICATED_WITHOUT_MEMBERSHIP') {
     const isCustomerUser = supabaseUser?.user_metadata?.user_type === 'customer';
     if (isCustomerUser && !wantsMerchantOnboarding) {
+      // Link de confirmação pode cair na raiz (Site URL do Supabase): oferece voltar à última loja visitada.
+      const lastStoreSlug = readLastStoreSlug(typeof window !== 'undefined' ? window.localStorage : null);
       return (
         <div className="min-h-screen bg-slate-900/98 flex flex-col items-center justify-center p-4">
           <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-2xl text-center space-y-4">
@@ -358,6 +361,15 @@ function AppContent() {
               </p>
             </div>
             <div className="pt-2 flex flex-col gap-2">
+              {lastStoreSlug && (
+                <Button
+                  onClick={() => { window.location.assign(`/app/${encodeURIComponent(lastStoreSlug)}`); }}
+                  className="w-full text-xs font-bold cursor-pointer"
+                  data-testid="back-to-last-store"
+                >
+                  Voltar para a loja e continuar meu pedido
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={async () => {

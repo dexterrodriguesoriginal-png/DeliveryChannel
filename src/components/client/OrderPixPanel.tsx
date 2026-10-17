@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { orderRepository } from '../../repositories/orderRepository';
 import { OrderPixPayload } from '../../types';
+import { formatBRL } from '../../lib/pricing/money';
 import { Button } from '../ui/Button';
 import { QrCode, Copy, Check } from 'lucide-react';
 
@@ -49,7 +50,7 @@ export const OrderPixPanel: React.FC<{ orderId: string }> = ({ orderId }) => {
       ) : (
         <>
           <p className="text-[11px] text-emerald-900">
-            Valor: <strong>R$ {payload.amount.toFixed(2)}</strong> · Recebedor: <strong>{payload.merchantName}</strong>
+            Valor: <strong>{formatBRL(payload.amount)}</strong> · Recebedor: <strong>{payload.merchantName}</strong>
           </p>
           <textarea
             readOnly

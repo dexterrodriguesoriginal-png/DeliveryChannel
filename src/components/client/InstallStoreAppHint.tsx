@@ -11,7 +11,11 @@ import {
   InstallPhase, INSTALL_SLOW_MS, installPhaseCopy, nextInstallPhase, estimatedInstallPercent,
 } from '../../lib/pwa/installState';
 
-interface Props { tenantId: string; storeName: string; color: string; logoUrl?: string; hidden?: boolean; busy?: boolean; }
+interface Props {
+  tenantId: string; storeName: string; color: string; logoUrl?: string; hidden?: boolean; busy?: boolean;
+  /** Distância (px) da borda inferior: mantém o convite acima da navegação inferior/barra da sacola. */
+  bottomOffset?: number;
+}
 
 /**
  * Convite de instalação do app da loja. Prioriza a instalação nativa do Chrome (evento beforeinstallprompt);
@@ -34,7 +38,11 @@ function testPhase(): InstallPhase | null {
   try { const v = new URLSearchParams(window.location.search).get('pwa_test_phase'); return v === 'installing' || v === 'slow' || v === 'finishing' || v === 'done' ? v : null; } catch { return null; }
 }
 
-export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, color, logoUrl, hidden, busy }) => {
+export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, color, logoUrl, hidden, busy, bottomOffset }) => {
+  // Com bottomOffset, a posição vem do estilo (acima da navegação); sem ele, mantém bottom-2/bottom-3.
+  const offsetStyle: React.CSSProperties | undefined = bottomOffset != null
+    ? { bottom: `calc(${Math.max(0, Math.round(bottomOffset))}px + env(safe-area-inset-bottom, 0px))` }
+    : undefined;
   const deferred = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
   const appInstalledEvt = useSyncExternalStore(subscribeInstall, wasAppInstalledEvent, () => false);
   const [installed, setInstalled] = useState(() => isMarkedInstalled(localStorage, tenantId));
@@ -172,7 +180,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     const isDone = phase === 'done' || phase === 'finishing';
     const openReady = phase === 'done';
     return (
-      <div data-testid="install-progress" data-phase={phase} role="status" aria-live="polite" className="fixed inset-x-0 bottom-2 z-[120] px-3 flex justify-center pointer-events-none">
+      <div data-testid="install-progress" data-phase={phase} role="status" aria-live="polite" className={`fixed inset-x-0 z-[120] px-3 flex justify-center pointer-events-none ${offsetStyle ? '' : 'bottom-2'}`} style={offsetStyle}>
         <div className="pointer-events-auto w-full max-w-sm rounded-2xl bg-[#2b2b2e] text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/5 px-3 py-2.5">
           <div className="flex items-center gap-3">
             {isDone ? <CheckCircle2 className="h-10 w-10 p-1.5 text-emerald-400 shrink-0" />
@@ -206,7 +214,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   // App já instalado (marca local ou detectado) e aberto no navegador: barra "Abrir app" no lugar de "Instalar".
   if (!standalone && !hidden && !openBarClosed && (appDetected || (installed && phase === 'idle'))) {
     return (
-      <div data-testid="open-app-bar" role="region" aria-label={`Abrir app ${storeName}`} className="fixed inset-x-0 bottom-2 z-[120] px-3 flex justify-center pointer-events-none">
+      <div data-testid="open-app-bar" role="region" aria-label={`Abrir app ${storeName}`} className={`fixed inset-x-0 z-[120] px-3 flex justify-center pointer-events-none ${offsetStyle ? '' : 'bottom-2'}`} style={offsetStyle}>
         <div className="pointer-events-auto w-full max-w-sm rounded-2xl bg-[#2b2b2e] text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/5 px-3 py-2.5">
           <div className="flex items-center gap-3">
             <StoreLogo logoUrl={logoUrl} name={storeName} color={color} className="w-10 h-10 shrink-0 rounded-xl" />
@@ -264,7 +272,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   return (
     <div data-testid={card ? 'install-store-app-card' : 'install-store-app-banner'} data-surface={surface} data-trigger={t}
       role={card ? 'dialog' : 'region'} aria-label={`Instalar app ${storeName}`}
-      className={`fixed inset-x-0 z-[120] px-3 pointer-events-none flex justify-center ${card ? 'bottom-3' : 'bottom-2'}`}>
+      className={`fixed inset-x-0 z-[120] px-3 pointer-events-none flex justify-center ${offsetStyle ? '' : card ? 'bottom-3' : 'bottom-2'}`} style={offsetStyle}>
       <div className="pointer-events-auto w-full max-w-sm rounded-2xl bg-[#2b2b2e] text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/5 px-3 py-2.5">
         <div className="flex items-center gap-3">
           <StoreLogo logoUrl={logoUrl} name={storeName} color={color} className="w-10 h-10 shrink-0 rounded-xl" />

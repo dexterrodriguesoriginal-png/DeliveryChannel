@@ -55,6 +55,23 @@ export function legacyOrigin(origin: string | undefined): CustomerOrigin {
   return (origin && LEGACY_ORIGINS.has(origin) ? origin : 'direct') as CustomerOrigin;
 }
 
+/**
+ * Itens de carrossel ("Ofertas do Dia") no carrinho comum.
+ *  - n1n6: o servidor (_price_items → _effective_product_price da N4) já aplica sozinho o preço do item de
+ *    carrossel ativo ao produto, e a vitrine N6 exibe exatamente esse preço (effectivePrice). O item vai como
+ *    linha comum {productId, quantity, notes} (toServerItems descarta a origem) — sem erro para o cliente.
+ *  - legacy-020: não há preço de carrossel no servidor; recusa com código próprio para a vitrine converter a
+ *    linha para o preço do catálogo e avisar o cliente.
+ */
+export const CAMPAIGN_SOURCE_UNAVAILABLE_MSG =
+  'Este servidor não aplica o preço de oferta no carrinho. Ajustamos a sacola para o preço normal; confira e confirme novamente.';
+export function assertCartCampaignLinesSupported(items: Array<{ source?: string }>, n1n6: boolean): void {
+  if (n1n6) return;
+  if (items.some(i => i.source === 'campaign')) {
+    throw new BackendError('CAMPAIGN_SOURCE_UNAVAILABLE', CAMPAIGN_SOURCE_UNAVAILABLE_MSG);
+  }
+}
+
 export function n1n6Required(feature: string): BackendError {
   return new BackendError('N1N6_REQUIRED', `${feature}: ${N1N6_ONLY_MESSAGE}`);
 }
@@ -318,10 +335,7 @@ export const orderRepository = {
       requireBackendOrLocalDemo('checkout');
       return dataStore.createPublicOrder(slug, orderData as any);
     }
-    if (orderData.items.some(i => i.source === 'campaign')) {
-      // Itens de campanha no carrinho não existem no N1–N6 (o N6 usa checkout promocional próprio).
-      throw new BackendError('CAMPAIGN_SOURCE_UNAVAILABLE', 'Itens de campanha devem ser comprados pelo checkout promocional do card.');
-    }
+    assertCartCampaignLinesSupported(orderData.items, isN1N6Backend());
     if (!isN1N6Backend()) {
       if (orderData.couponCode && orderData.couponCode.trim()) throw n1n6Required('Cupom');
       const { data: orderId, error } = await supabase.rpc('process_checkout_atomic', {

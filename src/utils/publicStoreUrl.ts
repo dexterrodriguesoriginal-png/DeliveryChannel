@@ -59,7 +59,7 @@ export function getPublicStoreUrl(slug: string | null | undefined): string {
 
   const origin = typeof window !== 'undefined' && window.location.origin
     ? window.location.origin
-    : 'https://adegafood.ai.studio';
+    : 'https://deliverychannel.ai.studio';
 
   return `${origin}/app/${cleanSlug}`;
 }

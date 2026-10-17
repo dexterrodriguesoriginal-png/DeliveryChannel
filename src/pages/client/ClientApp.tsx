@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { isStaffPreview } from '../../lib/storefront/staffPreview';
 import { storeDeliveryLabel } from '../../lib/pricing/deliveryLabel';
+import { formatBRL } from '../../lib/pricing/money';
+import { computeCashChange, cashChangeLabel } from '../../lib/pricing/cashChange';
+import { CashChangeHint } from '../../components/client/CashChangeHint';
+import { CustomerEmailConfirmNotice, CustomerEmailNoticeKind } from '../../components/client/CustomerEmailConfirmNotice';
+import { rememberLastStoreSlug } from '../../lib/auth/authRedirect';
+import { installHintBottomOffset } from '../../lib/pwa/installHintLayout';
 import { campaignRepository } from '../../repositories/campaignRepository';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
@@ -137,7 +143,7 @@ function getCampaignSessionId(): string {
 }
 
 export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => {
-  const { supabaseUser, signInWithGoogle, signInWithPassword, signUp, signOut, activeTenant } = useAuth();
+  const { supabaseUser, signInWithGoogle, signInWithPassword, signUp, signOut, activeTenant, resendConfirmationEmail } = useAuth();
   const { showToast } = useToast();
 
   // 1. Extração estrita do Slug da URL
@@ -188,6 +194,12 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const [authName, setAuthName] = useState('');
   const [authPhone, setAuthPhone] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  // Spinner só no botão acionado: Google e e-mail têm estados separados.
+  const [isGoogleAuthenticating, setIsGoogleAuthenticating] = useState(false);
+  // Aviso persistente de confirmação de e-mail (cadastro concluído ou login com e-mail não confirmado).
+  const [authNotice, setAuthNotice] = useState<{ email: string; kind: CustomerEmailNoticeKind } | null>(null);
+  // Aviso persistente no checkout quando a sacola precisou ser ajustada pelo servidor.
+  const [cartAdjustNotice, setCartAdjustNotice] = useState<string | null>(null);
 
   // 8. Form de Checkout
   const [customerName, setCustomerName] = useState(() => localStorage.getItem('adegafood_cust_name') || '');
@@ -307,6 +319,16 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   useEffect(() => {
     loadStore();
   }, [loadStore]);
+
+  // Cliente conectado (ex.: voltou do link de confirmação): o aviso de confirmação não é mais necessário.
+  useEffect(() => {
+    if (supabaseUser) setAuthNotice(null);
+  }, [supabaseUser]);
+
+  // Última loja visitada: a raiz ("Conta de Cliente Conectada") oferece voltar para ela após confirmar o e-mail.
+  useEffect(() => {
+    if (slug) rememberLastStoreSlug(typeof window !== 'undefined' ? window.localStorage : null, slug);
+  }, [slug]);
 
   // PWA white-label: manifesto/ícone/nome/cores da loja ativa (somente rotas /app/<slug>)
   useEffect(() => {
@@ -527,7 +549,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       setCouponDiscount(0);
       setCouponMessage({
         type: 'error',
-        text: `O cupom ${appliedCoupon.code} requer pedido mínimo de R$ ${appliedCoupon.minOrderValue.toFixed(2)}.`,
+        text: `O cupom ${appliedCoupon.code} requer pedido mínimo de ${formatBRL(appliedCoupon.minOrderValue)}.`,
       });
       return;
     }
@@ -596,6 +618,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const pickupDiscount = pricing.pickupDiscount;
   const deliveryFee = pricing.deliveryFee;
   const grandTotal = pricing.total;
+  const cashChangeInfo = computeCashChange(cashChange, grandTotal);
   const modeKey = availableModes.modes.join(',');
 
   useEffect(() => {
@@ -796,7 +819,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // AUTENTICAÇÃO DO CLIENTE (GOOGLE OU E-MAIL)
   // --------------------------------------------------------------------------
   const handleGoogleLogin = async () => {
-    setIsAuthenticating(true);
+    setIsGoogleAuthenticating(true);
     try {
       if (isSupabaseConfigured) {
         await signInWithGoogle({ returnTo: `/app/${slug}`, intent: 'customer' });
@@ -815,7 +838,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         message: err.message || 'Não foi possível autenticar com o Google.',
       });
     } finally {
-      setIsAuthenticating(false);
+      setIsGoogleAuthenticating(false);
     }
   };
 
@@ -830,7 +853,13 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     try {
       if (authMode === 'login') {
         const res = await signInWithPassword(authEmail.trim(), authPassword);
+        if (!res.success && res.code === 'EMAIL_NOT_CONFIRMED') {
+          // Não é erro: aviso amigável e persistente com opção de reenviar o link.
+          setAuthNotice({ email: authEmail.trim(), kind: 'unconfirmed' });
+          return;
+        }
         if (!res.success) throw new Error(res.error || 'Credenciais inválidas.');
+        setAuthNotice(null);
         showToast({ type: 'success', title: 'Login realizado!', message: 'Você está conectado como cliente.' });
         setIsAuthModalOpen(false);
       } else {
@@ -847,9 +876,16 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         }
         const res = await signUp(authEmail.trim(), authPassword, authName.trim(), phoneDigits || undefined, { user_type: 'customer' });
         if (!res.success) throw new Error(res.error || 'Falha ao criar conta.');
-        showToast({ type: 'success', title: 'Conta criada!', message: 'Sua conta de cliente foi criada com sucesso.' });
         setCustomerName(authName.trim());
         if (phoneDigits) setCustomerPhone(phoneDigits);
+        if (res.requiresEmailConfirmation) {
+          // Mantém o aviso visível no modal/checkout até o cliente confirmar (não fecha em silêncio).
+          setAuthNotice({ email: authEmail.trim(), kind: 'signup' });
+          setAuthPassword('');
+          return;
+        }
+        setAuthNotice(null);
+        showToast({ type: 'success', title: 'Conta criada!', message: 'Sua conta de cliente foi criada com sucesso.' });
         setIsAuthModalOpen(false);
       }
     } catch (err: any) {
@@ -926,7 +962,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       showToast({
         type: 'warning',
         title: 'Pedido Mínimo',
-        message: `O valor mínimo deste estabelecimento é de R$ ${minOrder.toFixed(2)}.`,
+        message: `O valor mínimo deste estabelecimento é de ${formatBRL(minOrder)}.`,
       });
       return;
     }
@@ -946,15 +982,29 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       ? `${streetAddress}, ${addressNumber}${neighborhood ? ` - ${neighborhood}` : ''}${city ? `, ${city}` : ''}${complement ? ` (${complement})` : ''}`
       : `Retirada no Balcão: ${storeData.settings.address}`;
 
-    const notesWithCash = paymentMethod === 'CASH' && cashChange
-      ? `${orderNotes ? `${orderNotes} | ` : ''}Troco para: R$ ${cashChange}`
+    // Troco: validado e gravado na observação do pedido (orders.notes), visível para a loja e o entregador.
+    const cashInfo = paymentMethod === 'CASH' ? computeCashChange(cashChange, grandTotal) : ({ status: 'none' } as const);
+    if (cashInfo.status === 'insufficient' || cashInfo.status === 'invalid') {
+      showToast({
+        type: 'warning',
+        title: 'Confira o troco',
+        message: cashInfo.status === 'insufficient'
+          ? `O valor para troco (${formatBRL(cashInfo.amount)}) é menor que o total (${formatBRL(cashInfo.total)}). Corrija ou deixe em branco.`
+          : 'Informe um valor válido para o troco (ex.: 50,00) ou deixe em branco.',
+      });
+      return;
+    }
+    const cashText = cashChangeLabel(cashInfo);
+    const notesWithCash = cashText
+      ? `${orderNotes ? `${orderNotes} | ` : ''}${cashText}`
       : orderNotes;
 
     const finalNotes = appliedCoupon && couponDiscount > 0
-      ? `${notesWithCash ? `${notesWithCash} | ` : ''}[Cupom: ${appliedCoupon.code} -R$ ${couponDiscount.toFixed(2)}]`
+      ? `${notesWithCash ? `${notesWithCash} | ` : ''}[Cupom: ${appliedCoupon.code} -${formatBRL(couponDiscount)}]`
       : notesWithCash;
 
     setIsSubmittingOrder(true);
+    setCartAdjustNotice(null);
 
     try {
       const order = await orderService.createPublic(storeData.tenant.slug, {
@@ -1013,6 +1063,21 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       });
     } catch (err: any) {
       console.error('[ClientApp] Erro na criação do pedido:', err);
+      if (err?.code === 'CAMPAIGN_SOURCE_UNAVAILABLE') {
+        // Servidor sem preço de oferta no carrinho: converte as linhas de oferta para o catálogo (a sacola
+        // continua válida) e mantém um aviso fixo no checkout até o cliente confirmar de novo.
+        setCart(prev => prev.reduce<CartItem[]>((acc, l) => {
+          const line: CartItem = l.origin.source === 'campaign'
+            ? { ...l, key: cartLineKey(l.product.id, CATALOG_ORIGIN), origin: CATALOG_ORIGIN }
+            : l;
+          const ex = acc.find(x => x.key === line.key);
+          return ex
+            ? acc.map(x => (x.key === line.key ? { ...x, quantity: x.quantity + line.quantity } : x))
+            : [...acc, line];
+        }, []));
+        setCartAdjustNotice(err.message || 'Ajustamos os itens de oferta da sua sacola para o preço normal. Confira os valores e confirme novamente.');
+        return;
+      }
       showToast({
         type: 'error',
         title: 'Não foi possível finalizar seu pedido',
@@ -1033,7 +1098,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     showToast({
       type: 'success',
       title: 'Chave PIX copiada!',
-      message: `Pague R$ ${completedOrder?.totalAmount.toFixed(2) ?? ''} no app do seu banco usando a chave da loja.`,
+      message: `Pague ${completedOrder ? formatBRL(completedOrder.totalAmount) : ''} no app do seu banco usando a chave da loja.`,
     });
     setTimeout(() => setCopiedPix(false), 3000);
   };
@@ -1139,7 +1204,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
   return (
     <div
-      className="min-h-screen pb-24 font-sans text-gray-900 transition-colors"
+      className="min-h-screen pb-44 font-sans text-gray-900 transition-colors"
       style={{ 
         backgroundColor: theme.backgroundColor || '#f8fafc',
         fontFamily: theme.fontFamily || 'Inter'
@@ -1151,6 +1216,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         color={theme.primaryColor || '#334155'}
         logoUrl={theme.logoUrl}
         hidden={isCheckoutOpen || isPromoCheckoutOpen}
+        bottomOffset={installHintBottomOffset({ bottomNav: true, floatingCartBar: cart.length > 0 && !isCheckoutOpen && navTab === 'home' })}
       />
       {/* Barra de Retorno ao Painel: só para a equipe autenticada DESTE estabelecimento. */}
       {isStaffPreview(!!supabaseUser, activeTenant?.id, storeData.tenant.id) && (
@@ -1336,7 +1402,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
                       <div className="text-right">
                         <span className="inline-block px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 font-mono font-black text-base">
-                          R$ {order.totalAmount.toFixed(2)}
+                          {formatBRL(order.totalAmount)}
                         </span>
                       </div>
                     </div>
@@ -1420,7 +1486,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                               {item.productName}
                             </span>
                             <span className="font-mono font-medium text-gray-700 shrink-0">
-                              R$ {item.totalPrice.toFixed(2)}
+                              {formatBRL(item.totalPrice)}
                             </span>
                           </div>
                         ))}
@@ -1605,15 +1671,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                                 {item.promotionalPrice > 0 && item.promotionalPrice < p.price ? (
                                   <div>
                                     <span className="text-[10px] text-gray-400 line-through font-mono block leading-tight">
-                                      R$ {p.price.toFixed(2)}
+                                      {formatBRL(p.price)}
                                     </span>
                                     <span className="font-extrabold text-xs sm:text-sm text-emerald-800 font-mono leading-tight">
-                                      R$ {item.promotionalPrice.toFixed(2)}
+                                      {formatBRL(item.promotionalPrice)}
                                     </span>
                                   </div>
                                 ) : (
                                   <span className="font-extrabold text-xs sm:text-sm text-gray-900 font-mono">
-                                    R$ {p.price.toFixed(2)}
+                                    {formatBRL(p.price)}
                                   </span>
                                 )}
                               </div>
@@ -1753,15 +1819,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                         {p.promotionalPrice && p.promotionalPrice > 0 ? (
                           <>
                             <span className="font-extrabold text-sm text-emerald-800 font-mono">
-                              R$ {p.promotionalPrice.toFixed(2)}
+                              {formatBRL(p.promotionalPrice)}
                             </span>
                             <span className="text-xs text-gray-400 line-through font-mono">
-                              R$ {p.price.toFixed(2)}
+                              {formatBRL(p.price)}
                             </span>
                           </>
                         ) : (
                           <span className="font-extrabold text-sm text-gray-900 font-mono">
-                            R$ {p.price.toFixed(2)}
+                            {formatBRL(p.price)}
                           </span>
                         )}
                         <span className="text-[10px] text-gray-400 font-mono uppercase">/{p.unit || 'un'}</span>
@@ -1843,7 +1909,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             </div>
 
             <div className="flex items-center gap-2 font-mono font-extrabold text-sm">
-              <span>R$ {subtotal.toFixed(2)}</span>
+              <span>{formatBRL(subtotal)}</span>
               <ArrowRight className="w-4 h-4" />
             </div>
           </div>
@@ -1877,10 +1943,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               <button
                 type="button"
                 onClick={handleGoogleLogin}
-                disabled={isAuthenticating}
+                disabled={isAuthenticating || isGoogleAuthenticating}
                 className="w-full py-2.5 px-4 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-xs font-bold text-gray-700 shadow-xs flex items-center justify-center gap-2.5 cursor-pointer transition-all"
               >
-                {isAuthenticating ? (
+                {isGoogleAuthenticating ? (
                   <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
                 ) : (
                   <>
@@ -1901,7 +1967,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               <div className="grid grid-cols-2 p-1 bg-gray-100 rounded-xl">
                 <button
                   type="button"
-                  onClick={() => setAuthMode('login')}
+                  onClick={() => { setAuthMode('login'); setAuthNotice(null); }}
                   className={`py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all ${
                     authMode === 'login' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
                   }`}
@@ -1910,7 +1976,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                 </button>
                 <button
                   type="button"
-                  onClick={() => setAuthMode('signup')}
+                  onClick={() => { setAuthMode('signup'); setAuthNotice(null); }}
                   className={`py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all ${
                     authMode === 'signup' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
                   }`}
@@ -1919,6 +1985,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                 </button>
               </div>
 
+              {authNotice && (
+                <CustomerEmailConfirmNotice
+                  email={authNotice.email}
+                  kind={authNotice.kind}
+                  onResend={(email) => resendConfirmationEmail(email)}
+                  onBackToLogin={() => { setAuthEmail(authNotice.email); setAuthMode('login'); setAuthNotice(null); }}
+                />
+              )}
+              {!(authNotice && authNotice.kind === 'signup') && (
               <form onSubmit={handleEmailAuth} className="space-y-3">
                 {authMode === 'signup' && (
                   <Input
@@ -1962,7 +2037,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
                 <Button
                   type="submit"
-                  disabled={isAuthenticating}
+                  disabled={isAuthenticating || isGoogleAuthenticating}
                   className="w-full text-white font-bold text-xs py-2.5 rounded-xl cursor-pointer"
                   style={{ backgroundColor: buttonColor }}
                 >
@@ -1975,6 +2050,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                   )}
                 </Button>
               </form>
+              )}
             </div>
           ) : (
             /* CLIENTE AUTENTICADO: FORMULÁRIO OPERACIONAL DO PEDIDO */
@@ -2009,7 +2085,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold text-gray-700 uppercase tracking-wider">
                   <span>Itens Selecionados ({cartTotalCount})</span>
-                  <span>Subtotal: R$ {subtotal.toFixed(2)}</span>
+                  <span>Subtotal: {formatBRL(subtotal)}</span>
                 </div>
                 <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 divide-y divide-gray-100">
                   {cart.map((item, idx) => {
@@ -2025,7 +2101,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="font-mono font-bold text-gray-900">
-                            R$ {(price * item.quantity).toFixed(2)}
+                            {formatBRL((price * item.quantity))}
                           </span>
                           <button
                             type="button"
@@ -2124,7 +2200,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                   {/* Autocomplete do Google Places Integrado */}
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-gray-700 flex items-center justify-between">
-                      <span>Buscar Rua / Endereço no Google</span>
+                      <span>Buscar rua / endereço</span>
                       <span className="text-[10px] text-emerald-700 font-normal">Autocomplete Inteligente</span>
                     </label>
                     <AddressAutocompleteInput
@@ -2235,11 +2311,13 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                   <Input
                     label="Precisa de troco para quanto? (Deixe em branco se não precisar)"
                     placeholder="Ex: 50,00"
+                    inputMode="decimal"
                     value={cashChange}
                     onChange={(e) => setCashChange(e.target.value)}
                     className="text-xs"
                   />
                 )}
+                {paymentMethod === 'CASH' && cashChangeInfo.status !== 'ok' && <CashChangeHint info={cashChangeInfo} />}
               </div>
 
               {/* Observações */}
@@ -2278,7 +2356,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                           )}
                         </div>
                         <p className="text-[10px] text-emerald-700">
-                          Desconto de R$ {couponDiscount.toFixed(2)} aplicado
+                          Desconto de {formatBRL(couponDiscount)} aplicado
                         </p>
                       </div>
                     </div>
@@ -2326,7 +2404,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               <div className="p-3 bg-gray-50 rounded-xl space-y-1.5 text-xs">
                 <div className="flex justify-between text-gray-600">
                   <span>Subtotal</span>
-                  <span className="font-mono">R$ {subtotal.toFixed(2)}</span>
+                  <span className="font-mono">{formatBRL(subtotal)}</span>
                 </div>
                 {pickupDiscount > 0 && (
                   <div className="flex justify-between text-emerald-700 font-semibold" data-testid="pickup-discount-line">
@@ -2334,7 +2412,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                       <Store className="w-3 h-3" />
                       Desconto retirada ({pricing.pickupDiscountPercent}%)
                     </span>
-                    <span className="font-mono">- R$ {pickupDiscount.toFixed(2)}</span>
+                    <span className="font-mono">- {formatBRL(pickupDiscount)}</span>
                   </div>
                 )}
                 {appliedCoupon && pricing.couponRejectedReason && (
@@ -2343,7 +2421,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                       ? 'O cupom vale apenas para itens fora de promoção.'
                       : pricing.couponRejectedReason === 'COUPON_NOT_STACKABLE_WITH_PICKUP'
                       ? 'Este cupom não acumula com o desconto de retirada. Escolha "Receber em casa" ou use outro cupom.'
-                      : `O cupom exige R$ ${(appliedCoupon.minOrderValue || 0).toFixed(2)} em itens fora de promoção.`}
+                      : `O cupom exige ${formatBRL((appliedCoupon.minOrderValue || 0))} em itens fora de promoção.`}
                   </div>
                 )}
                 {couponDiscount > 0 && (
@@ -2352,20 +2430,34 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                       <Ticket className="w-3 h-3" />
                       Desconto ({appliedCoupon?.code})
                     </span>
-                    <span className="font-mono">- R$ {couponDiscount.toFixed(2)}</span>
+                    <span className="font-mono">- {formatBRL(couponDiscount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-gray-600">
                   <span>{fulfillmentType === 'PICKUP' ? 'Taxa de Entrega (retirada)' : 'Taxa de Entrega'}</span>
                   <span className="font-mono text-emerald-700 font-bold">
-                    {deliveryFee === 0 ? 'Grátis' : `R$ ${deliveryFee.toFixed(2)}`}
+                    {deliveryFee === 0 ? 'Grátis' : `${formatBRL(deliveryFee)}`}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm font-extrabold text-gray-900 border-t border-gray-200 pt-1.5">
                   <span>Total</span>
-                  <span className="font-mono text-emerald-800 text-base">R$ {grandTotal.toFixed(2)}</span>
+                  <span className="font-mono text-emerald-800 text-base">{formatBRL(grandTotal)}</span>
                 </div>
+                {paymentMethod === 'CASH' && cashChangeInfo.status === 'ok' && (
+                  <CashChangeHint info={cashChangeInfo} className="pt-1" />
+                )}
               </div>
+
+              {cartAdjustNotice && (
+                <div data-testid="cart-adjust-notice" role="alert" className="p-3 rounded-xl border border-amber-300 bg-amber-50 text-xs text-amber-950 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-px" />
+                  <div className="space-y-1.5 min-w-0">
+                    <p className="font-bold">Sua sacola foi ajustada</p>
+                    <p>{cartAdjustNotice}</p>
+                    <button type="button" onClick={() => setCartAdjustNotice(null)} className="font-bold underline cursor-pointer">Entendi, revisar sacola</button>
+                  </div>
+                </div>
+              )}
 
               {/* Botão de Confirmação do Pedido */}
               <Button
@@ -2380,9 +2472,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                     <span>Processando seu pedido no servidor...</span>
                   </div>
                 ) : !supabaseUser ? (
-                  `Entre para finalizar • R$ ${grandTotal.toFixed(2)}`
+                  `Entre para finalizar • ${formatBRL(grandTotal)}`
                 ) : (
-                  `Confirmar Pedido • R$ ${grandTotal.toFixed(2)}`
+                  `Confirmar Pedido • ${formatBRL(grandTotal)}`
                 )}
               </Button>
             </form>
@@ -2417,7 +2509,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           <div className="p-3.5 bg-gray-50 rounded-2xl text-left text-xs font-mono space-y-1 border border-gray-100">
             <div className="flex justify-between">
               <span className="text-gray-500">Total:</span>
-              <span className="font-extrabold text-gray-900">R$ {completedOrder?.totalAmount.toFixed(2)}</span>
+              <span className="font-extrabold text-gray-900">{formatBRL(completedOrder?.totalAmount)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Pagamento:</span>
@@ -2453,7 +2545,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               {legacyStorePixKey ? (
                 <>
                   <p className="text-[11px] text-gray-600">
-                    Pague <strong>R$ {completedOrder.totalAmount.toFixed(2)}</strong> usando a chave PIX da loja:
+                    Pague <strong>{formatBRL(completedOrder.totalAmount)}</strong> usando a chave PIX da loja:
                   </p>
                   <Button
                     size="sm"
@@ -2604,10 +2696,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           <button
             type="button"
             onClick={handleGoogleLogin}
-            disabled={isAuthenticating}
+            disabled={isAuthenticating || isGoogleAuthenticating}
             className="w-full py-2.5 px-4 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-xs font-bold text-gray-700 shadow-xs flex items-center justify-center gap-2.5 cursor-pointer transition-all"
           >
-            {isAuthenticating ? (
+            {isGoogleAuthenticating ? (
               <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
             ) : (
               <>
@@ -2627,7 +2719,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           <div className="grid grid-cols-2 p-1 bg-gray-100 rounded-xl">
             <button
               type="button"
-              onClick={() => setAuthMode('login')}
+              onClick={() => { setAuthMode('login'); setAuthNotice(null); }}
               className={`py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all ${
                 authMode === 'login' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
               }`}
@@ -2636,7 +2728,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             </button>
             <button
               type="button"
-              onClick={() => setAuthMode('signup')}
+              onClick={() => { setAuthMode('signup'); setAuthNotice(null); }}
               className={`py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all ${
                 authMode === 'signup' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
               }`}
@@ -2645,6 +2737,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             </button>
           </div>
 
+          {authNotice && (
+            <CustomerEmailConfirmNotice
+              email={authNotice.email}
+              kind={authNotice.kind}
+              onResend={(email) => resendConfirmationEmail(email)}
+              onBackToLogin={() => { setAuthEmail(authNotice.email); setAuthMode('login'); setAuthNotice(null); }}
+            />
+          )}
+          {!(authNotice && authNotice.kind === 'signup') && (
           <form onSubmit={handleEmailAuth} className="space-y-3">
             {authMode === 'signup' && (
               <Input
@@ -2688,7 +2789,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
             <Button
               type="submit"
-              disabled={isAuthenticating}
+              disabled={isAuthenticating || isGoogleAuthenticating}
               className="w-full text-white font-bold text-xs py-2.5 rounded-xl cursor-pointer"
               style={{ backgroundColor: buttonColor }}
             >
@@ -2701,6 +2802,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               )}
             </Button>
           </form>
+          )}
         </div>
       </Modal>
 
@@ -2763,15 +2865,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                   {selectedProductModal.promotionalPrice && selectedProductModal.promotionalPrice > 0 ? (
                     <>
                       <span className="text-lg font-extrabold text-emerald-800 font-mono">
-                        R$ {selectedProductModal.promotionalPrice.toFixed(2)}
+                        {formatBRL(selectedProductModal.promotionalPrice)}
                       </span>
                       <span className="text-xs text-gray-400 line-through font-mono">
-                        R$ {selectedProductModal.price.toFixed(2)}
+                        {formatBRL(selectedProductModal.price)}
                       </span>
                     </>
                   ) : (
                     <span className="text-lg font-extrabold text-gray-900 font-mono">
-                      R$ {selectedProductModal.price.toFixed(2)}
+                      {formatBRL(selectedProductModal.price)}
                     </span>
                   )}
                 </div>
