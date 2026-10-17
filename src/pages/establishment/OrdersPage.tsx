@@ -57,7 +57,10 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { assignableDrivers, canAssignDrivers } from '../../lib/driverAdmin';
-import { paymentMethodLabel } from '../../lib/orders/labels';
+import { paymentMethodLabel, ownerStatusToastMessage } from '../../lib/orders/labels';
+import { applyOrderUpdate } from '../../lib/orders/applyOrderUpdate';
+import { OrderTotalsLines } from '../../components/establishment/OrderTotalsLines';
+import { formatBRL } from '../../lib/pricing/money';
 
 export const OrdersPage: React.FC = () => {
   const { activeTenant, securityContext, availableTenants, switchTenant, supabaseUser, activeRole } = useAuth();
@@ -271,11 +274,14 @@ export const OrdersPage: React.FC = () => {
       return;
     }
     try {
-      await orderRepository.updateStatus(securityContext, activeTenant.id, orderId, newStatus, check.note || undefined, current);
+      const updated = await orderRepository.updateStatus(securityContext, activeTenant.id, orderId, newStatus, check.note || undefined, current);
+      // Atualiza o card na hora com o pedido devolvido pelo servidor; a sincronização completa vem em seguida.
+      setRemoteOrders(prev => applyOrderUpdate(prev, updated));
+      setSelectedOrder(prev => (prev && updated && prev.id === updated.id ? { ...prev, ...updated } : prev));
       showToast({
         type: 'success',
-        title: 'Status Atualizado',
-        message: `Pedido atualizado para "${newStatus}".`,
+        title: 'Status atualizado',
+        message: ownerStatusToastMessage(updated?.status || newStatus, updated?.orderNumber),
       });
       await fetchOrders(true);
     } catch (err: any) {
@@ -323,7 +329,7 @@ export const OrdersPage: React.FC = () => {
     }
 
     try {
-      await orderRepository.updateStatus(
+      const updated = await orderRepository.updateStatus(
         securityContext,
         activeTenant.id,
         cancellingOrder.id,
@@ -331,6 +337,8 @@ export const OrdersPage: React.FC = () => {
         `Cancelado: ${reason}`.slice(0, 500),
         cancellingOrder.status
       );
+      setRemoteOrders(prev => applyOrderUpdate(prev, updated));
+      setSelectedOrder(prev => (prev && updated && prev.id === updated.id ? { ...prev, ...updated } : prev));
       showToast({
         type: 'success',
         title: 'Pedido Cancelado',
@@ -637,7 +645,7 @@ export const OrdersPage: React.FC = () => {
 
             <div className="text-right shrink-0">
               <div className="text-[11.5px] font-black text-slate-900 font-mono leading-tight">
-                R$ {selectedOrder.totalAmount.toFixed(2)}
+                {formatBRL(selectedOrder.totalAmount)}
               </div>
               <div className="text-[7.5px] text-slate-500 font-medium truncate max-w-[65px]">
                 {formatPaymentMethod(selectedOrder.paymentMethod)}
@@ -768,7 +776,7 @@ export const OrdersPage: React.FC = () => {
                         )}
                       </div>
                       <span className="font-mono font-bold text-slate-900 shrink-0 text-[9px] ml-1">
-                        R$ {item.totalPrice.toFixed(2)}
+                        {formatBRL(item.totalPrice)}
                       </span>
                     </div>
                   ))}
@@ -789,20 +797,13 @@ export const OrdersPage: React.FC = () => {
               )}
 
               {/* Seção 5: Pagamento */}
-              <div className="p-1.5 rounded-lg bg-slate-50/80 border border-slate-200/80 space-y-0.5">
+              <div className="p-1.5 rounded-lg bg-slate-50/80 border border-slate-200/80 space-y-0.5" data-testid="owner-order-totals">
                 <div className="text-[7.5px] font-bold uppercase tracking-wider text-slate-400">Pagamento & Financeiro</div>
-                <div className="flex items-center justify-between text-[8.5px]">
-                  <div className="flex items-center gap-1 font-semibold text-slate-700 text-[8.5px] truncate max-w-[95px]">
-                    <DollarSign className="w-2.5 h-2.5 text-emerald-700 shrink-0" />
-                    <span className="truncate">Forma: {formatPaymentMethod(selectedOrder.paymentMethod)}</span>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-[7px] text-slate-400">Total</div>
-                    <div className="font-mono text-[11px] font-black text-slate-900 leading-tight">
-                      R$ {selectedOrder.totalAmount.toFixed(2)}
-                    </div>
-                  </div>
+                <div className="flex items-center gap-1 font-semibold text-slate-700 text-[8.5px] truncate">
+                  <DollarSign className="w-2.5 h-2.5 text-emerald-700 shrink-0" />
+                  <span className="truncate">Forma: {formatPaymentMethod(selectedOrder.paymentMethod)}</span>
                 </div>
+                <OrderTotalsLines order={selectedOrder} />
               </div>
             </>
           )}
@@ -1243,7 +1244,7 @@ export const OrdersPage: React.FC = () => {
               </div>
               <div className="pt-1.5">
                 <div className="text-sm sm:text-base font-black text-emerald-700 font-mono leading-none truncate">
-                  R$ {faturamentoHoje.toFixed(2)}
+                  {formatBRL(faturamentoHoje)}
                 </div>
                 <div className="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 truncate">Hoje</div>
               </div>
@@ -1867,7 +1868,7 @@ export const OrdersPage: React.FC = () => {
 
                               {/* Total */}
                               <td className="py-1 px-1.5 font-mono font-black text-slate-900 text-[10px]">
-                                R$ {order.totalAmount.toFixed(2)}
+                                {formatBRL(order.totalAmount)}
                               </td>
 
                               {/* Ação */}

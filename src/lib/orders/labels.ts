@@ -57,3 +57,27 @@ export function orderStatusLabel(status: string | null | undefined): string {
   if (!status) return '—';
   return ORDER_STATUS_LABELS[String(status).trim().toUpperCase()] || String(status);
 }
+
+/** Rótulos do painel da loja (mesmos dos cards/kanban), em maiúsculas. */
+const OWNER_ORDER_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'NOVO',
+  CONFIRMED: 'CONFIRMADO',
+  PREPARING: 'EM PREPARO',
+  READY: 'PRONTO',
+  WAITING_FOR_DRIVER: 'AGUARDANDO MOTOBOY',
+  OUT_FOR_DELIVERY: 'SAIU PARA ENTREGA',
+  DELIVERED: 'ENTREGUE',
+  CANCELLED: 'CANCELADO',
+};
+
+/** PREPARING → "EM PREPARO", OUT_FOR_DELIVERY → "SAIU PARA ENTREGA"… Nunca devolve o enum cru. */
+export function ownerOrderStatusLabel(status: string | null | undefined): string {
+  if (!status) return '—';
+  return OWNER_ORDER_STATUS_LABELS[String(status).trim().toUpperCase()] || 'ATUALIZADO';
+}
+
+/** Mensagem do toast de sucesso do dono: 'Pedido #12 atualizado para "EM PREPARO".' */
+export function ownerStatusToastMessage(status: string | null | undefined, orderNumber?: string | number | null): string {
+  const ref = orderNumber !== undefined && orderNumber !== null && String(orderNumber).trim() !== '' ? ` #${orderNumber}` : '';
+  return `Pedido${ref} atualizado para "${ownerOrderStatusLabel(status)}".`;
+}

@@ -4,6 +4,7 @@ import { promotionRepository, normalizeCouponCode } from '../../repositories/pro
 import { newIdempotencyKey } from '../../lib/backend';
 import { Barcode, Search, X, Plus, Minus, ShoppingBag, DollarSign } from 'lucide-react';
 import { Product } from '../../types';
+import { formatBRL } from '../../lib/pricing/money';
 
 interface PDVModalProps {
   isOpen: boolean;
@@ -210,7 +211,7 @@ export const PDVModal: React.FC<PDVModalProps> = ({
                       </span>
                     </div>
                     <span className="text-xs font-mono font-black text-emerald-700 mt-2">
-                      R$ {prod.price.toFixed(2)}
+                      {formatBRL(prod.price)}
                     </span>
                   </button>
                 ))
@@ -247,7 +248,7 @@ export const PDVModal: React.FC<PDVModalProps> = ({
                       <div className="min-w-0 flex-1 mr-2">
                         <span className="text-xs font-bold text-gray-900 truncate block">{item.product.name}</span>
                         <span className="text-[10px] text-gray-500 font-mono">
-                          R$ {item.product.price.toFixed(2)} un.
+                          {formatBRL(item.product.price)} un.
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -334,13 +335,13 @@ export const PDVModal: React.FC<PDVModalProps> = ({
               {couponPreview && (
                 <div className="flex justify-between items-center font-mono text-[11px] text-emerald-700">
                   <span>Desconto ({couponPreview.code})</span>
-                  <span>- R$ {couponPreview.discount.toFixed(2)}</span>
+                  <span>- {formatBRL(couponPreview.discount)}</span>
                 </div>
               )}
               <div className="flex justify-between items-center font-mono">
                 <span className="text-gray-500 text-xs">TOTAL (prévia):</span>
                 <span className="text-xl font-black text-emerald-700">
-                  R$ {totalAmount.toFixed(2)}
+                  {formatBRL(totalAmount)}
                 </span>
               </div>
 

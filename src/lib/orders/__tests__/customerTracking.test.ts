@@ -21,28 +21,48 @@ describe('buildCustomerTimeline — entrega', () => {
       'A caminho de você (saiu para entrega)',
       'Entregue',
     ]);
-    expect(states(tl).slice(0, 2)).toEqual(['received:done', 'store_accepted:current']);
+    expect(states(tl).slice(0, 2)).toEqual(['received:current', 'store_accepted:pending']);
     expect(tl.headline).toMatch(/aguardando a loja/);
   });
 
-  it('loja aceitou → em preparo em andamento, com horários do histórico', () => {
+  it('loja aceitou → "Loja aceitou" é a etapa atual, com horários do histórico', () => {
     const tl = buildCustomerTimeline(mk('CONFIRMED', [h('PENDING', 0), h('CONFIRMED', 2)]));
-    expect(tl.steps[1]).toMatchObject({ key: 'store_accepted', state: 'done', at: at(2) });
-    expect(tl.current?.key).toBe('preparing');
+    expect(tl.steps[0]).toMatchObject({ key: 'received', state: 'done' });
+    expect(tl.steps[1]).toMatchObject({ key: 'store_accepted', state: 'current', at: at(2) });
+    expect(tl.steps[2].state).toBe('pending');
+    expect(tl.current?.key).toBe('store_accepted');
     expect(tl.headline).toBe('Loja aceitou seu pedido');
   });
 
   it('loja pulou CONFIRMED (PENDING → PREPARING): "Loja aceitou" conclui no mesmo horário', () => {
     const tl = buildCustomerTimeline(mk('PREPARING', [h('PENDING', 0), h('PREPARING', 3)]));
     expect(tl.steps[1]).toMatchObject({ state: 'done', at: at(3) });
-    expect(tl.steps[2]).toMatchObject({ key: 'preparing', state: 'done', at: at(3) });
+    expect(tl.steps[2]).toMatchObject({ key: 'preparing', state: 'current', at: at(3) });
+    expect(tl.current?.key).toBe('preparing');
+  });
+
+  it('PREPARING: AGORA fica em "Em preparo" (etapa 3), nunca em "Pronto" (etapa 4)', () => {
+    const tl = buildCustomerTimeline(mk('PREPARING', [h('PENDING', 0), h('CONFIRMED', 1), h('PREPARING', 2)]));
+    expect(states(tl)).toEqual([
+      'received:done', 'store_accepted:done', 'preparing:current', 'ready:pending',
+      'driver_accepted:pending', 'driver_to_store:pending', 'out_for_delivery:pending', 'delivered:pending',
+    ]);
+    expect(tl.current).toMatchObject({ key: 'preparing', label: 'Em preparo', at: at(2) });
+    expect(tl.headline).toBe('Em preparo');
+  });
+
+  it('READY: AGORA em "Pronto"', () => {
+    const tl = buildCustomerTimeline(mk('READY', [h('PENDING', 0), h('PREPARING', 2), h('READY', 9)]));
     expect(tl.current?.key).toBe('ready');
+    expect(tl.steps[4].state).toBe('pending');
+    expect(tl.headline).toBe('Pedido pronto');
   });
 
   it('chamando motoboy (WAITING_FOR_DRIVER sem aceite)', () => {
     const tl = buildCustomerTimeline(mk('WAITING_FOR_DRIVER', [h('PENDING', 0), h('PREPARING', 1), h('READY', 10), h('WAITING_FOR_DRIVER', 11)]));
-    expect(tl.steps[3]).toMatchObject({ key: 'ready', state: 'done', label: 'Pronto • chamando motoboy' });
-    expect(tl.current?.key).toBe('driver_accepted');
+    expect(tl.steps[3]).toMatchObject({ key: 'ready', state: 'current', label: 'Pronto • chamando motoboy' });
+    expect(tl.steps[4].state).toBe('pending');
+    expect(tl.current?.key).toBe('ready');
     expect(tl.headline).toBe('Procurando motoboy');
   });
 
@@ -71,13 +91,14 @@ describe('buildCustomerTimeline — entrega', () => {
 
   it('proposta: DRIVER_RELEASED desfaz o aceite', () => {
     const tl = buildCustomerTimeline(mk('WAITING_FOR_DRIVER', [h('READY', 5), h('WAITING_FOR_DRIVER', 6), h('DRIVER_ACCEPTED', 7), h('DRIVER_RELEASED', 9)]));
-    expect(tl.steps[4].state).toBe('current');
-    expect(tl.current?.key).toBe('driver_accepted');
+    expect(tl.steps[4].state).toBe('pending');
+    expect(tl.current?.key).toBe('ready');
   });
 
   it('desatribuição atual (OUT_FOR_DELIVERY → READY) volta a "aguardando motoboy"', () => {
     const tl = buildCustomerTimeline(mk('READY', [h('READY', 5), h('OUT_FOR_DELIVERY', 6), h('READY', 8)]));
-    expect(tl.steps[4].state).toBe('current');
+    expect(tl.steps[3].state).toBe('current');
+    expect(tl.steps[4].state).toBe('pending');
     expect(tl.steps[6].state).toBe('pending');
   });
 
@@ -91,9 +112,10 @@ describe('buildCustomerTimeline — entrega', () => {
 
   it('sem histórico (falha de leitura) usa só orders.status', () => {
     const tl = buildCustomerTimeline(mk('PREPARING'));
-    expect(tl.steps[2].state).toBe('done');
+    expect(tl.steps[1].state).toBe('done');
+    expect(tl.steps[2].state).toBe('current');
     expect(tl.steps[2].at).toBeUndefined();
-    expect(tl.current?.key).toBe('ready');
+    expect(tl.current?.key).toBe('preparing');
   });
 
   it('cancelado', () => {
@@ -109,7 +131,8 @@ describe('buildCustomerTimeline — retirada no balcão', () => {
   it('sem etapas de motoboy', () => {
     const tl = buildCustomerTimeline(mk('READY', [h('PENDING', 0), h('READY', 9)], 'PICKUP'));
     expect(tl.steps.map(s => s.key)).toEqual(['received', 'store_accepted', 'preparing', 'ready', 'delivered']);
-    expect(tl.current?.key).toBe('delivered');
+    expect(tl.current?.key).toBe('ready');
+    expect(tl.steps[4].state).toBe('pending');
     expect(tl.headline).toBe('Pronto para retirada');
   });
 });

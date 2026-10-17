@@ -29,6 +29,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { formatBRL } from '../../lib/pricing/money';
 
 export const OffersPage: React.FC = () => {
   const { activeTenant, securityContext } = useAuth();
@@ -410,7 +411,7 @@ export const OffersPage: React.FC = () => {
                     <div className="flex items-center gap-2 pt-1">
                       {off.promotionalPrice ? (
                         <span className="font-bold text-emerald-800 text-xs font-mono">
-                          R$ {off.promotionalPrice.toFixed(2)}
+                          {formatBRL(off.promotionalPrice)}
                         </span>
                       ) : null}
                       {off.discountPercentage ? (
@@ -479,7 +480,7 @@ export const OffersPage: React.FC = () => {
               >
                 <option value="">Nenhum (Banner Institucional / Geral)</option>
                 {products.map(p => (
-                  <option key={p.id} value={p.id}>{p.name} — R$ {p.price.toFixed(2)}</option>
+                  <option key={p.id} value={p.id}>{p.name} — {formatBRL(p.price)}</option>
                 ))}
               </select>
             </div>

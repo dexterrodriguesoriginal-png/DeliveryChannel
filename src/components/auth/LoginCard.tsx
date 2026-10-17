@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { INVALID_CREDENTIALS_MSG } from '../../lib/auth/authErrors';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -91,7 +92,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
       } else {
         const err = res.error || '';
         if (err.toLowerCase().includes('credential') || err.toLowerCase().includes('incorret')) {
-          setFormError('E-mail ou senha incorretos. Verifique suas credenciais.');
+          setFormError(INVALID_CREDENTIALS_MSG);
         } else {
           setFormError(res.error || 'Não foi possível entrar. Tente novamente.');
         }

@@ -84,6 +84,7 @@ import {
   Filter
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { formatBRL } from '../../lib/pricing/money';
 
 // ----------------------------------------------------------------------------
 // MODELOS VISUAIS PROFISSIONAIS (1200 x 675 px — 16:9)
@@ -1397,12 +1398,12 @@ export const MarketingPage: React.FC = () => {
                               <div className="flex items-center gap-1.5 font-mono">
                                 {card.promoPrice && (
                                   <span className="font-extrabold text-amber-800 text-sm">
-                                    R$ {card.promoPrice.toFixed(2)}
+                                    {formatBRL(card.promoPrice)}
                                   </span>
                                 )}
                                 {card.promoOriginalPrice && (
                                   <span className="line-through text-gray-400 text-xs">
-                                    R$ {card.promoOriginalPrice.toFixed(2)}
+                                    {formatBRL(card.promoOriginalPrice)}
                                   </span>
                                 )}
                               </div>
@@ -1778,7 +1779,7 @@ export const MarketingPage: React.FC = () => {
                                           </span>
                                         )}
                                         <span className="text-[11px] font-extrabold text-emerald-800">
-                                          R$ {selProd.price.toFixed(2)}
+                                          {formatBRL(selProd.price)}
                                           <span className="text-[10px] text-gray-500 font-normal"> / {selProd.unit || 'un'}</span>
                                         </span>
                                       </div>
@@ -1945,7 +1946,7 @@ export const MarketingPage: React.FC = () => {
                                           <div className="flex items-center gap-2 shrink-0">
                                             <div className="text-right">
                                               <span className="text-xs font-extrabold text-emerald-800 block">
-                                                R$ {p.price.toFixed(2)}
+                                                {formatBRL(p.price)}
                                               </span>
                                               <span className="text-[10px] text-gray-400 block">
                                                 por {p.unit || 'un'}
@@ -2009,10 +2010,10 @@ export const MarketingPage: React.FC = () => {
                                       </h4>
                                       <div className="flex items-center gap-2 mt-0.5">
                                         <span className="text-[11px] text-gray-400 line-through">
-                                          R$ {selectedLinkedOfferMeta.originalPrice.toFixed(2)}
+                                          {formatBRL(selectedLinkedOfferMeta.originalPrice)}
                                         </span>
                                         <span className="text-xs font-black text-amber-700">
-                                          R$ {selectedLinkedOfferMeta.promotionalPrice.toFixed(2)}
+                                          {formatBRL(selectedLinkedOfferMeta.promotionalPrice)}
                                         </span>
                                         <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded">
                                           -{selectedLinkedOfferMeta.discountPercentage}% OFF
@@ -2195,10 +2196,10 @@ export const MarketingPage: React.FC = () => {
                                           <div className="flex items-center gap-2 shrink-0">
                                             <div className="text-right">
                                               <span className="text-[10px] text-gray-400 line-through block">
-                                                R$ {off.originalPrice.toFixed(2)}
+                                                {formatBRL(off.originalPrice)}
                                               </span>
                                               <span className="text-xs font-black text-amber-700 block">
-                                                R$ {off.promotionalPrice.toFixed(2)}
+                                                {formatBRL(off.promotionalPrice)}
                                               </span>
                                               <span className="text-[9.5px] font-bold text-emerald-800 bg-emerald-50 px-1 py-0.2 rounded">
                                                 -{off.discountPercentage}%
@@ -2866,12 +2867,12 @@ export const MarketingPage: React.FC = () => {
                                     <p className="font-bold text-white text-xs truncate">{p.name}</p>
                                     {selectedLinkedOfferMeta ? (
                                       <div className="flex items-center gap-1.5 text-[10px]">
-                                        <span className="text-slate-400 line-through">R$ {selectedLinkedOfferMeta.originalPrice.toFixed(2)}</span>
-                                        <span className="font-bold text-amber-400">R$ {selectedLinkedOfferMeta.promotionalPrice.toFixed(2)}</span>
+                                        <span className="text-slate-400 line-through">{formatBRL(selectedLinkedOfferMeta.originalPrice)}</span>
+                                        <span className="font-bold text-amber-400">{formatBRL(selectedLinkedOfferMeta.promotionalPrice)}</span>
                                         <span className="px-1 rounded bg-emerald-900 text-emerald-300 font-bold">-{selectedLinkedOfferMeta.discountPercentage}%</span>
                                       </div>
                                     ) : (
-                                      <p className="text-[10px] text-slate-400">R$ {p.price.toFixed(2)} / {p.unit || 'un'}</p>
+                                      <p className="text-[10px] text-slate-400">{formatBRL(p.price)} / {p.unit || 'un'}</p>
                                     )}
                                   </div>
                                   <span className={`text-[10px] px-2 py-0.5 rounded text-white font-bold shrink-0 ${
@@ -2908,12 +2909,12 @@ export const MarketingPage: React.FC = () => {
                             <div className="flex items-baseline gap-2 pt-1">
                               {promoPrice && (
                                 <span className="font-extrabold text-amber-400 text-sm font-mono">
-                                  R$ {parseFloat(promoPrice).toFixed(2)}
+                                  {formatBRL(parseFloat(promoPrice))}
                                 </span>
                               )}
                               {promoOriginalPrice && (
                                 <span className="line-through text-slate-500 text-[11px] font-mono">
-                                  R$ {parseFloat(promoOriginalPrice).toFixed(2)}
+                                  {formatBRL(parseFloat(promoOriginalPrice))}
                                 </span>
                               )}
                               <span className="text-[10px] text-slate-400">/{promoUnit || 'un'}</span>

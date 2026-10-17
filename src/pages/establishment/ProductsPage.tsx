@@ -29,6 +29,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { formatBRL } from '../../lib/pricing/money';
 
 export const ProductsPage: React.FC = () => {
   const { activeTenant, securityContext } = useAuth();
@@ -504,15 +505,15 @@ export const ProductsPage: React.FC = () => {
                         {p.promotionalPrice ? (
                           <div>
                             <span className="font-bold text-emerald-800">
-                              R$ {p.promotionalPrice.toFixed(2)}
+                              {formatBRL(p.promotionalPrice)}
                             </span>
                             <span className="text-[10px] text-gray-400 line-through ml-1.5">
-                              R$ {p.price.toFixed(2)}
+                              {formatBRL(p.price)}
                             </span>
                           </div>
                         ) : (
                           <span className="font-bold text-gray-900">
-                            R$ {p.price.toFixed(2)}
+                            {formatBRL(p.price)}
                           </span>
                         )}
                       </td>
@@ -520,7 +521,7 @@ export const ProductsPage: React.FC = () => {
                       <td className="p-3.5 text-gray-500 font-mono text-[11px]">
                         {p.cost ? (
                           <div>
-                            <div>R$ {p.cost.toFixed(2)}</div>
+                            <div>{formatBRL(p.cost)}</div>
                             <span className="text-[10px] text-emerald-700 font-bold">
                               {margin}% margem
                             </span>

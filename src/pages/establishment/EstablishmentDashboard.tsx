@@ -31,6 +31,8 @@ import {
   Power
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { ownerStatusToastMessage } from '../../lib/orders/labels';
+import { formatBRL } from '../../lib/pricing/money';
 
 interface EstablishmentDashboardProps {
   onNavigate?: (tab: string) => void;
@@ -287,7 +289,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
       showToast({
         type: 'success',
         title: 'Status Atualizado',
-        message: `Pedido avançou para "${nextStatus}".`,
+        message: ownerStatusToastMessage(nextStatus),
       });
     } catch (err: any) {
       showToast({
@@ -653,7 +655,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
                           className="w-full max-w-[44px] bg-emerald-700/85 hover:bg-emerald-700 rounded-t-lg transition-all relative cursor-pointer"
                         >
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-9 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[11px] font-mono py-1 px-2.5 rounded-lg pointer-events-none whitespace-nowrap z-20 shadow-md">
-                            R$ {bar.amount.toFixed(2)} ({bar.count} {bar.count === 1 ? 'ped' : 'peds'})
+                            {formatBRL(bar.amount)} ({bar.count} {bar.count === 1 ? 'ped' : 'peds'})
                           </div>
                         </div>
                       </div>
@@ -700,7 +702,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
                   </div>
                   <div className="text-right shrink-0">
                     <span className="text-xs font-mono font-bold text-emerald-800 tabular-nums">
-                      R$ {p.revenue.toFixed(2)}
+                      {formatBRL(p.revenue)}
                     </span>
                   </div>
                 </div>
@@ -799,7 +801,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
                         )}
                       </td>
                       <td className="p-3.5 font-mono font-bold text-emerald-800 tabular-nums">
-                        R$ {order.totalAmount.toFixed(2)}
+                        {formatBRL(order.totalAmount)}
                       </td>
                       <td className="p-3.5">
                         <StatusBadge status={order.status} size="sm" />

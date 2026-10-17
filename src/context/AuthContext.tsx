@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { isEmailRateLimitError, EMAIL_RATE_LIMIT_MSG, isEmailNotConfirmedError } from '../lib/auth/authErrors';
+import { isEmailRateLimitError, EMAIL_RATE_LIMIT_MSG, isEmailNotConfirmedError, isInvalidCredentialsError, INVALID_CREDENTIALS_MSG, isMembershipLoadFailure } from '../lib/auth/authErrors';
 import { currentEmailRedirectUrl, DEFAULT_APP_ORIGIN } from '../lib/auth/authRedirect';
 import { User as AppUser, RoleId, Tenant, TenantTheme, TenantSettings, DriverApprovalStatus } from '../types';
 import { SecurityContext } from '../services/securityEngine';
@@ -1106,8 +1106,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         let friendlyMessage = error.message;
-        if (error.message.includes('Invalid login credentials')) {
-          friendlyMessage = 'E-mail ou senha incorretos. Por favor, verifique seus dados.';
+        if (isInvalidCredentialsError(error)) {
+          friendlyMessage = INVALID_CREDENTIALS_MSG;
         } else if (isEmailNotConfirmedError(error)) {
           friendlyMessage = 'Seu e-mail ainda não foi confirmado. Por favor, acesse o link de confirmação enviado para sua caixa de entrada.';
           setAuthError(friendlyMessage);
@@ -1332,9 +1332,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       if (error) {
         setAuthError(error.message);
+        // O formulário mostra o erro (antes ia para a tela "Falha ao Conectar").
+        throw new Error('Não foi possível conectar com o Google no momento.');
       }
     } catch (err: any) {
       setAuthError(err?.message || 'Erro ao iniciar login com Google.');
+      throw err instanceof Error ? err : new Error('Erro ao iniciar login com Google.');
     }
   };
 
@@ -1694,8 +1697,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Estado unificado e estrito de ciclo de vida da autenticação
   const authState: AuthState = useMemo(() => {
-    // 1. Falha de autenticação ou erro estrito na resolução dos vínculos (CASO B)
-    if (membershipStatus === 'MEMBERSHIP_ERROR' || authError) {
+    // 1. Erro estrito na resolução dos vínculos (CASO B). Erro de login (senha errada etc.) NÃO entra
+    //    aqui: aparece no formulário de login (authError continua exposto no contexto).
+    if (isMembershipLoadFailure(membershipStatus)) {
       return 'AUTH_ERROR';
     }
 

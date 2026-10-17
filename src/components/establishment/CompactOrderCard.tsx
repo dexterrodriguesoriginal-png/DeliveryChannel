@@ -20,6 +20,7 @@ import {
   DELAYED_PREPARING_THEME, 
   checkIsPreparingDelayed 
 } from '../../utils/orderStatusTheme';
+import { formatBRL } from '../../lib/pricing/money';
 
 export type CardDensity = 'compact' | 'normal' | 'comfortable';
 
@@ -231,7 +232,7 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
       <div className="flex items-center justify-between gap-1 pt-0.5 mt-0.2 border-t border-slate-200/50">
         <div className="flex items-baseline gap-1">
           <span className="font-mono font-black text-slate-950 text-[10px]">
-            R$ {order.totalAmount.toFixed(2)}
+            {formatBRL(order.totalAmount)}
           </span>
         </div>
 

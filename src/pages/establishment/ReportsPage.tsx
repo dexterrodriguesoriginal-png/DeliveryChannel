@@ -19,6 +19,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { orderStatusLabel, paymentMethodLabel } from '../../lib/orders/labels';
+import { formatBRL } from '../../lib/pricing/money';
 
 type PeriodFilter = 'today' | '7d' | 'this_month' | '30d';
 
@@ -370,7 +371,7 @@ export const ReportsPage: React.FC = () => {
                       <td className="p-2 font-medium text-gray-900 max-w-[160px] truncate">{item.productName}</td>
                       <td className="p-2 text-center font-mono font-bold text-gray-700">{item.quantitySold} un</td>
                       <td className="p-2 text-right font-mono font-bold text-emerald-800">
-                        R$ {item.revenue.toFixed(2)}
+                        {formatBRL(item.revenue)}
                       </td>
                     </tr>
                   ))}
@@ -401,7 +402,7 @@ export const ReportsPage: React.FC = () => {
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium text-gray-800">{cat.categoryName}</span>
                     <span className="font-mono font-bold text-gray-900">
-                      R$ {cat.revenue.toFixed(2)}{' '}
+                      {formatBRL(cat.revenue)}{' '}
                       <span className="text-gray-400 text-[10px] font-normal">({cat.percentage}%)</span>
                     </span>
                   </div>

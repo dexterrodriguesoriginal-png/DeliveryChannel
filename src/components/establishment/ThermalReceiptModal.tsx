@@ -2,6 +2,8 @@ import React from 'react';
 import { Printer, X } from 'lucide-react';
 import { Order } from '../../types';
 import { paymentMethodLabel } from '../../lib/orders/labels';
+import { formatBRL } from '../../lib/pricing/money';
+import { orderMoneyBreakdown } from '../../lib/orders/orderTotals';
 
 interface ThermalReceiptModalProps {
   order: Order | null;
@@ -15,6 +17,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   onClose,
 }) => {
   if (!order) return null;
+  const totals = orderMoneyBreakdown(order);
 
   const handlePrint = () => {
     window.print();
@@ -63,7 +66,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                 {it.quantity}x {it.productName}
               </span>
               <span className="font-bold tabular-nums">
-                R$ {it.totalPrice.toFixed(2)}
+                {formatBRL(it.totalPrice)}
               </span>
             </div>
           ))}
@@ -78,23 +81,23 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         <div className="border-b border-dashed border-black pb-3 space-y-1 text-[11px]">
           <div className="flex justify-between">
             <span>Subtotal:</span>
-            <span>R$ {order.subtotal.toFixed(2)}</span>
+            <span>{formatBRL(totals.subtotal)}</span>
           </div>
-          {order.deliveryFee > 0 && (
-            <div className="flex justify-between">
-              <span>Taxa Entrega:</span>
-              <span>R$ {order.deliveryFee.toFixed(2)}</span>
-            </div>
-          )}
-          {order.discount > 0 && (
+          {totals.discount > 0 && (
             <div className="flex justify-between">
               <span>Desconto:</span>
-              <span>- R$ {order.discount.toFixed(2)}</span>
+              <span>- {formatBRL(totals.discount)}</span>
+            </div>
+          )}
+          {totals.showDeliveryFee && (
+            <div className="flex justify-between">
+              <span>Taxa de entrega:</span>
+              <span>{formatBRL(totals.deliveryFee)}</span>
             </div>
           )}
           <div className="flex justify-between font-bold text-sm pt-1 border-t border-black">
             <span>TOTAL:</span>
-            <span>R$ {order.totalAmount.toFixed(2)}</span>
+            <span>{formatBRL(totals.total)}</span>
           </div>
           <p className="pt-1 text-[10px]">
             <strong>PAGAMENTO:</strong> {paymentMethodLabel(order.paymentMethod).toUpperCase()} ({order.paymentStatus === 'PAID' ? 'PAGO' : 'PAGAMENTO NA ENTREGA'})

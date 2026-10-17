@@ -24,6 +24,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { formatBRL } from '../../lib/pricing/money';
 
 export const InventoryPage: React.FC = () => {
   const { activeTenant, securityContext } = useAuth();
@@ -219,7 +220,7 @@ export const InventoryPage: React.FC = () => {
                         </Badge>
                       </td>
                       <td className="p-3 font-mono font-bold text-emerald-800">
-                        R$ {p.price.toFixed(2)}
+                        {formatBRL(p.price)}
                       </td>
                       <td className="p-3 text-right">
                         <Button

@@ -33,6 +33,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { formatBRL } from '../../lib/pricing/money';
 
 export const PromotionsPage: React.FC = () => {
   const { activeTenant, securityContext, activeRole } = useAuth();
@@ -386,7 +387,7 @@ export const PromotionsPage: React.FC = () => {
     if (!activeTenant || !editingItem || !promoPreview) return;
 
     if (!promoPreview.isValid) {
-      setPromoError('O preço promocional deve ser maior que zero e estritamente menor que o preço normal (R$ ' + editingItem.product.price.toFixed(2) + ').');
+      setPromoError(`O preço promocional deve ser maior que zero e estritamente menor que o preço normal (${formatBRL(editingItem.product.price)}).`);
       return;
     }
 
@@ -800,14 +801,14 @@ export const PromotionsPage: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <span className="text-gray-500">Desconto:</span>
                       <strong className="text-emerald-700 font-bold">
-                        {coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}% OFF` : `R$ ${coupon.discountValue.toFixed(2)} OFF`}
+                        {coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}% OFF` : `${formatBRL(coupon.discountValue)} OFF`}
                       </strong>
                     </div>
 
                     <div className="flex items-center justify-between">
                       <span className="text-gray-500">Compra Mínima:</span>
                       <span className="text-gray-800">
-                        {coupon.minOrderValue ? `R$ ${coupon.minOrderValue.toFixed(2)}` : 'Sem mínimo'}
+                        {coupon.minOrderValue ? `${formatBRL(coupon.minOrderValue)}` : 'Sem mínimo'}
                       </span>
                     </div>
 
@@ -953,10 +954,10 @@ export const PromotionsPage: React.FC = () => {
                           <h5 className="text-xs font-bold text-gray-900 truncate">{product.name}</h5>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <span className="text-xs text-gray-400 line-through">
-                              R$ {product.price.toFixed(2)}
+                              {formatBRL(product.price)}
                             </span>
                             <span className="text-xs font-black text-emerald-700">
-                              R$ {item.promotionalPrice.toFixed(2)}
+                              {formatBRL(item.promotionalPrice)}
                             </span>
                             {item.showDiscountBadge && (
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-600 text-white shadow-2xs">
@@ -964,7 +965,7 @@ export const PromotionsPage: React.FC = () => {
                               </span>
                             )}
                             <span className="text-[10px] text-gray-500">
-                              (Economia: R$ {(product.price - item.promotionalPrice).toFixed(2)})
+                              (Economia: {formatBRL((product.price - item.promotionalPrice))})
                             </span>
                           </div>
                         </div>
@@ -1071,7 +1072,7 @@ export const PromotionsPage: React.FC = () => {
                       <img src={prod.imageUrl} alt={prod.name} className="w-8 h-8 rounded object-cover shrink-0" />
                       <div className="min-w-0">
                         <span className="text-xs font-bold text-gray-900 block truncate">{prod.name}</span>
-                        <span className="text-[11px] text-gray-500">R$ {prod.price.toFixed(2)}</span>
+                        <span className="text-[11px] text-gray-500">{formatBRL(prod.price)}</span>
                       </div>
                     </div>
                     <input
@@ -1128,7 +1129,7 @@ export const PromotionsPage: React.FC = () => {
               <div className="min-w-0">
                 <h4 className="text-xs font-bold text-gray-900 truncate">{editingItem.product.name}</h4>
                 <p className="text-xs text-gray-500">
-                  Preço Normal de Catálogo: <strong className="text-gray-900">R$ {editingItem.product.price.toFixed(2)}</strong>
+                  Preço Normal de Catálogo: <strong className="text-gray-900">{formatBRL(editingItem.product.price)}</strong>
                 </p>
               </div>
             </div>
@@ -1196,7 +1197,7 @@ export const PromotionsPage: React.FC = () => {
                 step={0.01}
                 value={itemPromoForm.promotionalPrice}
                 onChange={(e) => setItemPromoForm({ ...itemPromoForm, promotionalPrice: parseFloat(e.target.value) || 0 })}
-                helperText={`Deve ser menor que R$ ${editingItem.product.price.toFixed(2)}`}
+                helperText={`Deve ser menor que ${formatBRL(editingItem.product.price)}`}
               />
             )}
 
@@ -1239,10 +1240,10 @@ export const PromotionsPage: React.FC = () => {
                     <h5 className="text-xs font-bold text-gray-900">{editingItem.product.name}</h5>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-xs text-gray-400 line-through">
-                        R$ {promoPreview.normalPrice.toFixed(2)}
+                        {formatBRL(promoPreview.normalPrice)}
                       </span>
                       <span className="text-sm font-black text-emerald-700">
-                        R$ {promoPreview.promoPrice.toFixed(2)}
+                        {formatBRL(promoPreview.promoPrice)}
                       </span>
                     </div>
                   </div>
@@ -1251,7 +1252,7 @@ export const PromotionsPage: React.FC = () => {
                 <div className="text-right">
                   <span className="text-[10px] text-gray-500 block">Economia do Cliente</span>
                   <strong className="text-xs text-emerald-800 font-bold">
-                    R$ {promoPreview.economy.toFixed(2)}
+                    {formatBRL(promoPreview.economy)}
                   </strong>
                 </div>
               </div>

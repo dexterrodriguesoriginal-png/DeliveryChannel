@@ -140,11 +140,18 @@ export function buildCustomerTimeline(
     );
   }
 
-  // Etapa em andamento = primeira não concluída. Caso especial: motoboy aceitou e ainda não retirou
-  // → "indo retirar" em andamento. Pedido que já saiu → "a caminho de você" em andamento.
-  let currentIdx = cancelled || delivered ? -1 : defs.findIndex(d => !d.done);
-  if (!cancelled && !delivered && !isPickup && status === 'OUT_FOR_DELIVERY') {
-    currentIdx = defs.findIndex(d => d.key === 'out_for_delivery');
+  // Etapa ATUAL ("agora") = a que corresponde ao status atual do pedido, ou seja, a última etapa já
+  // alcançada (PREPARING → "Em preparo", READY → "Pronto", OUT_FOR_DELIVERY → "A caminho de você").
+  // Nunca a próxima etapa ainda não alcançada. Caso especial: motoboy aceitou e ainda não retirou
+  // → "Motoboy indo retirar" é o que está acontecendo agora.
+  let currentIdx = -1;
+  if (!cancelled && !delivered) {
+    for (let i = defs.length - 1; i >= 0; i--) {
+      if (defs[i].done) { currentIdx = i; break; }
+    }
+    if (!isPickup && acceptedEvent && effectiveRank < RANK.OUT_FOR_DELIVERY) {
+      currentIdx = defs.findIndex(d => d.key === 'driver_to_store');
+    }
   }
 
   const steps: TrackingStep[] = defs.map((d, i) => {
@@ -152,7 +159,6 @@ export function buildCustomerTimeline(
     if (i === currentIdx) state = 'current';
     return { key: d.key, label: d.label, state, at: d.done || i === currentIdx ? d.at : undefined };
   });
-  // Etapa "current" que já tem done=true (saiu para entrega): mantém o horário de início.
   const current = currentIdx >= 0 ? steps[currentIdx] : undefined;
 
   let headline: string;
@@ -161,10 +167,12 @@ export function buildCustomerTimeline(
   else if (status === 'PENDING') headline = 'Recebido • aguardando a loja aceitar';
   else if (current?.key === 'driver_to_store') headline = 'Motoboy a caminho da loja';
   else if (current?.key === 'out_for_delivery') headline = 'Motoboy a caminho de você';
-  else if (current?.key === 'driver_accepted') headline = status === 'WAITING_FOR_DRIVER' ? 'Procurando motoboy' : 'Pedido pronto';
-  else if (current?.key === 'ready') headline = 'Em preparo';
-  else if (current?.key === 'preparing') headline = 'Loja aceitou seu pedido';
-  else if (current?.key === 'delivered') headline = isPickup ? 'Pronto para retirada' : 'A caminho';
+  else if (current?.key === 'driver_accepted') headline = 'Motoboy aceitou';
+  else if (current?.key === 'ready') {
+    headline = isPickup ? 'Pronto para retirada' : status === 'WAITING_FOR_DRIVER' ? 'Procurando motoboy' : 'Pedido pronto';
+  }
+  else if (current?.key === 'preparing') headline = 'Em preparo';
+  else if (current?.key === 'store_accepted') headline = 'Loja aceitou seu pedido';
   else headline = current?.label || 'Em andamento';
 
   const cancelledAt = cancelled ? [...history].reverse().find(h => h.status === 'CANCELLED')?.timestamp : undefined;

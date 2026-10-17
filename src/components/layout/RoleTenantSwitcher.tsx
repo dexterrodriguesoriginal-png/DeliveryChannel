@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { INVALID_CREDENTIALS_MSG } from '../../lib/auth/authErrors';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -204,7 +205,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
         // Mensagem amigável de erro
         const err = res.error || '';
         if (err.toLowerCase().includes('credential') || err.toLowerCase().includes('incorret')) {
-          setFormError('E-mail ou senha incorretos. Verifique suas credenciais.');
+          setFormError(INVALID_CREDENTIALS_MSG);
         } else {
           setFormError(res.error || 'Não foi possível entrar. Tente novamente.');
         }

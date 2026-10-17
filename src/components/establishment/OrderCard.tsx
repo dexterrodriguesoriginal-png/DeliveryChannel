@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Order, OrderStatus, Driver } from '../../types';
 import { paymentMethodLabel, paymentMethodShortLabel, paymentStatusLabel } from '../../lib/orders/labels';
+import { formatBRL } from '../../lib/pricing/money';
 
 interface OrderCardProps {
   order: Order;
@@ -105,7 +106,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
           <div className="bg-emerald-50 border border-emerald-200/80 px-3.5 py-1.5 rounded-xl text-right shrink-0">
             <span className="font-mono font-black text-lg text-emerald-800">
-              R$ {order.totalAmount.toFixed(2)}
+              {formatBRL(order.totalAmount)}
             </span>
           </div>
         </div>
@@ -211,7 +212,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                   {it.productName}
                 </span>
                 <span className="font-mono font-bold text-slate-700 shrink-0 tabular-nums">
-                  R$ {it.totalPrice.toFixed(2)}
+                  {formatBRL(it.totalPrice)}
                 </span>
               </div>
             ))}
@@ -279,7 +280,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           <div className="flex justify-between items-baseline pt-1 border-t border-slate-100">
             <span className="font-bold text-slate-700">Total Líquido:</span>
             <span className="font-mono font-black text-xl text-emerald-800">
-              R$ {order.totalAmount.toFixed(2)}
+              {formatBRL(order.totalAmount)}
             </span>
           </div>
         </div>

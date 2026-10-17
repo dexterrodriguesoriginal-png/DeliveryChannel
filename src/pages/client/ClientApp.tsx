@@ -1464,7 +1464,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                         {isDelivered && <CheckCircle2 className="w-3 h-3 text-emerald-700" />}
                         {isCancelled && <AlertCircle className="w-3 h-3 text-rose-700" />}
                         <span>
-                          {order.status === 'PREPARING' && timeline.current?.key === 'ready'
+                          {order.status === 'PREPARING' && timeline.current?.key === 'preparing'
                             ? `Em preparo (${order.prepTimeMinutes || storeData.settings.defaultPrepTimeMinutes || 30} min)`
                             : timeline.headline}
                         </span>

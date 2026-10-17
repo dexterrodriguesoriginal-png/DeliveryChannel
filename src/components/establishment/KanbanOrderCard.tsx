@@ -19,6 +19,7 @@ import {
   DELAYED_PREPARING_THEME, 
   checkIsPreparingDelayed 
 } from '../../utils/orderStatusTheme';
+import { formatBRL } from '../../lib/pricing/money';
 
 interface KanbanOrderCardProps {
   order: Order;
@@ -197,7 +198,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
           </div>
 
           <div className="font-mono font-black text-slate-950 text-[10px] shrink-0">
-            R$ {order.totalAmount.toFixed(2)}
+            {formatBRL(order.totalAmount)}
           </div>
         </div>
 

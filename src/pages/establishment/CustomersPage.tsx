@@ -619,14 +619,14 @@ export const CustomersPage: React.FC = () => {
                 <div className="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-100 text-center">
                   <span className="text-[10px] uppercase font-bold text-emerald-700">LTV Real</span>
                   <div className="text-lg font-black text-emerald-800 font-mono mt-0.5">
-                    R$ {selectedCustomer.ltvAmount.toFixed(0)}
+                    {formatBRL(selectedCustomer.ltvAmount)}
                   </div>
                 </div>
 
                 <div className="p-2.5 bg-blue-50/50 rounded-xl border border-blue-100 text-center">
                   <span className="text-[10px] uppercase font-bold text-blue-700">Ticket Médio</span>
                   <div className="text-lg font-black text-blue-900 font-mono mt-0.5">
-                    R$ {selectedCustomer.averageTicket.toFixed(0)}
+                    {formatBRL(selectedCustomer.averageTicket)}
                   </div>
                 </div>
               </div>

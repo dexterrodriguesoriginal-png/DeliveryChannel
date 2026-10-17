@@ -26,6 +26,7 @@ import {
 } from '../types';
 import { SecurityContext, validateTenantAccess, validatePermission } from './securityEngine';
 import { calculatePromoCardStatus } from '../utils/promoCardDateUtils';
+import { ownerOrderStatusLabel } from '../lib/orders/labels';
 
 const STORAGE_KEY = 'adegafood_saas_db_v2';
 
@@ -2587,8 +2588,8 @@ export class DataStore {
     });
 
     this.addNotification(tenantId, {
-      title: `Pedido #${order.orderNumber}: ${newStatus}`,
-      message: `Status atualizado para "${newStatus}" por ${context.userName}.`,
+      title: `Pedido #${order.orderNumber}: ${ownerOrderStatusLabel(newStatus)}`,
+      message: `Status atualizado para "${ownerOrderStatusLabel(newStatus)}" por ${context.userName}.`,
       type: 'ORDER_STATUS',
       orderId: order.id,
     });

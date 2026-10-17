@@ -14,3 +14,21 @@ export function isEmailNotConfirmedError(err: { message?: string; code?: string 
   if (!err) return false;
   return err.code === 'email_not_confirmed' || (err.message || '').toLowerCase().includes('email not confirmed');
 }
+
+export const INVALID_CREDENTIALS_MSG = 'E-mail ou senha incorretos.';
+
+/** Login com e-mail/senha errados (Supabase: code invalid_credentials / "Invalid login credentials"). */
+export function isInvalidCredentialsError(err: { message?: string; code?: string } | null | undefined): boolean {
+  if (!err) return false;
+  const m = (err.message || '').toLowerCase();
+  return err.code === 'invalid_credentials' || m.includes('invalid login credentials') || m.includes('invalid credentials');
+}
+
+/**
+ * A tela cheia "Falha ao Conectar com o Estabelecimento" é só para falha REAL ao carregar os vínculos
+ * (tenant_users/permissões). Erro de login (senha errada, e-mail não confirmado, cadastro duplicado,
+ * Google) aparece no próprio formulário, nunca nessa tela.
+ */
+export function isMembershipLoadFailure(membershipStatus: string | null | undefined): boolean {
+  return membershipStatus === 'MEMBERSHIP_ERROR';
+}
