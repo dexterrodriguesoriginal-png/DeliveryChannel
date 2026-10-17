@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { isStaffPreview } from '../../lib/storefront/staffPreview';
 import { storeDeliveryLabel } from '../../lib/pricing/deliveryLabel';
 import { campaignRepository } from '../../repositories/campaignRepository';
 import { useAuth } from '../../context/AuthContext';
@@ -136,7 +137,7 @@ function getCampaignSessionId(): string {
 }
 
 export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => {
-  const { supabaseUser, signInWithGoogle, signInWithPassword, signUp, signOut } = useAuth();
+  const { supabaseUser, signInWithGoogle, signInWithPassword, signUp, signOut, activeTenant } = useAuth();
   const { showToast } = useToast();
 
   // 1. Extração estrita do Slug da URL
@@ -185,6 +186,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
+  const [authPhone, setAuthPhone] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   // 8. Form de Checkout
@@ -837,10 +839,17 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           setIsAuthenticating(false);
           return;
         }
-        const res = await signUp(authEmail.trim(), authPassword, authName.trim(), undefined, { user_type: 'customer' });
+        const phoneDigits = authPhone.replace(/\D/g, '');
+        if (phoneDigits && (phoneDigits.length < 10 || phoneDigits.length > 11)) {
+          showToast({ type: 'warning', title: 'WhatsApp inválido', message: 'Informe DDD + número (10 ou 11 dígitos) ou deixe em branco.' });
+          setIsAuthenticating(false);
+          return;
+        }
+        const res = await signUp(authEmail.trim(), authPassword, authName.trim(), phoneDigits || undefined, { user_type: 'customer' });
         if (!res.success) throw new Error(res.error || 'Falha ao criar conta.');
         showToast({ type: 'success', title: 'Conta criada!', message: 'Sua conta de cliente foi criada com sucesso.' });
         setCustomerName(authName.trim());
+        if (phoneDigits) setCustomerPhone(phoneDigits);
         setIsAuthModalOpen(false);
       }
     } catch (err: any) {
@@ -1143,7 +1152,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         logoUrl={theme.logoUrl}
         hidden={isCheckoutOpen || isPromoCheckoutOpen}
       />
-      {/* Barra de Retorno ao Painel (Facilita Testes do Dono Sem Precisar Publicar) */}
+      {/* Barra de Retorno ao Painel: só para a equipe autenticada DESTE estabelecimento. */}
+      {isStaffPreview(!!supabaseUser, activeTenant?.id, storeData.tenant.id) && (
       <div className="bg-slate-950 text-white text-xs px-3.5 py-2 flex items-center justify-between border-b border-slate-800 z-40 relative">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
@@ -1163,6 +1173,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           <span>← Voltar ao Painel</span>
         </button>
       </div>
+      )}
 
       {/* Top Header com Marca Oficial do Estabelecimento */}
       <div 
@@ -1919,6 +1930,17 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                     className="text-xs"
                   />
                 )}
+                {authMode === 'signup' && (
+                  <Input
+                    label="WhatsApp (opcional)"
+                    type="tel"
+                    inputMode="tel"
+                    placeholder="(11) 91234-5678"
+                    value={authPhone}
+                    onChange={(e) => setAuthPhone(e.target.value)}
+                    className="text-xs"
+                  />
+                )}
                 <Input
                   label="E-mail"
                   type="email"
@@ -2631,6 +2653,17 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                 value={authName}
                 onChange={(e) => setAuthName(e.target.value)}
                 required
+                className="text-xs"
+              />
+            )}
+            {authMode === 'signup' && (
+              <Input
+                label="WhatsApp (opcional)"
+                type="tel"
+                inputMode="tel"
+                placeholder="(11) 91234-5678"
+                value={authPhone}
+                onChange={(e) => setAuthPhone(e.target.value)}
                 className="text-xs"
               />
             )}

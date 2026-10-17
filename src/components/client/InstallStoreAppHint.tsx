@@ -94,7 +94,12 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
       detectInstalledApp().then(v => { if (alive && v) setInstalledAt(a => a ?? Date.now()); }).catch(() => {});
     };
     const id = window.setInterval(check, 2000);
-    return () => { alive = false; window.clearInterval(id); };
+    // Ao voltar do diálogo/instalação do Chrome a aba pode ter ficado em segundo plano: confere já.
+    const onVis = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', check);
+    check();
+    return () => { alive = false; window.clearInterval(id); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('focus', check); };
   }, [phase, installedAt]);
   // Visitas posteriores no navegador: detecta o app já instalado (Chrome Android, via related_applications).
   useEffect(() => {

@@ -178,15 +178,14 @@ export function nextInstallPhase(cur: InstallPhase, signal: 'accepted' | 'dismis
  * Porcentagem exibida enquanto o Chrome instala, em estilo "player": arranque rápido (~40% em 8 s),
  * desacelera, acelera de novo, desacelera e se aproxima de 90% perto dos 75 s. Sem confirmação real
  * (appinstalled / app detectado) nunca passa de 90%.
- * Com confirmação: acelera até 100% em ~3 s, mas nunca antes de 20 s desde o aceite
- * (o appinstalled do Chrome chega antes do ícone existir).
+ * Com confirmação real (appinstalled / standalone / app detectado): acelera até 100% em ~3 s.
  * `installedAtMs` = tempo decorrido (desde o aceite) em que a confirmação chegou, ou null.
  */
 export const INSTALL_MIN_MS = 75 * 1000;
 /** Duração da aceleração final após a confirmação. */
 export const INSTALL_FINISH_MIN_MS = 3 * 1000;
 /** Mínimo absoluto, desde o aceite, para chegar a 100%. */
-export const INSTALL_DONE_MIN_MS = 75 * 1000;
+export const INSTALL_DONE_MIN_MS = 3 * 1000;
 export const INSTALL_EST_MS = INSTALL_MIN_MS;
 const INSTALL_CAP = 90;
 // [tempo ms, %, easing do trecho]: 'out' = rápido→lento, 'in' = lento→rápido.

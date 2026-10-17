@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { isEmailRateLimitError, EMAIL_RATE_LIMIT_MSG } from '../lib/auth/authErrors';
 import { User as AppUser, RoleId, Tenant, TenantTheme, TenantSettings, DriverApprovalStatus } from '../types';
 import { SecurityContext } from '../services/securityEngine';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -1163,6 +1164,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           error.message.toLowerCase().includes('already in use')
         ) {
           friendlyMsg = 'Este e-mail já está cadastrado. Por favor, faça login com suas credenciais.';
+        } else if (isEmailRateLimitError(error)) {
+          friendlyMsg = EMAIL_RATE_LIMIT_MSG;
         }
         setAuthError(friendlyMsg);
         return { success: false, error: friendlyMsg };
