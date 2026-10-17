@@ -18,6 +18,7 @@ import {
   FolderTree,
   Calendar
 } from 'lucide-react';
+import { orderStatusLabel, paymentMethodLabel } from '../../lib/orders/labels';
 
 type PeriodFilter = 'today' | '7d' | 'this_month' | '30d';
 
@@ -127,8 +128,8 @@ export const ReportsPage: React.FC = () => {
           escapeCSV(r.discount.toFixed(2).replace('.', ',')),
           escapeCSV(r.deliveryFee.toFixed(2).replace('.', ',')),
           escapeCSV(r.totalAmount.toFixed(2).replace('.', ',')),
-          escapeCSV(r.status),
-          escapeCSV(r.paymentMethod),
+          escapeCSV(orderStatusLabel(r.status)),
+          escapeCSV(paymentMethodLabel(r.paymentMethod)),
         ].join(';'))
       ];
 

@@ -57,6 +57,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { assignableDrivers, canAssignDrivers } from '../../lib/driverAdmin';
+import { paymentMethodLabel } from '../../lib/orders/labels';
 
 export const OrdersPage: React.FC = () => {
   const { activeTenant, securityContext, availableTenants, switchTenant, supabaseUser, activeRole } = useAuth();
@@ -524,15 +525,7 @@ export const OrdersPage: React.FC = () => {
     setActiveTab('ALL');
   };
 
-  const formatPaymentMethod = (method?: string) => {
-    switch (method?.toUpperCase()) {
-      case 'PIX': return 'Pix';
-      case 'CREDIT_CARD': return 'Cartão';
-      case 'DEBIT_CARD': return 'Cartão';
-      case 'CASH': return 'Dinheiro';
-      default: return method || 'Outro';
-    }
-  };
+  const formatPaymentMethod = (method?: string) => paymentMethodLabel(method);
 
   const isAuthorizedForActiveTenant = availableTenants.length === 0 
     ? true 

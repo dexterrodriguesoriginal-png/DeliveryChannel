@@ -31,6 +31,8 @@ import {
   Mail,
   UserCheck
 } from 'lucide-react';
+import { formatBRL } from '../../lib/pricing/money';
+import { paymentMethodLabel, fulfillmentLabel, orderStatusLabel } from '../../lib/orders/labels';
 
 const PAGE_SIZE = 15;
 
@@ -694,17 +696,17 @@ export const CustomersPage: React.FC = () => {
                                 ? 'bg-rose-200 text-rose-800' 
                                 : 'bg-gray-100 text-gray-700'
                             }`}>
-                              {ord.status}
+                              {orderStatusLabel(ord.status)}
                             </span>
                           </div>
                           <span className="text-[10px] text-gray-400 font-mono block mt-0.5">
-                            {new Date(ord.createdAt).toLocaleString('pt-BR')} • {ord.paymentMethod} • {ord.fulfillmentType}
+                            {new Date(ord.createdAt).toLocaleString('pt-BR')} • {paymentMethodLabel(ord.paymentMethod)} • {fulfillmentLabel(ord.fulfillmentType)}
                           </span>
                         </div>
 
                         <div className="text-right font-mono">
                           <div className="font-bold text-gray-900">
-                            R$ {ord.totalAmount.toFixed(2)}
+                            {formatBRL(ord.totalAmount)}
                           </div>
                           {ord.status === 'CANCELLED' && (
                             <span className="text-[10px] text-rose-600 block">Não faturado</span>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Printer, X } from 'lucide-react';
 import { Order } from '../../types';
+import { paymentMethodLabel } from '../../lib/orders/labels';
 
 interface ThermalReceiptModalProps {
   order: Order | null;
@@ -96,7 +97,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
             <span>R$ {order.totalAmount.toFixed(2)}</span>
           </div>
           <p className="pt-1 text-[10px]">
-            <strong>PAGAMENTO:</strong> {order.paymentMethod} ({order.paymentStatus === 'PAID' ? 'PAGO' : 'PAGAMENTO NA ENTREGA'})
+            <strong>PAGAMENTO:</strong> {paymentMethodLabel(order.paymentMethod).toUpperCase()} ({order.paymentStatus === 'PAID' ? 'PAGO' : 'PAGAMENTO NA ENTREGA'})
           </p>
         </div>
 

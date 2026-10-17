@@ -37,6 +37,7 @@ import {
 import {
   mapCouponPreview,
   mapCustomerOrderRow,
+  attachCustomerHistory,
   mapCustomerOrderRpc,
   mapPixPayload,
   mapStaffOrderRow,
@@ -448,7 +449,24 @@ export const orderRepository = {
       .eq('customer_id', customerRow.id)
       .order('created_at', { ascending: false });
     if (error) throw toBackendError(error, 'Falha ao consultar seus pedidos.');
-    return (data || []).map(mapCustomerOrderRow);
+    const orders = (data || []).map(mapCustomerOrderRow);
+    // Linha do tempo do cliente: só status + horário do histórico (RLS order_status_history_customer_select).
+    // Nunca note/changed_by. Falha aqui não derruba a lista: a linha do tempo cai para orders.status.
+    const ids = orders.map(o => o.id).filter(isValidUuid).slice(0, 100);
+    if (ids.length > 0) {
+      try {
+        const { data: hist, error: hErr } = await supabase
+          .from('order_status_history')
+          .select('order_id, status, created_at')
+          .in('order_id', ids)
+          .order('created_at', { ascending: true });
+        if (!hErr && Array.isArray(hist)) return attachCustomerHistory(orders, hist);
+        if (hErr) console.warn('[orderRepository] histórico do cliente indisponível:', hErr.message);
+      } catch (e) {
+        console.warn('[orderRepository] histórico do cliente indisponível:', e);
+      }
+    }
+    return orders;
   },
 
   async assignDriver(_context: SecurityContext, _tenantId: string, orderId: string, driverUserId: string): Promise<void> {

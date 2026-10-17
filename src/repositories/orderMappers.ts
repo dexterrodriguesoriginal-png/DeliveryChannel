@@ -122,6 +122,25 @@ export function mapCustomerOrderRow(row: any): Order {
   return o;
 }
 
+/**
+ * Anexa o histórico PÚBLICO (só status + horário) aos pedidos do cliente. Descarta qualquer outra coluna
+ * (note/changed_by) mesmo que venha na linha — defesa em profundidade.
+ */
+export function attachCustomerHistory(orders: Order[], rows: any[]): Order[] {
+  const byOrder = new Map<string, { status: OrderStatus; timestamp: string; changedBy: string }[]>();
+  for (const r of rows || []) {
+    if (!r || !r.order_id || !r.status || !r.created_at) continue;
+    const list = byOrder.get(r.order_id) || [];
+    list.push({ status: String(r.status).toUpperCase() as OrderStatus, timestamp: String(r.created_at), changedBy: '' });
+    byOrder.set(r.order_id, list);
+  }
+  return orders.map(o => {
+    const h = byOrder.get(o.id);
+    if (!h) return o;
+    return { ...o, statusHistory: h.sort((a, b) => a.timestamp.localeCompare(b.timestamp)) };
+  });
+}
+
 /** Valida o pedido de mudança de status antes de chamar update_order_status (F5 + nota obrigatória). */
 export function validateStatusChange(
   current: OrderStatus | undefined,

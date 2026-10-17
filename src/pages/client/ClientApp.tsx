@@ -20,6 +20,10 @@ import { orderRepository } from '../../repositories/orderRepository';
 import { customerRepository } from '../../repositories/customerRepository';
 import { orderService } from '../../services/orderService';
 import { OrderPixPanel } from '../../components/client/OrderPixPanel';
+import { OrderTrackingTimeline } from '../../components/client/OrderTrackingTimeline';
+import { buildCustomerTimeline } from '../../lib/orders/customerTracking';
+import { paymentMethodLabel } from '../../lib/orders/labels';
+import { readTrackingDeepLink, trackingUrlFor } from '../../lib/orders/trackingDeepLink';
 import { isN1N6Backend } from '../../lib/backendSchema';
 import { OfferCarousel } from '../../components/common/OfferCarousel';
 import { buildStorefrontCards } from '../../utils/storefrontCards';
@@ -166,7 +170,16 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // 3. Estados de Navegação e Filtros
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
-  const [navTab, setNavTab] = useState<'home' | 'orders' | 'cart' | 'account'>('home');
+  // Deep link: /app/<slug>#pedidos ou ?pedido=<id> abre direto o acompanhamento.
+  const initialTrackingLink = useMemo(() => {
+    try {
+      return readTrackingDeepLink(window.location.search, window.location.hash);
+    } catch {
+      return { open: false } as { open: boolean; orderId?: string };
+    }
+  }, []);
+  const [navTab, setNavTab] = useState<'home' | 'orders' | 'cart' | 'account'>(initialTrackingLink.open ? 'orders' : 'home');
+  const [focusOrderId, setFocusOrderId] = useState<string | null>(initialTrackingLink.orderId || null);
   const [selectedProductModal, setSelectedProductModal] = useState<Product | null>(null);
   // Origem com que o detalhe do produto foi aberto (catálogo ou item de campanha do carrossel).
   const [selectedProductOrigin, setSelectedProductOrigin] = useState<PurchaseOrigin>(CATALOG_ORIGIN);
@@ -379,14 +392,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   }, [supabaseUser?.id, storeData?.tenant.id]);
 
   // Carregar histórico de pedidos do cliente autenticado
-  const loadCustomerOrders = useCallback(async () => {
+  const loadCustomerOrders = useCallback(async (opts?: { silent?: boolean }) => {
     if (!storeData?.tenant.id || !supabaseUser?.id) {
       setCustomerOrders([]);
       setCustomerOrdersError(null);
       return;
     }
 
-    setIsLoadingOrders(true);
+    // Atualização em segundo plano (polling) não troca a lista pelo "Carregando..." a cada ciclo.
+    if (!opts?.silent) setIsLoadingOrders(true);
     setCustomerOrdersError(null);
     try {
       const orders = await orderRepository.getCustomerOrders(storeData.tenant.id, supabaseUser.id);
@@ -470,13 +484,41 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   useEffect(() => {
     if (navTab === 'orders') {
       loadCustomerOrders();
-      // Polling de 8 segundos enquanto estiver visualizando a aba de pedidos
+      // Acompanhamento ao vivo: recarrega a cada 8 s enquanto a aba Pedidos está aberta e visível,
+      // e imediatamente ao voltar para o app (aba/PWA em primeiro plano).
       const interval = setInterval(() => {
-        loadCustomerOrders();
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+        loadCustomerOrders({ silent: true });
       }, 8000);
-      return () => clearInterval(interval);
+      const onVisible = () => {
+        if (document.visibilityState === 'visible') loadCustomerOrders({ silent: true });
+      };
+      document.addEventListener('visibilitychange', onVisible);
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', onVisible);
+      };
     }
   }, [navTab, loadCustomerOrders]);
+
+  // Mantém a URL coerente com a aba (#pedidos) sem criar entradas no histórico.
+  useEffect(() => {
+    try {
+      const next = trackingUrlFor(window.location.href, navTab === 'orders');
+      if (next) window.history.replaceState(window.history.state, '', next);
+    } catch {
+      // ambientes sem history
+    }
+    if (navTab !== 'orders') setFocusOrderId(null);
+  }, [navTab]);
+
+  // Pedido do deep link: rola até o cartão quando ele aparecer na lista.
+  useEffect(() => {
+    if (navTab !== 'orders' || !focusOrderId) return;
+    if (!customerOrders.some(o => o.id === focusOrderId)) return;
+    const el = document.getElementById(`pedido-${focusOrderId}`);
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [navTab, focusOrderId, customerOrders]);
 
   // Tema visual dinâmico do estabelecimento
   const theme: Partial<TenantTheme> = storeData?.theme || {
@@ -1372,19 +1414,19 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           ) : (
             <div className="space-y-4">
               {customerOrders.map(order => {
-                const isDelivered = order.status === 'DELIVERED';
-                const isCancelled = order.status === 'CANCELLED';
-                const isDelivery = order.status === 'OUT_FOR_DELIVERY' || order.status === 'READY' || order.status === 'WAITING_FOR_DRIVER';
-                const isPreparing = order.status === 'PREPARING' || order.status === 'CONFIRMED';
+                const timeline = buildCustomerTimeline(order);
+                const isDelivered = timeline.delivered;
+                const isCancelled = timeline.cancelled;
                 const isPending = order.status === 'PENDING';
-
-                // Determina o índice de progresso da esteira (1 a 4)
-                const currentStep = isDelivered ? 4 : isDelivery ? 3 : isPreparing ? 2 : 1;
+                const isDelivery = !isCancelled && !isDelivered && (order.status === 'OUT_FOR_DELIVERY' || order.status === 'READY' || order.status === 'WAITING_FOR_DRIVER');
+                const isPreparing = !isCancelled && !isDelivered && !isPending && !isDelivery;
+                const isFocused = focusOrderId === order.id;
 
                 return (
                   <div 
                     key={order.id} 
-                    className="p-4 sm:p-5 bg-white rounded-3xl border border-gray-200/90 shadow-xs hover:shadow-md transition-all space-y-4"
+                    id={`pedido-${order.id}`}
+                    className={`p-4 sm:p-5 bg-white rounded-3xl border shadow-xs hover:shadow-md transition-all space-y-4 ${isFocused ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-gray-200/90'}`}
                   >
                     {/* TOPO: NÚMERO DO PEDIDO + DATA + TOTAL EM DESTAQUE */}
                     <div className="flex items-start justify-between gap-2">
@@ -1422,12 +1464,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                         {isDelivered && <CheckCircle2 className="w-3 h-3 text-emerald-700" />}
                         {isCancelled && <AlertCircle className="w-3 h-3 text-rose-700" />}
                         <span>
-                          {isPending ? 'Recebido • Aguardando Loja' :
-                           order.status === 'CONFIRMED' ? 'Confirmado' :
-                           order.status === 'PREPARING' ? `Em Preparo (${order.prepTimeMinutes || storeData.settings.defaultPrepTimeMinutes || 30} min)` :
-                           order.status === 'READY' ? 'Pronto p/ Despacho' :
-                           isDelivery ? 'Saiu para Entrega' :
-                           isDelivered ? 'Entregue com Sucesso' : 'Pedido Cancelado'}
+                          {order.status === 'PREPARING' && timeline.current?.key === 'ready'
+                            ? `Em preparo (${order.prepTimeMinutes || storeData.settings.defaultPrepTimeMinutes || 30} min)`
+                            : timeline.headline}
                         </span>
                       </span>
 
@@ -1436,39 +1475,16 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                       </span>
 
                       <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-mono font-bold text-[10px] uppercase border border-emerald-200">
-                        {order.paymentMethod === 'CASH' ? 'Dinheiro' : order.paymentMethod === 'PIX' ? 'PIX' : 'Cartão'}
+                        {paymentMethodLabel(order.paymentMethod)}
                       </span>
                     </div>
 
-                    {/* PROGRESS TRACKER STEPPER HORIZONTAL */}
-                    {!isCancelled && (
-                      <div className="bg-slate-50 border border-slate-200/70 rounded-2xl p-3.5 space-y-2">
-                        <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase text-slate-400">
-                          <span className={currentStep >= 1 ? 'text-emerald-700 font-black' : ''}>1. Recebido</span>
-                          <span className={currentStep >= 2 ? 'text-emerald-700 font-black' : ''}>2. Preparo</span>
-                          <span className={currentStep >= 3 ? 'text-purple-700 font-black' : ''}>3. A Caminho</span>
-                          <span className={currentStep >= 4 ? 'text-emerald-700 font-black' : ''}>4. Entregue</span>
-                        </div>
-                        {/* Linha de Progresso Visual */}
-                        <div className="relative flex items-center justify-between">
-                          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-slate-200 z-0 rounded-full" />
-                          <div 
-                            className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-emerald-500 z-0 rounded-full transition-all duration-500"
-                            style={{ width: currentStep === 1 ? '10%' : currentStep === 2 ? '40%' : currentStep === 3 ? '75%' : '100%' }}
-                          />
-                          {[1, 2, 3, 4].map(step => (
-                            <div 
-                              key={step}
-                              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold z-10 transition-colors shadow-2xs ${
-                                currentStep >= step
-                                  ? 'bg-emerald-600 text-white ring-2 ring-emerald-200' 
-                                  : 'bg-white border border-slate-300 text-slate-400'
-                              }`}
-                            >
-                              {currentStep > step ? '✓' : step}
-                            </div>
-                          ))}
-                        </div>
+                    {/* LINHA DO TEMPO COMPLETA (atualiza ao vivo pelo polling da aba Pedidos) */}
+                    {!isCancelled ? (
+                      <OrderTrackingTimeline timeline={timeline} accentColor={buttonColor} />
+                    ) : (
+                      <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3 text-xs text-rose-800 font-bold">
+                        Pedido cancelado{timeline.cancelledAt ? ` às ${new Date(timeline.cancelledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}.
                       </div>
                     )}
 
@@ -2513,7 +2529,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Pagamento:</span>
-              <span className="font-bold text-gray-900">{completedOrder?.paymentMethod}</span>
+              <span className="font-bold text-gray-900">{paymentMethodLabel(completedOrder?.paymentMethod)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Status:</span>
@@ -2567,6 +2583,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               className="w-full text-white font-bold"
               style={{ backgroundColor: buttonColor }}
               onClick={() => {
+                if (completedOrder?.id) setFocusOrderId(completedOrder.id);
                 setCompletedOrder(null);
                 setNavTab('orders');
               }}

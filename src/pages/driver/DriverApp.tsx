@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { paymentMethodLabel } from '../../lib/orders/labels';
+import { formatBRL } from '../../lib/pricing/money';
 import { useAuth } from '../../context/AuthContext';
 import { orderRepository } from '../../repositories/orderRepository';
 import { Card } from '../../components/ui/Card';
@@ -331,7 +333,7 @@ export const DriverApp: React.FC = () => {
                   <span className="font-mono text-xs font-bold text-gray-700">#{activeOrder.orderNumber}</span>
                 </div>
                 <span className="text-xs font-mono font-bold text-emerald-800">
-                  Taxa: R$ {activeOrder.deliveryFee.toFixed(2)}
+                  Taxa: {formatBRL(activeOrder.deliveryFee)}
                 </span>
               </div>
 
@@ -366,6 +368,22 @@ export const DriverApp: React.FC = () => {
                   >
                     Ligar
                   </Button>
+                </div>
+
+                {/* Pagamento: o entregador precisa saber se cobra na entrega (dinheiro) e o troco */}
+                <div className="p-3 bg-gray-50 rounded-xl space-y-1" data-testid="driver-payment">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Pagamento</span>
+                  <div className="font-bold text-gray-900">
+                    {paymentMethodLabel(activeOrder.paymentMethod)}
+                    {activeOrder.paymentStatus === 'PAID'
+                      ? ' • já pago'
+                      : activeOrder.paymentMethod === 'CASH'
+                        ? ` • receber ${formatBRL(activeOrder.totalAmount)} na entrega`
+                        : ' • na entrega'}
+                  </div>
+                  {activeOrder.notes && (
+                    <div className="text-[11px] text-gray-600 whitespace-pre-line">{activeOrder.notes}</div>
+                  )}
                 </div>
 
                 {/* Items to Deliver */}

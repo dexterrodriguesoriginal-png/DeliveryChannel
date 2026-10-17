@@ -18,6 +18,7 @@ import {
   Bike
 } from 'lucide-react';
 import { Order, OrderStatus, Driver } from '../../types';
+import { paymentMethodLabel, paymentMethodShortLabel, paymentStatusLabel } from '../../lib/orders/labels';
 
 interface OrderCardProps {
   order: Order;
@@ -112,7 +113,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         {/* TAGS DE PAGAMENTO, ATENDIMENTO & STATUS */}
         <div className="flex items-center gap-1.5 flex-wrap pt-1 pb-3">
           <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-mono font-bold text-[10px] uppercase border border-emerald-200">
-            {order.paymentMethod === 'CASH' ? 'DINHEIRO' : order.paymentMethod === 'PIX' ? 'PIX' : 'CARTÃO'}
+            {paymentMethodShortLabel(order.paymentMethod)}
           </span>
           <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-mono font-bold text-[10px] uppercase border border-slate-200 flex items-center gap-1">
             {order.fulfillmentType === 'PICKUP' ? '🛍️ RETIRADA' : '🛵 DELIVERY'}
@@ -271,7 +272,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           <div className="flex justify-between text-slate-500">
             <span>Pagamento:</span>
             <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">
-              ✓ Pago ({order.paymentMethod})
+              {order.paymentStatus === 'PAID' ? '✓ Pago' : paymentStatusLabel(order.paymentStatus)} ({paymentMethodLabel(order.paymentMethod)})
             </span>
           </div>
 
