@@ -242,6 +242,16 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
           </button>
         )}
 
+        {order.status === 'READY' && order.fulfillmentType !== 'PICKUP' && (
+          <button
+            type="button"
+            data-testid="card-call-driver"
+            onClick={(e) => { e.stopPropagation(); onUpdateStatus(order.id, 'WAITING_FOR_DRIVER'); }}
+            className="flex-1 py-0.5 px-1 rounded font-bold text-[8.5px] bg-emerald-600 text-white flex items-center justify-center gap-0.5 shadow-2xs hover:bg-emerald-700 cursor-pointer"
+          >
+            <Truck className="w-2 h-2" /><span className="truncate">Chamar motoboy</span>
+          </button>
+        )}
         {/* Botão de Ação Primária */}
         <button
           type="button"

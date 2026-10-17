@@ -17,7 +17,7 @@ export const PickupCodeBadge: React.FC<{ orderId: string; status: string }> = ({
         <div className="font-mono text-base font-extrabold tracking-[0.3em] text-amber-900">
           {info.confirmed ? 'Retirado ✓' : info.code}
         </div>
-        {!info.confirmed && <div className="text-[8px] text-amber-800">Informe ao entregador só na entrega do pacote.</div>}
+        {!info.confirmed && <div className="text-[8px] text-amber-800">Informe este código ao entregador somente quando ele vier retirar o pedido.</div>}
       </div>
       {info.locked && !info.confirmed && (
         <button type="button" disabled={busy} className="text-[9px] font-bold px-2 py-1 rounded-md bg-amber-600 text-white cursor-pointer"

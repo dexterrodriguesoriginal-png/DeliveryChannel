@@ -55,12 +55,14 @@ export const DriverApp: React.FC = () => {
       try {
         do {
           hasQueuedFetchRef.current = false;
-          const [data, av] = await Promise.all([
+          // Disponibilidade independe da lista de pedidos (uma falha não pode esconder a outra).
+          const [data, av] = await Promise.allSettled([
             orderRepository.getOrders(securityContextRef.current, activeTenant.id),
             driverInviteRepository.getOwnAvailability(activeTenant.id),
           ]);
-          setOrders(data);
-          setAvailability(av);
+          if (av.status === 'fulfilled') setAvailability(av.value);
+          if (data.status === 'rejected') throw data.reason;
+          setOrders(data.value);
         } while (hasQueuedFetchRef.current);
       } catch (err) {
         console.warn('[DriverApp] Erro ao carregar pedidos do Supabase:', err);
@@ -101,6 +103,16 @@ export const DriverApp: React.FC = () => {
       unsub();
     };
   }, [fetchDriverOrders, activeTenant?.id, ordersAllowed]);
+
+  // Carrega a disponibilidade logo ao abrir o app (sem depender de abrir "Meu Perfil").
+  useEffect(() => {
+    if (!activeTenant?.id) return;
+    let alive = true;
+    driverInviteRepository.getOwnAvailability(activeTenant.id)
+      .then(av => { if (alive) setAvailability(av); })
+      .catch(err => console.warn('[DriverApp] disponibilidade:', err));
+    return () => { alive = false; };
+  }, [activeTenant?.id]);
 
   if (!activeTenant) return null;
 
@@ -147,6 +159,43 @@ export const DriverApp: React.FC = () => {
       setShowConsentModal(true);
     }
   }, [consent]);
+
+  const availabilityControl = (() => {
+    const next = availabilityToggleTarget(availability);
+    if (!next) {
+      return (
+        <p className="text-gray-500" data-testid="availability-toggle-hint">
+          {availability === 'ON_DELIVERY'
+            ? 'Conclua a entrega em andamento para alterar sua disponibilidade.'
+            : 'Disponibilidade indisponível para alteração no momento.'}
+        </p>
+      );
+    }
+    return (
+      <Button
+        data-testid="availability-toggle"
+        size="sm"
+        variant={next === 'AVAILABLE' ? 'primary' : 'outline'}
+        disabled={availSaving}
+        className="w-full text-xs"
+        onClick={async () => {
+          setAvailSaving(true);
+          try {
+            const av = await driverInviteRepository.setMyAvailability(activeTenant.id, next);
+            setAvailability(av);
+            showToast({ type: 'success', title: av === 'AVAILABLE' ? 'Você está disponível' : 'Você está indisponível', message: 'Disponibilidade atualizada.' });
+          } catch (err: any) {
+            showToast({ type: 'error', title: 'Não foi possível alterar', message: err?.message || 'Tente novamente.' });
+            setAvailability(await driverInviteRepository.getOwnAvailability(activeTenant.id));
+          } finally {
+            setAvailSaving(false);
+          }
+        }}
+      >
+        {availSaving ? 'Salvando...' : next === 'AVAILABLE' ? 'Ficar disponível' : 'Ficar indisponível'}
+      </Button>
+    );
+  })();
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 text-gray-900 font-sans">
@@ -262,46 +311,18 @@ export const DriverApp: React.FC = () => {
             <div><span className="text-gray-400">Nome: </span><span className="font-bold">{currentUser?.name || 'Entregador'}</span></div>
             <div><span className="text-gray-400">Loja: </span><span className="font-bold">{activeTenant.name}</span></div>
             <div><span className="text-gray-400">Disponibilidade: </span><span className="font-bold">{availabilityView.label}</span></div>
-            {(() => {
-              const next = availabilityToggleTarget(availability);
-              if (!next) {
-                return (
-                  <p className="text-gray-500" data-testid="availability-toggle-hint">
-                    {availability === 'ON_DELIVERY'
-                      ? 'Conclua a entrega em andamento para alterar sua disponibilidade.'
-                      : 'Disponibilidade indisponível para alteração no momento.'}
-                  </p>
-                );
-              }
-              return (
-                <Button
-                  data-testid="availability-toggle"
-                  size="sm"
-                  variant={next === 'AVAILABLE' ? 'primary' : 'outline'}
-                  disabled={availSaving}
-                  className="w-full text-xs"
-                  onClick={async () => {
-                    setAvailSaving(true);
-                    try {
-                      const av = await driverInviteRepository.setMyAvailability(activeTenant.id, next);
-                      setAvailability(av);
-                      showToast({ type: 'success', title: av === 'AVAILABLE' ? 'Você está disponível' : 'Você está indisponível', message: 'Disponibilidade atualizada.' });
-                    } catch (err: any) {
-                      showToast({ type: 'error', title: 'Não foi possível alterar', message: err?.message || 'Tente novamente.' });
-                      setAvailability(await driverInviteRepository.getOwnAvailability(activeTenant.id));
-                    } finally {
-                      setAvailSaving(false);
-                    }
-                  }}
-                >
-                  {availSaving ? 'Salvando...' : next === 'AVAILABLE' ? 'Ficar disponível' : 'Ficar indisponível'}
-                </Button>
-              );
-            })()}
+            {availabilityControl}
           </Card>
         )}
 
         {navTab === 'active-delivery' && (<>
+        <Card className="p-3 flex items-center justify-between gap-3" data-testid="availability-main">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${AVAIL_DOT[availabilityView.tone]}`} />
+            <span className="text-sm font-bold text-gray-900 truncate">{availabilityView.label}</span>
+          </div>
+          <div className="w-44 shrink-0 text-xs">{availabilityControl}</div>
+        </Card>
         {activeOrder ? (
           <div className="space-y-4">
             {/* Active Delivery Card */}

@@ -943,6 +943,16 @@ export const OrdersPage: React.FC = () => {
                   </a>
                 )}
 
+                {selectedOrder.status === 'READY' && selectedOrder.fulfillmentType !== 'PICKUP' && (
+                  <button
+                    type="button"
+                    data-testid="panel-call-driver"
+                    onClick={() => handleUpdateStatus(selectedOrder.id, 'WAITING_FOR_DRIVER', 'Chamando motoboy')}
+                    className="w-full p-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide cursor-pointer"
+                  >
+                    <Bike className="w-3 h-3" /> Chamar motoboy
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
