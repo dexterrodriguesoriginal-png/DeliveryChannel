@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { normalizeBRPhone, formatBRPhone, brPhoneDigits } from '../../lib/phone/brPhone';
 import { DeliveryCodeCard } from '../../components/client/DeliveryCodeCard';
 import { isStaffPreview } from '../../lib/storefront/staffPreview';
 import { storeDeliveryLabel } from '../../lib/pricing/deliveryLabel';
@@ -217,7 +218,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
   // 8. Form de Checkout
   const [customerName, setCustomerName] = useState(() => localStorage.getItem('adegafood_cust_name') || '');
-  const [customerPhone, setCustomerPhone] = useState(() => localStorage.getItem('adegafood_cust_phone') || '');
+  const [customerPhone, setCustomerPhone] = useState(() => formatBRPhone(localStorage.getItem('adegafood_cust_phone') || ''));
   const [fulfillmentType, setFulfillmentType] = useState<'DELIVERY' | 'PICKUP'>('DELIVERY');
 
   // Endereço de entrega com Google Places
@@ -382,7 +383,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         .then((existingCust) => {
           if (existingCust) {
             setCustomerName(existingCust.name);
-            setCustomerPhone(existingCust.phone);
+            setCustomerPhone(formatBRPhone(existingCust.phone));
           } else {
             const metaName = supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name;
             if (metaName) setCustomerName(metaName);
@@ -676,14 +677,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
   // Normalização de telefone / WhatsApp com máscara brasileira
   const handlePhoneChange = (val: string) => {
-    const digits = val.replace(/\D/g, '').slice(0, 11);
-    if (digits.length <= 2) {
-      setCustomerPhone(digits);
-    } else if (digits.length <= 7) {
-      setCustomerPhone(`(${digits.slice(0, 2)}) ${digits.slice(2)}`);
-    } else {
-      setCustomerPhone(`(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`);
-    }
+    setCustomerPhone(formatBRPhone(val));
   };
 
   // Manipulação de Carrinho
@@ -911,16 +905,16 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           setIsAuthenticating(false);
           return;
         }
-        const phoneDigits = authPhone.replace(/\D/g, '');
-        if (phoneDigits && (phoneDigits.length < 10 || phoneDigits.length > 11)) {
+        const phoneDigits = authPhone.trim() ? normalizeBRPhone(authPhone) : '';
+        if (phoneDigits === null) {
           showToast({ type: 'warning', title: 'WhatsApp inválido', message: 'Informe DDD + número (10 ou 11 dígitos) ou deixe em branco.' });
           setIsAuthenticating(false);
           return;
         }
-        const res = await signUp(authEmail.trim(), authPassword, authName.trim(), phoneDigits || undefined, { user_type: 'customer' });
+        const res = await signUp(authEmail.trim(), authPassword, authName.trim(), phoneDigits ? `+55${phoneDigits}` : undefined, { user_type: 'customer' });
         if (!res.success) throw new Error(res.error || 'Falha ao criar conta.');
         setCustomerName(authName.trim());
-        if (phoneDigits) setCustomerPhone(phoneDigits);
+        if (phoneDigits) setCustomerPhone(formatBRPhone(phoneDigits));
         if (res.requiresEmailConfirmation) {
           // Mantém o aviso visível no modal/checkout até o cliente confirmar (não fecha em silêncio).
           setAuthNotice({ email: authEmail.trim(), kind: 'signup' });
@@ -970,8 +964,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       return;
     }
 
-    const cleanPhone = customerPhone.replace(/\D/g, '');
-    if (cleanPhone.length < 10 || cleanPhone.length > 11) {
+    const cleanPhone = normalizeBRPhone(customerPhone) || '';
+    if (!cleanPhone) {
       showToast({
         type: 'warning',
         title: 'WhatsApp Inválido',
@@ -1149,7 +1143,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const openWhatsAppContact = (orderNumber?: number) => {
     if (!storeData) return;
     const phone = storeData.settings.phoneWhatsApp || storeData.tenant.phone;
-    const cleanPhone = phone.replace(/\D/g, '');
+    const cleanPhone = brPhoneDigits(phone);
     const message = orderNumber
       ? `Olá! Gostaria de informações sobre meu Pedido #${orderNumber} feito no app do ${storeData.tenant.name}.`
       : `Olá! Tenho uma dúvida sobre o cardápio do ${storeData.tenant.name}.`;
