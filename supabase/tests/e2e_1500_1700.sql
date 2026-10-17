@@ -23,8 +23,8 @@ BEGIN
   INSERT INTO public.tenant_users (tenant_id, user_id, role_id, status) VALUES
     (t1, u_owner, 'OWNER', 'ACTIVE'), (t1, u_drv, 'DRIVER', 'ACTIVE'), (t1, u_drv2, 'DRIVER', 'ACTIVE'),
     (t1, u_cashier, 'CASHIER', 'ACTIVE'), (t2, u_other, 'OWNER', 'ACTIVE');
-  INSERT INTO public.drivers (user_id, tenant_id, full_name, phone, status) VALUES
-    (u_drv, t1, 'Entregador E2E', '11911111111', 'AVAILABLE'), (u_drv2, t1, 'Entregador2 E2E', '11922222222', 'AVAILABLE');
+  INSERT INTO public.drivers (user_id, tenant_id, full_name, phone, status, approval_status) VALUES
+    (u_drv, t1, 'Entregador E2E', '11911111111', 'AVAILABLE', 'APPROVED'), (u_drv2, t1, 'Entregador2 E2E', '11922222222', 'AVAILABLE', 'APPROVED');
   INSERT INTO public.products (id, tenant_id, name, image_url, price, is_active, stock_quantity)
     VALUES (v_prod, t1, 'Produto E2E', '', 20.00, true, 100);
 

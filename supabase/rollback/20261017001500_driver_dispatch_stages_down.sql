@@ -72,7 +72,7 @@ BEGIN
     END IF;
 
     -- 3. Bloquear motorista com FOR UPDATE (Ordem: 2º Motorista)
-    SELECT id, full_name, status, tenant_id
+    SELECT id, full_name, status, tenant_id, approval_status
     INTO v_driver
     FROM public.drivers
     WHERE user_id = p_driver_user_id 
@@ -100,6 +100,11 @@ BEGIN
     END IF;
 
     -- 6. Validação estrita de disponibilidade: EXIGE STATUS AVAILABLE
+    -- 0700: só vínculo APPROVED recebe atribuição (spec 2.2 / 4.2)
+    IF v_driver.approval_status IS DISTINCT FROM 'APPROVED' THEN
+        RAISE EXCEPTION 'Entregador não aprovado neste estabelecimento.' USING ERRCODE = 'P0414';
+    END IF;
+
     IF v_driver.status <> 'AVAILABLE' THEN
         RAISE EXCEPTION 'Motorista não está disponível para receber novos pedidos (Status atual: %).', v_driver.status;
     END IF;
