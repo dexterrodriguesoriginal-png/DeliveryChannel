@@ -44,7 +44,7 @@ export const DriverStatusScreen: React.FC<DriverStatusScreenProps> = ({ variant,
             <Bike className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-gray-900 leading-tight">AdegaFood Entregador</h1>
+            <h1 className="text-sm font-bold text-gray-900 leading-tight">Delivery Channel Entregador</h1>
             <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
               <span>{userName || 'Entregador'}</span>
             </div>

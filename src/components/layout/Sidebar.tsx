@@ -295,7 +295,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {!isCollapsed && (
               <div className="text-[9.5px] text-gray-400 text-center font-medium select-none pt-0.5">
-                AdegaFood • Painel Seguro
+                Delivery Channel • Painel Seguro
               </div>
             )}
           </div>

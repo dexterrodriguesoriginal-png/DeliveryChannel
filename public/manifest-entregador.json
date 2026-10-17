@@ -1,8 +1,8 @@
 {
   "id": "/entregador",
-  "name": "AdegaFood Entregador",
+  "name": "Delivery Channel Entregador",
   "short_name": "Entregador",
-  "description": "App do entregador AdegaFood: entregas, histórico e disponibilidade.",
+  "description": "App do entregador Delivery Channel: entregas, histórico e disponibilidade.",
   "start_url": "/entregador",
   "scope": "/",
   "display": "standalone",

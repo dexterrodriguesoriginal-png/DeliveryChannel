@@ -287,7 +287,6 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
             input: cleanQuery,
             sessionToken: sessionTokenRef.current,
             includedRegionCodes: ['br'],
-            includedPrimaryTypes: ['street_address', 'route', 'subpremise', 'premise'],
           };
 
           try {

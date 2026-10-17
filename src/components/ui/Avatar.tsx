@@ -10,7 +10,7 @@ export interface AvatarProps {
 
 export const Avatar: React.FC<AvatarProps> = ({
   src,
-  name = 'AdegaFood',
+  name = 'Delivery Channel',
   size = 'md',
   className,
 }) => {

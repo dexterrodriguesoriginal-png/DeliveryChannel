@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { storeDeliveryLabel } from '../../lib/pricing/deliveryLabel';
 import { campaignRepository } from '../../repositories/campaignRepository';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
@@ -1180,7 +1181,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               <span>{storeData.settings.defaultPrepTimeMinutes ? `Preparo: ${storeData.settings.defaultPrepTimeMinutes} min` : (storeData.settings.estimatedDeliveryTime || 'Preparo: 30 min')}</span>
               <span>•</span>
               <span className="font-medium text-emerald-700">
-                {deliveryFee === 0 ? 'Entrega Grátis' : `Entrega R$ ${(storeData.settings.deliveryFee || 0).toFixed(2)}`}
+                {storeDeliveryLabel(storeData.settings)}
               </span>
             </p>
           </div>
@@ -2502,7 +2503,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               )}
               <div className="pt-1 border-t border-emerald-100">
                 <p className="text-[11px] text-emerald-800 leading-relaxed">
-                  Esta é sua conta do AdegaFood. Você pode usá-la para comprar em diferentes estabelecimentos parceiros com total segurança.
+                  Esta é sua conta do Delivery Channel. Você pode usá-la para comprar em diferentes estabelecimentos parceiros com total segurança.
                 </p>
               </div>
               <Button

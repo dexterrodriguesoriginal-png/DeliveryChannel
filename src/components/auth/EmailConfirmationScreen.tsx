@@ -66,14 +66,14 @@ export const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = (
   return (
     <div className="min-h-screen bg-linear-to-b from-emerald-50/60 via-slate-50 to-white flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-3xl p-8 sm:p-10 shadow-2xl shadow-emerald-950/5 border border-emerald-100 text-center space-y-6">
-        {/* Badge do AdegaFood */}
+        {/* Badge do Delivery Channel */}
         <div className="mx-auto flex flex-col items-center">
           <div className="w-16 h-16 rounded-2xl bg-emerald-700 text-white flex items-center justify-center text-2xl font-black shadow-lg shadow-emerald-700/25 mb-4">
             AF
           </div>
           <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/60 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-            AdegaFood
+            Delivery Channel
           </span>
         </div>
 

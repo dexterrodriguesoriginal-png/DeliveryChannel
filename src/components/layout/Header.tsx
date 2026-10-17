@@ -41,7 +41,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     <>
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-200/80 px-2 sm:px-2.5 h-6.5 sm:h-7 flex items-center justify-between transition-colors">
         {/* ============================================================ */}
-        {/* Esquerda: Brand ADEGAFOOD & Nome da Loja (COMANDO 124 / 125) */}
+        {/* Esquerda: Brand DELIVERY CHANNEL & Nome da Loja (COMANDO 124 / 125) */}
         {/* ============================================================ */}
         <div className="flex items-center gap-1 sm:gap-1.5">
           {onToggleSidebar && (

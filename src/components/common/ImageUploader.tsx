@@ -6,7 +6,7 @@ export interface ImageUploaderProps {
   value?: string;
   onChange: (url: string) => void;
   tenantId: string;
-  entityType: 'categories' | 'products' | 'offers';
+  entityType: 'categories' | 'products' | 'offers' | 'branding';
   label?: string;
   description?: string;
   disabled?: boolean;
@@ -211,7 +211,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-gray-800 truncate" title={value}>
-              {value.includes('/storage/v1/object/public/catalog/') ? 'Imagem no Storage do AdegaFood' : value}
+              {value.includes('/storage/v1/object/public/catalog/') ? 'Imagem no Storage do Delivery Channel' : value}
             </p>
             <p className="text-[10px] text-gray-400 truncate">
               {value.startsWith('http') ? new URL(value).hostname : 'Arquivo carregado'}

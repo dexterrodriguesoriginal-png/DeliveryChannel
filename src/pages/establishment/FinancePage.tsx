@@ -285,7 +285,7 @@ export const FinancePage: React.FC = () => {
             <DollarSign className="w-5 h-5" />
           </div>
           <div>
-            <h4 className="text-xs font-bold text-emerald-950">Canal Proprietário AdegaFood</h4>
+            <h4 className="text-xs font-bold text-emerald-950">Canal Proprietário Delivery Channel</h4>
             <div className="text-xl font-black text-emerald-900 font-mono mt-0.5">
               0% de comissão
             </div>

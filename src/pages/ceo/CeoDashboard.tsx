@@ -47,7 +47,7 @@ export const CeoDashboard: React.FC<{ onNavigate: (tabId: string) => void }> = (
             </span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black tracking-tight">
-            HQ AdegaFood — Painel da Diretoria
+            HQ Delivery Channel — Painel da Diretoria
           </h2>
           <p className="text-xs text-emerald-100/90 max-w-xl">
             Monitoramento de todos os estabelecimentos cadastrados, faturamento consolidado de pedidos (GMV), receita de assinaturas e rede de patrocinadores.

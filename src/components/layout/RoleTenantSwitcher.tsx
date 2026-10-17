@@ -450,7 +450,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
 
             {/* Ações do Usuário: Sair da Conta */}
             <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-xs text-gray-400">AdegaFood SaaS</span>
+              <span className="text-xs text-gray-400">Delivery Channel SaaS</span>
               <Button
                 variant="outline"
                 size="sm"

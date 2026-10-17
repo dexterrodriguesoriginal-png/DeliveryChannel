@@ -15,7 +15,7 @@ export const CeoSponsorsPage: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Patrocínios & Rede de Mídia AdegaFood</h2>
+          <h2 className="text-xl font-bold text-gray-900">Patrocínios & Rede de Mídia Delivery Channel</h2>
           <p className="text-xs text-gray-500">
             Administração de anunciantes nacionais e globais exibidos nos aplicativos de clientes
           </p>

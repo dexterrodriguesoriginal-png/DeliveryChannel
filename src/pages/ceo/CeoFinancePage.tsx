@@ -17,7 +17,7 @@ export const CeoFinancePage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-gray-900">Financeiro & Receita AdegaFood (HQ)</h2>
+        <h2 className="text-xl font-bold text-gray-900">Financeiro & Receita Delivery Channel (HQ)</h2>
         <p className="text-xs text-gray-500">
           Receitas consolidadas do SaaS, mensalidades de planos e volume total transacionado
         </p>

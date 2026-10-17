@@ -101,7 +101,7 @@ export const TenantEmailConfirmationScreen: React.FC<TenantEmailConfirmationScre
           </div>
           <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3.5 py-1 rounded-full border border-emerald-200/80 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-            AdegaFood
+            Delivery Channel
           </span>
         </div>
 

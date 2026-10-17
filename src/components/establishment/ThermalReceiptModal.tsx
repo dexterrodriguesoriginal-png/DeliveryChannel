@@ -32,7 +32,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 
         {/* Cabeçalho Térmico */}
         <div className="text-center border-b border-dashed border-black pb-3">
-          <h2 className="font-bold text-sm uppercase tracking-wide">{storeName || 'ADEGAFOOD DELIVERY'}</h2>
+          <h2 className="font-bold text-sm uppercase tracking-wide">{storeName || 'DELIVERY CHANNEL DELIVERY'}</h2>
           <p className="text-[10px] text-gray-700">CONTROLE DE EXPEDIÇÃO</p>
           <p className="text-[11px] font-bold mt-1">Pedido: #{order.orderNumber || order.id.substring(0, 8).toUpperCase()}</p>
           <p className="text-[10px] text-gray-600">{new Date(order.createdAt).toLocaleString('pt-BR')}</p>

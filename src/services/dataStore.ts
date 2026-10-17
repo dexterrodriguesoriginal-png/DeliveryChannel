@@ -1162,7 +1162,7 @@ const INITIAL_AUDIT_LOGS: AuditLog[] = [
     userRole: 'CEO',
     action: 'SYSTEM_BOOTSTRAP',
     resource: 'INFRASTRUCTURE',
-    details: 'Fundação oficial do sistema ADEGAFOOD inicializada com isolamento Zero-Trust e RLS.',
+    details: 'Fundação oficial do sistema DELIVERY CHANNEL inicializada com isolamento Zero-Trust e RLS.',
     ipAddress: '192.168.1.1 (HQ)',
     isCeoSupport: false,
     timestamp: '2026-09-22T08:00:00Z'

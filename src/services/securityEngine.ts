@@ -20,7 +20,7 @@ export class AccessDeniedSecurityException extends Error {
     action: string;
     reason: string;
   }) {
-    super(`[ACESSO NEGADO - SEGURANÇA ADEGAFOOD]: Violação de isolamento multi-tenant detectada. Ação "${details.action}" bloqueada no backend.`);
+    super(`[ACESSO NEGADO - SEGURANÇA DELIVERY CHANNEL]: Violação de isolamento multi-tenant detectada. Ação "${details.action}" bloqueada no backend.`);
     this.name = 'AccessDeniedSecurityException';
     this.code = 'ERR_CROSS_TENANT_VIOLATION_403';
     this.details = details;

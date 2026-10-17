@@ -245,7 +245,7 @@ export const OnboardingCreateTenant: React.FC<OnboardingCreateTenantProps> = ({
               </div>
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-200 font-mono">
-                  AdegaFood • Comece Agora
+                  Delivery Channel • Comece Agora
                 </span>
                 <h1 className="text-xl sm:text-2xl font-black">Crie seu estabelecimento</h1>
               </div>
@@ -293,7 +293,7 @@ export const OnboardingCreateTenant: React.FC<OnboardingCreateTenantProps> = ({
                   <span>Você possui convite pendente para entrar em uma equipe!</span>
                 </div>
                 <p className="text-xs text-emerald-800 leading-relaxed">
-                  Você foi formalmente convidado para colaborar em um estabelecimento parceiro no AdegaFood:
+                  Você foi formalmente convidado para colaborar em um estabelecimento parceiro no Delivery Channel:
                 </p>
                 <div className="space-y-2">
                   {receivedInvites.map((inv) => (

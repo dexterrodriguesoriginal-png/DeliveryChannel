@@ -351,7 +351,7 @@ export const PromotionsPage: React.FC = () => {
     let economy = 0;
 
     if (itemPromoForm.discountType === 'PERCENTAGE') {
-      const pct = Math.min(99, Math.max(1, Number(itemPromoForm.discountValue) || 1));
+      const pct = Math.min(99, Math.max(0, Number(itemPromoForm.discountValue) || 0));
       promoPrice = Number((normalPrice * (1 - pct / 100)).toFixed(2));
       discountPct = pct;
       economy = Number((normalPrice - promoPrice).toFixed(2));

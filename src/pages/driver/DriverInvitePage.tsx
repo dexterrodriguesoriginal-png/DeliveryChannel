@@ -29,7 +29,7 @@ const Header: React.FC = () => (
     <div className="w-9 h-9 rounded-xl bg-amber-500 text-black flex items-center justify-center font-bold">
       <Bike className="w-5 h-5" />
     </div>
-    <h1 className="text-sm font-bold text-gray-900 leading-tight">AdegaFood Entregador</h1>
+    <h1 className="text-sm font-bold text-gray-900 leading-tight">Delivery Channel Entregador</h1>
   </div>
 );
 

@@ -190,7 +190,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
         </div>
         <h2 className="text-xl sm:text-2xl font-extrabold text-gray-950 tracking-tight">
           {mode === 'LOGIN' && 'Bem-vindo de volta'}
-          {mode === 'SIGNUP' && 'Crie sua conta no AdegaFood'}
+          {mode === 'SIGNUP' && 'Crie sua conta no Delivery Channel'}
           {mode === 'FORGOT' && 'Recuperar acesso'}
         </h2>
         <p className="text-xs sm:text-sm text-gray-500 mt-1 leading-relaxed">

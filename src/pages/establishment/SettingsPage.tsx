@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { MoneyInput } from '../../components/common/MoneyInput';
 import { useAuth } from '../../context/AuthContext';
 import { tenantRepository } from '../../repositories/tenantRepository';
 import { PixPaymentSettingsCard } from '../../components/establishment/PixPaymentSettingsCard';
@@ -384,21 +385,18 @@ export const SettingsPage: React.FC = () => {
               value={form.minOrderValue}
               onChange={(e) => setForm({ ...form, minOrderValue: parseFloat(e.target.value) || 0 })}
             />
-            <Input
+            <MoneyInput
               label="Taxa de Entrega Padrão (R$)"
-              type="number"
-              step="0.01"
+              placeholder="7,00"
               disabled={!canEdit}
               value={form.deliveryFee}
-              onChange={(e) => setForm({ ...form, deliveryFee: parseFloat(e.target.value) || 0 })}
+              onValueChange={(v) => setForm({ ...form, deliveryFee: v ?? 0 })}
             />
-            <Input
+            <MoneyInput
               label="Frete Grátis Acima de (R$)"
-              type="number"
-              step="0.01"
               disabled={!canEdit}
-              value={form.freeDeliveryThreshold || ''}
-              onChange={(e) => setForm({ ...form, freeDeliveryThreshold: parseFloat(e.target.value) || undefined })}
+              value={form.freeDeliveryThreshold || undefined}
+              onValueChange={(v) => setForm({ ...form, freeDeliveryThreshold: v || undefined })}
               helperText="Deixe em branco se não oferecer frete grátis"
             />
             <Input

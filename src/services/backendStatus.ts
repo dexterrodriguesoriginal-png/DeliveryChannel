@@ -1,5 +1,5 @@
 /**
- * ADEGAFOOD — STATUS OFICIAL DA INFRAESTRUTURA DE DADOS & BACKEND (COMANDO 06)
+ * DELIVERY CHANNEL — STATUS OFICIAL DA INFRAESTRUTURA DE DADOS & BACKEND (COMANDO 06)
  * Este módulo fornece visibilidade técnica 100% transparente sobre o estado real
  * de persistência, Supabase, PostgreSQL e segurança do projeto.
  */

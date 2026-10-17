@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { TenantTheme } from '../../types';
 import { Sparkles, Save, RotateCcw, Smartphone, Check, Palette } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { ImageUploader } from '../../components/common/ImageUploader';
 
 export const ThemePage: React.FC = () => {
   const { activeTenant, securityContext } = useAuth();
@@ -167,12 +168,16 @@ export const ThemePage: React.FC = () => {
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Input
-                  label="URL do Logotipo (Ícone Redondo)"
-                  value={draftTheme.logoUrl || ''}
-                  onChange={(e) => setDraftTheme({ ...draftTheme, logoUrl: e.target.value })}
-                  placeholder="https://..."
-                />
+                <div className="sm:col-span-2">
+                  <ImageUploader
+                    label="Logotipo (Ícone Redondo)"
+                    description="Envie o arquivo do logo (PNG, JPG ou WEBP até 5MB) ou informe uma URL"
+                    value={draftTheme.logoUrl || ''}
+                    onChange={(url) => setDraftTheme({ ...draftTheme, logoUrl: url })}
+                    tenantId={activeTenant.id}
+                    entityType="branding"
+                  />
+                </div>
                 <Input
                   label="URL do Banner Superior"
                   value={draftTheme.bannerUrl || ''}

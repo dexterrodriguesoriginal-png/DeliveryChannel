@@ -237,7 +237,7 @@ function AppContent() {
           <RefreshCw className="w-4 h-4 animate-spin text-emerald-700" />
           <span>Carregando sua sessão e permissões...</span>
         </div>
-        <p className="text-xs text-gray-400 mt-1 font-medium">AdegaFood SaaS</p>
+        <p className="text-xs text-gray-400 mt-1 font-medium">Delivery Channel SaaS</p>
         <div className="mt-6 flex flex-col items-center gap-2">
           <button
             onClick={() => {
@@ -402,7 +402,7 @@ function AppContent() {
           <RefreshCw className="w-4 h-4 animate-spin text-emerald-700" />
           <span>Carregando dados do estabelecimento...</span>
         </div>
-        <p className="text-xs text-gray-400 mt-1 font-medium">AdegaFood SaaS</p>
+        <p className="text-xs text-gray-400 mt-1 font-medium">Delivery Channel SaaS</p>
       </div>
     );
   }
