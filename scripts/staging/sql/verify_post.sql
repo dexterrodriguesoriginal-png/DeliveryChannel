@@ -1,4 +1,4 @@
--- Verificação pós-aplicação (001–020 + N1–N6 + 0700–1300). Somente leitura. Aborta em qualquer falha.
+-- Verificação pós-aplicação (001–020 + N1–N6 + 0700–1400). Somente leitura. Aborta em qualquer falha.
 DO $$
 DECLARE n int; r record; expected text[] := ARRAY[
  '20260922000001','20260922000002','20260923000003','20260923000004','20260923000005','20260923000006',
@@ -6,7 +6,7 @@ DECLARE n int; r record; expected text[] := ARRAY[
  '20260927000013','20260928000014','20260928000015','20260928000016','20260928000017','20260928000018',
  '20260928000019','20260929000020','20261006000100','20261006000200','20261006000300','20261006000400',
  '20261006000500','20261006000600','20261006000700','20261014000800','20261014000900','20261014001000',
- '20261014001100','20261015001200','20261015001300'];
+ '20261014001100','20261015001200','20261015001300','20261017001400'];
  got text[];
 BEGIN
   SELECT array_agg(version ORDER BY version) INTO got FROM supabase_migrations.schema_migrations;
@@ -35,5 +35,5 @@ BEGIN
     IF to_regclass('public.' || r.t) IS NOT NULL AND has_table_privilege('anon', 'public.' || r.t, 'SELECT') THEN
       RAISE EXCEPTION 'POST: anon tem SELECT em public.%.', r.t; END IF;
   END LOOP;
-  RAISE NOTICE 'POST OK: 33 versões, RLS em todas as tabelas, SECURITY DEFINER com search_path, RPCs e buckets presentes.';
+  RAISE NOTICE 'POST OK: 34 versões, RLS em todas as tabelas, SECURITY DEFINER com search_path, RPCs e buckets presentes.';
 END $$;
