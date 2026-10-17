@@ -391,6 +391,7 @@ export const SettingsPage: React.FC = () => {
               disabled={!canEdit}
               value={form.deliveryFee}
               onValueChange={(v) => setForm({ ...form, deliveryFee: v ?? 0 })}
+              helperText="Taxa fixa da plataforma: R$ 7,00 (cliente paga R$ 3,50 e a loja R$ 3,50; o entregador recebe R$ 7,00). Qualquer valor acima de 0 ativa a cobrança; 0 = entrega grátis (a loja assume R$ 7,00)."
             />
             <MoneyInput
               label="Frete Grátis Acima de (R$)"

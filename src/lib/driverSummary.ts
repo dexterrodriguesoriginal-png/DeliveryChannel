@@ -1,4 +1,5 @@
 import { Order } from '../types';
+import { driverEarning } from './orders/handoff';
 
 function sameLocalDay(iso: string | undefined, now: Date): boolean {
   if (!iso) return false;
@@ -16,6 +17,6 @@ export function computeDriverDailySummary(orders: Order[], driverId: string | un
   });
   return {
     deliveredCount: delivered.length,
-    feesTotal: delivered.reduce((s, o) => s + (Number(o.deliveryFee) || 0), 0),
+    feesTotal: delivered.reduce((s, o) => s + driverEarning(o), 0),
   };
 }

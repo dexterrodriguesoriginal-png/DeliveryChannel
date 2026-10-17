@@ -51,6 +51,9 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   OUT_FOR_DELIVERY: 'Saiu para entrega',
   DELIVERED: 'Entregue',
   CANCELLED: 'Cancelado',
+  DRIVER_ACCEPTED: 'Motoboy aceitou',
+  DRIVER_ASSIGNED: 'Motoboy designado',
+  DRIVER_RELEASED: 'Motoboy liberado',
 };
 
 export function orderStatusLabel(status: string | null | undefined): string {
@@ -68,6 +71,9 @@ const OWNER_ORDER_STATUS_LABELS: Record<string, string> = {
   OUT_FOR_DELIVERY: 'SAIU PARA ENTREGA',
   DELIVERED: 'ENTREGUE',
   CANCELLED: 'CANCELADO',
+  DRIVER_ACCEPTED: 'MOTOBOY ACEITOU',
+  DRIVER_ASSIGNED: 'MOTOBOY DESIGNADO',
+  DRIVER_RELEASED: 'MOTOBOY LIBERADO',
 };
 
 /** PREPARING → "EM PREPARO", OUT_FOR_DELIVERY → "SAIU PARA ENTREGA"… Nunca devolve o enum cru. */

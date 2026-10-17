@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { PickupCodeBadge } from '../../components/establishment/PickupCodeBadge';
+import { storeDeliveredNeedsReason } from '../../lib/orders/handoff';
 import { useAuth } from '../../context/AuthContext';
 import { orderRepository } from '../../repositories/orderRepository';
 import { validateStatusChange } from '../../repositories/orderMappers';
@@ -266,7 +268,14 @@ export const OrdersPage: React.FC = () => {
   // Atualização de status operacional
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus, note?: string) => {
     if (!activeTenant?.id) return;
-    const current = (remoteOrders || []).find(o => o.id === orderId)?.status;
+    const currentOrder = (remoteOrders || []).find(o => o.id === orderId);
+    const current = currentOrder?.status;
+    // 1600: entrega sem o código do cliente = override manual com motivo (auditado no servidor).
+    if (!note && storeDeliveredNeedsReason(currentOrder, newStatus)) {
+      const reason = window.prompt('O entregador confirma a entrega com o código do cliente. Para concluir sem o código, informe o motivo:');
+      if (!reason || !reason.trim()) return;
+      note = reason.trim();
+    }
     // F5: cancelado é final; cancelamento exige motivo (o servidor reforça as mesmas regras).
     const check = validateStatusChange(current, newStatus, note);
     if (!check.ok) {
@@ -371,8 +380,8 @@ export const OrdersPage: React.FC = () => {
 
       showToast({
         type: 'success',
-        title: 'Motorista Atribuído',
-        message: 'Pedido despachado para o entregador.',
+        title: 'Entregador designado',
+        message: 'O entregador vai buscar o pedido e digitar o código de retirada.',
       });
 
       setAssigningOrder(null);
@@ -756,6 +765,9 @@ export const OrdersPage: React.FC = () => {
                   </div>
                 </div>
               </div>
+              {selectedOrder.fulfillmentType !== 'PICKUP' && selectedOrder.status !== 'DELIVERED' && selectedOrder.status !== 'CANCELLED' && (
+                <PickupCodeBadge orderId={selectedOrder.id} status={selectedOrder.status} />
+              )}
 
               {/* Seção 3: Itens do pedido */}
               <div className="p-1.5 rounded-lg bg-slate-50/80 border border-slate-200/80 space-y-1">
@@ -1983,6 +1995,20 @@ export const OrdersPage: React.FC = () => {
             )}
           </div>
 
+          {assigningOrder?.status === 'READY' && (
+            <button
+              type="button"
+              data-testid="call-any-driver"
+              onClick={async () => {
+                const o = assigningOrder;
+                setAssigningOrder(null);
+                if (o) await handleUpdateStatus(o.id, 'WAITING_FOR_DRIVER', 'Chamando motoboy');
+              }}
+              className="w-full text-xs font-bold py-2 rounded-xl border border-emerald-600 text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+            >
+              Chamar motoboy (o primeiro entregador disponível que aceitar leva)
+            </button>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setAssigningOrder(null)} className="text-xs">
               Cancelar

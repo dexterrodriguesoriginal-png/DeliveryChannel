@@ -543,6 +543,14 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   driverId?: string;
+  /** 1500: horário do aceite/designação do entregador. */
+  driverAcceptedAt?: string;
+  /** 1500: horário da retirada confirmada com código. */
+  pickedUpAt?: string;
+  /** 1700: quanto o entregador recebe (pedidos antigos: ausente → usar deliveryFee). */
+  driverPayout?: number;
+  /** 1700: parte da taxa de entrega paga pela loja. */
+  storeDeliveryShare?: number;
   driverName?: string;
   offerId?: string;
   origin: OrderOrigin;

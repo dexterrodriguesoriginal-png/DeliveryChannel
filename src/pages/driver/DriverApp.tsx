@@ -17,6 +17,9 @@ import { driverInviteRepository } from '../../repositories/driverRepository';
 import { DriverDeliveryMap } from '../../components/driver/DriverDeliveryMap';
 import { useDriverLocationTracking } from '../../lib/useDriverLocationTracking';
 import { DriverLocationConsentModal } from '../../components/driver/DriverLocationConsentModal';
+import { HandoffCodeForm } from '../../components/driver/HandoffCodeForm';
+import { AvailableRidesList } from '../../components/driver/AvailableRidesList';
+import { pickDriverActiveOrder, driverEarning } from '../../lib/orders/handoff';
 
 const AVAIL_DOT: Record<string, string> = {
   emerald: 'bg-emerald-500 animate-pulse', amber: 'bg-amber-500', gray: 'bg-gray-400', rose: 'bg-rose-500',
@@ -116,13 +119,10 @@ export const DriverApp: React.FC = () => {
   };
 
   // Pedido em rota ou aguardando retirada da loja correspondente (isolamento estrito por tenant)
-  const activeOrder =
-    assignedOrders.find(
-      (o) => o.status === 'OUT_FOR_DELIVERY' && (!o.tenantId || o.tenantId === activeTenant.id)
-    ) ||
-    assignedOrders.find(
-      (o) => o.status === 'PREPARING' && (!o.tenantId || o.tenantId === activeTenant.id)
-    );
+  const activeOrder = pickDriverActiveOrder(
+    assignedOrders.filter((o) => !o.tenantId || o.tenantId === activeTenant.id),
+    driverUserId
+  );
   // Atualizações a cada 15s SOMENTE quando houver pedido efetivamente OUT_FOR_DELIVERY da loja correspondente
   const hasActiveOutForDelivery = Boolean(
     assignedOrders.some(
@@ -147,25 +147,6 @@ export const DriverApp: React.FC = () => {
       setShowConsentModal(true);
     }
   }, [consent]);
-
-  const handleAdvanceStatus = async (orderId: string, currentStatus: string) => {
-    const nextStatus = currentStatus === 'PREPARING' ? 'OUT_FOR_DELIVERY' : 'DELIVERED';
-    try {
-      await orderRepository.updateStatus(securityContext, activeTenant.id, orderId, nextStatus as any);
-      showToast({
-        type: 'success',
-        title: nextStatus === 'DELIVERED' ? 'Entrega Concluída!' : 'Saiu para Entrega',
-        message: nextStatus === 'DELIVERED' ? 'Parabéns! Corrida finalizada com sucesso.' : 'Notificação enviada ao cliente com rastreio em tempo real.',
-      });
-      await fetchDriverOrders();
-    } catch (err: any) {
-      showToast({
-        type: 'error',
-        title: 'Erro ao atualizar corrida',
-        message: err.message,
-      });
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 text-gray-900 font-sans">
@@ -328,12 +309,12 @@ export const DriverApp: React.FC = () => {
               <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                 <div className="flex items-center gap-2">
                   <Badge variant={activeOrder.status === 'OUT_FOR_DELIVERY' ? 'brand' : 'warning'} size="sm">
-                    {activeOrder.status === 'OUT_FOR_DELIVERY' ? 'EM ROTA DE ENTREGA' : 'AGUARDANDO RETIRADA'}
+                    {activeOrder.status === 'OUT_FOR_DELIVERY' ? 'EM ROTA DE ENTREGA' : 'VÁ ATÉ A LOJA • RETIRADA'}
                   </Badge>
                   <span className="font-mono text-xs font-bold text-gray-700">#{activeOrder.orderNumber}</span>
                 </div>
                 <span className="text-xs font-mono font-bold text-emerald-800">
-                  Taxa: {formatBRL(activeOrder.deliveryFee)}
+                  Você ganha {formatBRL(driverEarning(activeOrder))}
                 </span>
               </div>
 
@@ -401,38 +382,28 @@ export const DriverApp: React.FC = () => {
 
               {/* Action Button */}
               <div className="pt-2">
-                {activeOrder.status === 'PREPARING' ? (
-                  <Button
-                    variant="primary"
-                    className="w-full text-sm py-3"
-                    onClick={() => handleAdvanceStatus(activeOrder.id, activeOrder.status)}
-                    leftIcon={<Bike className="w-4 h-4" />}
-                  >
-                    Confirmar Retirada & Iniciar Rota
-                  </Button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    className="w-full text-sm py-3 bg-emerald-700 hover:bg-emerald-800"
-                    onClick={() => handleAdvanceStatus(activeOrder.id, activeOrder.status)}
-                    leftIcon={<CheckCircle2 className="w-4 h-4" />}
-                  >
-                    Confirmar Entrega ao Cliente
-                  </Button>
-                )}
+                <HandoffCodeForm
+                  key={`${activeOrder.id}-${activeOrder.status}`}
+                  orderId={activeOrder.id}
+                  kind={activeOrder.status === 'OUT_FOR_DELIVERY' ? 'delivery' : 'pickup'}
+                  onDone={() => fetchDriverOrders()}
+                />
               </div>
             </Card>
           </div>
         ) : (
+          <>
+          <AvailableRidesList tenantId={activeTenant.id} enabled={availability === 'AVAILABLE'} onAccepted={() => fetchDriverOrders()} />
           <Card className="p-8 text-center space-y-3">
             <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto text-gray-400">
               <PackageCheck className="w-8 h-8 text-emerald-600" />
             </div>
             <h3 className="font-bold text-base text-gray-900">Nenhuma entrega pendente</h3>
             <p className="text-xs text-gray-500 max-w-xs mx-auto">
-              Você está livre no momento. Novos pedidos despachados pelo estabelecimento aparecerão instantaneamente aqui.
+              Você está livre no momento. Corridas chamadas pela loja aparecem acima para você aceitar.
             </p>
           </Card>
+          </>
         )}
 
         {/* Daily Summary */}

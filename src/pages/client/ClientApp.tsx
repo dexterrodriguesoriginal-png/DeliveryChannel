@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { DeliveryCodeCard } from '../../components/client/DeliveryCodeCard';
 import { isStaffPreview } from '../../lib/storefront/staffPreview';
 import { storeDeliveryLabel } from '../../lib/pricing/deliveryLabel';
 import { formatBRL } from '../../lib/pricing/money';
@@ -1428,6 +1429,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                     id={`pedido-${order.id}`}
                     className={`p-4 sm:p-5 bg-white rounded-3xl border shadow-xs hover:shadow-md transition-all space-y-4 ${isFocused ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-gray-200/90'}`}
                   >
+                    <DeliveryCodeCard orderId={order.id} status={order.status} />
                     {/* TOPO: NÚMERO DO PEDIDO + DATA + TOTAL EM DESTAQUE */}
                     <div className="flex items-start justify-between gap-2">
                       <div>
