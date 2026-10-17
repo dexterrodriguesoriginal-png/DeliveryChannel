@@ -43,6 +43,7 @@ import {
   toServerItems,
   validateStatusChange,
 } from './orderMappers';
+import { posSaleNotes, isMissingRpcSignature } from './posSaleNotes';
 
 const STAFF_ORDER_SELECT = '*, order_items(*), order_status_history(*)';
 
@@ -262,7 +263,7 @@ export const orderRepository = {
     if (!isValidUuid(tenantId)) throw new BackendError('INVALID_TENANT', 'Loja inválida.');
     if (!input.items.length) throw new BackendError('EMPTY_CART', 'Adicione ao menos um item.');
     if (!isN1N6Backend()) throw n1n6Required('PDV (venda de balcão)');
-    const { data, error } = await supabase.rpc('process_pos_sale_atomic', {
+    const posArgs: Record<string, unknown> = {
       p_tenant_id: tenantId,
       p_items: toServerItems(input.items),
       p_payment_method: input.paymentMethod,
@@ -271,7 +272,13 @@ export const orderRepository = {
       p_customer_id: input.customerId && isValidUuid(input.customerId) ? input.customerId : null,
       p_coupon_code: input.couponCode?.trim() || null,
       p_idempotency_key: input.idempotencyKey && isValidUuid(input.idempotencyKey) ? input.idempotencyKey : newIdempotencyKey(),
-    });
+    };
+    const posNotes = posSaleNotes(input.notes);
+    let { data, error } = await supabase.rpc('process_pos_sale_atomic', posNotes ? { ...posArgs, p_notes: posNotes } : posArgs);
+    // Banco ainda sem a 1400 (sem p_notes): repete sem a observação para não bloquear a venda.
+    if (error && posNotes && isMissingRpcSignature(error)) {
+      ({ data, error } = await supabase.rpc('process_pos_sale_atomic', posArgs));
+    }
     if (error) throw toBackendError(error, 'Falha ao registrar a venda de balcão.');
     const summary = mapCheckoutSummary(data);
     const order = await this.getById(context, tenantId, summary.orderId);
