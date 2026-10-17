@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emailRedirectUrl, storeSlugFromPath, rememberLastStoreSlug, readLastStoreSlug, LAST_STORE_SLUG_KEY, DEFAULT_APP_ORIGIN } from '../authRedirect';
+import { emailRedirectUrl, driverInvitePathFromPath, storeSlugFromPath, rememberLastStoreSlug, readLastStoreSlug, LAST_STORE_SLUG_KEY, DEFAULT_APP_ORIGIN } from '../authRedirect';
 import { isEmailNotConfirmedError } from '../authErrors';
 
 const mem = () => {
@@ -22,6 +22,22 @@ describe('emailRedirectUrl', () => {
   it('slug inválido não entra na URL', () => {
     expect(storeSlugFromPath('/app/<script>')).toBeNull();
     expect(storeSlugFromPath('/entregador')).toBeNull();
+  });
+});
+
+describe('emailRedirectUrl: convite de entregador', () => {
+  const tok = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde';
+  it('cadastro no convite volta para o próprio convite', () => {
+    expect(emailRedirectUrl({ origin: 'https://deliverychannel.ai.studio', pathname: `/entregador/convite/${tok}` }))
+      .toBe(`https://deliverychannel.ai.studio/entregador/convite/${tok}`);
+    expect(driverInvitePathFromPath(`/entregador/convite/${tok}/`)).toBe(`/entregador/convite/${tok}`);
+  });
+  it('token com formato inválido não entra na URL', () => {
+    expect(driverInvitePathFromPath('/entregador/convite/curto')).toBeNull();
+    expect(driverInvitePathFromPath('/entregador/convite/%3Cscript%3Eaaaaaaaaaaaaaaaaaaaa')).toBeNull();
+    expect(driverInvitePathFromPath('/entregador')).toBeNull();
+    expect(emailRedirectUrl({ origin: 'https://deliverychannel.ai.studio', pathname: '/entregador/convite/curto' }))
+      .toBe('https://deliverychannel.ai.studio');
   });
 });
 

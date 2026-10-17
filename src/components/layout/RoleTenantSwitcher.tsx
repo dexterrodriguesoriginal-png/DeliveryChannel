@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { RoleId } from '../../types';
-import { viewModeFor, SwitcherViewMode } from './switcherViewMode';
+import { viewModeFor, SwitcherViewMode, SwitcherInitialView, SwitcherAudience, authModalCopy, passwordMatchStatus } from './switcherViewMode';
 
 // Tradução comercial dos papéis de acesso para o usuário final
 const ROLE_LABELS: Record<RoleId, string> = {
@@ -40,13 +40,32 @@ export interface RoleTenantSwitcherProps {
   isOpen: boolean;
   onClose: () => void;
   onStartOnboarding?: () => void;
+  /** Tela inicial sem sessão: 'SIGNUP' abre direto o cadastro (padrão 'LOGIN'). */
+  initialView?: SwitcherInitialView;
+  /** 'driver' usa os textos do convite de entregador; 'owner' (padrão) mantém os do estabelecimento. */
+  audience?: SwitcherAudience;
+  /** Nome da loja usado nos textos do entregador. */
+  storeName?: string;
+  /** Destino do login com Google (padrão '/'). */
+  googleReturnTo?: string;
+  /**
+   * Cadastro que exige confirmação de e-mail. Se informado, quem abriu o modal mostra o aviso persistente
+   * (com "Reenviar e-mail") em vez do toast.
+   */
+  onEmailConfirmationRequired?: (email: string) => void;
 }
 
 export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
   isOpen,
   onClose,
   onStartOnboarding,
+  initialView = 'LOGIN',
+  audience = 'owner',
+  storeName,
+  googleReturnTo,
+  onEmailConfirmationRequired,
 }) => {
+  const copy = authModalCopy(audience, storeName);
   const { 
     currentUser, 
     activeRole, 
@@ -72,7 +91,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
   // Se deslogado: 'LOGIN' | 'SIGNUP' | 'FORGOT'
   // Inicia já no modo correto: com 'LOGIN' fixo, o efeito de fechamento automático abaixo
   // fechava o modal no mesmo ciclo em que ele abria para um usuário autenticado.
-  const [viewMode, setViewMode] = useState<SwitcherViewMode>(() => viewModeFor(isSupabaseAuth));
+  const [viewMode, setViewMode] = useState<SwitcherViewMode>(() => viewModeFor(isSupabaseAuth, initialView));
 
   // Campos do formulário
   const [email, setEmail] = useState('');
@@ -80,6 +99,16 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  // Senha e confirmação lidas do próprio campo a cada alteração (onChange e onInput): o onChange do React
+  // ignora eventos quando o valor interno dele já coincide com o do campo (ex.: preenchimento automático do
+  // navegador/gerenciador de senhas), e o aviso ficava defasado até o campo perder o foco.
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const confirmPasswordRef = useRef<HTMLInputElement>(null);
+  const syncPasswords = () => {
+    setPassword(passwordRef.current?.value ?? '');
+    setConfirmPassword(confirmPasswordRef.current?.value ?? '');
+  };
+  const matchStatus = passwordMatchStatus(password, confirmPassword);
 
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -91,12 +120,12 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
     if (isOpen) {
       setFormError(null);
       setFormSuccess(null);
-      setViewMode(viewModeFor(isSupabaseAuth));
+      setViewMode(viewModeFor(isSupabaseAuth, initialView));
     } else {
       // Fechado: deixa o modo pronto para a próxima abertura (evita abrir em 'LOGIN' já autenticado).
-      setViewMode(viewModeFor(isSupabaseAuth));
+      setViewMode(viewModeFor(isSupabaseAuth, initialView));
     }
-  }, [isOpen, isSupabaseAuth]);
+  }, [isOpen, isSupabaseAuth, initialView]);
 
   // Se o usuário estiver no modal de Login/Signup e a autenticação for concluída:
   // - Se já tem estabelecimento (CASO 2): fecha modal e vai para Dashboard
@@ -111,11 +140,13 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
           onStartOnboarding();
         }
         onClose();
-      } else if (authState === 'EMAIL_CONFIRMATION_REQUIRED') {
+      } else if (authState === 'EMAIL_CONFIRMATION_REQUIRED' && audience !== 'driver') {
+        // No convite do entregador o aviso de confirmação fica na própria página do convite e o
+        // cadastro já fecha o modal; fechar aqui impediria abrir "Já tenho conta" com confirmação pendente.
         onClose();
       }
     }
-  }, [isOpen, viewMode, authState, onClose, onStartOnboarding]);
+  }, [isOpen, viewMode, authState, onClose, onStartOnboarding, audience]);
 
   // Ativação explícita do fluxo de Onboarding (Comando 36)
   const handleStartOnboarding = () => {
@@ -188,6 +219,9 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
     e.preventDefault();
     setFormError(null);
     setFormSuccess(null);
+    // Valores atuais dos campos (mesma fonte do aviso "Senhas coincidem").
+    const pwd = passwordRef.current?.value ?? password;
+    const confirmPwd = confirmPasswordRef.current?.value ?? confirmPassword;
 
     // Validações
     if (!fullName.trim()) {
@@ -204,25 +238,29 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
       setFormError('Informe um número de telefone com DDD válido.');
       return;
     }
-    if (!password || password.length < 6) {
+    if (!pwd || pwd.length < 6) {
       setFormError('A senha deve ter no mínimo 6 caracteres.');
       return;
     }
-    if (!confirmPassword) {
+    if (!confirmPwd) {
       setFormError('Confirme sua senha para continuar.');
       return;
     }
-    if (password !== confirmPassword) {
+    if (pwd !== confirmPwd) {
       setFormError('As senhas digitadas não coincidem. Verifique a confirmação.');
       return;
     }
 
     setLoading(true);
     try {
-      const res = await signUp(email.trim(), password, fullName.trim(), phone.trim());
+      const res = await signUp(email.trim(), pwd, fullName.trim(), phone.trim());
       if (res.success) {
         if (res.requiresEmailConfirmation) {
-          showToast('Cadastro realizado! Enviamos um link de confirmação para o seu e-mail.', 'info');
+          if (onEmailConfirmationRequired) {
+            onEmailConfirmationRequired(email.trim());
+          } else {
+            showToast('Cadastro realizado! Enviamos um link de confirmação para o seu e-mail.', 'info');
+          }
           onClose();
         } else {
           setFormSuccess('Conta criada com sucesso! Você já pode entrar.');
@@ -279,7 +317,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
   // Login com Google
   const handleGoogleLogin = async () => {
     try {
-      await signInWithGoogle({ returnTo: '/', intent: 'owner' });
+      await signInWithGoogle({ returnTo: googleReturnTo || '/', intent: 'owner' });
     } catch (err: any) {
       setFormError('Não foi possível conectar com o Google no momento.');
     }
@@ -471,7 +509,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
           <div className="space-y-4">
             <div className="text-left">
               <p className="text-xs text-gray-500">
-                Acesse seu estabelecimento e gerencie seu negócio.
+                {copy.loginSubtitle}
               </p>
             </div>
 
@@ -551,7 +589,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
                 ) : (
                   <span className="inline-flex items-center justify-center gap-2">
                     <ArrowRight className="w-3.5 h-3.5 shrink-0" />
-                    <span>Entrar no Estabelecimento</span>
+                    <span>{copy.loginButton}</span>
                   </span>
                 )}
               </Button>
@@ -592,7 +630,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
           <div className="space-y-4">
             <div className="text-left">
               <p className="text-xs text-gray-500">
-                Cadastre-se para começar a gerenciar seu estabelecimento.
+                {copy.signupSubtitle}
               </p>
             </div>
 
@@ -645,8 +683,11 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
                   label="Senha *"
                   type="password"
                   placeholder="Mínimo 6 caracteres"
+                  ref={passwordRef}
+                  autoComplete="new-password"
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={syncPasswords}
+                  onInput={syncPasswords}
                   leftIcon={<Lock className="w-4 h-4" />}
                   required
                 />
@@ -660,16 +701,19 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
                   label="Confirmar Senha *"
                   type="password"
                   placeholder="Digite a mesma senha"
+                  ref={confirmPasswordRef}
+                  autoComplete="new-password"
                   value={confirmPassword}
-                  onChange={e => setConfirmPassword(e.target.value)}
+                  onChange={syncPasswords}
+                  onInput={syncPasswords}
                   leftIcon={<Lock className="w-4 h-4" />}
                   required
                 />
-                {confirmPassword && password && (
-                  <p className={`text-[11px] flex items-center gap-1 font-medium ${
-                    password === confirmPassword ? 'text-emerald-700' : 'text-rose-600'
+                {matchStatus !== 'idle' && (
+                  <p data-testid="password-match" data-status={matchStatus} className={`text-[11px] flex items-center gap-1 font-medium ${
+                    matchStatus === 'match' ? 'text-emerald-700' : 'text-rose-600'
                   }`}>
-                    {password === confirmPassword ? (
+                    {matchStatus === 'match' ? (
                       <>
                         <Check className="w-3 h-3" />
                         <span>Senhas coincidem</span>

@@ -4,6 +4,8 @@ import { Button } from '../../components/ui/Button';
 import { Bike, AlertCircle, LogIn, UserPlus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { RoleTenantSwitcher } from '../../components/layout/RoleTenantSwitcher';
+import type { SwitcherInitialView } from '../../components/layout/switcherViewMode';
+import { CustomerEmailConfirmNotice } from '../../components/client/CustomerEmailConfirmNotice';
 import { driverInviteRepository, DriverInvitePreview } from '../../repositories/driverRepository';
 import { redeemOutcome, storeInitials, rememberInviteToken, clearInviteToken } from '../../lib/driverInviteFlow';
 import { DriverStatusScreen } from './DriverStatusScreen';
@@ -42,10 +44,17 @@ export interface DriverInviteViewProps {
   onJoin?: () => void;
   onSignUp?: () => void;
   onLogin?: () => void;
+  /** Cadastro feito aguardando confirmação: aviso persistente com "Reenviar e-mail". */
+  confirmationEmail?: string | null;
+  onResendConfirmation?: (email: string) => Promise<{ success: boolean; error?: string }>;
 }
 
+/** Texto do aviso de confirmação no convite (depois de confirmar, o link volta para este convite). */
+export const driverConfirmHint = (storeName?: string | null) =>
+  `Depois de confirmar, você volta para este convite e já pode entrar na equipe da ${(storeName || '').trim() || 'loja'}.`;
+
 /** Parte visual da página do convite (testável sem rede). */
-export const DriverInviteView: React.FC<DriverInviteViewProps> = ({ state, preview, hasSession, isRedeeming, error, onJoin, onSignUp, onLogin }) => (
+export const DriverInviteView: React.FC<DriverInviteViewProps> = ({ state, preview, hasSession, isRedeeming, error, onJoin, onSignUp, onLogin, confirmationEmail, onResendConfirmation }) => (
   <div className="min-h-screen bg-gray-50 pb-24 text-gray-900 font-sans">
     <Header />
     <div className="max-w-lg mx-auto p-4">
@@ -72,6 +81,16 @@ export const DriverInviteView: React.FC<DriverInviteViewProps> = ({ state, previ
               <Button onClick={onJoin} disabled={isRedeeming} className="w-full cursor-pointer">
                 {isRedeeming ? 'Entrando...' : 'Entrar na equipe'}
               </Button>
+            ) : confirmationEmail ? (
+              <div className="text-left">
+                <CustomerEmailConfirmNotice
+                  email={confirmationEmail}
+                  kind="signup"
+                  onResend={onResendConfirmation || (async () => ({ success: false }))}
+                  onBackToLogin={onLogin}
+                  afterConfirmHint={driverConfirmHint(preview.storeName)}
+                />
+              </div>
             ) : (
               <div className="flex flex-col gap-2">
                 <Button onClick={onSignUp} leftIcon={<UserPlus className="w-4 h-4" />} className="w-full cursor-pointer">Criar conta</Button>
@@ -87,13 +106,18 @@ export const DriverInviteView: React.FC<DriverInviteViewProps> = ({ state, previ
 
 /** Página pública /entregador/convite/:token (F7). O token nunca vai para console, analytics ou localStorage. */
 export const DriverInvitePage: React.FC<{ token: string }> = ({ token }) => {
-  const { supabaseUser, retryAuthResolution, signOut, currentUser } = useAuth();
+  const { supabaseUser, retryAuthResolution, signOut, currentUser, authState, pendingConfirmationEmail, resendConfirmationEmail } = useAuth();
   const [state, setState] = useState<'LOADING' | 'INVALID' | 'VALID'>('LOADING');
   const [preview, setPreview] = useState<DriverInvitePreview | null>(null);
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusVariant, setStatusVariant] = useState<DriverScreenVariant | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const [authView, setAuthView] = useState<SwitcherInitialView>('SIGNUP');
+  const [signupEmail, setSignupEmail] = useState<string | null>(null);
+  // Aviso persistente: cadastro feito agora ou confirmação pendente nesta aba (sobrevive a recarregar).
+  const confirmationEmail = supabaseUser ? null
+    : (signupEmail || (authState === 'EMAIL_CONFIRMATION_REQUIRED' ? pendingConfirmationEmail : null));
 
   useEffect(() => {
     let alive = true;
@@ -103,9 +127,11 @@ export const DriverInvitePage: React.FC<{ token: string }> = ({ token }) => {
     return () => { alive = false; };
   }, [token]);
 
-  const goToAuth = () => {
+  const goToAuth = (view: SwitcherInitialView) => {
     rememberInviteToken(sessionStorage, token);
     sessionStorage.setItem('adegafood_auth_return_to', window.location.pathname);
+    if (view === 'LOGIN') setSignupEmail(null);
+    setAuthView(view);
     setAuthOpen(true);
   };
 
@@ -150,10 +176,22 @@ export const DriverInvitePage: React.FC<{ token: string }> = ({ token }) => {
         isRedeeming={isRedeeming}
         error={error}
         onJoin={handleJoin}
-        onSignUp={goToAuth}
-        onLogin={goToAuth}
+        onSignUp={() => goToAuth('SIGNUP')}
+        onLogin={() => goToAuth('LOGIN')}
+        confirmationEmail={confirmationEmail}
+        onResendConfirmation={(email) => resendConfirmationEmail(email)}
       />
-      <RoleTenantSwitcher isOpen={authOpen} onClose={() => setAuthOpen(false)} onStartOnboarding={() => setAuthOpen(false)} />
+      <RoleTenantSwitcher
+        key={authView}
+        isOpen={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onStartOnboarding={() => setAuthOpen(false)}
+        initialView={authView}
+        audience="driver"
+        storeName={preview?.storeName}
+        googleReturnTo={window.location.pathname}
+        onEmailConfirmationRequired={(email) => setSignupEmail(email)}
+      />
     </>
   );
 };

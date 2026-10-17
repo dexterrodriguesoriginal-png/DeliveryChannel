@@ -17,9 +17,24 @@ export function storeSlugFromPath(pathname: string | null | undefined): string |
   return /^[a-z0-9][a-z0-9-]{0,99}$/i.test(slug) ? slug : null;
 }
 
-/** URL de retorno do e-mail de confirmação: origem + /app/<slug> quando o cadastro veio de uma loja. */
+/**
+ * Caminho do convite de entregador (/entregador/convite/<token>) quando o token tem o formato gerado pelo
+ * banco (base64url, 20–128 caracteres); null fora do convite ou token inválido.
+ */
+export function driverInvitePathFromPath(pathname: string | null | undefined): string | null {
+  const m = String(pathname || '').match(/^\/entregador\/convite\/([^/?#]+)/);
+  if (!m) return null;
+  return /^[A-Za-z0-9_-]{20,128}$/.test(m[1]) ? `/entregador/convite/${m[1]}` : null;
+}
+
+/**
+ * URL de retorno do e-mail de confirmação: origem + /app/<slug> quando o cadastro veio de uma loja, ou
+ * origem + /entregador/convite/<token> quando veio do convite de entregador (volta ao convite para aceitá-lo).
+ */
 export function emailRedirectUrl(loc?: { origin?: string; pathname?: string } | null): string {
   const origin = loc?.origin && /^https?:\/\//.test(loc.origin) ? loc.origin.replace(/\/+$/, '') : DEFAULT_APP_ORIGIN;
+  const invitePath = driverInvitePathFromPath(loc?.pathname);
+  if (invitePath) return `${origin}${invitePath}`;
   const slug = storeSlugFromPath(loc?.pathname);
   return slug ? `${origin}/app/${encodeURIComponent(slug)}` : origin;
 }

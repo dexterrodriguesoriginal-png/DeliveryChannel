@@ -9,6 +9,8 @@ interface Props {
   onResend: (email: string) => Promise<{ success: boolean; error?: string }>;
   /** "Já confirmei, entrar" — volta ao formulário de login com o e-mail preenchido. */
   onBackToLogin?: () => void;
+  /** Texto sobre o que acontece depois de confirmar (padrão: volta para a loja para finalizar o pedido). */
+  afterConfirmHint?: string;
 }
 
 /**
@@ -16,7 +18,7 @@ interface Props {
  * - signup: conta criada, falta tocar no link enviado;
  * - unconfirmed: tentativa de login com e-mail ainda não confirmado (aviso amigável, não erro).
  */
-export const CustomerEmailConfirmNotice: React.FC<Props> = ({ email, kind, onResend, onBackToLogin }) => {
+export const CustomerEmailConfirmNotice: React.FC<Props> = ({ email, kind, onResend, onBackToLogin, afterConfirmHint }) => {
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -50,7 +52,7 @@ export const CustomerEmailConfirmNotice: React.FC<Props> = ({ email, kind, onRes
           <p className="leading-relaxed break-words">
             {kind === 'signup' ? 'Enviamos' : 'Já enviamos'} um link de confirmação para <strong>{email}</strong>. Abra seu e-mail e toque no link para ativar sua conta.
           </p>
-          <p className="text-[11px] opacity-80">Depois de confirmar, você volta para esta loja e já pode finalizar o pedido.</p>
+          <p className="text-[11px] opacity-80">{afterConfirmHint || 'Depois de confirmar, você volta para esta loja e já pode finalizar o pedido.'}</p>
         </div>
       </div>
       {feedback && (

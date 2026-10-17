@@ -3,7 +3,7 @@ vi.mock('../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: fa
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DriverStatusScreen, DRIVER_STATUS_COPY } from '../DriverStatusScreen';
-import { DriverInviteView, INVALID_INVITE_MESSAGE } from '../DriverInvitePage';
+import { DriverInviteView, INVALID_INVITE_MESSAGE, driverConfirmHint } from '../DriverInvitePage';
 import { redeemOutcome, storeInitials, rememberInviteToken, clearInviteToken } from '../../../lib/driverInviteFlow';
 
 const html = (el: React.ReactElement) => renderToStaticMarkup(el);
@@ -46,6 +46,23 @@ describe('F-G: página do convite', () => {
     const h = html(<DriverInviteView state="VALID" hasSession isRedeeming preview={{ valid: true, storeName: 'L', storeLogo: 'https://img.test/l.png' }} onJoin={noop} />);
     expect(h).toContain('Entrando...'); expect(h).toContain('disabled');
     expect(h).toContain('<img'); expect(h).not.toContain('store-logo-placeholder');
+  });
+  it('cadastro aguardando confirmação: aviso persistente com Reenviar e-mail e retorno ao convite', () => {
+    const h = html(<DriverInviteView state="VALID" hasSession={false} confirmationEmail="moto@teste.dc"
+      preview={{ valid: true, storeName: 'Mercado Teste DC', storeLogo: null }} onLogin={noop} onResendConfirmation={async () => ({ success: true })} />);
+    expect(h).toContain('customer-email-confirm-notice');
+    expect(h).toContain('Enviamos um link de confirmação para <strong>moto@teste.dc</strong>');
+    expect(h).toContain('Reenviar e-mail');
+    expect(h).toContain('Já confirmei, entrar');
+    expect(h).toContain(driverConfirmHint('Mercado Teste DC'));
+    expect(h).not.toContain('finalizar o pedido');
+    expect(h).not.toContain('Criar conta');
+  });
+  it('com logo no convite mostra a imagem; sem logo, as iniciais', () => {
+    expect(html(<DriverInviteView state="VALID" hasSession={false} preview={{ valid: true, storeName: 'Mercado Teste DC', storeLogo: 'https://img.test/logo.png' }} />))
+      .toContain('src="https://img.test/logo.png"');
+    expect(html(<DriverInviteView state="VALID" hasSession={false} preview={{ valid: true, storeName: 'Mercado Teste DC', storeLogo: null }} />))
+      .toContain('>MD<');
   });
   it('cada resposta do redeem', () => {
     expect(redeemOutcome({ status: 'INVALID', consumed: false })).toEqual({ kind: 'INVALID' });
