@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
-import { MapContainer, TileLayer, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, LocateFixed } from 'lucide-react';
-import { GeoPoint } from '../../../lib/customer/geocode';
+import { GeoPoint, isGoogleMapsBroken, onGoogleMapsAuthFailure } from '../../../lib/customer/geocode';
 
 /**
  * Mapa de confirmação com PIN FIXO no centro: o cliente arrasta o mapa até o pin ficar na porta de casa.
@@ -26,12 +26,15 @@ export const MapConfirm: React.FC<{
 
   useEffect(() => {
     const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-    if (!key) { setEngine('leaflet'); return; }
+    // Padrão = OpenStreetMap/Leaflet, o mesmo provedor dos mapas do entregador e do painel (funcionam em produção).
+    // Google só com opt-in explícito E se os tiles realmente carregarem: em 17/10 a chave publicada respondeu
+    // ApiNotActivatedMapError (Maps JavaScript API não ativada) e o mapa ficava cinza só com o pin.
+    if (!key || import.meta.env.VITE_MAP_CONFIRM_PROVIDER !== 'google' || isGoogleMapsBroken()) { setEngine('leaflet'); return; }
     let alive = true;
-    const win = window as any;
-    const prev = win.gm_authFailure;
-    win.gm_authFailure = () => { if (alive) setEngine('leaflet'); if (typeof prev === 'function') prev(); };
-    const t = setTimeout(() => { if (alive && !gmapRef.current) setEngine('leaflet'); }, 8000);
+    let tilesOk = false;
+    const fallback = () => { if (alive && !tilesOk) { gmapRef.current = null; setEngine('leaflet'); } };
+    const unsub = onGoogleMapsAuthFailure(fallback);
+    const t = setTimeout(fallback, 5000);
     try {
       setOptions({ key, v: 'weekly', language: 'pt-BR', region: 'BR' });
     } catch {
@@ -39,22 +42,28 @@ export const MapConfirm: React.FC<{
     }
     importLibrary('maps')
       .then((lib: any) => {
-        if (!alive || !googleDiv.current) return;
+        if (!alive || !googleDiv.current || isGoogleMapsBroken()) return fallback();
         const map = new lib.Map(googleDiv.current, {
           center, zoom: 18, disableDefaultUI: true, gestureHandling: 'greedy', clickableIcons: false, zoomControl: false,
         });
-        gmapRef.current = map;
-        setEngine('google');
+        map.addListener('tilesloaded', () => {
+          if (!alive || tilesOk || isGoogleMapsBroken()) return;
+          tilesOk = true;
+          clearTimeout(t);
+          gmapRef.current = map;
+          setEngine('google');
+        });
         map.addListener('dragstart', () => { setDragging(true); movingRef.current?.(true); });
         map.addListener('idle', () => {
+          if (!tilesOk) return;
           setDragging(false);
           movingRef.current?.(false);
           const c = map.getCenter();
           if (c) cbRef.current({ lat: c.lat(), lng: c.lng() });
         });
       })
-      .catch(() => alive && setEngine('leaflet'));
-    return () => { alive = false; clearTimeout(t); };
+      .catch(fallback);
+    return () => { alive = false; clearTimeout(t); unsub(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -69,10 +78,11 @@ export const MapConfirm: React.FC<{
 
   return (
     <div className="relative w-full h-full bg-gray-100 overflow-hidden" data-testid="map-confirm" data-engine={engine}>
-      <div ref={googleDiv} className={engine === 'google' ? 'absolute inset-0' : 'absolute inset-0 invisible'} />
+      {engine !== 'leaflet' && <div ref={googleDiv} className={engine === 'google' ? 'absolute inset-0' : 'absolute inset-0 invisible'} />}
       {engine === 'leaflet' && (
         <MapContainer center={[center.lat, center.lng]} zoom={18} zoomControl={false} attributionControl className="absolute inset-0 z-0" style={{ height: '100%', width: '100%' }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap" maxZoom={19} />
+          <LeafletSizeFix />
           <LeafletCenterWatcher center={center} onDrag={d => { setDragging(d); movingRef.current?.(d); }} onIdle={p => cbRef.current(p)} />
         </MapContainer>
       )}
@@ -112,5 +122,17 @@ const LeafletCenterWatcher: React.FC<{ center: GeoPoint; onDrag: (d: boolean) =>
     const c = map.getCenter();
     if (Math.abs(c.lat - center.lat) > 1e-6 || Math.abs(c.lng - center.lng) > 1e-6) map.setView([center.lat, center.lng], map.getZoom(), { animate: true });
   }, [center.lat, center.lng, map]);
+  return null;
+};
+
+/** A tela entra com animação (transform): sem isto o Leaflet mede 0px e carrega só parte dos tiles. */
+const LeafletSizeFix: React.FC = () => {
+  const map = useMap();
+  useEffect(() => {
+    const fix = () => map.invalidateSize();
+    const ts = [0, 120, 400, 900].map(ms => setTimeout(fix, ms));
+    window.addEventListener('resize', fix);
+    return () => { ts.forEach(clearTimeout); window.removeEventListener('resize', fix); };
+  }, [map]);
   return null;
 };

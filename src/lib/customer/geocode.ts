@@ -63,11 +63,12 @@ export function parseGoogleGeocode(r: any): ReverseAddress | null {
 
 export async function reverseGeocode(p: GeoPoint, timeoutMs = 7000): Promise<ReverseAddress | null> {
   const g = (typeof window !== 'undefined' ? (window as any).google : undefined)?.maps;
-  if (g?.Geocoder && !(window as any).__dcGeocoderBlocked) {
+  // Google bloqueado para a chave (ex.: ApiNotActivatedMapError em produção): vai direto ao OpenStreetMap.
+  if (g?.Geocoder && !(window as any).__dcGeocoderBlocked && !isGoogleMapsBroken()) {
     try {
       const res: any = await Promise.race([
         new g.Geocoder().geocode({ location: p, language: 'pt-BR', region: 'BR' }),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs)),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), Math.min(timeoutMs, 3500))),
       ]);
       const parsed = parseGoogleGeocode(res?.results?.[0]);
       if (parsed && parsed.street) return parsed;
@@ -111,4 +112,53 @@ export function getCurrentPosition(timeoutMs = 10000): Promise<GeoPoint> {
       { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 60000 }
     );
   });
+}
+
+/**
+ * Número da casa digitado na busca ("Av. Comendador Dante Carraro, 100", "Rua X nº 12", "Rua X 45 - Centro").
+ * Não confunde com números do nome da rua ("Rua 25 de Março", "Av. 9 de Julho") nem com CEP.
+ */
+export function extractHouseNumber(text: string | null | undefined): string {
+  const t = String(text || '').replace(/\d{5}-?\d{3}/g, ' ').trim();
+  if (!t) return '';
+  const pats = [
+    /\bn(?:º|°|o\.?|\.|úmero|umero)\s*(\d{1,5}[a-z]?)\b/i,
+    /,\s*(\d{1,5}[a-z]?)\b(?!\s+de\b)/i,
+    /[a-zà-ú.]\s+(\d{1,5}[a-z]?)\s*(?:[-–,].*)?$/i,
+  ];
+  for (const re of pats) {
+    const m = t.match(re);
+    if (m) return m[1].toUpperCase();
+  }
+  return '';
+}
+
+/**
+ * gm_authFailure dispara UMA vez por carregamento da página (normalmente no autocomplete, antes do mapa existir).
+ * Guardamos o fato globalmente para que telas abertas depois saibam que o Google Maps está bloqueado.
+ */
+const gmListeners = new Set<() => void>();
+let gmBroken = false;
+function installGmHook() {
+  if (typeof window === 'undefined') return;
+  const w = window as any;
+  if (w.__dcGmHook) return;
+  w.__dcGmHook = true;
+  const prev = w.gm_authFailure;
+  w.gm_authFailure = (...a: unknown[]) => {
+    gmBroken = true;
+    gmListeners.forEach(fn => { try { fn(); } catch { /* ignora */ } });
+    if (typeof prev === 'function') prev(...a);
+  };
+}
+installGmHook();
+export function isGoogleMapsBroken(): boolean {
+  if (gmBroken) return true;
+  if (typeof document !== 'undefined' && document.querySelector('.gm-err-container')) return true;
+  return false;
+}
+export function onGoogleMapsAuthFailure(fn: () => void): () => void {
+  installGmHook();
+  gmListeners.add(fn);
+  return () => { gmListeners.delete(fn); };
 }

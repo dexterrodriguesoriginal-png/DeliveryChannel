@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Home, Briefcase, MapPin, MoreVertical, Plus, LocateFixed, Pencil, Trash2, Search, Loader2 } from 'lucide-react';
 import { AddressAutocompleteInput, ParsedAddress } from '../../onboarding/AddressAutocompleteInput';
 import { MapConfirm } from './MapConfirm';
@@ -7,7 +7,7 @@ import { useToast } from '../../../context/ToastContext';
 import {
   AddressLabel, SavedAddress, addressSubtitle, addressTitle, defaultKV, loadAddressBook, newAddressId, removeAddress, selectAddress, upsertAddress,
 } from '../../../lib/customer/localStore';
-import { DEFAULT_CENTER, GeoPoint, ReverseAddress, getCurrentPosition, reverseGeocode } from '../../../lib/customer/geocode';
+import { DEFAULT_CENTER, GeoPoint, ReverseAddress, extractHouseNumber, getCurrentPosition, reverseGeocode } from '../../../lib/customer/geocode';
 import { cn } from '../../../utils/cn';
 
 type Step = 'list' | 'search' | 'map' | 'details';
@@ -61,6 +61,10 @@ export const AddressFlow: React.FC<{
   const [step, setStep] = useState<Step>('list');
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [query, setQuery] = useState('');
+  // Últimos textos do campo de busca: o autocomplete troca o texto pelo endereço formatado logo antes de
+  // avisar a seleção, então o número digitado pelo cliente fica no valor anterior.
+  const typedRef = useRef<string[]>([]);
+  const onQueryChange = (v: string) => { typedRef.current = [...typedRef.current.slice(-4), v]; setQuery(v); };
   const [mapCenter, setMapCenter] = useState<GeoPoint>(DEFAULT_CENTER);
   const [resolving, setResolving] = useState(false);
   const [mapMoving, setMapMoving] = useState(false);
@@ -110,10 +114,12 @@ export const AddressFlow: React.FC<{
   };
 
   const onPicked = (p: ParsedAddress) => {
+    const typedNumber = [...typedRef.current].reverse().map(extractHouseNumber).find(Boolean) || '';
+    typedRef.current = [];
     setDraft(d => ({
       ...d,
       street: p.street || p.formattedAddress,
-      number: p.number || '',
+      number: p.number || typedNumber,
       neighborhood: p.neighborhood || '',
       city: p.city || '',
       state: p.state || '',
@@ -264,7 +270,7 @@ export const AddressFlow: React.FC<{
           <>
             <ScreenHeader title="Buscar endereço" onBack={back} />
             <div className="p-4 space-y-4 flex-1 overflow-y-auto">
-              <AddressAutocompleteInput value={query} onChange={setQuery} onAddressSelect={onPicked} placeholder="Rua, avenida e número" />
+              <AddressAutocompleteInput value={query} onChange={onQueryChange} onAddressSelect={onPicked} placeholder="Rua, avenida e número" />
               <button type="button" onClick={useMyLocation} disabled={locating} className="w-full flex items-center gap-3 px-1 py-2 text-left cursor-pointer">
                 {locating ? <Loader2 className="w-5 h-5 animate-spin" style={{ color }} /> : <LocateFixed className="w-5 h-5" style={{ color }} />}
                 <span>

@@ -35,6 +35,17 @@ describe('ofertas', () => {
     });
     expect(list.map(o => o.key)).toEqual(['p:e', 'p:d']);
   });
+  it('não repete produto: campanha + promoção do catálogo viram uma linha (melhor preço; empate = campanha)', () => {
+    const refri = prod('refri', 12, { promotionalPrice: 9.9 });
+    const tie = buildOfferList({ products: [refri], carousels: [carousel([ci('i1', 'refri', 9.9)], { name: 'OFERTAS DO DIA' })], tenantId: T, now });
+    expect(tie.map(o => [o.key, o.campaignName])).toEqual([['c:i1', 'OFERTAS DO DIA']]);
+    const campCheaper = buildOfferList({ products: [refri], carousels: [carousel([ci('i1', 'refri', 8.5)])], tenantId: T, now });
+    expect(campCheaper.map(o => [o.key, o.offerPrice])).toEqual([['c:i1', 8.5]]);
+    const catCheaper = buildOfferList({ products: [refri], carousels: [carousel([ci('i1', 'refri', 10.5)])], tenantId: T, now });
+    expect(catCheaper.map(o => [o.key, o.offerPrice])).toEqual([['p:refri', 9.9]]);
+    const twoCamps = buildOfferList({ products: [prod('a', 10)], carousels: [carousel([ci('i1', 'a', 7)]), carousel([ci('i2', 'a', 6)], { id: 'car2' })], tenantId: T, now });
+    expect(twoCamps.map(o => o.key)).toEqual(['c:i2']);
+  });
   it('percentual de desconto', () => {
     expect(discountPercent(10, 7.5)).toBe(25);
     expect(discountPercent(10, 10)).toBe(0);
@@ -110,5 +121,20 @@ describe('geocodificação reversa', () => {
   it('UF', () => {
     expect(ufFrom('Rio de Janeiro')).toBe('RJ');
     expect(ufFrom(undefined, 'BR-MG')).toBe('MG');
+  });
+});
+
+describe('número digitado na busca de endereço', () => {
+  it('extrai o número sem confundir com nome de rua ou CEP', async () => {
+    const { extractHouseNumber } = await import('../geocode');
+    expect(extractHouseNumber('Av. Comendador Dante Carraro, 100')).toBe('100');
+    expect(extractHouseNumber('Av. Comendador Dante Carraro, 100 - Carapicuíba, SP')).toBe('100');
+    expect(extractHouseNumber('Rua das Flores 45')).toBe('45');
+    expect(extractHouseNumber('Rua das Flores nº 12b')).toBe('12B');
+    expect(extractHouseNumber('Rua 25 de Março')).toBe('');
+    expect(extractHouseNumber('Av. 9 de Julho, 50')).toBe('50');
+    expect(extractHouseNumber('Av. Comendador Dante Carraro')).toBe('');
+    expect(extractHouseNumber('Rua X, 06320-000')).toBe('');
+    expect(extractHouseNumber('')).toBe('');
   });
 });
