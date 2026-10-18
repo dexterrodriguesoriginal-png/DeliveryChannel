@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Search, Tag, ShoppingBag, Clock, Bike, User, Shield } from 'lucide-react';
+import { Home, Search, Tag, ShoppingBag, Clock, Bike, User, ClipboardList } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 export interface MobileNavigationProps {
@@ -7,6 +7,8 @@ export interface MobileNavigationProps {
   activeTab: string;
   onTabChange: (tabId: string) => void;
   cartCount?: number;
+  /** Ponto/contador no Perfil (notificações não lidas). */
+  profileBadge?: number;
   primaryColor?: string;
 }
 
@@ -15,6 +17,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
   activeTab,
   onTabChange,
   cartCount = 0,
+  profileBadge = 0,
   primaryColor = '#15803d',
 }) => {
   if (type === 'driver') {
@@ -46,9 +49,10 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
     );
   }
 
+  // App do cliente (/app/<slug>): Início, Busca, Ofertas, Sacola, Pedidos e Perfil.
   const customerTabs = [
     { id: 'home', label: 'Início', icon: <Home className="w-5 h-5" /> },
-    { id: 'search', label: 'Buscar', icon: <Search className="w-5 h-5" /> },
+    { id: 'search', label: 'Busca', icon: <Search className="w-5 h-5" /> },
     { id: 'offers', label: 'Ofertas', icon: <Tag className="w-5 h-5" /> },
     {
       id: 'cart',
@@ -57,25 +61,37 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
         <div className="relative">
           <ShoppingBag className="w-5 h-5" />
           {cartCount > 0 && (
-            <span className="absolute -top-1.5 -right-2 w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center shadow-xs">
-              {cartCount}
+            <span data-testid="nav-cart-count" className="absolute -top-1.5 -right-2 min-w-4 h-4 px-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center shadow-xs">
+              {cartCount > 99 ? '99+' : cartCount}
             </span>
           )}
         </div>
       ),
     },
-    { id: 'orders', label: 'Pedidos', icon: <Clock className="w-5 h-5" /> },
+    { id: 'orders', label: 'Pedidos', icon: <ClipboardList className="w-5 h-5" /> },
+    {
+      id: 'profile',
+      label: 'Perfil',
+      icon: (
+        <div className="relative">
+          <User className="w-5 h-5" />
+          {profileBadge > 0 && <span data-testid="nav-profile-dot" className="absolute -top-0.5 -right-1 w-2.5 h-2.5 rounded-full bg-rose-600 ring-2 ring-white" />}
+        </div>
+      ),
+    },
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 px-3 py-2 flex items-center justify-around shadow-lg max-w-lg mx-auto sm:rounded-t-2xl">
+    <nav data-testid="customer-bottom-nav" className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] grid grid-cols-6 shadow-lg max-w-lg mx-auto sm:rounded-t-2xl">
       {customerTabs.map((tab) => {
         const isActive = tab.id === activeTab;
         return (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
-            className="flex flex-col items-center gap-1 py-1 px-2.5 text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer"
+            data-testid={`nav-${tab.id}`}
+            aria-current={isActive ? 'page' : undefined}
+            className="flex flex-col items-center gap-0.5 py-1 text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer active:scale-95"
             style={{
               color: isActive ? primaryColor : '#94a3b8',
             }}

@@ -102,8 +102,27 @@ import {
 } from '../../lib/pricing/purchaseOrigin';
 import { StoreLogo } from '../../components/client/StoreLogo';
 import { newIdempotencyKey } from '../../lib/pricing/idempotency';
+import { searchProducts } from '../../lib/customer/search';
+import { buildReorderCart } from '../../lib/customer/reorder';
+import { groupOrderHistory } from '../../lib/customer/orderHistory';
+import { buildNotifications } from '../../lib/customer/notifications';
+import { OfferListItem } from '../../lib/customer/offers';
+import {
+  SavedAddress, addressSubtitle, addressTitle, clearSearchHistory, defaultKV, loadAddressBook, loadFavorites, loadNotificationPrefs,
+  loadNotificationsSeenAt, markNotificationsSeen, markPushPromptShown, shouldShowPushPrompt, toggleFavorite,
+} from '../../lib/customer/localStore';
+import { customerAppRepository } from '../../repositories/customerAppRepository';
+import { CartScreen } from '../../components/client/customer/CartScreen';
+import { SearchScreen } from '../../components/client/customer/SearchScreen';
+import { OffersScreen } from '../../components/client/customer/OffersScreen';
+import { ProfileScreen, ProfilePage } from '../../components/client/customer/ProfileScreen';
+import { AddressFlow } from '../../components/client/customer/AddressFlow';
+import { BottomSheet, SkeletonRows } from '../../components/client/customer/ui';
+import { BellRing, ChevronDown, LifeBuoy } from 'lucide-react';
 
 // Linha do carrinho: produto + ORIGEM da compra (catálogo ou item de campanha). Chave = produto + origem.
+type CustomerTab = 'home' | 'search' | 'offers' | 'cart' | 'orders' | 'profile';
+
 interface CartItem {
   key: string;
   product: Product;
@@ -180,7 +199,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       return { open: false } as { open: boolean; orderId?: string };
     }
   }, []);
-  const [navTab, setNavTab] = useState<'home' | 'orders' | 'cart' | 'account'>(initialTrackingLink.open ? 'orders' : 'home');
+  const [navTab, setNavTabRaw] = useState<CustomerTab>(initialTrackingLink.open ? 'orders' : 'home');
+  const setNavTab = useCallback((t: CustomerTab) => {
+    setNavTabRaw(t);
+    try { window.scrollTo({ top: 0 }); } catch { /* jsdom */ }
+  }, []);
+  const [profilePage, setProfilePage] = useState<ProfilePage>('menu');
+  const [helpOrder, setHelpOrder] = useState<Order | null>(null);
+  const [expandedFailedGroups, setExpandedFailedGroups] = useState<Record<string, boolean>>({});
   const [focusOrderId, setFocusOrderId] = useState<string | null>(initialTrackingLink.orderId || null);
   const [selectedProductModal, setSelectedProductModal] = useState<Product | null>(null);
   // Origem com que o detalhe do produto foi aberto (catálogo ou item de campanha do carrossel).
@@ -264,6 +290,20 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   useEffect(() => { if (completedOrder) { const t = setTimeout(() => emitInviteTrigger('order'), 800); return () => clearTimeout(t); } }, [completedOrder]);
   const [completedCouponRedemption, setCompletedCouponRedemption] = useState<RedeemCouponResult | null>(null);
   const [copiedPix, setCopiedPix] = useState(false);
+
+  // App do cliente (P1): dados no aparelho por usuário (endereços, favoritos, leitura de notificações).
+  const kv = useMemo(() => defaultKV(), []);
+  const userKey = supabaseUser?.id || null;
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [addressFlow, setAddressFlow] = useState<{ open: boolean; mode: 'select' | 'manage' }>({ open: false, mode: 'select' });
+  const [selectedAddress, setSelectedAddress] = useState<SavedAddress | null>(null);
+  const [notificationsSeenAt, setNotificationsSeenAt] = useState(0);
+  const [pushPromptOpen, setPushPromptOpen] = useState(false);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 30000);
+    return () => window.clearInterval(id);
+  }, []);
 
   // --------------------------------------------------------------------------
   // CARREGAR CATÁLOGO REAL DO ESTABELECIMENTO PELO SLUG (SEM FALLBACK MOCK)
@@ -441,47 +481,33 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     }
   }, [storeData?.tenant.id, supabaseUser?.id]);
 
-  // Repetir um pedido anterior recarregando itens no carrinho
+  // "Peça de novo": catálogo ATUAL (preço/disponibilidade de agora); itens que não existem mais ficam de fora.
   const handleRepeatOrder = useCallback((order: Order) => {
-    if (!order.items || order.items.length === 0) return;
-    const newItems: CartItem[] = [];
-    order.items.forEach(it => {
-      const prod = storeData?.products.find(p => p.id === it.productId);
-      if (prod) {
-        newItems.push({ key: cartLineKey(prod.id, CATALOG_ORIGIN), product: prod, quantity: it.quantity, origin: CATALOG_ORIGIN });
-      } else {
-        newItems.push({
-          product: {
-            id: it.productId,
-            tenantId: order.tenantId,
-            categoryId: 'geral',
-            name: it.productName,
-            description: '',
-            price: it.unitPrice,
-            imageUrl: '',
-            isAvailable: true,
-            isActive: true,
-            stockQuantity: 99,
-            unit: it.unit || 'un'
-          },
-          quantity: it.quantity,
-          key: cartLineKey(it.productId, CATALOG_ORIGIN),
-          origin: CATALOG_ORIGIN,
-        });
-      }
-    });
-
-    if (newItems.length > 0) {
-      setCart(newItems);
-      setNavTab('home');
-      setIsCheckoutOpen(true);
-      showToast({
-        type: 'success',
-        title: 'Itens adicionados!',
-        message: 'Os produtos do pedido foram recarregados no seu carrinho.',
-      });
+    if (!storeData || !order.items || order.items.length === 0) return;
+    const r = buildReorderCart(order.items, storeData.products, storeData.tenant.id);
+    if (r.lines.length === 0) {
+      showToast({ type: 'warning', title: 'Itens indisponíveis', message: 'Nenhum item deste pedido está disponível agora.' });
+      return;
     }
-  }, [storeData?.products, showToast]);
+    setCart(prev => {
+      const next = [...prev];
+      for (const l of r.lines) {
+        const ex = next.find(x => x.key === l.key);
+        if (ex) ex.quantity += l.quantity;
+        else next.push({ key: l.key, product: l.product, quantity: l.quantity, notes: l.notes, origin: l.origin });
+      }
+      return next.map(x => ({ ...x }));
+    });
+    setNavTab('cart');
+    const notes: string[] = [];
+    if (r.unavailable.length) notes.push(`Indisponível agora: ${r.unavailable.join(', ')}.`);
+    if (r.priceChanged.length) notes.push(`Preço atualizado: ${r.priceChanged.map(c => `${c.name} ${formatBRL(c.now)}`).join(', ')}.`);
+    showToast({
+      type: r.unavailable.length ? 'warning' : 'success',
+      title: 'Itens na sacola',
+      message: notes.length ? notes.join(' ') : 'Os itens do pedido foram adicionados à sua sacola.',
+    });
+  }, [storeData, showToast, setNavTab]);
 
   useEffect(() => {
     if (navTab === 'orders') {
@@ -502,6 +528,83 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       };
     }
   }, [navTab, loadCustomerOrders]);
+
+  // Favoritos, endereço selecionado e leitura de notificações: por usuário (e por loja quando aplicável).
+  useEffect(() => {
+    if (!storeData?.tenant.id) return;
+    setFavoriteIds(loadFavorites(kv, userKey, storeData.tenant.id));
+    setNotificationsSeenAt(loadNotificationsSeenAt(kv, userKey, storeData.tenant.id));
+  }, [kv, userKey, storeData?.tenant.id]);
+
+  const applySavedAddress = useCallback((a: SavedAddress) => {
+    setSelectedAddress(a);
+    setStreetAddress(a.street);
+    setAddressNumber(a.number);
+    setNeighborhood(a.neighborhood || '');
+    setCity(a.city || '');
+    setState(a.state || '');
+    setPostalCode(a.postalCode || '');
+    setComplement(a.complement || '');
+    setReference(a.reference || '');
+    setFormattedAddress(a.formattedAddress || '');
+    setLatitude(a.latitude);
+    setLongitude(a.longitude);
+    setPlaceId(a.placeId);
+  }, []);
+
+  useEffect(() => {
+    const b = loadAddressBook(kv, userKey);
+    const sel = b.items.find(a => a.id === b.selectedId) || null;
+    if (sel) applySavedAddress(sel);
+    else setSelectedAddress(null);
+  }, [kv, userKey, applySavedAddress]);
+
+  // Cliente logado: carrega os pedidos uma vez (silencioso) para a central de notificações e o ponto no Perfil.
+  useEffect(() => {
+    if (supabaseUser?.id && storeData?.tenant.id) loadCustomerOrders({ silent: true });
+  }, [supabaseUser?.id, storeData?.tenant.id, loadCustomerOrders]);
+
+  // Aviso do aparelho quando o status de um pedido muda com o app aberto (se o cliente permitiu).
+  const lastStatusRef = useRef<Map<string, string> | null>(null);
+  useEffect(() => {
+    const prev = lastStatusRef.current;
+    const next = new Map(customerOrders.map(o => [o.id, o.status as string]));
+    lastStatusRef.current = next;
+    if (!prev || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    if (!loadNotificationPrefs(kv, userKey).orderStatus) return;
+    for (const o of customerOrders) {
+      const before = prev.get(o.id);
+      if (before && before !== o.status) {
+        const n = buildNotifications([{ ...o, statusHistory: [{ status: o.status, timestamp: new Date().toISOString(), changedBy: '' }] }], 0)[0];
+        if (!n) continue;
+        try {
+          const title = `${storeData?.tenant.name || 'Pedido'}: ${n.title}`;
+          if (navigator.serviceWorker?.controller) navigator.serviceWorker.ready.then(r => r.showNotification(title, { body: n.body, tag: n.id })).catch(() => {});
+          else new Notification(title, { body: n.body, tag: n.id });
+        } catch {
+          // navegador sem suporte
+        }
+      }
+    }
+  }, [customerOrders, kv, userKey, storeData?.tenant.name]);
+
+  const notifications = useMemo(() => buildNotifications(customerOrders, notificationsSeenAt), [customerOrders, notificationsSeenAt]);
+  const unreadCount = notifications.filter(n => n.unread).length;
+  const markAllNotificationsSeen = useCallback(() => {
+    if (!storeData?.tenant.id) return;
+    const at = Date.now();
+    markNotificationsSeen(kv, userKey, storeData.tenant.id, at);
+    setNotificationsSeenAt(at);
+  }, [kv, userKey, storeData?.tenant.id]);
+
+  // Convite suave para ativar notificações: na aba Pedidos (logado), nunca durante o checkout. Respeita 7 dias.
+  useEffect(() => {
+    if (navTab !== 'orders' || !supabaseUser || isCheckoutOpen || completedOrder) return;
+    const perm = typeof Notification !== 'undefined' ? Notification.permission : null;
+    if (!shouldShowPushPrompt(kv, perm)) return;
+    const t = setTimeout(() => setPushPromptOpen(true), 1500);
+    return () => clearTimeout(t);
+  }, [navTab, supabaseUser, isCheckoutOpen, completedOrder, kv]);
 
   // Mantém a URL coerente com a aba (#pedidos) sem criar entradas no histórico.
   useEffect(() => {
@@ -681,7 +784,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   };
 
   // Manipulação de Carrinho
-  const handleAddToCart = (product: Product, origin: PurchaseOrigin = CATALOG_ORIGIN) => {
+  const handleAddToCart = (product: Product, origin: PurchaseOrigin = CATALOG_ORIGIN, opts?: { silent?: boolean }) => {
     const isAvailable = product.isAvailable !== undefined ? product.isAvailable : (product.stockQuantity > 0);
     if (!isAvailable) {
       showToast({
@@ -697,6 +800,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     // Mesmo produto de origens diferentes = linhas diferentes (não mescla catálogo com campanha).
     setCart((prev) => addToOriginCart<Product>(prev, canonical, origin) as CartItem[]);
 
+    if (opts?.silent) return;
     showToast({
       type: 'success',
       title: 'Adicionado à Sacola',
@@ -707,6 +811,67 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // Remove/decrementa pela CHAVE da linha (produto + origem); a origem nunca se perde ao mudar a quantidade.
   const handleRemoveFromCart = (lineKey: string) => {
     setCart((prev) => decrementOriginCart<Product>(prev, lineKey) as CartItem[]);
+  };
+
+  const qtyOfCatalog = (productId: string) => cart.find(i => i.key === cartLineKey(productId, CATALOG_ORIGIN))?.quantity || 0;
+  const qtyOfOffer = (it: OfferListItem) => cart.find(i => i.key === cartLineKey(it.product.id, it.origin))?.quantity || 0;
+  const handleIncLine = (lineKey: string) => {
+    const line = cart.find(l => l.key === lineKey);
+    if (line) handleAddToCart(line.product, line.origin, { silent: true });
+  };
+  const handleRemoveLineEntirely = (lineKey: string) => {
+    setCart(prev => prev.filter(l => l.key !== lineKey));
+    showToast({ type: 'success', title: 'Item removido da sacola' });
+  };
+  const handleLineNote = (lineKey: string, note: string) => {
+    setCart(prev => prev.map(l => (l.key === lineKey ? { ...l, notes: note || undefined } : l)));
+  };
+  const handleToggleFavorite = (productId: string) => {
+    if (!storeData) return;
+    const next = toggleFavorite(kv, userKey, storeData.tenant.id, productId);
+    setFavoriteIds(next);
+    showToast({ type: 'success', title: next.includes(productId) ? 'Adicionado aos favoritos' : 'Removido dos favoritos' });
+  };
+  const loadMyCpf = useCallback(async () => {
+    if (!storeData?.tenant.id || !supabaseUser?.id) return null;
+    return customerAppRepository.getMyCpf(storeData.tenant.id, supabaseUser.id);
+  }, [storeData?.tenant.id, supabaseUser?.id]);
+
+  const handleSaveProfile = useCallback(async (d: { name: string; phone: string; cpf: string }) => {
+    if (!storeData || !supabaseUser) return;
+    const digits = d.phone.trim() ? normalizeBRPhone(d.phone) : '';
+    setCustomerName(d.name);
+    if (digits) setCustomerPhone(formatBRPhone(digits));
+    try {
+      localStorage.setItem('adegafood_cust_name', d.name);
+      if (digits) localStorage.setItem('adegafood_cust_phone', formatBRPhone(digits));
+    } catch { /* ignore */ }
+    try {
+      const r = await customerAppRepository.updateMyProfile(storeData.tenant.id, supabaseUser.id, { name: d.name, phone: digits ? `+55${digits}` : '', cpf: d.cpf || null });
+      showToast(r === 'server'
+        ? { type: 'success', title: 'Dados salvos', message: 'Seus dados foram atualizados.' }
+        : r === 'no_customer'
+          ? { type: 'success', title: 'Dados salvos', message: 'Vamos usar estes dados no seu próximo pedido nesta loja.' }
+          : { type: 'success', title: 'Dados salvos', message: d.cpf ? 'Nome e telefone atualizados. O CPF será gravado assim que a atualização do sistema for concluída.' : 'Seus dados foram atualizados.' });
+    } catch (e: any) {
+      showToast({ type: 'error', title: 'Não foi possível salvar', message: e?.message || 'Tente novamente.' });
+    }
+  }, [storeData, supabaseUser, showToast]);
+
+  const handleRequestDeletion = useCallback(async (reason: string) => {
+    const r = await customerAppRepository.requestAccountDeletion(reason);
+    if (r.ok) {
+      showToast({ type: 'success', title: 'Solicitação registrada', message: 'Seus dados pessoais serão anonimizados. Você foi desconectado.' });
+      await signOut();
+      setProfilePage('menu');
+      return { ok: true };
+    }
+    return { ok: false, message: r.message };
+  }, [showToast, signOut]);
+
+  const openProductFromList = (p: Product, o: PurchaseOrigin = CATALOG_ORIGIN) => {
+    setSelectedProductOrigin(o);
+    setSelectedProductModal(o.source === 'campaign' ? p : (storeData?.products.find(x => x.id === p.id) || p));
   };
 
   // --------------------------------------------------------------------------
@@ -844,12 +1009,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // Filtragem de Produtos
   const filteredProducts = useMemo(() => {
     if (!storeData) return [];
-    return storeData.products.filter(p => {
-      const matchesCategory = activeCategory === 'ALL' || p.categoryId === activeCategory;
-      const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            p.description.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
+    // Busca sem acento/maiúsculas por nome, descrição e categoria (mesma regra da aba Busca).
+    const base = searchTerm.trim() ? searchProducts(storeData.products, storeData.categories, searchTerm) : storeData.products;
+    return base.filter(p => activeCategory === 'ALL' || p.categoryId === activeCategory);
   }, [storeData, activeCategory, searchTerm]);
 
   // --------------------------------------------------------------------------
@@ -1140,11 +1302,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     setTimeout(() => setCopiedPix(false), 3000);
   };
 
-  const openWhatsAppContact = (orderNumber?: number) => {
+  const openWhatsAppContact = (orderNumber?: number, customText?: string) => {
     if (!storeData) return;
     const phone = storeData.settings.phoneWhatsApp || storeData.tenant.phone;
     const cleanPhone = brPhoneDigits(phone);
-    const message = orderNumber
+    if (!cleanPhone) {
+      showToast({ type: 'warning', title: 'WhatsApp indisponível', message: 'Esta loja ainda não informou um WhatsApp.' });
+      return;
+    }
+    const message = customText ? customText : orderNumber
       ? `Olá! Gostaria de informações sobre meu Pedido #${orderNumber} feito no app do ${storeData.tenant.name}.`
       : `Olá! Tenho uma dúvida sobre o cardápio do ${storeData.tenant.name}.`;
     window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
@@ -1239,6 +1405,146 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     );
   }
 
+  const renderOrderCard = (order: Order) => {
+    const timeline = buildCustomerTimeline(order);
+    const isDelivered = timeline.delivered;
+    const isCancelled = timeline.cancelled;
+    const isPending = order.status === 'PENDING';
+    const isDelivery = !isCancelled && !isDelivered && (order.status === 'OUT_FOR_DELIVERY' || order.status === 'READY' || order.status === 'WAITING_FOR_DRIVER');
+    const isPreparing = !isCancelled && !isDelivered && !isPending && !isDelivery;
+    const isFocused = focusOrderId === order.id;
+
+    return (
+      <div 
+        key={order.id} 
+        id={`pedido-${order.id}`}
+        className={`p-4 sm:p-5 bg-white rounded-3xl border shadow-xs hover:shadow-md transition-all space-y-4 ${isFocused ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-gray-200/90'}`}
+      >
+        <DeliveryCodeCard orderId={order.id} status={order.status} />
+        {/* TOPO: NÚMERO DO PEDIDO + DATA + TOTAL EM DESTAQUE */}
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-1.5">
+              <ShoppingBag className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span className="font-black text-base text-gray-900 font-mono">
+                Pedido #{order.orderNumber || order.id.slice(0, 6)}
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-400 font-mono mt-0.5">
+              {new Date(order.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+            </p>
+          </div>
+
+          <div className="text-right">
+            <span className="inline-block px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 font-mono font-black text-base">
+              {formatBRL(order.totalAmount)}
+            </span>
+          </div>
+        </div>
+
+        {/* STATUS BADGES & ATENDIMENTO */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className={`px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] uppercase border flex items-center gap-1.5 ${
+            isPending ? 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse' :
+            isPreparing ? 'bg-blue-50 text-blue-800 border-blue-200' :
+            isDelivery ? 'bg-purple-50 text-purple-800 border-purple-200' :
+            isDelivered ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
+            'bg-rose-50 text-rose-800 border-rose-200'
+          }`}>
+            {isPending && <Clock className="w-3 h-3 text-amber-600 animate-spin" />}
+            {isPreparing && <Clock className="w-3 h-3 text-blue-600 animate-spin" />}
+            {isDelivery && <Bike className="w-3 h-3 text-purple-600" />}
+            {isDelivered && <CheckCircle2 className="w-3 h-3 text-emerald-700" />}
+            {isCancelled && <AlertCircle className="w-3 h-3 text-rose-700" />}
+            <span>
+              {order.status === 'PREPARING' && timeline.current?.key === 'preparing'
+                ? `Em preparo (${order.prepTimeMinutes || storeData.settings.defaultPrepTimeMinutes || 30} min)`
+                : timeline.headline}
+            </span>
+          </span>
+
+          <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 font-mono font-bold text-[10px] uppercase border border-gray-200">
+            {order.fulfillmentType === 'PICKUP' ? '🛍️ Retirada no Balcão' : '🛵 Entrega Delivery'}
+          </span>
+
+          <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-mono font-bold text-[10px] uppercase border border-emerald-200">
+            {paymentMethodLabel(order.paymentMethod)}
+          </span>
+        </div>
+
+        {/* LINHA DO TEMPO COMPLETA (atualiza ao vivo pelo polling da aba Pedidos) */}
+        {!isCancelled ? (
+          <OrderTrackingTimeline timeline={timeline} accentColor={buttonColor} />
+        ) : (
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3 text-xs text-rose-800 font-bold">
+            Pedido cancelado{timeline.cancelledAt ? ` às ${new Date(timeline.cancelledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}.
+          </div>
+        )}
+
+        {/* LISTA DE ITENS DO PEDIDO */}
+        <div className="bg-gray-50/70 border border-gray-200/60 rounded-2xl p-3 space-y-1.5 text-xs">
+          <div className="flex justify-between items-center text-[10px] font-mono font-bold uppercase tracking-wider text-gray-400 pb-1 border-b border-gray-200/50">
+            <span>Produtos ({order.items.length})</span>
+            <span>Valor</span>
+          </div>
+          <div className="space-y-1 max-h-36 overflow-y-auto">
+            {order.items.map((item, idx) => (
+              <div key={idx} className="flex justify-between items-center text-gray-800">
+                <span className="truncate pr-2">
+                  <strong className="text-emerald-700 font-mono mr-1.5">{item.quantity}x</strong>
+                  {item.productName}
+                </span>
+                <span className="font-mono font-medium text-gray-700 shrink-0">
+                  {formatBRL(item.totalPrice)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ENDEREÇO & AÇÕES OPERACIONAIS */}
+        <div className="pt-1 border-t border-gray-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 text-xs">
+          <div className="flex items-center gap-1.5 text-gray-600 min-w-0">
+            <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="truncate text-[11px] font-medium">
+              {order.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão do Estabelecimento' : order.deliveryAddress}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 sm:flex items-stretch sm:items-center gap-2 shrink-0 text-center">
+            <button
+              type="button"
+              onClick={() => { setHelpOrder(order); setProfilePage('help'); setNavTab('profile'); }}
+              className="flex-1 sm:flex-initial py-1.5 px-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              data-testid="order-help-btn"
+            >
+              <LifeBuoy className="w-3.5 h-3.5" />
+              <span>Ajuda com este pedido</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openWhatsAppContact(order.orderNumber)}
+              className="flex-1 sm:flex-initial py-1.5 px-3 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100/80 text-emerald-800 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+              <span>WhatsApp</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleRepeatOrder(order)}
+              className="flex-1 sm:flex-initial py-1.5 px-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Peça de novo</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       className="min-h-screen pb-44 font-sans text-gray-900 transition-colors"
@@ -1252,8 +1558,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         storeName={theme.storeName || storeData.tenant.name}
         color={theme.primaryColor || '#334155'}
         logoUrl={theme.logoUrl}
-        hidden={isCheckoutOpen || isPromoCheckoutOpen}
-        bottomOffset={installHintBottomOffset({ bottomNav: true, floatingCartBar: cart.length > 0 && !isCheckoutOpen && navTab === 'home' })}
+        hidden={isCheckoutOpen || isPromoCheckoutOpen || addressFlow.open || navTab === 'cart'}
+        busy={pushPromptOpen}
+        bottomOffset={installHintBottomOffset({ bottomNav: true, floatingCartBar: cart.length > 0 && !isCheckoutOpen && (navTab === 'home' || navTab === 'search' || navTab === 'offers') })}
       />
       {/* Barra de Retorno ao Painel: só para a equipe autenticada DESTE estabelecimento. */}
       {isStaffPreview(!!supabaseUser, activeTenant?.id, storeData.tenant.id) && (
@@ -1305,7 +1612,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         <div className="flex items-center gap-2">
           {supabaseUser ? (
             <button
-              onClick={() => setIsAccountOpen(true)}
+              onClick={() => { setProfilePage('menu'); setNavTab('profile'); }}
+              data-testid="header-profile"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-700 cursor-pointer transition-all"
             >
               <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
@@ -1329,9 +1637,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       {navTab === 'orders' ? (
         <div className="max-w-lg mx-auto p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-900">Seus Pedidos em {storeData.tenant.name}</h2>
+            <h2 className="text-xl font-extrabold text-gray-900">Pedidos</h2>
             <Button size="sm" variant="ghost" onClick={() => setNavTab('home')} className="text-xs">
-              Voltar ao Cardápio
+              Ver cardápio
             </Button>
           </div>
 
@@ -1352,11 +1660,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                 Entrar ou Criar Conta
               </Button>
             </div>
-          ) : isLoadingOrders ? (
-            <div className="p-8 text-center text-gray-500 text-xs space-y-2">
-              <Loader2 className="w-6 h-6 animate-spin mx-auto text-emerald-700" />
-              <p>Carregando seus pedidos...</p>
-            </div>
+          ) : isLoadingOrders && customerOrders.length === 0 ? (
+            <SkeletonRows rows={3} />
           ) : customerOrdersError ? (
             <div className="p-8 text-center bg-white rounded-2xl border border-amber-200/80 space-y-3 shadow-xs">
               <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center mx-auto">
@@ -1390,7 +1695,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => setIsAccountOpen(true)}
+                  onClick={() => { setProfilePage('menu'); setNavTab('profile'); }}
                   className="w-full sm:w-auto text-xs"
                 >
                   <UserIcon className="w-3.5 h-3.5 mr-1 text-slate-500" />
@@ -1408,138 +1713,146 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             </div>
           ) : (
             <div className="space-y-4">
-              {customerOrders.map(order => {
-                const timeline = buildCustomerTimeline(order);
-                const isDelivered = timeline.delivered;
-                const isCancelled = timeline.cancelled;
-                const isPending = order.status === 'PENDING';
-                const isDelivery = !isCancelled && !isDelivered && (order.status === 'OUT_FOR_DELIVERY' || order.status === 'READY' || order.status === 'WAITING_FOR_DRIVER');
-                const isPreparing = !isCancelled && !isDelivered && !isPending && !isDelivery;
-                const isFocused = focusOrderId === order.id;
-
-                return (
-                  <div 
-                    key={order.id} 
-                    id={`pedido-${order.id}`}
-                    className={`p-4 sm:p-5 bg-white rounded-3xl border shadow-xs hover:shadow-md transition-all space-y-4 ${isFocused ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-gray-200/90'}`}
-                  >
-                    <DeliveryCodeCard orderId={order.id} status={order.status} />
-                    {/* TOPO: NÚMERO DO PEDIDO + DATA + TOTAL EM DESTAQUE */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <ShoppingBag className="w-4 h-4 text-emerald-700 shrink-0" />
-                          <span className="font-black text-base text-gray-900 font-mono">
-                            Pedido #{order.orderNumber || order.id.slice(0, 6)}
+              {groupOrderHistory(customerOrders, nowTick).map(day => (
+                <section key={day.dayKey} className="space-y-3" data-testid="orders-day">
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500 pt-1">{day.label}</h3>
+                  {day.entries.map(entry => {
+                    if (entry.kind === 'order') return <React.Fragment key={entry.order.id}>{renderOrderCard(entry.order)}</React.Fragment>;
+                    const gk = entry.latest.id;
+                    const open = Boolean(expandedFailedGroups[gk]);
+                    return (
+                      <div key={gk} className="bg-white rounded-3xl border border-rose-100 shadow-xs overflow-hidden" data-testid="failed-group">
+                        <button type="button" onClick={() => setExpandedFailedGroups(m => ({ ...m, [gk]: !open }))}
+                          className="w-full p-4 flex items-center gap-3 text-left cursor-pointer">
+                          <span className="w-9 h-9 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center shrink-0"><AlertCircle className="w-5 h-5" /></span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-bold text-gray-900">{entry.orders.length} tentativas não concluídas</span>
+                            <span className="block text-xs text-gray-500 truncate">
+                              {entry.latest.items.map(it => `${it.quantity}x ${it.productName}`).join(', ')} · {formatBRL(entry.latest.totalAmount)}
+                            </span>
                           </span>
+                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                        </button>
+                        {open && (
+                          <ul className="px-4 pb-3 space-y-1 text-xs text-gray-600 dc-fade-in">
+                            {entry.orders.map(o => (
+                              <li key={o.id} className="flex justify-between"><span>Pedido #{o.orderNumber} · cancelado</span><span>{new Date(o.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}</span></li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="px-4 pb-4">
+                          <button type="button" onClick={() => handleRepeatOrder(entry.latest)} className="w-full h-10 rounded-xl bg-gray-900 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer">
+                            <RotateCcw className="w-3.5 h-3.5" /> Tentar de novo
+                          </button>
                         </div>
-                        <p className="text-[11px] text-gray-400 font-mono mt-0.5">
-                          {new Date(order.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
-                        </p>
                       </div>
-
-                      <div className="text-right">
-                        <span className="inline-block px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 font-mono font-black text-base">
-                          {formatBRL(order.totalAmount)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* STATUS BADGES & ATENDIMENTO */}
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] uppercase border flex items-center gap-1.5 ${
-                        isPending ? 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse' :
-                        isPreparing ? 'bg-blue-50 text-blue-800 border-blue-200' :
-                        isDelivery ? 'bg-purple-50 text-purple-800 border-purple-200' :
-                        isDelivered ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
-                        'bg-rose-50 text-rose-800 border-rose-200'
-                      }`}>
-                        {isPending && <Clock className="w-3 h-3 text-amber-600 animate-spin" />}
-                        {isPreparing && <Clock className="w-3 h-3 text-blue-600 animate-spin" />}
-                        {isDelivery && <Bike className="w-3 h-3 text-purple-600" />}
-                        {isDelivered && <CheckCircle2 className="w-3 h-3 text-emerald-700" />}
-                        {isCancelled && <AlertCircle className="w-3 h-3 text-rose-700" />}
-                        <span>
-                          {order.status === 'PREPARING' && timeline.current?.key === 'preparing'
-                            ? `Em preparo (${order.prepTimeMinutes || storeData.settings.defaultPrepTimeMinutes || 30} min)`
-                            : timeline.headline}
-                        </span>
-                      </span>
-
-                      <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 font-mono font-bold text-[10px] uppercase border border-gray-200">
-                        {order.fulfillmentType === 'PICKUP' ? '🛍️ Retirada no Balcão' : '🛵 Entrega Delivery'}
-                      </span>
-
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-mono font-bold text-[10px] uppercase border border-emerald-200">
-                        {paymentMethodLabel(order.paymentMethod)}
-                      </span>
-                    </div>
-
-                    {/* LINHA DO TEMPO COMPLETA (atualiza ao vivo pelo polling da aba Pedidos) */}
-                    {!isCancelled ? (
-                      <OrderTrackingTimeline timeline={timeline} accentColor={buttonColor} />
-                    ) : (
-                      <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3 text-xs text-rose-800 font-bold">
-                        Pedido cancelado{timeline.cancelledAt ? ` às ${new Date(timeline.cancelledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}.
-                      </div>
-                    )}
-
-                    {/* LISTA DE ITENS DO PEDIDO */}
-                    <div className="bg-gray-50/70 border border-gray-200/60 rounded-2xl p-3 space-y-1.5 text-xs">
-                      <div className="flex justify-between items-center text-[10px] font-mono font-bold uppercase tracking-wider text-gray-400 pb-1 border-b border-gray-200/50">
-                        <span>Produtos ({order.items.length})</span>
-                        <span>Valor</span>
-                      </div>
-                      <div className="space-y-1 max-h-36 overflow-y-auto">
-                        {order.items.map((item, idx) => (
-                          <div key={idx} className="flex justify-between items-center text-gray-800">
-                            <span className="truncate pr-2">
-                              <strong className="text-emerald-700 font-mono mr-1.5">{item.quantity}x</strong>
-                              {item.productName}
-                            </span>
-                            <span className="font-mono font-medium text-gray-700 shrink-0">
-                              {formatBRL(item.totalPrice)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* ENDEREÇO & AÇÕES OPERACIONAIS */}
-                    <div className="pt-1 border-t border-gray-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 text-xs">
-                      <div className="flex items-center gap-1.5 text-gray-600 min-w-0">
-                        <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span className="truncate text-[11px] font-medium">
-                          {order.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão do Estabelecimento' : order.deliveryAddress}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => openWhatsAppContact(order.orderNumber)}
-                          className="flex-1 sm:flex-initial py-1.5 px-3 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100/80 text-emerald-800 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>WhatsApp</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleRepeatOrder(order)}
-                          className="flex-1 sm:flex-initial py-1.5 px-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Repetir Pedido</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </section>
+              ))}
             </div>
           )}
         </div>
+      ) : navTab === 'cart' ? (
+        <CartScreen
+          storeName={storeData.tenant.name}
+          lines={cart.map((item, idx) => ({ key: item.key, product: item.product, quantity: item.quantity, notes: item.notes, unitPrice: pricedLines[idx]?.unitPrice ?? item.product.price, isCampaign: item.origin.source === 'campaign' }))}
+          color={buttonColor}
+          subtotal={subtotal}
+          deliveryFee={deliveryFee}
+          pickupDiscount={pickupDiscount}
+          couponDiscount={couponDiscount}
+          couponCode={appliedCoupon?.code}
+          total={grandTotal}
+          minOrderValue={storeData.settings.minOrderValue || 0}
+          modes={availableModes.modes}
+          mode={fulfillmentType}
+          onModeChange={setFulfillmentType}
+          addressLine={streetAddress ? `${streetAddress}${addressNumber ? `, ${addressNumber}` : ''}${complement ? ` - ${complement}` : ''}` : undefined}
+          onChangeAddress={() => setAddressFlow({ open: true, mode: 'select' })}
+          orderNotes={orderNotes}
+          onOrderNotes={setOrderNotes}
+          onInc={handleIncLine}
+          onDec={handleRemoveFromCart}
+          onRemoveLine={handleRemoveLineEntirely}
+          onLineNote={handleLineNote}
+          onContinue={() => setIsCheckoutOpen(true)}
+          onKeepShopping={() => setNavTab('home')}
+        />
+      ) : navTab === 'search' ? (
+        <SearchScreen
+          products={storeData.products}
+          categories={storeData.categories}
+          userId={userKey}
+          color={buttonColor}
+          qtyOf={qtyOfCatalog}
+          onAdd={(p) => handleAddToCart(p)}
+          onRemove={(p) => handleRemoveFromCart(cartLineKey(p.id, CATALOG_ORIGIN))}
+          onOpen={(p) => openProductFromList(p)}
+          isFavorite={(id) => favoriteIds.includes(id)}
+          onToggleFavorite={handleToggleFavorite}
+        />
+      ) : navTab === 'offers' ? (
+        <OffersScreen
+          products={storeData.products}
+          carousels={storeData.promotionCarousels || []}
+          tenantId={storeData.tenant.id}
+          storefrontCards={storefrontCards}
+          clockOffsetMs={storeData.serverTimeOffsetMs}
+          nowMs={storefrontClockTick + storeData.serverTimeOffsetMs}
+          color={buttonColor}
+          qtyOf={qtyOfOffer}
+          onAdd={(it) => handleAddToCart(it.product, it.origin)}
+          onRemove={(it) => handleRemoveFromCart(cartLineKey(it.product.id, it.origin))}
+          onOpen={(it) => openProductFromList(it.origin.source === 'campaign' ? { ...it.product, promotionalPrice: it.offerPrice } : it.product, it.origin)}
+          onCardClick={handleOfferClick}
+        />
+      ) : navTab === 'profile' ? (
+        <ProfileScreen
+          page={profilePage}
+          onNavigate={(pg) => { setProfilePage(pg); try { window.scrollTo({ top: 0 }); } catch { /* jsdom */ } }}
+          color={buttonColor}
+          user={supabaseUser ? { id: supabaseUser.id, email: supabaseUser.email || undefined } : null}
+          customerName={customerName}
+          customerPhone={customerPhone}
+          onLogin={() => setIsAuthModalOpen(true)}
+          onSignOut={async () => {
+            await signOut();
+            setProfilePage('menu');
+            showToast({ type: 'info', title: 'Sessão encerrada', message: 'Você saiu da sua conta.' });
+          }}
+          onOpenAddresses={() => setAddressFlow({ open: true, mode: 'manage' })}
+          addressSummary={selectedAddress ? `${addressTitle(selectedAddress)}${addressSubtitle(selectedAddress) ? ` · ${addressSubtitle(selectedAddress)}` : ''}` : undefined}
+          notifications={notifications}
+          unreadCount={unreadCount}
+          onNotificationsSeen={markAllNotificationsSeen}
+          onOpenOrder={(id) => { setFocusOrderId(id); setNavTab('orders'); }}
+          storeSlug={storeData.tenant.slug}
+          campaigns={storeData.campaigns || []}
+          nowMs={nowTick}
+          onUseCoupon={(code) => {
+            setCouponCodeInput(code);
+            setCouponMessage(null);
+            setNavTab('cart');
+            showToast({ type: 'info', title: 'Cupom pronto', message: `Toque em "Aplicar" no cupom ${code} ao finalizar o pedido.` });
+          }}
+          loadCoupons={customerAppRepository.listStoreCoupons}
+          loadCpf={loadMyCpf}
+          onSaveProfile={handleSaveProfile}
+          favoriteProducts={favoriteIds.map(id => storeData.products.find(p => p.id === id)).filter((p): p is Product => Boolean(p))}
+          qtyOf={qtyOfCatalog}
+          onAdd={(p) => handleAddToCart(p)}
+          onRemove={(p) => handleRemoveFromCart(cartLineKey(p.id, CATALOG_ORIGIN))}
+          onOpenProduct={(p) => openProductFromList(p)}
+          onToggleFavorite={handleToggleFavorite}
+          onClearSearchHistory={() => { clearSearchHistory(kv, userKey); showToast({ type: 'success', title: 'Histórico de busca apagado' }); }}
+          onRequestDeletion={handleRequestDeletion}
+          storeName={storeData.tenant.name}
+          onWhatsApp={(text) => openWhatsAppContact(undefined, text)}
+          helpOrder={helpOrder}
+          onClearHelpOrder={() => setHelpOrder(null)}
+          onAboutStore={() => setIsAccountOpen(true)}
+        />
       ) : (
         /* Visualização da Vitrine e Cardápio */
         <div className="max-w-lg mx-auto p-4 space-y-4">
@@ -1901,10 +2214,11 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       )}
 
       {/* Floating Bottom Cart Bar */}
-      {cart.length > 0 && !isCheckoutOpen && navTab === 'home' && (
+      {cart.length > 0 && !isCheckoutOpen && (navTab === 'home' || navTab === 'search' || navTab === 'offers') && (
         <div className="fixed bottom-16 left-0 right-0 z-40 p-4 max-w-lg mx-auto pointer-events-none">
           <div
-            onClick={() => setIsCheckoutOpen(true)}
+            onClick={() => setNavTab('cart')}
+            data-testid="floating-cart"
             className="pointer-events-auto p-3.5 rounded-2xl text-white shadow-xl flex items-center justify-between cursor-pointer hover:opacity-95 transition-all"
             style={{ backgroundColor: buttonColor, borderRadius }}
           >
@@ -2208,6 +2522,25 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                   <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Endereço de Entrega
                   </h4>
+
+                  {/* Endereço salvo (fluxo com mapa) — os campos abaixo continuam editáveis */}
+                  <button
+                    type="button"
+                    onClick={() => setAddressFlow({ open: true, mode: 'select' })}
+                    data-testid="checkout-address-picker"
+                    className="w-full p-3 rounded-xl border border-gray-200 bg-white flex items-center gap-3 text-left cursor-pointer hover:bg-gray-50"
+                  >
+                    <MapPin className="w-5 h-5 shrink-0" style={{ color: buttonColor }} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs font-bold text-gray-900 truncate">
+                        {selectedAddress ? `${selectedAddress.label === 'Outro' && selectedAddress.nickname ? selectedAddress.nickname : selectedAddress.label} · ${addressTitle(selectedAddress)}` : 'Escolher no mapa ou nos endereços salvos'}
+                      </span>
+                      <span className="block text-[11px] text-gray-500 truncate">
+                        {selectedAddress ? addressSubtitle(selectedAddress) || 'Endereço salvo' : 'Busque a rua ou use sua localização atual'}
+                      </span>
+                    </span>
+                    <span className="text-[11px] font-bold shrink-0" style={{ color: buttonColor }}>{selectedAddress ? 'Trocar' : 'Escolher'}</span>
+                  </button>
 
                   {/* Autocomplete do Google Places Integrado */}
                   <div className="space-y-1">
@@ -2991,18 +3324,56 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       )}
 
       {/* Navegação Inferior Mobile */}
-      <MobileNavigation
-        type="customer"
-        activeTab={navTab}
-        onTabChange={(tab) => {
-          if (tab === 'home') setNavTab('home');
-          if (tab === 'cart') setIsCheckoutOpen(true);
-          if (tab === 'orders') setNavTab('orders');
-          if (tab === 'account') setIsAccountOpen(true);
-        }}
-        cartCount={cartTotalCount}
-        primaryColor={buttonColor}
+      {!isCheckoutOpen && !isPromoCheckoutOpen && !addressFlow.open && (
+        <MobileNavigation
+          type="customer"
+          activeTab={navTab}
+          onTabChange={(tab) => {
+            const t = tab as CustomerTab;
+            if (t === 'profile') setProfilePage('menu');
+            if (t === 'home' && navTab === 'home') { try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* jsdom */ } }
+            setNavTab(t);
+          }}
+          cartCount={cartTotalCount}
+          profileBadge={unreadCount}
+          primaryColor={buttonColor}
+        />
+      )}
+
+      <AddressFlow
+        open={addressFlow.open}
+        mode={addressFlow.mode}
+        userId={userKey}
+        color={buttonColor}
+        onClose={() => setAddressFlow(a => ({ ...a, open: false }))}
+        onSelected={(a) => { applySavedAddress(a); if (addressFlow.mode === 'select') setFulfillmentType('DELIVERY'); }}
       />
+
+      <BottomSheet open={pushPromptOpen} onClose={() => { markPushPromptShown(kv); setPushPromptOpen(false); }}>
+        <div className="text-center space-y-3 px-2 pb-1" data-testid="push-prompt">
+          <div className="w-14 h-14 rounded-full mx-auto flex items-center justify-center" style={{ backgroundColor: `${buttonColor}1a`, color: buttonColor }}>
+            <BellRing className="w-7 h-7" />
+          </div>
+          <h3 className="text-lg font-extrabold text-gray-900">Acompanhe seu pedido em tempo real</h3>
+          <p className="text-sm text-gray-600">Ative as notificações para saber quando o pedido for confirmado, sair para entrega e chegar.</p>
+          <button type="button" data-testid="push-enable" className="w-full h-12 rounded-xl text-white font-extrabold text-sm cursor-pointer" style={{ backgroundColor: buttonColor }}
+            onClick={async () => {
+              markPushPromptShown(kv);
+              setPushPromptOpen(false);
+              try {
+                const r = await Notification.requestPermission();
+                showToast(r === 'granted'
+                  ? { type: 'success', title: 'Notificações ativadas', message: 'Vamos avisar cada etapa do seu pedido.' }
+                  : { type: 'info', title: 'Tudo bem', message: 'Você pode ativar depois em Perfil > Configurações.' });
+              } catch { /* sem suporte */ }
+            }}>
+            Ativar notificações
+          </button>
+          <button type="button" data-testid="push-later" className="w-full h-11 rounded-xl text-sm font-bold text-gray-600 cursor-pointer" onClick={() => { markPushPromptShown(kv); setPushPromptOpen(false); }}>
+            Não ativar agora
+          </button>
+        </div>
+      </BottomSheet>
     </div>
   );
 };
