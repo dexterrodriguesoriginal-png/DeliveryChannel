@@ -67,5 +67,22 @@ export function buildOfferList(args: {
       available: isAvailable(p),
     });
   }
-  return out.sort((a, b) => Number(b.available) - Number(a.available) || b.discountPercent - a.discountPercent);
+  return dedupeOffersByProduct(out).sort((a, b) => Number(b.available) - Number(a.available) || b.discountPercent - a.discountPercent);
+}
+
+/**
+ * Um produto aparece uma vez só na aba Ofertas. Fica o MENOR preço; no empate (ou diferença de centavos
+ * de arredondamento), a entrada da campanha vence (tem selo/contagem regressiva).
+ */
+export function dedupeOffersByProduct(items: OfferListItem[]): OfferListItem[] {
+  const best = new Map<string, OfferListItem>();
+  for (const it of items) {
+    const cur = best.get(it.product.id);
+    if (!cur) { best.set(it.product.id, it); continue; }
+    const diff = it.offerPrice - cur.offerPrice;
+    const itCampaign = it.origin.source === 'campaign';
+    const curCampaign = cur.origin.source === 'campaign';
+    if (diff < -0.004 || (Math.abs(diff) <= 0.004 && itCampaign && !curCampaign)) best.set(it.product.id, it);
+  }
+  return [...best.values()];
 }
