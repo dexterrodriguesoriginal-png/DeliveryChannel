@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, ChevronDown, Heart, MessageCircle, ThumbsDown, ThumbsUp, Ticket, Copy, AlertTriangle, Package } from 'lucide-react';
 import type { ProfileScreenProps } from './ProfileScreen';
 import { EmptyBlock, PrimaryButton, ScreenHeader, SkeletonRows, BottomSheet } from './ui';
@@ -136,7 +136,14 @@ export const AccountDataPage: React.FC<P> = ({ onBack, customerName, customerPho
   const [cpf, setCpf] = useState('');
   const [saving, setSaving] = useState(false);
   const [touched, setTouched] = useState(false);
-  useEffect(() => { loadCpf().then(v => v && setCpf(formatCPF(v))).catch(() => {}); }, [loadCpf]);
+  // Carrega o CPF salvo UMA vez e nunca sobrescreve o que o cliente já começou a digitar.
+  const cpfEdited = useRef(false);
+  const loadCpfRef = useRef(loadCpf);
+  useEffect(() => {
+    let alive = true;
+    loadCpfRef.current().then(v => { if (alive && v && !cpfEdited.current) setCpf(formatCPF(v)); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   const cpfErr = cpfDigits(cpf).length > 0 && !isValidCPF(cpf) ? 'CPF inválido. Confira os números.' : '';
   const phoneErr = phone.trim() && normalizeBRPhone(phone) === null ? 'Informe DDD + número.' : '';
   const nameErr = touched && name.trim().length < 2 ? 'Informe seu nome.' : '';
@@ -159,7 +166,7 @@ export const AccountDataPage: React.FC<P> = ({ onBack, customerName, customerPho
           <input value={user?.email || ''} disabled className={cn(field, 'border-gray-200 bg-gray-50 text-gray-500')} />
         </label>
         <label className="block"><span className="text-xs font-semibold text-gray-700">CPF (opcional, para nota fiscal)</span>
-          <input value={cpf} inputMode="numeric" onChange={e => setCpf(formatCPF(e.target.value))} placeholder="000.000.000-00" className={cn(field, cpfErr ? 'border-rose-400' : 'border-gray-200')} data-testid="acc-cpf" />
+          <input value={cpf} inputMode="numeric" onChange={e => { cpfEdited.current = true; setCpf(formatCPF(e.target.value)); }} placeholder="000.000.000-00" className={cn(field, cpfErr ? 'border-rose-400' : 'border-gray-200')} data-testid="acc-cpf" />
           {cpfErr && <span className="text-xs text-rose-600" data-testid="acc-cpf-error">{cpfErr}</span>}
         </label>
         <label className="block"><span className="text-xs font-semibold text-gray-700">Celular / WhatsApp</span>

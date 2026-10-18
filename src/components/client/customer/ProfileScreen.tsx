@@ -60,6 +60,9 @@ export interface ProfileScreenProps {
 export const ProfileScreen: React.FC<ProfileScreenProps> = (props) => {
   const { page, onNavigate, color, user } = props;
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // Estado dos acordeões fica aqui (o menu desmonta ao abrir uma subpágina): volta como o cliente deixou.
+  const [openSections, setOpenSections] = useState<{ account: boolean; settings: boolean }>({ account: false, settings: false });
+  const setSection = (k: 'account' | 'settings') => (v: boolean) => setOpenSections(s => ({ ...s, [k]: v }));
   const back = () => onNavigate('menu');
 
   if (page === 'notifications') return <NotificationsPage {...props} onBack={back} />;
@@ -100,12 +103,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = (props) => {
         <MenuRow testId="menu-notifications" icon={<Bell className="w-5 h-5" />} title="Notificações" subtitle="Atualizações dos seus pedidos" onClick={() => onNavigate('notifications')}
           right={props.unreadCount > 0 ? <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-600 text-white text-[11px] font-black flex items-center justify-center">{props.unreadCount}</span> : undefined} />
         <MenuRow testId="menu-coupons" icon={<Ticket className="w-5 h-5" />} title="Meus cupons" subtitle="Descontos desta loja" onClick={() => onNavigate('coupons')} />
-        <Accordion testId="menu-account" icon={<User className="w-5 h-5" />} title="Conta" subtitle="Endereços, dados e favoritos">
+        <Accordion testId="menu-account" open={openSections.account} onOpenChange={setSection('account')} icon={<User className="w-5 h-5" />} title="Conta" subtitle="Endereços, dados e favoritos">
           <MenuRow testId="menu-addresses" icon={<MapPin className="w-4 h-4" />} title="Endereços" subtitle={props.addressSummary || 'Endereços de entrega salvos'} onClick={props.onOpenAddresses} />
           <MenuRow testId="menu-account-data" icon={<IdCard className="w-4 h-4" />} title="Dados da conta" subtitle="Nome, CPF e telefone" onClick={() => (user ? onNavigate('account-data') : props.onLogin())} />
           <MenuRow testId="menu-favorites" icon={<Heart className="w-4 h-4" />} title="Favoritos" subtitle={`${props.favoriteProducts.length} produto(s)`} onClick={() => onNavigate('favorites')} />
         </Accordion>
-        <Accordion testId="menu-settings" icon={<Settings className="w-5 h-5" />} title="Configurações" subtitle="Notificações, privacidade e conta">
+        <Accordion testId="menu-settings" open={openSections.settings} onOpenChange={setSection('settings')} icon={<Settings className="w-5 h-5" />} title="Configurações" subtitle="Notificações, privacidade e conta">
           <MenuRow testId="menu-notif-settings" icon={<BellRing className="w-4 h-4" />} title="Gerenciar notificações" onClick={() => onNavigate('notif-settings')} />
           <MenuRow testId="menu-clear-search" icon={<Eraser className="w-4 h-4" />} title="Limpar histórico de busca" onClick={props.onClearSearchHistory} right={<span />} />
           <MenuRow testId="menu-terms" icon={<FileText className="w-4 h-4" />} title="Termos de uso" onClick={() => onNavigate('terms')} />

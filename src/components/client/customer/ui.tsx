@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import React, { useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 
@@ -35,18 +35,45 @@ export const MenuRow: React.FC<{
   </button>
 );
 
-/** Acordeão animado (altura via grid-rows 0fr → 1fr). */
+/** Duração da animação do acordeão; toques nesse intervalo são ignorados (evita abrir e fechar no mesmo gesto). */
+export const ACCORDION_ANIM_MS = 320;
+
+/**
+ * Decide se um toque deve alternar o acordeão. Ignora o 2º toque dentro da animação (toque duplo, clique
+ * fantasma do touch ou conteúdo se deslocando sob o dedo).
+ */
+export function shouldAcceptToggle(lastToggleAt: number, now: number, windowMs = ACCORDION_ANIM_MS): boolean {
+  return now - lastToggleAt >= windowMs;
+}
+
+/** Acordeão animado (altura via grid-rows 0fr → 1fr), um único handler de toque. */
 export const Accordion: React.FC<{
   icon?: React.ReactNode; title: string; subtitle?: string; defaultOpen?: boolean; children: React.ReactNode; testId?: string;
-}> = ({ icon, title, subtitle, defaultOpen = false, children, testId }) => {
-  const [open, setOpen] = useState(defaultOpen);
+  /** Controlado pelo pai (mantém aberto ao voltar de uma subpágina). */
+  open?: boolean; onOpenChange?: (open: boolean) => void;
+}> = ({ icon, title, subtitle, defaultOpen = false, children, testId, open: openProp, onOpenChange }) => {
+  const [openState, setOpenState] = useState(defaultOpen);
+  const open = openProp ?? openState;
+  const lastToggle = useRef(0);
+  const panelId = useId();
+  const onToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const now = Date.now();
+    if (!shouldAcceptToggle(lastToggle.current, now)) return;
+    lastToggle.current = now;
+    const next = !open;
+    if (openProp === undefined) setOpenState(next);
+    onOpenChange?.(next);
+  };
   return (
-    <div data-testid={testId}>
+    <div data-testid={testId} data-open={open ? 'true' : 'false'}>
       <button
         type="button"
-        onClick={() => setOpen(o => !o)}
+        onClick={onToggle}
         aria-expanded={open}
-        className="w-full flex items-center gap-3.5 px-4 py-3.5 text-left hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
+        aria-controls={panelId}
+        className="w-full flex items-center gap-3.5 px-4 py-3.5 text-left hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer select-none touch-manipulation"
       >
         {icon && <span className="w-6 h-6 flex items-center justify-center shrink-0 text-gray-700">{icon}</span>}
         <span className="flex-1 min-w-0">
@@ -55,7 +82,7 @@ export const Accordion: React.FC<{
         </span>
         <ChevronDown className={cn('w-4 h-4 text-gray-400 shrink-0 transition-transform duration-300', open && 'rotate-180')} />
       </button>
-      <div inert={!open} className={cn('grid transition-[grid-template-rows,opacity] duration-300 ease-out', open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')}>
+      <div id={panelId} inert={!open} className={cn('grid transition-[grid-template-rows,opacity] duration-300 ease-out', open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')}>
         <div className="overflow-hidden">
           <div className="pl-10 border-l-0">{children}</div>
         </div>
