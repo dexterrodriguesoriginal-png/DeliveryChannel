@@ -299,6 +299,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const [selectedAddress, setSelectedAddress] = useState<SavedAddress | null>(null);
   const [notificationsSeenAt, setNotificationsSeenAt] = useState(0);
   const [pushPromptOpen, setPushPromptOpen] = useState(false);
+  // Sacola → "Continuar" sem endereço: depois de escolher, segue direto para o checkout.
+  const continueAfterAddressRef = useRef(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 30000);
@@ -1768,7 +1770,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           modes={availableModes.modes}
           mode={fulfillmentType}
           onModeChange={setFulfillmentType}
-          addressLine={streetAddress ? `${streetAddress}${addressNumber ? `, ${addressNumber}` : ''}${complement ? ` - ${complement}` : ''}` : undefined}
+          addressLine={selectedAddress ? `${selectedAddress.street}${selectedAddress.number ? `, ${selectedAddress.number}` : ''}${selectedAddress.complement ? ` - ${selectedAddress.complement}` : ''}` : undefined}
           onChangeAddress={() => setAddressFlow({ open: true, mode: 'select' })}
           orderNotes={orderNotes}
           onOrderNotes={setOrderNotes}
@@ -1776,7 +1778,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           onDec={handleRemoveFromCart}
           onRemoveLine={handleRemoveLineEntirely}
           onLineNote={handleLineNote}
-          onContinue={() => setIsCheckoutOpen(true)}
+          onContinue={() => {
+            // Entrega sem endereço escolhido: pede para escolher (não usa o último endereço digitado no aparelho).
+            if (fulfillmentType === 'DELIVERY' && !selectedAddress) {
+              continueAfterAddressRef.current = true;
+              setAddressFlow({ open: true, mode: 'select' });
+              return;
+            }
+            setIsCheckoutOpen(true);
+          }}
           onKeepShopping={() => setNavTab('home')}
         />
       ) : navTab === 'search' ? (
@@ -3345,8 +3355,16 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         mode={addressFlow.mode}
         userId={userKey}
         color={buttonColor}
-        onClose={() => setAddressFlow(a => ({ ...a, open: false }))}
-        onSelected={(a) => { applySavedAddress(a); if (addressFlow.mode === 'select') setFulfillmentType('DELIVERY'); }}
+        onClose={() => { continueAfterAddressRef.current = false; setAddressFlow(a => ({ ...a, open: false })); }}
+        onSelected={(a) => {
+          applySavedAddress(a);
+          if (addressFlow.mode === 'select') setFulfillmentType('DELIVERY');
+          if (continueAfterAddressRef.current) {
+            continueAfterAddressRef.current = false;
+            setAddressFlow(f => ({ ...f, open: false }));
+            setIsCheckoutOpen(true);
+          }
+        }}
       />
 
       <BottomSheet open={pushPromptOpen} onClose={() => { markPushPromptShown(kv); setPushPromptOpen(false); }}>
