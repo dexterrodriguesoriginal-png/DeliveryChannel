@@ -6,6 +6,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isValidUuid } from '../lib/uuid';
 import type { Campaign } from '../types';
+import { parseDriverLocationRow, type DriverLivePosition } from '../lib/customer/liveTracking';
 
 export interface StoreCoupon {
   code: string;
@@ -126,5 +127,20 @@ export const customerAppRepository = {
         : { ok: false, unavailable: false, message: error.message || 'Falha ao registrar a solicitação.' };
     }
     return { ok: true, requestId: typeof data === 'string' ? data : undefined };
+  },
+
+  /**
+   * Posição ao vivo do motoboy do MEU pedido (RPC get_order_driver_location, migration 1900).
+   * O servidor só responde se o pedido é meu, está OUT_FOR_DELIVERY e tem entregador; senão vem vazio.
+   * 'unavailable' = RPC ainda não existe (produção antes da migration) → a tela para de consultar.
+   */
+  async getOrderDriverLocation(orderId: string): Promise<DriverLivePosition | null | 'unavailable'> {
+    if (!isSupabaseConfigured || !isValidUuid(orderId)) return null;
+    const { data, error } = await supabase.rpc('get_order_driver_location', { p_order_id: orderId });
+    if (error) {
+      if (isMissingBackendFeature(error)) return 'unavailable';
+      throw new Error(error.message || 'Falha ao consultar a localização do entregador.');
+    }
+    return parseDriverLocationRow(data);
   },
 };

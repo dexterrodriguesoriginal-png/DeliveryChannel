@@ -23,6 +23,8 @@ import { customerRepository } from '../../repositories/customerRepository';
 import { orderService } from '../../services/orderService';
 import { OrderPixPanel } from '../../components/client/OrderPixPanel';
 import { OrderTrackingTimeline } from '../../components/client/OrderTrackingTimeline';
+import { LiveDriverTracking } from '../../components/client/customer/LiveDriverTracking';
+import { isLiveTrackable } from '../../lib/customer/liveTracking';
 import { buildCustomerTimeline } from '../../lib/orders/customerTracking';
 import { paymentMethodLabel } from '../../lib/orders/labels';
 import { readTrackingDeepLink, trackingUrlFor } from '../../lib/orders/trackingDeepLink';
@@ -1473,6 +1475,17 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             {paymentMethodLabel(order.paymentMethod)}
           </span>
         </div>
+
+        {/* MAPA AO VIVO DO MOTOBOY (só em rota; para sozinho em DELIVERED/CANCELLED) */}
+        {isLiveTrackable(order) && (
+          <LiveDriverTracking
+            orderId={order.id}
+            status={order.status}
+            destination={order.addressDetails}
+            destinationLabel={order.deliveryAddress}
+            accentColor={buttonColor}
+          />
+        )}
 
         {/* LINHA DO TEMPO COMPLETA (atualiza ao vivo pelo polling da aba Pedidos) */}
         {!isCancelled ? (
