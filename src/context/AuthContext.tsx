@@ -11,6 +11,7 @@ import { tenantSettingsColumns } from '../lib/dbColumns';
 import { isLocalDemoAllowed } from '../lib/backend';
 import { classifyMemberships, DriverApprovalLookup } from '../lib/membershipResolution';
 import { driverInviteRepository } from '../repositories/driverRepository';
+import { BusinessType } from '../lib/modules';
 
 export interface TenantMembership {
   tenantId: string;
@@ -110,6 +111,7 @@ interface AuthContextType {
     address: string;
     city: string;
     phoneWhatsApp: string;
+    businessType: BusinessType;
   }) => Promise<{ success: boolean; requiresEmailConfirmation?: boolean; data?: any; error?: string }>;
   refreshSession: () => Promise<void>;
 
@@ -164,6 +166,7 @@ function mapDbTenant(row: any, settingsRow?: any, themeRow?: any): Tenant {
 
   return {
     id: row.id,
+    businessType: row.business_type || null,
     slug: row.slug,
     name: row.name,
     legalName: row.legal_name || row.name,
@@ -1388,6 +1391,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     address: string;
     city: string;
     phoneWhatsApp: string;
+    businessType: BusinessType;
   }): Promise<{ success: boolean; requiresEmailConfirmation?: boolean; data?: any; error?: string }> => {
     try {
       if (!supabaseUser) {
@@ -1423,6 +1427,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newTenantId = rpcData?.tenantId || rpcData?.tenant_id;
       if (!newTenantId) {
         throw new Error('Identificador do estabelecimento não retornado.');
+      }
+
+      const { error: presetError } = await supabase.rpc('apply_business_preset', {
+        p_tenant: newTenantId,
+        p_type: data.businessType,
+      });
+      if (presetError) {
+        const migrationMissing = presetError.code === 'PGRST202' || presetError.code === '42883';
+        const log = migrationMissing ? console.warn : console.error;
+        log('[AuthContext] Não foi possível aplicar a predefinição inicial de módulos:', presetError.message);
       }
 
       // REGRA ARQUITETURAL COMANDO 86: GOOGLE OAUTH

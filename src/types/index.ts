@@ -21,6 +21,9 @@ export interface User {
 
 export type TenantStatus = 'ACTIVE' | 'TRIAL' | 'SUSPENDED' | 'BLOCKED' | 'PENDING' | 'INACTIVE';
 export type PlanTier = 'FREE_TRIAL' | 'STANDARD' | 'PRO' | 'ENTERPRISE';
+export type BusinessType =
+  | 'RESTAURANTE' | 'BAR' | 'LANCHONETE_CAFE' | 'PIZZARIA' | 'MERCADO' | 'ADEGA'
+  | 'ROUPAS' | 'PERFUMARIA' | 'SALAO_BARBEARIA' | 'CONSTRUCAO' | 'AMBULANTE' | 'OUTRO';
 
 export interface TenantEmailConfirmation {
   id: string;
@@ -75,6 +78,7 @@ export interface TenantSettings {
 
 export interface Tenant {
   id: string;
+  businessType?: BusinessType | null;
   slug: string;
   name: string;
   legalName: string;

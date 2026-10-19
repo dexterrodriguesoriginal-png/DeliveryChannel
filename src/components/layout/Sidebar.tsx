@@ -23,11 +23,13 @@ import {
   Headphones,
   ExternalLink,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { getPublicStorePath, isValidStoreSlug } from '../../utils/publicStoreUrl';
 import { canAccessEstTab } from '../../lib/navPermissions';
+import { useModules } from '../../hooks/useModules';
 
 export interface SidebarProps {
   currentTab: string;
@@ -52,6 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile = () => {},
 }) => {
   const { activeRole, activeTenant } = useAuth();
+  const { available: modulesAvailable, isModuleEnabled } = useModules();
 
   // Estado de recolhimento no Desktop com persistência em localStorage
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -120,6 +123,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'est-team', label: 'Equipe & Permissões', icon: <UserPlus className="w-4 h-4 shrink-0" /> },
         { id: 'est-kitchen', label: 'Tela da Cozinha', icon: <ChefHat className="w-4 h-4 shrink-0" /> },
         { id: 'est-settings', label: 'Configurações da Loja', icon: <Settings className="w-4 h-4 shrink-0" /> },
+        ...(modulesAvailable && (activeRole === 'OWNER' || activeRole === 'MANAGER')
+          ? [{ id: 'est-modules', label: 'Módulos', icon: <SlidersHorizontal className="w-4 h-4 shrink-0" /> }]
+          : []),
         ...(isSecurityLabEnabled ? [{ id: 'security-lab', label: 'Laboratório de Isolamento', icon: <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" /> }] : []),
       ],
     },
@@ -154,7 +160,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const groups = (activeRole === 'CEO' || activeRole === 'SUPER_ADMIN')
     ? ceoGroups
     : establishmentGroups
-        .map(g => ({ ...g, items: g.items.filter(it => canAccessEstTab(activeRole, it.id)) }))
+        .map(g => ({
+          ...g,
+          items: g.items.filter(it =>
+            canAccessEstTab(activeRole, it.id) &&
+            !(it.id === 'est-drivers' && modulesAvailable && !isModuleEnabled('delivery'))
+          ),
+        }))
         .filter(g => g.items.length > 0);
 
   return (

@@ -19,8 +19,47 @@ import {
   RefreshCw,
   LogOut,
   Sparkles,
-  Check
+  Check,
+  Utensils,
+  Beer,
+  Coffee,
+  Pizza,
+  ShoppingBasket,
+  Wine,
+  Shirt,
+  Scissors,
+  Hammer,
+  Bike as BikeIcon,
 } from 'lucide-react';
+import { BUSINESS_TYPES, BUSINESS_PRESETS, BusinessType, MODULES } from '../../lib/modules';
+
+const BUSINESS_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  Utensils, Beer, Coffee, Pizza, ShoppingBasket, Wine, Shirt, Sparkles, Scissors, Hammer, Bike: BikeIcon, Store,
+};
+
+const BUSINESS_CATEGORY: Record<BusinessType, string> = {
+  RESTAURANTE: 'RESTAURANTE',
+  BAR: 'BAR',
+  LANCHONETE_CAFE: 'RESTAURANTE',
+  PIZZARIA: 'PIZZARIA',
+  MERCADO: 'MERCADO',
+  ADEGA: 'ADEGA',
+  ROUPAS: 'ADEGA',
+  PERFUMARIA: 'ADEGA',
+  SALAO_BARBEARIA: 'RESTAURANTE',
+  CONSTRUCAO: 'ADEGA',
+  AMBULANTE: 'ADEGA',
+  OUTRO: 'ADEGA',
+};
+
+function presetSummary(type: BusinessType): string {
+  const labels = MODULES
+    .filter(module => Object.hasOwn(BUSINESS_PRESETS[type], module.key))
+    .map(module => module.label);
+  if (labels.length < 2) return labels[0] || 'nenhum módulo';
+  if (labels.length === 2) return `${labels[0]} e ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')} e ${labels[labels.length - 1]}`;
+}
 
 interface OnboardingCreateTenantProps {
   onOpenAccountModal?: () => void;
@@ -42,6 +81,7 @@ export const OnboardingCreateTenant: React.FC<OnboardingCreateTenantProps> = ({
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [email, setEmail] = useState(currentUser?.email || '');
   const [category, setCategory] = useState('ADEGA');
+  const [businessType, setBusinessType] = useState<BusinessType>('ADEGA');
   const [addressSearch, setAddressSearch] = useState('');
   const [street, setStreet] = useState('');
   const [number, setNumber] = useState('');
@@ -217,6 +257,7 @@ export const OnboardingCreateTenant: React.FC<OnboardingCreateTenantProps> = ({
         address: mainAddress,
         city: finalCity,
         phoneWhatsApp: phoneWhatsApp.trim(),
+        businessType,
       });
 
       if (!res.success) {
@@ -383,24 +424,6 @@ export const OnboardingCreateTenant: React.FC<OnboardingCreateTenantProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-gray-700 select-none block mb-1.5">
-                    Segmento Principal *
-                  </label>
-                  <select
-                    value={category}
-                    onChange={e => setCategory(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                  >
-                    <option value="ADEGA">Adega de Bebidas</option>
-                    <option value="DISTRIBUIDORA">Distribuidora</option>
-                    <option value="CONVENIENCIA">Loja de Conveniência</option>
-                    <option value="BAR">Bar & Petiscaria</option>
-                    <option value="MERCADO">Mercado / Mercearia</option>
-                    <option value="RESTAURANTE">Restaurante / Lanchonete</option>
-                  </select>
-                </div>
-
-                <div>
                   <Input
                     label="Telefone de Contato *"
                     placeholder="(11) 3456-7890"
@@ -436,6 +459,45 @@ export const OnboardingCreateTenant: React.FC<OnboardingCreateTenantProps> = ({
                 </div>
               </div>
             </div>
+
+            <section className="space-y-3 border-t border-gray-100 pt-5" aria-labelledby="business-type-title">
+              <div>
+                <h2 id="business-type-title" className="text-sm font-bold text-gray-900">
+                  Que tipo de negócio você tem?
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  Vamos sugerir os módulos mais usados no seu segmento.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {BUSINESS_TYPES.map(({ key, label, icon }) => {
+                  const Icon = BUSINESS_TYPE_ICONS[icon];
+                  const selected = businessType === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        setBusinessType(key);
+                        setCategory(BUSINESS_CATEGORY[key]);
+                      }}
+                      className={`flex items-center gap-2 rounded-xl border p-3 text-left text-xs font-semibold transition-colors ${
+                        selected
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-100'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50/50'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-900">
+                Ligamos {presetSummary(businessType)}. Você pode mudar quando quiser.
+              </p>
+            </section>
 
             <div className="space-y-4 pt-2 border-t border-gray-100">
               <div className="flex items-center justify-between">

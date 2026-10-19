@@ -42,6 +42,8 @@ import { FinancePage } from './pages/establishment/FinancePage';
 import { ReportsPage } from './pages/establishment/ReportsPage';
 import { TeamPage } from './pages/establishment/TeamPage';
 import { SettingsPage } from './pages/establishment/SettingsPage';
+import { ModulesPage } from './pages/establishment/ModulesPage';
+import { useModules } from './hooks/useModules';
 
 // Mobile / Apps
 import { ClientApp } from './pages/client/ClientApp';
@@ -87,6 +89,7 @@ function AppContent() {
     driverApprovalStatus,
     pendingTenantName,
   } = useAuth();
+  const { available: modulesAvailable, isModuleEnabled } = useModules();
 
   const [activeTab, setActiveTab] = useState<string>('est-dashboard');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -445,7 +448,16 @@ function AppContent() {
   const renderMainView = () => {
     // Guard de UI por papel (RLS continua sendo a autorização real)
     const isCeoRole = activeRole === 'CEO' || activeRole === 'SUPER_ADMIN';
-    if (!isCeoRole && activeTab.startsWith('est-') && !canAccessEstTab(activeRole, activeTab)) {
+    if (!isCeoRole && activeTab === 'est-modules' && !modulesAvailable) {
+      return <EstablishmentDashboard onNavigate={setActiveTab} />;
+    }
+    if (!isCeoRole && activeTab === 'est-modules' && activeRole !== 'OWNER' && activeRole !== 'MANAGER') {
+      return <EstablishmentDashboard onNavigate={setActiveTab} />;
+    }
+    if (!isCeoRole && activeTab === 'est-drivers' && modulesAvailable && !isModuleEnabled('delivery')) {
+      return <EstablishmentDashboard onNavigate={setActiveTab} />;
+    }
+    if (!isCeoRole && activeTab.startsWith('est-') && activeTab !== 'est-modules' && !canAccessEstTab(activeRole, activeTab)) {
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
     switch (activeTab) {
@@ -513,6 +525,8 @@ function AppContent() {
         return <TeamPage />;
       case 'est-settings':
         return <SettingsPage />;
+      case 'est-modules':
+        return <ModulesPage />;
       case 'est-kitchen':
         return <KitchenSettingsPage />;
 

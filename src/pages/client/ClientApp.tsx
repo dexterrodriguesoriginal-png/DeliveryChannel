@@ -41,6 +41,8 @@ import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
 import { cartStorageKey } from '../../lib/pwa/storeManifest';
+import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
+import { isModuleEnabled } from '../../lib/modules';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -335,7 +337,18 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       }
       const data = result.status === 'ok' ? result.data : null;
       if (data && data.tenant) {
-        setStoreData(data);
+        const enabledModules = await tenantModuleRepository.getPublicEnabled(data.tenant.id);
+        const storeWithModules = enabledModules
+          ? {
+              ...data,
+              settings: {
+                ...data.settings,
+                deliveryEnabled: isModuleEnabled(enabledModules, 'delivery'),
+                pickupEnabled: isModuleEnabled(enabledModules, 'pickup'),
+              },
+            }
+          : data;
+        setStoreData(storeWithModules);
         // Carrega carrinho específico deste estabelecimento
         try {
           const savedCart = localStorage.getItem(cartStorageKey(data.tenant.id));

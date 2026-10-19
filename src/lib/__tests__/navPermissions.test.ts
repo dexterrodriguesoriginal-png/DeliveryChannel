@@ -12,6 +12,7 @@ describe('menu por papel', () => {
     const v = visible('MANAGER');
     for (const t of ['est-finance', 'est-reports', 'est-team', 'est-theme', 'est-settings']) expect(v).not.toContain(t);
     expect(v).toContain('est-drivers');
+    expect(v).toContain('est-modules');
   });
   it('aba desconhecida não é bloqueada', () => expect(canAccessEstTab('CASHIER', 'security-lab')).toBe(true));
 });

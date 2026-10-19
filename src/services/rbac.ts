@@ -17,7 +17,9 @@ export type Permission =
   | 'manage_sponsors'
   | 'view_audit_logs'
   | 'deliver_orders'
-  | 'manage_settings';
+  | 'manage_settings'
+  | 'view_modules'
+  | 'manage_modules';
 
 export const ROLE_HIERARCHY: Record<RoleId, number> = {
   CEO: 100,
@@ -80,6 +82,8 @@ export const ROLE_PERMISSIONS: Record<RoleId, Permission[]> = {
     'manage_team',
     'manage_drivers',
     'manage_settings',
+    'view_modules',
+    'manage_modules',
   ],
   MANAGER: [
     'view_orders',
@@ -90,6 +94,7 @@ export const ROLE_PERMISSIONS: Record<RoleId, Permission[]> = {
     'manage_offers',
     'manage_customers',
     'manage_drivers',
+    'view_modules',
   ],
   OPERATOR: [
     'view_orders',

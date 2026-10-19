@@ -69,6 +69,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { assignableDrivers, canAssignDrivers } from '../../lib/driverAdmin';
+import { useModules } from '../../hooks/useModules';
 import { paymentMethodLabel, ownerStatusToastMessage } from '../../lib/orders/labels';
 import { applyOrderUpdate } from '../../lib/orders/applyOrderUpdate';
 import { OrderTotalsLines } from '../../components/establishment/OrderTotalsLines';
@@ -80,6 +81,7 @@ import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE
 
 export const OrdersPage: React.FC = () => {
   const { activeTenant, securityContext, availableTenants, switchTenant, supabaseUser, activeRole } = useAuth();
+  const { isModuleEnabled } = useModules();
   const { showToast } = useToast();
 
   // Estados principais da fila de pedidos
@@ -934,6 +936,7 @@ export const OrdersPage: React.FC = () => {
             <div className="space-y-1.5 p-0.5">
               <div className="text-[7.5px] font-bold uppercase tracking-wider text-slate-400">Atalhos Operacionais</div>
               <div className="grid grid-cols-1 gap-1">
+                {isModuleEnabled('printing') && (
                 <button
                   type="button"
                   onClick={() => setOrderToPrint(selectedOrder)}
@@ -945,6 +948,7 @@ export const OrdersPage: React.FC = () => {
                   </span>
                   <ChevronRight className="w-2.5 h-2.5 text-slate-400 shrink-0" />
                 </button>
+                )}
 
                 {isN1N6Backend() && canChangePayment && selectedOrder.status !== 'CANCELLED' && selectedOrder.paymentStatus !== 'PAID' && selectedOrder.paymentStatus !== 'REFUNDED' && (
                   <button
@@ -1034,6 +1038,7 @@ export const OrdersPage: React.FC = () => {
         {/* Rodapé Fixo: Botões de Ação */}
         <div className="p-1.5 bg-white border-t border-slate-100 space-y-1 shrink-0 shadow-xs">
           <div className="grid grid-cols-2 gap-1">
+            {isModuleEnabled('printing') && (
             <button
               type="button"
               onClick={() => setOrderToPrint(selectedOrder)}
@@ -1042,6 +1047,7 @@ export const OrdersPage: React.FC = () => {
               <Printer className="w-2.5 h-2.5 text-slate-500" />
               <span>Imprimir</span>
             </button>
+            )}
 
             {selectedOrder.status === 'PENDING' ? (
               <button
@@ -1148,17 +1154,19 @@ export const OrdersPage: React.FC = () => {
                 <span>Atualizar</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => setIsPDVOpen(true)}
-                disabled={!isN1N6Backend()}
-                title={isN1N6Backend() ? undefined : N1N6_ONLY_MESSAGE}
-                data-testid="open-pdv"
-                className="disabled:opacity-50 disabled:cursor-not-allowed h-9 py-2 px-4 rounded-xl bg-[#15803d] hover:bg-[#166534] text-white text-xs sm:text-[13px] font-bold flex items-center gap-2 transition-colors shadow-2xs cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Nova Venda Balcão (PDV)</span>
-              </button>
+              {isModuleEnabled('pos') && (
+                <button
+                  type="button"
+                  onClick={() => setIsPDVOpen(true)}
+                  disabled={!isN1N6Backend()}
+                  title={isN1N6Backend() ? undefined : N1N6_ONLY_MESSAGE}
+                  data-testid="open-pdv"
+                  className="disabled:opacity-50 disabled:cursor-not-allowed h-9 py-2 px-4 rounded-xl bg-[#15803d] hover:bg-[#166534] text-white text-xs sm:text-[13px] font-bold flex items-center gap-2 transition-colors shadow-2xs cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Nova Venda Balcão (PDV)</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -2137,13 +2145,15 @@ export const OrdersPage: React.FC = () => {
       />
 
       {/* Frente de Caixa PDV */}
-      <PDVModal
-        isOpen={isPDVOpen}
-        tenantId={activeTenant?.id || ''}
-        products={storeProducts}
-        onClose={() => setIsPDVOpen(false)}
-        onSubmit={handlePDVSubmit}
-      />
+      {isModuleEnabled('pos') && (
+        <PDVModal
+          isOpen={isPDVOpen}
+          tenantId={activeTenant?.id || ''}
+          products={storeProducts}
+          onClose={() => setIsPDVOpen(false)}
+          onSubmit={handlePDVSubmit}
+        />
+      )}
     </div>
   );
 };

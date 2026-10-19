@@ -19,6 +19,7 @@ import { fulfillmentFieldsFromRaw, fulfillmentFieldsToDb, validateFulfillmentSet
 function mapRowToTenant(row: any, settingsRow?: any, themeRow?: any): Tenant {
   return {
     id: row.id,
+    businessType: row.business_type || null,
     slug: row.slug,
     name: row.name,
     legalName: row.legal_name || row.name,

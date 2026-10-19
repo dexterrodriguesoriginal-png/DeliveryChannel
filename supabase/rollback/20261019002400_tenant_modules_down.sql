@@ -1,0 +1,13 @@
+BEGIN;
+DROP FUNCTION IF EXISTS public.get_public_modules(uuid);
+DROP FUNCTION IF EXISTS public.apply_business_preset(uuid, text);
+DROP FUNCTION IF EXISTS public.set_tenant_module(uuid, text, boolean, jsonb);
+DROP TRIGGER IF EXISTS orders_module_enabled_guard ON public.orders;
+DROP FUNCTION IF EXISTS public.guard_order_module_enabled();
+DROP FUNCTION IF EXISTS public.assert_tenant_module_enabled(uuid, text);
+DROP FUNCTION IF EXISTS public._tenant_module_disable_blockers(uuid, text);
+DROP FUNCTION IF EXISTS public.is_tenant_module_member(uuid);
+DROP TABLE IF EXISTS public.tenant_modules;
+ALTER TABLE public.tenants DROP CONSTRAINT IF EXISTS tenants_business_type_check;
+ALTER TABLE public.tenants DROP COLUMN IF EXISTS business_type;
+COMMIT;

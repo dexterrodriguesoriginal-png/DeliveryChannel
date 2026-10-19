@@ -19,6 +19,7 @@ export const EST_TAB_PERMISSION: Record<string, Permission | null> = {
   'est-reports': 'view_finance',
   'est-team': 'manage_team',
   'est-settings': 'manage_settings',
+  'est-modules': 'view_modules',
   'est-kitchen': 'manage_settings',
 };
 
