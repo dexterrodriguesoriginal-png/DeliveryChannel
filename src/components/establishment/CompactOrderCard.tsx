@@ -23,6 +23,7 @@ import { SlaTimerChip } from './SlaTimerChip';
 import { OrderStatusChip } from './StatusIcon';
 import { orderAgeInfo } from '../../lib/orders/orderAge';
 import { OrderAgeBadge } from './OrderAgeBadge';
+import { pickupActionLabel, paymentBadge, pickupWaitingMinutes, waitingText } from '../../lib/orders/fulfillmentTabs';
 import { formatBRL } from '../../lib/pricing/money';
 
 export type CardDensity = 'compact' | 'normal' | 'comfortable';
@@ -99,6 +100,9 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
       onUpdateStatus(order.id, 'PREPARING');
     } else if (isPreparing) {
       onUpdateStatus(order.id, 'READY');
+    } else if (isReady && isPickup) {
+      // Retirada: cliente buscou no balcão (mesma transição da faixa de alertas).
+      onUpdateStatus(order.id, 'DELIVERED');
     } else if (isReady) {
       onAssignDriverClick(order);
     } else if (isDelivery) {
@@ -133,6 +137,23 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
       />
 
       <div className="space-y-0.5">
+        {isPickup && !isDelivered && !isCancelled && (() => {
+          const pay = paymentBadge(order);
+          const wait = pickupWaitingMinutes(order, Date.now());
+          return (
+            <div className="flex flex-wrap items-center gap-0.5" data-testid="pickup-badges">
+              <span data-testid="pickup-payment" data-paid={pay.paid}
+                className={`text-[7.5px] font-black px-1 rounded border ${pay.paid ? 'bg-green-50 text-green-800 border-green-300' : 'bg-amber-50 text-amber-900 border-amber-300'}`}>
+                {pay.paid ? '✓ ' : '$ '}{pay.label}
+              </span>
+              {wait !== null && (
+                <span data-testid="pickup-waiting" className={`text-[7.5px] font-bold px-1 rounded border ${wait >= 15 ? 'bg-red-50 text-red-800 border-red-300' : 'bg-white text-green-800 border-green-300'}`}>
+                  ⏱ {waitingText(wait)}
+                </span>
+              )}
+            </div>
+          );
+        })()}
         {/* LINHA 1 (TOPO): # Pedido + Status com Dot + Tipo de Entrega + Cronômetro */}
         <div className="flex items-center justify-between gap-1 min-w-0">
           <div className="flex items-center gap-1 min-w-0">
@@ -261,10 +282,10 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
             {isPending && <Check className="w-1.5 h-1.5 stroke-[3]" />}
             {isConfirmed && <CheckCircle2 className="w-1.5 h-1.5" />}
             {isPreparing && <Check className="w-1.5 h-1.5 stroke-[3]" />}
-            {isReady && <Truck className="w-1.5 h-1.5" />}
+            {isReady && (isPickup ? <CheckCircle2 className="w-1.5 h-1.5" /> : <Truck className="w-1.5 h-1.5" />)}
             {isDelivery && <CheckCircle2 className="w-1.5 h-1.5" />}
             {(isDelivered || isCancelled) && <Eye className="w-1.5 h-1.5" />}
-            <span>{theme.buttonLabel}</span>
+            <span>{(isPickup && pickupActionLabel(order.status)) || theme.buttonLabel}</span>
           </button>
         </div>
       </div>

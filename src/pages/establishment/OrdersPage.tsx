@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { tabCounts, tabTone, pickupActionLabel, type FulfillmentTab } from '../../lib/orders/fulfillmentTabs';
 import { PickupCodeBadge } from '../../components/establishment/PickupCodeBadge';
 import { storeDeliveredNeedsReason } from '../../lib/orders/handoff';
 import { useAuth } from '../../context/AuthContext';
@@ -130,7 +131,7 @@ export const OrdersPage: React.FC = () => {
   // Filtros (Padrão: 'ALL' como no print, onde o pill "Todos 12" fica verde)
   const [activeTab, setActiveTab] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [filterFulfillment, setFilterFulfillment] = useState<'ALL' | 'DELIVERY' | 'PICKUP'>('ALL');
+  const [filterFulfillment, setFilterFulfillment] = useState<'ALL' | 'DELIVERY' | 'PICKUP'>('DELIVERY');
   const [filterDriver, setFilterDriver] = useState<'ALL' | 'WITH_DRIVER' | 'WITHOUT_DRIVER'>('ALL');
   const [filterPeriod, setFilterPeriod] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | '7D' | '30D'>('ALL');
 
@@ -1418,6 +1419,32 @@ export const OrdersPage: React.FC = () => {
                   </div>
                 </div>
 
+                {/* 19/10: abas Entrega | Retirada (contador de pedidos que pedem ação, na cor KDS dominante) */}
+                <div className="flex items-stretch gap-1.5 pt-2 border-t border-slate-100" role="tablist" data-testid="fulfillment-tabs">
+                  {([['DELIVERY', 'Entrega', Bike], ['PICKUP', 'Retirada', ShoppingBag]] as const).map(([id, label, Icon]) => {
+                    const c = tabCounts(allOrders, id as FulfillmentTab, prepMinutes);
+                    const tone = tabTone(c);
+                    const toneCls: Record<string, string> = {
+                      red: 'bg-red-600 text-white', amber: 'bg-amber-400 text-amber-950', green: 'bg-green-700 text-white',
+                      blue: 'bg-blue-600 text-white', cyan: 'bg-cyan-600 text-white', neutral: 'bg-slate-200 text-slate-600',
+                    };
+                    const toneText: Record<string, string> = { red: 'atrasado', amber: 'novo', green: 'pronto', blue: 'em preparo', cyan: 'em rota', neutral: 'sem pedidos' };
+                    const isActive = filterFulfillment === id;
+                    return (
+                      <button key={id} type="button" role="tab" aria-selected={isActive} data-testid={`ftab-${id}`} data-tone={tone} data-count={c.acionaveis}
+                        onClick={() => setFilterFulfillment(isActive ? 'ALL' : (id as FulfillmentTab))}
+                        className={`flex-1 sm:flex-none flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 text-[13px] font-black transition-all cursor-pointer ${isActive ? 'bg-white border-emerald-600 shadow-sm text-slate-900' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white'}`}>
+                        <Icon className="w-4 h-4" />
+                        <span>{label}</span>
+                        <span className={`min-w-[1.5rem] text-center text-[11px] px-1.5 py-0.5 rounded-full tabular-nums ${toneCls[tone]}`} title={toneText[tone]}>{c.acionaveis}</span>
+                        {c.atrasado > 0 && <span className="text-[10px] font-bold text-red-700">⚠ {c.atrasado} atrasado{c.atrasado > 1 ? 's' : ''}</span>}
+                        {c.atrasado === 0 && c.novo > 0 && <span className="text-[10px] font-bold text-amber-700">🔔 {c.novo} novo{c.novo > 1 ? 's' : ''}</span>}
+                        {c.atrasado === 0 && c.novo === 0 && c.pronto > 0 && <span className="text-[10px] font-bold text-green-700">✓ {c.pronto} pronto{c.pronto > 1 ? 's' : ''}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 {/* Linha 3: Abas de Status e Tamanho dos Cards (COMANDO 129/130: Todos até Cancelados totalmente visíveis) */}
                 <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100 min-w-0">
                   {/* Status Pills */}
@@ -1951,6 +1978,7 @@ export const OrdersPage: React.FC = () => {
                                       if (order.status === 'PENDING') handleUpdateStatus(order.id, 'CONFIRMED');
                                       else if (order.status === 'CONFIRMED') handleUpdateStatus(order.id, 'PREPARING');
                                       else if (order.status === 'PREPARING') handleUpdateStatus(order.id, 'READY');
+                                      else if (order.status === 'READY' && order.fulfillmentType === 'PICKUP') handleUpdateStatus(order.id, 'DELIVERED');
                                       else if (order.status === 'READY') {
                                         setAssigningOrder(order);
                                         const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
@@ -1961,7 +1989,7 @@ export const OrdersPage: React.FC = () => {
                                     style={orderActionButtonStyle(rowTheme, order)}
                                     className="py-0.2 px-1.5 rounded text-[8.5px] font-bold shadow-2xs hover:opacity-90 transition-all cursor-pointer"
                                   >
-                                    {rowTheme.buttonLabel}
+                                    {(order.fulfillmentType === 'PICKUP' && pickupActionLabel(order.status)) || rowTheme.buttonLabel}
                                   </button>
                                   <button
                                     type="button"

@@ -24,6 +24,7 @@ import { SlaTimerChip } from './SlaTimerChip';
 import { OrderStatusChip } from './StatusIcon';
 import { orderAgeInfo } from '../../lib/orders/orderAge';
 import { OrderAgeBadge } from './OrderAgeBadge';
+import { pickupActionLabel, paymentBadge, pickupWaitingMinutes, waitingText } from '../../lib/orders/fulfillmentTabs';
 import { formatBRL } from '../../lib/pricing/money';
 
 interface KanbanOrderCardProps {
@@ -96,6 +97,9 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
       onUpdateStatus(order.id, 'PREPARING');
     } else if (isPreparing) {
       onUpdateStatus(order.id, 'READY');
+    } else if (isReady && isPickup) {
+      // Retirada: cliente buscou no balcão (mesma transição da faixa de alertas).
+      onUpdateStatus(order.id, 'DELIVERED');
     } else if (isReady) {
       onAssignDriverClick(order);
     } else if (isDelivery) {
@@ -125,6 +129,23 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
       />
 
       <div className="pl-0.5 space-y-0.5">
+        {isPickup && !isDelivered && !isCancelled && (() => {
+          const pay = paymentBadge(order);
+          const wait = pickupWaitingMinutes(order, Date.now());
+          return (
+            <div className="flex flex-wrap items-center gap-0.5" data-testid="pickup-badges">
+              <span data-testid="pickup-payment" data-paid={pay.paid}
+                className={`text-[7.5px] font-black px-1 rounded border ${pay.paid ? 'bg-green-50 text-green-800 border-green-300' : 'bg-amber-50 text-amber-900 border-amber-300'}`}>
+                {pay.paid ? '✓ ' : '$ '}{pay.label}
+              </span>
+              {wait !== null && (
+                <span data-testid="pickup-waiting" className={`text-[7.5px] font-bold px-1 rounded border ${wait >= 15 ? 'bg-red-50 text-red-800 border-red-300' : 'bg-white text-green-800 border-green-300'}`}>
+                  ⏱ {waitingText(wait)}
+                </span>
+              )}
+            </div>
+          );
+        })()}
         {/* Linha 1: # Pedido + Indicador de Atraso + Tempo decorrido */}
         <div className="flex items-center justify-between gap-1 pb-0.2">
           <div className="flex items-center gap-0.5 min-w-0">
@@ -218,10 +239,10 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
           {isPending && <Check className="w-2 h-2 stroke-[3]" />}
           {isConfirmed && <CheckCircle2 className="w-2 h-2" />}
           {isPreparing && <Check className="w-2 h-2 stroke-[3]" />}
-          {isReady && <Truck className="w-2 h-2" />}
+          {isReady && (isPickup ? <CheckCircle2 className="w-2 h-2" /> : <Truck className="w-2 h-2" />)}
           {isDelivery && <CheckCircle2 className="w-2 h-2" />}
           {(isDelivered || isCancelled) && <Eye className="w-2 h-2" />}
-          <span className="truncate">{theme.buttonLabel}</span>
+          <span className="truncate">{(isPickup && pickupActionLabel(order.status)) || theme.buttonLabel}</span>
         </button>
       </div>
     </div>
