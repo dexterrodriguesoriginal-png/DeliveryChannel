@@ -150,7 +150,8 @@ describe('E8 fluxo do pedido (dono -> cliente) + realtime', () => {
         const step = nextStepFor(cur, 'OWNER');
         if (!step) break;
         seen[k].push(step.kind);
-        const u = await orderRepository.updateStatus(ctx('ownerA', 'OWNER') as any, TA, id, step.to, step.note, cur.status);
+        // 2100: retirada com fila ativa exige código ou motivo (override auditado).
+        const u = await orderRepository.updateStatus(ctx('ownerA', 'OWNER') as any, TA, id, step.to, step.kind === 'pickup_done' ? 'Retirada sem código: E2E' : step.note, cur.status);
         expect(u.status).toBe(step.to);
       }
     }

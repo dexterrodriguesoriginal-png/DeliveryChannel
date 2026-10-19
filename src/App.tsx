@@ -1,3 +1,4 @@
+import { CallScreen } from './components/pickup/CallScreen';
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -253,6 +254,11 @@ function AppContent() {
         </div>
       </div>
     );
+  }
+
+  // 19/10: tela de chamada (TV/tablet) da fila de retirada: /chamada, equipe logada da loja ativa.
+  if (pathname === '/chamada' && activeTenant?.id && activeRole && ['OWNER', 'MANAGER', 'OPERATOR', 'CASHIER'].includes(activeRole)) {
+    return <CallScreen tenantId={activeTenant.id} storeName={activeTenant.name} />;
   }
 
   // 4. Falha na Leitura dos Vínculos (CASO B: Erro de Rede ou RLS - NUNCA enviar para Onboarding)

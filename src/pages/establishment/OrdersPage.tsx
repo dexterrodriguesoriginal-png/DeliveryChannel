@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { ArrivalQueuePanel } from '../../components/pickup/ArrivalQueuePanel';
+import { PickupHandoverModal } from '../../components/pickup/PickupHandoverModal';
+import { arrivalRepository } from '../../repositories/arrivalRepository';
 import { tabCounts, tabTone, pickupActionLabel, type FulfillmentTab } from '../../lib/orders/fulfillmentTabs';
 import { PickupCodeBadge } from '../../components/establishment/PickupCodeBadge';
 import { storeDeliveredNeedsReason } from '../../lib/orders/handoff';
@@ -173,6 +176,9 @@ export const OrdersPage: React.FC = () => {
 
   // Modal de cancelamento de pedido com justificativa
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
+  const [handoverOrder, setHandoverOrder] = useState<Order | null>(null);
+  // 2100: descobre se o banco tem a fila de chegada (sem a migration a interface some).
+  useEffect(() => { if (activeTenant?.id) arrivalRepository.listOpen(activeTenant.id).catch(() => {}); }, [activeTenant?.id]);
   const [cancellationReason, setCancellationReason] = useState<string>('Cliente solicitou cancelamento');
 
   const canListDrivers = canAssignDrivers(activeRole);
@@ -294,6 +300,11 @@ export const OrdersPage: React.FC = () => {
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus, note?: string) => {
     if (!activeTenant?.id) return;
     const currentOrder = (remoteOrders || []).find(o => o.id === orderId);
+    // 2100: com a fila de chegada ativa, retirada se conclui conferindo o código do cliente.
+    if (!note && newStatus === 'DELIVERED' && currentOrder?.fulfillmentType === 'PICKUP' && arrivalRepository.isOn()) {
+      setHandoverOrder(currentOrder);
+      return;
+    }
     const current = currentOrder?.status;
     // 1600: entrega sem o código do cliente = override manual com motivo (auditado no servidor).
     if (!note && storeDeliveredNeedsReason(currentOrder, newStatus)) {
@@ -1577,6 +1588,18 @@ export const OrdersPage: React.FC = () => {
               </span>
             </div>
           )}
+          {filterFulfillment === 'PICKUP' && activeTenant?.id && (
+            <div className="mb-2">
+              <ArrivalQueuePanel tenantId={activeTenant.id} storeName={activeTenant.name} orders={allOrders}
+                canRotate={activeRole === 'OWNER' || activeRole === 'MANAGER'}
+                onHandover={(o) => setHandoverOrder(o)}
+                onError={(m) => showToast({ type: 'warning', title: 'Fila de retirada', message: m })}
+                onCalled={() => showToast({ type: 'success', title: 'Cliente chamado', message: 'O celular do cliente foi avisado.' })} />
+            </div>
+          )}
+          <PickupHandoverModal order={handoverOrder} onClose={() => setHandoverOrder(null)}
+            onDone={() => { setHandoverOrder(null); showToast({ type: 'success', title: 'Retirada confirmada', message: 'Pedido entregue ao cliente.' }); fetchOrders(true); }}
+            onOverride={(id, reason) => handleUpdateStatus(id, 'DELIVERED', reason)} />
           {syncError && (!remoteOrders || remoteOrders.length === 0) ? (
             <div className="bg-white border border-amber-200/80 rounded-2xl p-12 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mx-auto">

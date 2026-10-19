@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { normalizeBRPhone, formatBRPhone, brPhoneDigits } from '../../lib/phone/brPhone';
 import { DeliveryCodeCard } from '../../components/client/DeliveryCodeCard';
+import { PickupArrivalCard } from '../../components/pickup/PickupArrivalCard';
 import { isStaffPreview } from '../../lib/storefront/staffPreview';
 import { storeDeliveryLabel } from '../../lib/pricing/deliveryLabel';
 import { formatBRL } from '../../lib/pricing/money';
@@ -1443,6 +1444,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           <span className="text-xs font-bold text-gray-700 truncate">{orderStoreName}</span>
         </div>
         <DeliveryCodeCard orderId={order.id} status={order.status} />
+        <PickupArrivalCard orderId={order.id} status={order.status} fulfillmentType={order.fulfillmentType} />
         {/* TOPO: NÚMERO DO PEDIDO + DATA + TOTAL EM DESTAQUE */}
         <div className="flex items-start justify-between gap-2">
           <div>

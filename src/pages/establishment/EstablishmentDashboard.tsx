@@ -42,6 +42,8 @@ import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE
 import { canAccessEstTab } from '../../lib/navPermissions';
 import { playNewOrderSound } from '../../utils/audio';
 import { useNewOrderAlarm } from '../../lib/orders/newOrderAlarm';
+import { arrivalRepository } from '../../repositories/arrivalRepository';
+import { PickupHandoverModal } from '../../components/pickup/PickupHandoverModal';
 
 interface EstablishmentDashboardProps {
   onNavigate?: (tab: string) => void;
@@ -58,6 +60,8 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   // 19/10: alertas de pedidos — lista de entregadores carregada com sucesso? (vazia = loja sem aprovado)
   const [driversLoaded, setDriversLoaded] = useState(false);
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+  const [handoverOrder, setHandoverOrder] = useState<Order | null>(null);
+  useEffect(() => { if (activeTenant?.id) arrivalRepository.listOpen(activeTenant.id).catch(() => {}); }, [activeTenant?.id]);
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const prevPendingIdsRef = useRef<Set<string> | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -139,6 +143,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
       showToast({ type: 'warning', title: NO_APPROVED_DRIVER_TITLE, message: noApprovedDriverMessage() });
       return;
     }
+    if (step.kind === 'pickup_done' && arrivalRepository.isOn()) { setHandoverOrder(order); return; }
     const check = validateStatusChange(order.status, step.to, step.note);
     if (!check.ok) { showToast({ type: 'warning', title: 'Alteração não permitida', message: check.message }); return; }
     setBusyOrderId(order.id);
@@ -433,6 +438,12 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         onOpenMarketing={onNavigate && canAccessEstTab(activeRole, 'est-marketing') ? () => onNavigate('est-marketing') : undefined}
         onCopied={() => showToast({ type: 'success', title: 'Link copiado', message: 'O link da sua loja foi copiado.' })}
       />
+      <PickupHandoverModal order={handoverOrder} onClose={() => setHandoverOrder(null)}
+        onDone={() => { setHandoverOrder(null); showToast({ type: 'success', title: 'Retirada confirmada', message: 'Pedido entregue ao cliente.' }); fetchRealData(true); }}
+        onOverride={async (id, reason) => {
+          if (!activeTenant?.id) return;
+          await orderRepository.updateStatus(securityContext, activeTenant.id, id, 'DELIVERED', reason, 'READY');
+        }} />
       <OrderAlertsCard
         alerts={orderAlerts}
         role={activeRole}
