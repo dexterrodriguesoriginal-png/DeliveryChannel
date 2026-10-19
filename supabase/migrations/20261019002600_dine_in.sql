@@ -16,8 +16,9 @@ DECLARE
   v_definition text;
   v_updated text;
 BEGIN
-  v_definition := pg_catalog.pg_get_functiondef('public._is_staff_role(text)'::regprocedure);
-  IF position('WAITER' IN v_definition) = 0 THEN
+  -- _is_staff_role comes from 0700; skip only where it does not exist (local test harness).
+  v_definition := pg_catalog.pg_get_functiondef(pg_catalog.to_regprocedure('public._is_staff_role(text)'));
+  IF v_definition IS NOT NULL AND position('WAITER' IN v_definition) = 0 THEN
     v_updated := replace(v_definition, $q$'DELIVERY_MANAGER');$q$, $q$'DELIVERY_MANAGER','WAITER');$q$);
     IF v_updated = v_definition THEN
       RAISE EXCEPTION 'PRECHECK 2600: definição inesperada para _is_staff_role.';
@@ -25,6 +26,7 @@ BEGIN
     EXECUTE v_updated;
   END IF;
 
+  IF pg_catalog.to_regprocedure('public._is_staff_role(text)') IS NOT NULL THEN
   FOREACH v_definition IN ARRAY ARRAY[
     pg_catalog.pg_get_functiondef('public.accept_team_invite(uuid)'::regprocedure),
     pg_catalog.pg_get_functiondef('public.create_team_invite(uuid,character varying,character varying)'::regprocedure)
@@ -37,6 +39,7 @@ BEGIN
       EXECUTE v_updated;
     END IF;
   END LOOP;
+  END IF;
 END;
 $do$;
 
@@ -129,7 +132,8 @@ CREATE TABLE IF NOT EXISTS public.tab_sessions (
   CONSTRAINT tab_sessions_tab_tenant_fk
     FOREIGN KEY (tenant_id, tab_id) REFERENCES public.dining_tabs(tenant_id, id) ON DELETE CASCADE,
   CONSTRAINT tab_sessions_approval_expiry_check CHECK (approved_at IS NULL OR approved_at <= expires_at),
-  CONSTRAINT tab_sessions_tenant_user_device_key UNIQUE (tenant_id, auth_user_id, device_id, tab_id)
+  CONSTRAINT tab_sessions_tenant_user_device_key UNIQUE (tenant_id, auth_user_id, device_id, tab_id),
+  CONSTRAINT tab_sessions_tenant_id_id_key UNIQUE (tenant_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS public.waiter_calls (
@@ -659,7 +663,7 @@ BEGIN
     ) ts ON true
     WHERE tb.id = v_tab;
     v_role := public._tenant_role_of_caller(v_tenant);
-    IF v_tenant IS NULL OR v_role NOT IN ('OWNER', 'MANAGER', 'WAITER', 'CASHIER') THEN
+    IF v_tenant IS NULL OR COALESCE(v_role, '') NOT IN ('OWNER', 'MANAGER', 'WAITER', 'CASHIER') THEN
       RAISE EXCEPTION 'FORBIDDEN: acesso à comanda negado.' USING ERRCODE = '42501';
     END IF;
   END IF;
@@ -708,10 +712,12 @@ BEGIN
   END IF;
   INSERT INTO public.orders (
     tenant_id, customer_name, customer_phone, delivery_address, subtotal, delivery_fee, discount, total_amount,
-    payment_method, payment_status, fulfillment_type, status, origin, tab_id, round_no, ordered_by_session_id
+    payment_method, payment_status, fulfillment_type, status, origin, tab_id, round_no, ordered_by_session_id,
+    idempotency_key
   ) VALUES (
     v_tenant, COALESCE(NULLIF(v_name, ''), 'Atendimento'), '', '', v_subtotal, 0, 0, v_subtotal,
-    'CASH', 'PENDING', 'DINE_IN', 'CONFIRMED', 'qr_code', v_tab, v_round, v_session
+    'CASH', 'PENDING', 'DINE_IN', 'CONFIRMED', 'qr_code', v_tab, v_round, v_session,
+    p_idempotency_key
   ) RETURNING id, order_number INTO v_order, v_number;
   PERFORM public._insert_order_lines(v_order, v_tenant, v_lines, 0, v_subtotal, 'Salão');
   INSERT INTO public.order_status_history (order_id, status, note, changed_by)
@@ -853,7 +859,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'TAB_NOT_FOUND: comanda não encontrada.'; END IF;
   v_tenant := v_tab.tenant_id;
   v_role := public._tenant_role_of_caller(v_tenant);
-  IF auth.uid() IS NULL OR v_role NOT IN ('OWNER', 'MANAGER', 'CASHIER', 'WAITER') THEN
+  IF auth.uid() IS NULL OR COALESCE(v_role, '') NOT IN ('OWNER', 'MANAGER', 'CASHIER', 'WAITER') THEN
     RAISE EXCEPTION 'FORBIDDEN: sem permissão para encerrar a conta.' USING ERRCODE = '42501';
   END IF;
   v_config := public._dine_in_config(v_tenant);

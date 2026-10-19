@@ -38,6 +38,7 @@ VALUES ('10000000-0000-0000-0000-00000000000a',
         'f1000000-0000-0000-0000-0000000000a2')
 ON CONFLICT (product_id, group_id) DO NOTHING;
 
+DELETE FROM public.security_rate_limits;
 SET ROLE authenticated;
 SELECT t.login('a0000000-0000-0000-0000-000000000001');
 SELECT t.is(t.visible($$SELECT id FROM public.dining_tables$$), 1::bigint,
@@ -116,3 +117,55 @@ BEGIN
 END
 $same_options_reordered$;
 RESET ROLE;
+
+-- Fluxo de mesa: liberação, rodada, idempotência, sequestro de comanda, taxa opcional, fechamento.
+RESET ROLE;
+DELETE FROM public.security_rate_limits;
+RESET ROLE;
+INSERT INTO public.tenant_modules (tenant_id, module_key, enabled, config) VALUES
+  ('10000000-0000-0000-0000-00000000000a', 'dine_in', true, '{"mode":"TABLE","salon_open":true}'),
+  ('10000000-0000-0000-0000-00000000000a', 'service_fee', true, '{"percent":10}')
+ON CONFLICT (tenant_id, module_key) DO UPDATE SET enabled = true, config = EXCLUDED.config;
+SET ROLE anon;
+SELECT t.is(public.resolve_table_qr('dine-in-test-a') ? 'tenantId', false, 'QR não expõe tenantId');
+RESET ROLE;
+SET ROLE authenticated;
+SELECT t.login('a0000000-0000-0000-0000-000000000008');
+SELECT set_config('t.s8', public.open_or_join_tab('dine-in-test-a', 'Ana', 'dev-8') ->> 'sessionId', false);
+SELECT set_config('t.tab', (SELECT public.get_my_tab(current_setting('t.s8')::uuid) ->> 'tabId'), false);
+SELECT t.throws(format($$SELECT public.submit_round('[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', gen_random_uuid(), %L)$$, current_setting('t.s8')),
+  'SESSION_NOT_APPROVED', 'primeira rodada espera o garçom liberar');
+SELECT t.login('a0000000-0000-0000-0000-000000000007');
+SELECT t.throws(format($$SELECT public.submit_round('[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', gen_random_uuid(), NULL, %L)$$, current_setting('t.tab')),
+  'FORBIDDEN', 'outro cliente não envia rodada pela comanda (tab_id) alheia');
+SELECT t.throws(format($$SELECT public.submit_round('[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', gen_random_uuid(), %L)$$, current_setting('t.s8')),
+  'SESSION_INVALID', 'outro cliente não usa a sessão alheia');
+SELECT t.throws(format($$SELECT public.get_my_tab(%L)$$, current_setting('t.s8')), 'TAB_NOT_FOUND', 'outro cliente não lê a comanda alheia');
+SELECT t.throws(format($$SELECT public.close_tab(%L, '[{"method":"CASH","amount_cents":1}]')$$, current_setting('t.tab')),
+  'FORBIDDEN', 'cliente não encerra conta');
+SELECT t.throws(format($$SELECT public.approve_session(%L)$$, current_setting('t.s8')), 'FORBIDDEN', 'cliente não libera sessão');
+SELECT t.login('a0000000-0000-0000-0000-000000000003');
+SELECT t.throws(format($$SELECT public.close_tab(%L, '[{"method":"CASH","amount_cents":1}]')$$, current_setting('t.tab')),
+  'FORBIDDEN', 'OPERATOR não encerra conta');
+SELECT t.login('a0000000-0000-0000-0000-000000000001');
+SELECT t.lives(format($$SELECT public.approve_session(%L)$$, current_setting('t.s8')), 'dono libera a sessão');
+SELECT t.login('a0000000-0000-0000-0000-000000000008');
+SELECT set_config('t.k1', gen_random_uuid()::text, false);
+SELECT set_config('t.r1', public.submit_round('[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":3}]', current_setting('t.k1')::uuid, current_setting('t.s8')::uuid)::text, false);
+SELECT t.is((current_setting('t.r1')::jsonb ->> 'subtotal')::numeric, 30.00, 'rodada com preço do servidor (3 × 10)');
+SELECT t.is((public.submit_round('[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":3}]', current_setting('t.k1')::uuid, current_setting('t.s8')::uuid) ->> 'replayed')::boolean,
+  true, 'mesma chave não duplica a rodada');
+RESET ROLE;
+SELECT t.is((SELECT count(*) FROM public.orders WHERE tab_id = current_setting('t.tab')::uuid), 1::bigint, 'uma rodada gravada');
+SELECT t.is((SELECT delivery_fee FROM public.orders WHERE tab_id = current_setting('t.tab')::uuid), 0.00::numeric, 'sem taxa de entrega na mesa');
+SET ROLE authenticated;
+SELECT t.login('a0000000-0000-0000-0000-000000000004');
+SELECT t.throws(format($$SELECT public.close_tab(%L, '[{"method":"PIX","amount_cents":3000}]')$$, current_setting('t.tab')),
+  'PAYMENT_TOTAL_MISMATCH', 'taxa de 10%% é cobrada por padrão (33,00)');
+SELECT t.lives(format($$SELECT public.remove_service_fee(%L, 'cliente pediu')$$, current_setting('t.tab')), 'taxa opcional removida');
+SELECT t.lives(format($$SELECT public.close_tab(%L, '[{"method":"CASH","amount_cents":3000,"change_given_cents":2000}]')$$, current_setting('t.tab')), 'caixa encerra sem taxa (30,00)');
+SELECT t.login('a0000000-0000-0000-0000-000000000008');
+SELECT t.throws(format($$SELECT public.submit_round('[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]', gen_random_uuid(), %L)$$, current_setting('t.s8')),
+  'TAB_CLOSED', 'conta encerrada bloqueia novos pedidos');
+RESET ROLE;
+SELECT t.is((SELECT count(*) FROM public.tab_events WHERE tab_id = current_setting('t.tab')::uuid AND event_type = 'SERVICE_FEE_REMOVED'), 1::bigint, 'remoção da taxa auditada');
