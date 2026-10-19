@@ -1,5 +1,7 @@
 import { CallScreen } from './components/pickup/CallScreen';
 import { ChegadaPage } from './components/pickup/ChegadaPage';
+import { KitchenPage, KitchenPairPage } from './components/kitchen/KitchenPages';
+import { KitchenSettingsPage } from './pages/establishment/KitchenSettingsPage';
 import { chegadaCodeFromPath } from './lib/pickup/arrival';
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -140,6 +142,10 @@ function AppContent() {
   if (chegadaCode !== null) {
     return <ChegadaPage code={chegadaCode} />;
   }
+
+  // 19/10: Tela da Cozinha. Pareamento do tablet (login anônimo próprio) e a tela em si.
+  if (pathname === '/cozinha/parear') return <KitchenPairPage />;
+  if (pathname === '/cozinha') return <KitchenPage />;
 
   // 2a. Convite público de entregador: /entregador/convite/:token (antes das demais regras de /entregador)
   const inviteToken = inviteTokenFromPath(pathname);
@@ -507,6 +513,8 @@ function AppContent() {
         return <TeamPage />;
       case 'est-settings':
         return <SettingsPage />;
+      case 'est-kitchen':
+        return <KitchenSettingsPage />;
 
       default:
         return (activeRole === 'CEO' || activeRole === 'SUPER_ADMIN') 

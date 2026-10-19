@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
+  ChefHat,
   LayoutDashboard, 
   ShoppingBag, 
   Package, 
@@ -117,6 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       groupTitle: 'GESTÃO',
       items: [
         { id: 'est-team', label: 'Equipe & Permissões', icon: <UserPlus className="w-4 h-4 shrink-0" /> },
+        { id: 'est-kitchen', label: 'Tela da Cozinha', icon: <ChefHat className="w-4 h-4 shrink-0" /> },
         { id: 'est-settings', label: 'Configurações da Loja', icon: <Settings className="w-4 h-4 shrink-0" /> },
         ...(isSecurityLabEnabled ? [{ id: 'security-lab', label: 'Laboratório de Isolamento', icon: <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" /> }] : []),
       ],

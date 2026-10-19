@@ -72,3 +72,17 @@ export function playShortBeep(): void {
 export function unlockAudio(): void {
   getAudioContext();
 }
+
+/** 19/10: Tela da Cozinha — "ding-dong" ascendente, diferente do som de pedido novo. */
+export function playReadySound(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    [[880, 0], [1320, 0.22]].forEach(([f, at]) => {
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = f; o.connect(g); g.connect(ctx.destination);
+      const t0 = ctx.currentTime + at; g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.4);
+      o.start(t0); o.stop(t0 + 0.42);
+    });
+  } catch { /* sem áudio */ }
+}

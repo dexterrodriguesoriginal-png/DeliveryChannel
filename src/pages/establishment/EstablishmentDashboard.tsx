@@ -35,12 +35,14 @@ import { ownerStatusToastMessage } from '../../lib/orders/labels';
 import { formatBRL } from '../../lib/pricing/money';
 import { StoreHeaderCard } from '../../components/establishment/dashboard/StoreHeaderCard';
 import { OrderAlertsCard } from '../../components/establishment/dashboard/OrderAlertsCard';
-import { buildOrderAlerts, newPendingIds, FOCUS_ORDER_KEY, NextStep } from '../../lib/orders/orderAlerts';
+import { buildOrderAlerts, newPendingIds, nextStepFor, FOCUS_ORDER_KEY, NextStep } from '../../lib/orders/orderAlerts';
 import { validateStatusChange } from '../../repositories/orderMappers';
 import { applyOrderUpdate } from '../../lib/orders/applyOrderUpdate';
 import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE, shouldBlockCallDriver } from '../../lib/orders/dispatchErrors';
 import { canAccessEstTab } from '../../lib/navPermissions';
-import { playNewOrderSound } from '../../utils/audio';
+import { playNewOrderSound, playReadySound } from '../../utils/audio';
+import { newReadyIds } from '../../lib/kitchen/kitchenBoard';
+import { KitchenReadyAlert } from '../../components/kitchen/KitchenReadyAlert';
 import { useNewOrderAlarm } from '../../lib/orders/newOrderAlarm';
 import { arrivalRepository } from '../../repositories/arrivalRepository';
 import { PickupHandoverModal } from '../../components/pickup/PickupHandoverModal';
@@ -64,6 +66,9 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   useEffect(() => { if (activeTenant?.id) arrivalRepository.listOpen(activeTenant.id).catch(() => {}); }, [activeTenant?.id]);
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const prevPendingIdsRef = useRef<Set<string> | null>(null);
+  // 19/10: Tela da Cozinha — pedidos que viraram Pronto (bipe próprio + aviso com a próxima ação)
+  const prevReadyIdsRef = useRef<Set<string> | null>(null);
+  const [readyAlertIds, setReadyAlertIds] = useState<string[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +115,13 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
           const next = new Set(prev); fresh.forEach(id => next.delete(id)); return next;
         }), 15000);
       }
+      const ready = newReadyIds(prevReadyIdsRef.current, fetchedOrders);
+      prevReadyIdsRef.current = new Set(fetchedOrders.filter(o => o.status === 'READY').map(o => o.id));
+      if (ready.length > 0) {
+        playReadySound();
+        setReadyAlertIds(prev => [...new Set([...prev, ...ready])]);
+        ready.forEach(id => { const o = fetchedOrders.find(x => x.id === id); if (o) showToast({ type: 'success', title: `Pedido #${o.orderNumber} pronto`, message: o.fulfillmentType === 'PICKUP' ? 'Chame o cliente pela fila de chegada.' : 'Chame o entregador.' }); });
+      }
       setRemoteCustomers(fetchedCustomers);
       setRemoteDrivers(fetchedDrivers);
       setProducts(tenantProducts);
@@ -123,6 +135,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
 
   useEffect(() => {
     prevPendingIdsRef.current = null;
+    prevReadyIdsRef.current = null;
     fetchRealData();
     if (!activeTenant?.id) return;
     // Realtime (public.orders na publicação, migration 2000) + polling de 15 s como reserva.
@@ -444,6 +457,13 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
           if (!activeTenant?.id) return;
           await orderRepository.updateStatus(securityContext, activeTenant.id, id, 'DELIVERED', reason, 'READY');
         }} />
+      <KitchenReadyAlert
+        orders={(remoteOrders || []).filter(o => o.status === 'READY' && readyAlertIds.includes(o.id))}
+        busyId={busyOrderId}
+        onCallDriver={(o) => { const st = nextStepFor(o, activeRole); if (st) handleAlertStep(o, st); }}
+        onOpenPickup={(o) => handleAlertView(o)}
+        onDismiss={(id) => setReadyAlertIds(prev => prev.filter(x => x !== id))}
+      />
       <OrderAlertsCard
         alerts={orderAlerts}
         role={activeRole}

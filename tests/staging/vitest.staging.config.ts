@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 // Uso: ver docs/staging/RUNBOOK_STAGING.md §6.
 export default defineConfig({
   test: {
-    include: ['tests/staging/staging.e2e.ts', 'tests/staging/orderflow.e2e.ts', 'tests/staging/arrival.e2e.ts'],
+    include: ['tests/staging/staging.e2e.ts', 'tests/staging/orderflow.e2e.ts', 'tests/staging/arrival.e2e.ts', 'tests/staging/kitchen.e2e.ts'],
     environment: 'node',
     testTimeout: 60000,
     fileParallelism: false,
