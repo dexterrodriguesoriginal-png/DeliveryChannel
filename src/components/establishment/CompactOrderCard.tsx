@@ -5,6 +5,7 @@ import {
   User, 
   Bike, 
   Building2,
+  Utensils,
   Check, 
   CheckCircle2, 
   Truck, 
@@ -86,6 +87,7 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
 
   const totalItemsCount = order.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || order.items?.length || 0;
   const isPickup = order.fulfillmentType === 'PICKUP';
+  const isDineIn = order.fulfillmentType === 'DINE_IN';
 
   // Resumo inteligente dos itens para leitura operacional rápida
   const itemsText = order.items && order.items.length > 0
@@ -102,6 +104,8 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
       onUpdateStatus(order.id, 'READY');
     } else if (isReady && isPickup) {
       // Retirada: cliente buscou no balcão (mesma transição da faixa de alertas).
+      onUpdateStatus(order.id, 'DELIVERED');
+    } else if (isReady && isDineIn) {
       onUpdateStatus(order.id, 'DELIVERED');
     } else if (isReady) {
       onAssignDriverClick(order);
@@ -166,7 +170,12 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
 
             {/* Tipo: Delivery ou Retirada (exibido no topo em telas amplas) */}
             <span className="hidden xl:inline-flex items-center gap-0.5 text-[7.5px] font-bold text-slate-700 bg-white/70 px-0.5 py-0 rounded border border-slate-200/60 shrink-0">
-              {isPickup ? (
+              {isDineIn ? (
+                <>
+                  <Utensils className="w-1.5 h-1.5 text-slate-500" />
+                  <span>Salão</span>
+                </>
+              ) : isPickup ? (
                 <>
                   <Building2 className="w-1.5 h-1.5 text-slate-500" />
                   <span>Retirada</span>
@@ -215,8 +224,8 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
             </div>
             {/* Tag compacta de entrega quando não couber no topo */}
             <span className="xl:hidden inline-flex items-center gap-0.5 text-[7px] font-semibold text-slate-600 shrink-0">
-              {isPickup ? <Building2 className="w-1.5 h-1.5" /> : <Bike className="w-1.5 h-1.5" />}
-              <span>{isPickup ? 'Retirada' : 'Delivery'}</span>
+              {isDineIn ? <Utensils className="w-1.5 h-1.5" /> : isPickup ? <Building2 className="w-1.5 h-1.5" /> : <Bike className="w-1.5 h-1.5" />}
+              <span>{isDineIn ? 'Salão' : isPickup ? 'Retirada' : 'Delivery'}</span>
             </span>
           </div>
 
@@ -262,7 +271,7 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
             </button>
           )}
 
-          {order.status === 'READY' && order.fulfillmentType !== 'PICKUP' && (
+          {order.status === 'READY' && order.fulfillmentType === 'DELIVERY' && (
             <button
               type="button"
               data-testid="card-call-driver"
@@ -292,4 +301,3 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
     </div>
   );
 };
-

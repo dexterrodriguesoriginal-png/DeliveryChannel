@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ChefHat, Lock, Clock, ShoppingBag, Bike } from 'lucide-react';
+import { ChefHat, Lock, Clock, ShoppingBag, Bike, Utensils } from 'lucide-react';
 import { ORDER_STATUS_THEME, BRAND_ACTION } from '../../utils/orderStatusTheme';
 import { kitchenRepository } from '../../repositories/kitchenRepository';
 import { kitchenColumns, kitchenNextAction, kitchenOrderLabel, kitchenErrorMessage, kitchenErrorCode, minutesInStage, lateLevel, type KitchenOrder } from '../../lib/kitchen/kitchenBoard';
@@ -65,12 +65,16 @@ export const KitchenBoard: React.FC<{
                 <div className={`flex items-center gap-1 text-sm font-bold tabular-nums ${late === 'late' ? 'text-red-600' : late === 'warn' ? 'text-amber-600' : 'text-gray-500'}`}><Clock className="w-4 h-4" />{min} min</div>
               </div>
               <div className="flex items-center gap-1.5 text-sm font-bold text-gray-700">
-                {o.fulfillment_type === 'PICKUP' ? <ShoppingBag className="w-4 h-4" /> : <Bike className="w-4 h-4" />}{kitchenOrderLabel(o)}
+                {o.fulfillment_type === 'DINE_IN'
+                  ? <Utensils className="w-4 h-4" />
+                  : o.fulfillment_type === 'PICKUP' ? <ShoppingBag className="w-4 h-4" /> : <Bike className="w-4 h-4" />}
+                {kitchenOrderLabel(o)}
               </div>
               <ul className="space-y-1">
                 {o.items.map(i => (
                   <React.Fragment key={i.order_item_id}>
                     <li className="text-lg text-gray-950 leading-tight"><b className="tabular-nums">{i.quantity}×</b> {i.product_name}
+                      {i.station && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-bold">{i.station === 'BAR' ? 'Bar' : 'Cozinha'}</span>}
                       {i.notes && <div className="text-sm text-amber-800 font-semibold">↳ {i.notes}</div>}</li>
                     {i.options?.length ? (
                       <div className="pl-5 text-sm font-semibold text-gray-700">

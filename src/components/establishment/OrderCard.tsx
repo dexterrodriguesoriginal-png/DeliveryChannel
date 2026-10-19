@@ -117,7 +117,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             {paymentMethodShortLabel(order.paymentMethod)}
           </span>
           <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-mono font-bold text-[10px] uppercase border border-slate-200 flex items-center gap-1">
-            {order.fulfillmentType === 'PICKUP' ? '🛍️ RETIRADA' : '🛵 DELIVERY'}
+            {order.fulfillmentType === 'DINE_IN' ? '🍽️ SALÃO' : order.fulfillmentType === 'PICKUP' ? '🛍️ RETIRADA' : '🛵 DELIVERY'}
           </span>
           {isRecorrente && (
             <span className="px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 font-mono font-bold text-[10px] uppercase border border-teal-200 flex items-center gap-1">
@@ -345,7 +345,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           </button>
         )}
 
-        {isPreparing && (
+        {isPreparing && order.fulfillmentType === 'DELIVERY' && (
           <button
             type="button"
             onClick={(e) => {
@@ -364,12 +364,13 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onAssignDriverClick(order);
+              if (order.fulfillmentType === 'DINE_IN') onUpdateStatus(order.id, 'DELIVERED');
+              else onAssignDriverClick(order);
             }}
             className="w-full py-2.5 px-4 rounded-xl bg-[#15803d] hover:bg-[#166534] text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-green-700/20 cursor-pointer"
           >
-            <Truck className="w-4 h-4" />
-            <span>Pronto • Despachar</span>
+            {order.fulfillmentType === 'DINE_IN' ? <CheckCircle2 className="w-4 h-4" /> : <Truck className="w-4 h-4" />}
+            <span>{order.fulfillmentType === 'DINE_IN' ? 'Entregue na mesa' : 'Pronto • Despachar'}</span>
           </button>
         )}
 

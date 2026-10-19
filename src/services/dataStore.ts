@@ -2801,6 +2801,9 @@ export class DataStore {
 
     // Modalidade: validada contra a configuração DESTE estabelecimento (nunca do navegador).
     const fulfillmentSettingsDemo = fulfillmentSettingsFromTenant(tenant.settings);
+    if (orderData.fulfillmentType === 'DINE_IN') {
+      throw new Error('Pedidos de salão devem ser enviados pela comanda da mesa.');
+    }
     const requestedMode = orderData.fulfillmentType || 'DELIVERY';
     const modesDemo = resolveAvailableModes(fulfillmentSettingsDemo);
     if (!modesDemo.modes.includes(requestedMode)) {
@@ -3022,6 +3025,9 @@ export class DataStore {
     notes?: string;
     couponCode?: string;
   }): { order: Order; celebrationMessage?: string; redemptionNumber?: number; isExhausted?: boolean } {
+    if (orderData.fulfillmentType === 'DINE_IN') {
+      throw new Error('Pedidos de salão devem ser enviados pela comanda da mesa.');
+    }
     const tenant = this.getTenantBySlug(slugOrTenantId);
     if (!tenant) {
       throw new Error(`Estabelecimento não encontrado.`);

@@ -6,11 +6,13 @@ export interface KitchenItem {
   quantity: number;
   unit?: string | null;
   notes?: string | null;
+  station?: 'KITCHEN' | 'BAR' | null;
   options?: Array<{ group_name: string; option_name: string; qty: number; fraction?: number | null }>;
 }
 export interface KitchenOrder {
-  order_id: string; order_number: number; status: KitchenStatus; fulfillment_type: 'DELIVERY' | 'PICKUP';
+  order_id: string; order_number: number; status: KitchenStatus; fulfillment_type: 'DELIVERY' | 'PICKUP' | 'DINE_IN';
   created_at: string; notes?: string | null; customer_first_name?: string | null; pickup_code?: string | null;
+  table_label?: string | null; round_no?: number | null;
   confirmed_at?: string | null; preparing_at?: string | null; items: KitchenItem[];
 }
 
@@ -33,7 +35,12 @@ export function minutesInStage(o: Pick<KitchenOrder, 'status' | 'created_at' | '
 }
 export function lateLevel(min: number): 'ok' | 'warn' | 'late' { return min >= 20 ? 'late' : min >= 10 ? 'warn' : 'ok'; }
 
-export function kitchenOrderLabel(o: Pick<KitchenOrder, 'fulfillment_type' | 'customer_first_name'>): string {
+export function kitchenOrderLabel(o: Pick<KitchenOrder, 'fulfillment_type' | 'customer_first_name' | 'table_label' | 'round_no'>): string {
+  if (o.fulfillment_type === 'DINE_IN') {
+    const guest = o.customer_first_name ? ` · ${o.customer_first_name}` : '';
+    const round = o.round_no ? ` · rodada ${o.round_no}` : '';
+    return `Mesa ${o.table_label || '—'}${guest}${round}`;
+  }
   return o.fulfillment_type === 'PICKUP' ? `Retirada${o.customer_first_name ? ` · ${o.customer_first_name}` : ''}` : 'Entrega';
 }
 

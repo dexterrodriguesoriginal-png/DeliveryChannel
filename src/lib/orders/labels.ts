@@ -39,6 +39,7 @@ export function fulfillmentLabel(type: string | null | undefined): string {
   const key = String(type || '').trim().toUpperCase();
   if (key === 'PICKUP') return 'Retirada';
   if (key === 'DELIVERY') return 'Entrega';
+  if (key === 'DINE_IN') return 'Salão';
   return '—';
 }
 

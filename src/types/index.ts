@@ -3,6 +3,7 @@ export type RoleId =
   | 'SUPER_ADMIN' 
   | 'OWNER' 
   | 'MANAGER' 
+  | 'WAITER'
   | 'OPERATOR' 
   | 'CASHIER' 
   | 'DELIVERY_MANAGER' 
@@ -528,7 +529,7 @@ export type OrderStatus =
   | 'DELIVERED' 
   | 'CANCELLED';
 
-export type FulfillmentType = 'DELIVERY' | 'PICKUP';
+export type FulfillmentType = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
 export type PaymentStatus = 'PENDING' | 'PAID' | 'PAYMENT_ON_DELIVERY' | 'REFUNDED';
 
 export interface OrderStatusHistoryItem {

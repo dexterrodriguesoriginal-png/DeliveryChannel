@@ -18,6 +18,7 @@ describe('rótulos pt-BR de pedido', () => {
     expect(paymentStatusLabel('PAID')).toBe('Pago');
     expect(fulfillmentLabel('DELIVERY')).toBe('Entrega');
     expect(fulfillmentLabel('PICKUP')).toBe('Retirada');
+    expect(fulfillmentLabel('DINE_IN')).toBe('Salão');
     expect(orderStatusLabel('OUT_FOR_DELIVERY')).toBe('Saiu para entrega');
     expect(orderStatusLabel('CANCELLED')).toBe('Cancelado');
   });

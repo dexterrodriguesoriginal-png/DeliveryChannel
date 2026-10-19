@@ -20,6 +20,9 @@ describe('kitchenBoard', () => {
   it('rótulo: retirada mostra só o primeiro nome', () => {
     expect(kitchenOrderLabel({ fulfillment_type: 'PICKUP', customer_first_name: 'Maria' })).toBe('Retirada · Maria');
     expect(kitchenOrderLabel({ fulfillment_type: 'DELIVERY', customer_first_name: null })).toBe('Entrega');
+    expect(kitchenOrderLabel({
+      fulfillment_type: 'DINE_IN', customer_first_name: 'Ana', table_label: '12', round_no: 2,
+    })).toBe('Mesa 12 · Ana · rodada 2');
   });
   it('código de pareamento', () => {
     expect(normalizePairCode('ab cd-ef9h!x')).toBe('ABCDEF9H'); expect(formatPairCode('abcdefgh')).toBe('ABCD-EFGH');

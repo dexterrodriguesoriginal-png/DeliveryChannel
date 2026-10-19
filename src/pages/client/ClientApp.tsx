@@ -142,7 +142,9 @@ interface CartItem {
 }
 
 function configuredCartLineKey(productId: string, origin: PurchaseOrigin, selections: SelectedProductOption[]): string {
-  const normalized = [...selections].sort((a, b) => `${a.groupId}:${a.optionId}`.localeCompare(`${b.groupId}:${b.optionId}`));
+  const normalized = [...selections].sort((a, b) =>
+    `${a.groupId}:${a.optionId}:${a.qty}:${a.fraction ?? ''}`.localeCompare(`${b.groupId}:${b.optionId}:${b.qty}:${b.fraction ?? ''}`)
+  );
   return `${cartLineKey(productId, origin)}::${normalized.map(option => `${option.groupId}:${option.optionId}:${option.qty}:${option.fraction ?? ''}`).join('|')}`;
 }
 

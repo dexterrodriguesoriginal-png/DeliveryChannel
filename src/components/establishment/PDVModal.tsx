@@ -88,7 +88,9 @@ export const PDVModal: React.FC<PDVModalProps> = ({
   });
 
   const cartKey = (productId: string, options: SelectedProductOption[] = []) =>
-    options.length ? `${productId}::${options.map(item => `${item.groupId}:${item.optionId}:${item.qty}`).sort().join('|')}` : productId;
+    options.length
+      ? `${productId}::${options.map(item => `${item.groupId}:${item.optionId}:${item.qty}:${item.fraction ?? ''}`).sort().join('|')}`
+      : productId;
 
   const handleAddToCart = (product: Product, options?: SelectedProductOption[]) => {
     if (addonsEnabled && product.optionGroups?.some(group => group.active) && !options) {

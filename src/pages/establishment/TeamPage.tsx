@@ -302,6 +302,7 @@ export const TeamPage: React.FC = () => {
               required
             >
               <option value="MANAGER">Gerente Operacional (Operações, cardápio, relatórios)</option>
+              <option value="WAITER">Garçom (atendimento e comandas do salão)</option>
               <option value="CASHIER">Operador de Caixa (Frente de caixa e pedidos)</option>
               <option value="OPERATOR">Operador de Loja (Separação e estoque)</option>
               <option value="DELIVERY_MANAGER">Coordenador de Entregas (Despacho de motoboys)</option>

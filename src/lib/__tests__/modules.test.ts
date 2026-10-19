@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BUSINESS_PRESETS,
   BUSINESS_TYPES,
+  MODULES,
   MODULE_DISABLE_CHECKS,
   ModuleKey,
   canDisableModule,
@@ -37,7 +38,9 @@ describe('business module presets', () => {
     expect(isModuleEnabled(new Set(['scheduling']), 'scheduling')).toBe(true);
     expect(isModuleEnabled(null, 'delivery')).toBe(true);
     expect(isModuleEnabled(null, 'addons')).toBe(false);
+    expect(isModuleEnabled(null, 'dine_in')).toBe(false);
     expect(presetModuleKeys('SALAO_BARBEARIA')).not.toContain('delivery');
+    expect(MODULES.find(module => module.key === 'dine_in')?.implemented).toBe(true);
   });
 
   it('supports a per-module disable check and returns blocking items to the caller', async () => {

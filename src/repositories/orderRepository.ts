@@ -336,6 +336,9 @@ export const orderRepository = {
 
   /** Checkout do carrinho. Exige cliente autenticado (auth.uid() no servidor) nos dois modos. */
   async createPublicOrder(slug: string, orderData: PublicOrderInput): Promise<Order> {
+    if (orderData.fulfillmentType === 'DINE_IN') {
+      throw new BackendError('DINE_IN_REQUIRES_TAB', 'Pedidos no salão devem ser enviados pela comanda da mesa.');
+    }
     if (!isSupabaseConfigured) {
       requireBackendOrLocalDemo('checkout');
       return dataStore.createPublicOrder(slug, orderData as any);
@@ -409,6 +412,9 @@ export const orderRepository = {
     slug: string,
     orderData: PromotionalOrderInput
   ): Promise<{ order: Order; summary: CheckoutSummary }> {
+    if (orderData.fulfillmentType === 'DINE_IN') {
+      throw new BackendError('DINE_IN_REQUIRES_TAB', 'Pedidos no salão devem ser enviados pela comanda da mesa.');
+    }
     if (!isSupabaseConfigured) requireBackend('checkout promocional');
     if (!isN1N6Backend()) throw n1n6Required('Checkout promocional');
     if (!orderData.offerId && !orderData.cardId) throw new BackendError('PROMO_UNAVAILABLE', 'Promoção inválida.');

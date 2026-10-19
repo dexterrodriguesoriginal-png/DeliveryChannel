@@ -36,9 +36,9 @@ export const MODULES: ModuleDefinition[] = [
   { key: 'pickup', label: 'Retirada', description: 'Permita que clientes retirem pedidos no estabelecimento.', changes: 'Exibe a opção de retirada no catálogo.', implemented: true },
   { key: 'addons', label: 'Adicionais', description: 'Ofereça complementos e personalizações nos produtos.', changes: 'Adiciona escolhas de complementos ao cardápio.', implemented: true },
   { key: 'kds', label: 'Chamar no TV', description: 'Organize os pedidos em uma tela de preparo.', changes: 'Adiciona uma fila visual para a operação.', implemented: false },
-  { key: 'dine_in', label: 'Mesa/Comanda', description: 'Atenda clientes em mesas ou comandas individuais.', changes: 'Adiciona atendimento e acompanhamento por mesa/comanda.', implemented: false },
+  { key: 'dine_in', label: 'Mesa/Comanda', description: 'Atenda clientes em mesas ou comandas individuais.', changes: 'Adiciona atendimento e acompanhamento por mesa/comanda.', implemented: true },
   { key: 'counter', label: 'Balcão', description: 'Registre pedidos feitos diretamente no balcão.', changes: 'Adiciona o fluxo de atendimento no balcão.', implemented: false },
-  { key: 'service_fee', label: 'Taxa de serviço', description: 'Configure a taxa de serviço do atendimento.', changes: 'Aplica a taxa configurada a pedidos elegíveis.', implemented: false },
+  { key: 'service_fee', label: 'Taxa de serviço', description: 'Configure a taxa opcional do atendimento no salão.', changes: 'Aplica a taxa configurada somente às comandas de salão.', implemented: true },
   { key: 'printing', label: 'Impressão', description: 'Imprima pedidos e documentos operacionais.', changes: 'Adiciona opções de impressão ao painel.', implemented: true },
   { key: 'weight', label: 'Venda por peso', description: 'Venda produtos com preço calculado por peso.', changes: 'Exibe unidades e campos de peso no catálogo.', implemented: false },
   { key: 'barcode', label: 'Código de barras', description: 'Identifique produtos pelo código de barras.', changes: 'Adiciona leitura e busca por código de barras.', implemented: false },
@@ -73,7 +73,7 @@ export const BUSINESS_PRESETS: Record<BusinessType, ModulePreset> = {
 export const LEGACY_ENABLED_MODULES: ReadonlySet<ModuleKey> = new Set(['delivery', 'pickup', 'pos', 'printing']);
 
 export function isModuleEnabled(modules: ReadonlySet<ModuleKey> | null | undefined, key: ModuleKey): boolean {
-  return modules ? modules.has(key) : key !== 'addons';
+  return modules ? modules.has(key) : LEGACY_ENABLED_MODULES.has(key);
 }
 
 export function presetModuleKeys(type: BusinessType): ModuleKey[] {

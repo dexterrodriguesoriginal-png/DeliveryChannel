@@ -30,6 +30,7 @@ const ROLE_LABELS: Record<RoleId, string> = {
   SUPER_ADMIN: 'Super Administrador',
   OWNER: 'Proprietário',
   MANAGER: 'Gerente',
+  WAITER: 'Garçom',
   OPERATOR: 'Operador',
   CASHIER: 'Caixa',
   DELIVERY_MANAGER: 'Gestão de Entregas',
