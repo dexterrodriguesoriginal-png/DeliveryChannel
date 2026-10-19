@@ -19,6 +19,9 @@ import {
   ORDER_STATUS_THEME, 
   DELAYED_PREPARING_THEME, 
   checkIsPreparingDelayed, orderActionButtonStyle } from '../../utils/orderStatusTheme';
+import { SlaTimerChip } from './SlaTimerChip';
+import { OrderStatusChip } from './StatusIcon';
+import { orderAgeInfo } from '../../lib/orders/orderAge';
 import { OrderAgeBadge } from './OrderAgeBadge';
 import { formatBRL } from '../../lib/pricing/money';
 
@@ -32,6 +35,8 @@ interface CompactOrderCardProps {
   onUpdateStatus: (orderId: string, newStatus: OrderStatus) => Promise<void>;
   onAssignDriverClick: (order: Order) => void;
   onCancelClick?: (order: Order) => void;
+  /** Tempo de Preparo da loja (min); padrão 25. */
+  prepMinutes?: number | null;
 }
 
 export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
@@ -42,6 +47,7 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
   onUpdateStatus,
   onAssignDriverClick,
   onCancelClick,
+  prepMinutes,
 }) => {
   const [elapsedSec, setElapsedSec] = useState<number>(() => {
     return Math.max(0, Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 1000));
@@ -65,7 +71,7 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   };
 
-  const isPreparingDelayed = checkIsPreparingDelayed(order.createdAt, order.status, 25);
+  const isPreparingDelayed = checkIsPreparingDelayed(order.createdAt, order.status, prepMinutes);
   const baseTheme = ORDER_STATUS_THEME[order.status] || ORDER_STATUS_THEME.PENDING;
   const theme = isPreparingDelayed ? DELAYED_PREPARING_THEME : baseTheme;
 
@@ -122,7 +128,7 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
     >
       {/* Barra de cor lateral de status (4px - 6px) para leitura periférica imediata */}
       <div 
-        className="absolute left-0 top-0 bottom-0 w-0.5" 
+        className="absolute left-0 top-0 bottom-0 w-1" 
         style={{ backgroundColor: theme.accent }} 
       />
 
@@ -134,22 +140,8 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
               #{order.orderNumber || order.id.slice(0, 6)}
             </span>
 
-            {/* Status com dot colorido e badge suave */}
-            <span 
-              style={{
-                backgroundColor: theme.badgeBg,
-                color: theme.badgeText,
-                borderColor: theme.badgeBorder,
-              }}
-              className="inline-flex items-center gap-0.5 text-[7px] font-mono font-extrabold px-1 py-0 rounded-full border uppercase tracking-wide shrink-0"
-            >
-              <span 
-                className={`w-1 h-1 rounded-full inline-block shrink-0 ${isPending ? 'animate-pulse' : ''}`} 
-                style={{ backgroundColor: theme.accent }} 
-              />
-              {isPreparingDelayed && <AlertTriangle className="w-1.5 h-1.5 text-red-600 inline shrink-0" />}
-              <span>{theme.label}</span>
-            </span>
+            {/* Status: ícone + texto (nunca só cor) */}
+            <OrderStatusChip status={order.status} late={isPreparingDelayed} className="text-[7px] px-1 py-0" />
 
             {/* Tipo: Delivery ou Retirada (exibido no topo em telas amplas) */}
             <span className="hidden xl:inline-flex items-center gap-0.5 text-[7.5px] font-bold text-slate-700 bg-white/70 px-0.5 py-0 rounded border border-slate-200/60 shrink-0">
@@ -169,16 +161,8 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
 
           {/* Tempo Decorrido / Cronômetro */}
           <div className="flex items-center gap-0.5 shrink-0 ml-auto">
-            <span 
-              className={`inline-flex items-center gap-0.5 font-mono text-[7.5px] font-bold px-1 py-0 rounded border shadow-2xs ${
-                isPreparingDelayed 
-                  ? 'bg-red-50 text-red-700 border-red-200 ring-1 ring-red-400/40' 
-                  : 'text-slate-700 bg-white/80 border-slate-200/60'
-              }`}
-            >
-              <Clock className={`w-1.5 h-1.5 ${isPreparingDelayed ? 'text-red-600 animate-pulse' : 'text-rose-500'}`} />
-              <span>{formatElapsed(elapsedSec)}</span>
-            </span>
+            <SlaTimerChip status={order.status} createdAt={order.createdAt} prepMinutes={prepMinutes}
+              now={new Date(order.createdAt).getTime() + elapsedSec * 1000} label={formatElapsed(elapsedSec)} className="text-[7.5px] px-1 py-0" />
 
             <button
               type="button"
@@ -194,8 +178,10 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
           </div>
         </div>
 
-        {/* 19/10: pedido em aberto há 30 min+ (âmbar) ou 1 dia+ (vermelho) */}
-        <OrderAgeBadge order={order} now={new Date(order.createdAt).getTime() + elapsedSec * 1000} />
+        {/* 19/10: o cronômetro faz o semáforo; o selo só aparece para pedido esquecido (1 dia+) */}
+        {orderAgeInfo(order, new Date(order.createdAt).getTime() + elapsedSec * 1000).level === 'stale' && (
+          <OrderAgeBadge order={order} now={new Date(order.createdAt).getTime() + elapsedSec * 1000} />
+        )}
 
         {/* LINHA 2 (CENTRAL): Cliente + Tipo (em telas compactas) + Resumo dos Itens */}
         <div className="space-y-0.2 min-w-0">

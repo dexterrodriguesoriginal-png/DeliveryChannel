@@ -17,6 +17,9 @@ import { ThermalReceiptModal } from '../../components/establishment/ThermalRecei
 import { PDVModal } from '../../components/establishment/PDVModal';
 import { CompactOrderCard, CardDensity } from '../../components/establishment/CompactOrderCard';
 import { KanbanOrderCard } from '../../components/establishment/KanbanOrderCard';
+import { OrderStatusChip, StatusIconByKey } from '../../components/establishment/StatusIcon';
+import { SlaTimerChip } from '../../components/establishment/SlaTimerChip';
+import { useNewOrderAlarm } from '../../lib/orders/newOrderAlarm';
 import { ORDER_STATUS_THEME, DELAYED_PREPARING_THEME, checkIsPreparingDelayed, orderActionButtonStyle } from '../../utils/orderStatusTheme';
 import { 
   ShoppingBag, 
@@ -53,6 +56,8 @@ import {
   UtensilsCrossed,
   Package,
   XCircle,
+  ClipboardCheck,
+  CheckCheck,
   MoreVertical,
   SlidersHorizontal,
   FileSpreadsheet
@@ -119,6 +124,8 @@ export const OrdersPage: React.FC = () => {
 
   // Som de alerta e Auto-aceitar
   const [soundEnabled, setSoundEnabled] = useState(true);
+  // Tempo de Preparo da loja (min) para o semáforo/atraso; padrão 25 (lib/orders/sla)
+  const prepMinutes = activeTenant?.settings?.defaultPrepTimeMinutes;
 
   // Filtros (Padrão: 'ALL' como no print, onde o pill "Todos 12" fica verde)
   const [activeTab, setActiveTab] = useState<string>('ALL');
@@ -461,6 +468,8 @@ export const OrdersPage: React.FC = () => {
   };
 
   const allOrders = remoteOrders || [];
+  // 19/10: bipe a cada ~5 s enquanto houver pedido em "Novo" (mesma preferência do Dashboard)
+  const newOrderAlarm = useNewOrderAlarm(allOrders.filter(o => o.status === 'PENDING').length);
 
   // Helper de filtro de período
   const isDateInPeriod = (dateStr: string, period: string) => {
@@ -608,7 +617,7 @@ export const OrdersPage: React.FC = () => {
       ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4'
       : 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5';
 
-  const isSelectedDelayed = selectedOrder ? checkIsPreparingDelayed(selectedOrder.createdAt, selectedOrder.status) : false;
+  const isSelectedDelayed = selectedOrder ? checkIsPreparingDelayed(selectedOrder.createdAt, selectedOrder.status, prepMinutes) : false;
   const selectedOrderTheme = selectedOrder 
     ? (isSelectedDelayed ? DELAYED_PREPARING_THEME : (ORDER_STATUS_THEME[selectedOrder.status] || ORDER_STATUS_THEME.PENDING)) 
     : null;
@@ -642,16 +651,7 @@ export const OrdersPage: React.FC = () => {
           {/* Linha 1: Badge de Status + Tempo Decorrido + Botão Fechar */}
           <div className="flex items-center justify-between gap-1">
             <div className="flex items-center gap-1 min-w-0">
-              <span 
-                style={{
-                  backgroundColor: selectedOrderTheme.badgeBg,
-                  color: selectedOrderTheme.badgeText,
-                  borderColor: selectedOrderTheme.badgeBorder,
-                }}
-                className="text-[7.5px] font-mono font-extrabold px-1.5 py-0.2 rounded-full border uppercase tracking-wider shadow-2xs truncate max-w-[85px]"
-              >
-                {selectedOrderTheme.label}
-              </span>
+              <OrderStatusChip status={selectedOrder.status} late={isSelectedDelayed} className="text-[8px] px-1.5 py-0.5" />
               <span className="text-[7.5px] font-mono text-slate-500 font-semibold flex items-center gap-0.5 shrink-0">
                 <Clock className="w-2 h-2 text-slate-400" />
                 <span>{elapsedStr}</span>
@@ -860,7 +860,7 @@ export const OrdersPage: React.FC = () => {
 
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
-                    selectedOrder.status !== 'PENDING' ? 'bg-indigo-600' : 'bg-slate-300'
+                    selectedOrder.status !== 'PENDING' ? 'bg-amber-400' : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Confirmação</div>
                   <div className="text-[7.5px] text-slate-500">
@@ -871,7 +871,7 @@ export const OrdersPage: React.FC = () => {
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
                     selectedOrder.status === 'PREPARING' || selectedOrder.status === 'READY' || selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? 'bg-amber-500'
+                      ? 'bg-blue-600'
                       : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Preparo na Cozinha</div>
@@ -883,7 +883,7 @@ export const OrdersPage: React.FC = () => {
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
                     selectedOrder.status === 'READY' || selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? 'bg-green-600'
+                      ? 'bg-green-700'
                       : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Pronto para Envio</div>
@@ -895,7 +895,7 @@ export const OrdersPage: React.FC = () => {
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
                     selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? 'bg-violet-600'
+                      ? 'bg-cyan-600'
                       : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Em Rota de Entrega</div>
@@ -1115,6 +1115,18 @@ export const OrdersPage: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={newOrderAlarm.toggle}
+                data-testid="orders-sound"
+                aria-pressed={newOrderAlarm.enabled && newOrderAlarm.unlocked}
+                title={newOrderAlarm.enabled && newOrderAlarm.unlocked ? 'Som ligado: bipe a cada 5 s enquanto houver pedido novo. Clique para desligar.' : 'Ativar o bipe de pedido novo'}
+                className={`h-9 py-2 px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                  newOrderAlarm.enabled && newOrderAlarm.unlocked ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-amber-50 border-amber-400 text-amber-900 hover:bg-amber-100'}`}
+              >
+                {newOrderAlarm.enabled && newOrderAlarm.unlocked ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                <span>{newOrderAlarm.enabled && newOrderAlarm.unlocked ? 'Som ligado' : 'Ativar som'}</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => fetchOrders()}
                 disabled={isRefreshing}
                 className="h-9 py-2 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs sm:text-[13px] font-bold flex items-center gap-2 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
@@ -1146,14 +1158,14 @@ export const OrdersPage: React.FC = () => {
               type="button"
               onClick={() => setActiveTab(activeTab === 'PENDING' ? 'ALL' : 'PENDING')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'PENDING' ? 'border-blue-400 ring-1 ring-blue-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'PENDING' ? 'border-amber-400 ring-1 ring-amber-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <div className="w-5 h-5 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
                   <Bell className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-blue-700 truncate">Novos</span>
+                <span className="text-xs sm:text-[12px] font-bold text-amber-700 truncate">Novos</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countNovos}</div>
@@ -1166,14 +1178,14 @@ export const OrdersPage: React.FC = () => {
               type="button"
               onClick={() => setActiveTab(activeTab === 'CONFIRMED' ? 'ALL' : 'CONFIRMED')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'CONFIRMED' ? 'border-indigo-400 ring-1 ring-indigo-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'CONFIRMED' ? 'border-amber-400 ring-1 ring-amber-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-3 h-3" />
+                <div className="w-5 h-5 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                  <ClipboardCheck className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-indigo-600 truncate">Confirmados</span>
+                <span className="text-xs sm:text-[12px] font-bold text-amber-600 truncate">Confirmados</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countConfirmados}</div>
@@ -1181,19 +1193,19 @@ export const OrdersPage: React.FC = () => {
               </div>
             </button>
 
-            {/* 3. Em preparo (ÂMBAR — 19/10) */}
+            {/* 3. Em preparo (AZUL — padrão KDS) */}
             <button
               type="button"
               onClick={() => setActiveTab(activeTab === 'PREPARING' ? 'ALL' : 'PREPARING')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'PREPARING' ? 'border-amber-500 ring-1 ring-amber-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'PREPARING' ? 'border-blue-500 ring-1 ring-blue-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
-                  <UtensilsCrossed className="w-3 h-3" />
+                <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+                  <Flame className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-amber-700 truncate">Em preparo</span>
+                <span className="text-xs sm:text-[12px] font-bold text-blue-700 truncate">Em preparo</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countEmPreparo}</div>
@@ -1201,7 +1213,7 @@ export const OrdersPage: React.FC = () => {
               </div>
             </button>
 
-            {/* 4. Prontos (VERDE — 19/10) */}
+            {/* 4. Prontos (VERDE — padrão KDS) */}
             <button
               type="button"
               onClick={() => setActiveTab(activeTab === 'READY' ? 'ALL' : 'READY')}
@@ -1211,7 +1223,7 @@ export const OrdersPage: React.FC = () => {
             >
               <div className="flex items-center gap-1.5">
                 <div className="w-5 h-5 rounded-full bg-green-50 text-green-700 flex items-center justify-center shrink-0">
-                  <Package className="w-3 h-3" />
+                  <ShoppingBag className="w-3 h-3" />
                 </div>
                 <span className="text-xs sm:text-[12px] font-bold text-green-700 truncate">Prontos</span>
               </div>
@@ -1221,19 +1233,19 @@ export const OrdersPage: React.FC = () => {
               </div>
             </button>
 
-            {/* 5. Em rota (VIOLETA — 19/10) */}
+            {/* 5. Em rota (CIANO — padrão KDS) */}
             <button
               type="button"
               onClick={() => setActiveTab(activeTab === 'OUT_FOR_DELIVERY' ? 'ALL' : 'OUT_FOR_DELIVERY')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'OUT_FOR_DELIVERY' ? 'border-violet-400 ring-1 ring-violet-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'OUT_FOR_DELIVERY' ? 'border-cyan-400 ring-1 ring-cyan-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-violet-50 text-violet-700 flex items-center justify-center shrink-0">
-                  <Truck className="w-3 h-3" />
+                <div className="w-5 h-5 rounded-full bg-cyan-50 text-cyan-700 flex items-center justify-center shrink-0">
+                  <Bike className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-violet-700 truncate">Em rota</span>
+                <span className="text-xs sm:text-[12px] font-bold text-cyan-700 truncate">Em rota</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countEmRota}</div>
@@ -1251,7 +1263,7 @@ export const OrdersPage: React.FC = () => {
             >
               <div className="flex items-center gap-1.5">
                 <div className="w-5 h-5 rounded-full bg-slate-50 text-slate-600 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-3 h-3" />
+                  <CheckCheck className="w-3 h-3" />
                 </div>
                 <span className="text-xs sm:text-[12px] font-bold text-slate-700 truncate">Entregues</span>
               </div>
@@ -1266,14 +1278,14 @@ export const OrdersPage: React.FC = () => {
               type="button"
               onClick={() => setActiveTab(activeTab === 'CANCELLED' ? 'ALL' : 'CANCELLED')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'CANCELLED' ? 'border-stone-400 ring-1 ring-stone-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'CANCELLED' ? 'border-red-400 ring-1 ring-red-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-stone-50 text-stone-600 flex items-center justify-center shrink-0">
+                <div className="w-5 h-5 rounded-full bg-red-50 text-red-600 flex items-center justify-center shrink-0">
                   <XCircle className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-stone-600 truncate">Cancelados</span>
+                <span className="text-xs sm:text-[12px] font-bold text-red-600 truncate">Cancelados</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countCancelados}</div>
@@ -1486,14 +1498,14 @@ export const OrdersPage: React.FC = () => {
               {/* Legenda Oficial Ultra Discreta: COR = STATUS (+15%) */}
               <div className="flex items-center gap-3.5 pt-2 text-xs sm:text-[12px] text-slate-600 font-semibold overflow-x-auto scrollbar-none border-t border-slate-100">
                 <span className="text-[11px] uppercase font-bold text-slate-400 tracking-wider shrink-0">Legenda:</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#2563EB]"></span>Novo</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#4F46E5]"></span>Confirmado</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#D97706]"></span>Preparo</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#16A34A]"></span>Pronto</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#7C3AED]"></span>Rota</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#64748B]"></span>Entregue</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#A8A29E]"></span>Cancelado</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#DC2626]"></span>Atrasado</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#F59E0B]"></span><StatusIconByKey icon="bell" className="w-3 h-3 text-slate-500" />Novo</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#FCD34D]"></span><StatusIconByKey icon="confirmed" className="w-3 h-3 text-slate-500" />Confirmado</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#2563EB]"></span><StatusIconByKey icon="flame" className="w-3 h-3 text-slate-500" />Preparo</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#15803D]"></span><StatusIconByKey icon="ready" className="w-3 h-3 text-slate-500" />Pronto</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#0891B2]"></span><StatusIconByKey icon="bike" className="w-3 h-3 text-slate-500" />Rota</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#64748B]"></span><StatusIconByKey icon="delivered" className="w-3 h-3 text-slate-500" />Entregue</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#F87171]"></span><StatusIconByKey icon="cancelled" className="w-3 h-3 text-slate-500" />Cancelado</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#DC2626]"></span><StatusIconByKey icon="late" className="w-3 h-3 text-slate-500" />Atrasado</span>
               </div>
 
               {/* Botão de Recolher Painel (Centralizado na base do painel) */}
@@ -1587,6 +1599,7 @@ export const OrdersPage: React.FC = () => {
                 <div className={cardsGridClass} style={{ zoom: `${cardScale}%` }}>
                   {filteredOrders.map(order => (
                     <CompactOrderCard
+                      prepMinutes={prepMinutes}
                       key={order.id}
                       order={order}
                       density={density}
@@ -1631,6 +1644,7 @@ export const OrdersPage: React.FC = () => {
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
                         {allOrders.filter(o => o.status === 'PENDING').map(order => (
                           <KanbanOrderCard
+                            prepMinutes={prepMinutes}
                             key={order.id}
                             order={order}
                             isSelected={selectedOrder?.id === order.id}
@@ -1668,6 +1682,7 @@ export const OrdersPage: React.FC = () => {
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
                         {allOrders.filter(o => o.status === 'CONFIRMED').map(order => (
                           <KanbanOrderCard
+                            prepMinutes={prepMinutes}
                             key={order.id}
                             order={order}
                             isSelected={selectedOrder?.id === order.id}
@@ -1705,6 +1720,7 @@ export const OrdersPage: React.FC = () => {
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
                         {allOrders.filter(o => o.status === 'PREPARING').map(order => (
                           <KanbanOrderCard
+                            prepMinutes={prepMinutes}
                             key={order.id}
                             order={order}
                             isSelected={selectedOrder?.id === order.id}
@@ -1742,6 +1758,7 @@ export const OrdersPage: React.FC = () => {
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
                         {allOrders.filter(o => o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER').map(order => (
                           <KanbanOrderCard
+                            prepMinutes={prepMinutes}
                             key={order.id}
                             order={order}
                             isSelected={selectedOrder?.id === order.id}
@@ -1779,6 +1796,7 @@ export const OrdersPage: React.FC = () => {
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
                         {allOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').map(order => (
                           <KanbanOrderCard
+                            prepMinutes={prepMinutes}
                             key={order.id}
                             order={order}
                             isSelected={selectedOrder?.id === order.id}
@@ -1912,15 +1930,9 @@ export const OrdersPage: React.FC = () => {
 
                               {/* Status Badge */}
                               <td className="py-1 px-1.5">
-                                <span 
-                                  style={{
-                                    backgroundColor: rowTheme.badgeBg,
-                                    color: rowTheme.badgeText,
-                                    borderColor: rowTheme.badgeBorder,
-                                  }}
-                                  className="text-[7.5px] font-mono font-extrabold px-1 py-0.1 rounded-full border uppercase"
-                                >
-                                  {rowTheme.label}
+                                <span className="inline-flex items-center gap-1">
+                                  <OrderStatusChip status={order.status} late={checkIsPreparingDelayed(order.createdAt, order.status, prepMinutes)} className="text-[7.5px] px-1 py-0" />
+                                  <SlaTimerChip status={order.status} createdAt={order.createdAt} prepMinutes={prepMinutes} className="text-[7.5px] px-1 py-0" />
                                 </span>
                               </td>
 

@@ -46,3 +46,29 @@ export function playNewOrderSound(): void {
     console.warn('[Audio] Reprodução de áudio restrita pelo navegador até primeira interação:', err);
   }
 }
+
+/** Bipe curto e discreto (alarme repetido de pedido novo). */
+export function playShortBeep(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    [0, 0.18].forEach(offset => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(988, t + offset);
+      gain.gain.setValueAtTime(0.08, t + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + offset + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t + offset);
+      osc.stop(t + offset + 0.13);
+    });
+  } catch { /* navegador bloqueou o áudio */ }
+}
+
+/** Destrava o áudio (chamar dentro de um clique/tecla do usuário). */
+export function unlockAudio(): void {
+  getAudioContext();
+}

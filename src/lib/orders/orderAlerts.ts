@@ -4,12 +4,13 @@
  *
  *  - Novos: PENDING, mais recente primeiro.
  *  - Atrasados: CONFIRMED/PREPARING há mais tempo que o preparo da loja (settings.defaultPrepTimeMinutes);
- *    sem preparo configurado usa 30 min (mesmo limite do selo âmbar da tela Pedidos).
+ *    sem preparo configurado usa 25 min (DEFAULT_PREP_MINUTES, mesmo semáforo do cronômetro).
  *  - Prontos aguardando entregador: entrega (DELIVERY) em READY ou WAITING_FOR_DRIVER, ainda sem entregador.
  * Permissões espelham update_order_status (o servidor continua sendo quem decide).
  */
 import type { Order, RoleId } from '../../types';
-import { sortOrdersNewestFirst, AGE_WARN_MS } from './orderAge';
+import { sortOrdersNewestFirst } from './orderAge';
+import { DEFAULT_PREP_MINUTES } from './sla';
 
 export interface OrderAlerts {
   novos: Order[];
@@ -24,7 +25,7 @@ export interface OrderAlerts {
 
 export function lateThresholdMs(prepMinutes?: number | null): number {
   const m = Number(prepMinutes);
-  return Number.isFinite(m) && m > 0 ? m * 60000 : AGE_WARN_MS;
+  return Number.isFinite(m) && m > 0 ? m * 60000 : DEFAULT_PREP_MINUTES * 60000;
 }
 
 export function buildOrderAlerts(orders: readonly Order[], opts: { prepMinutes?: number | null; now?: number } = {}): OrderAlerts {

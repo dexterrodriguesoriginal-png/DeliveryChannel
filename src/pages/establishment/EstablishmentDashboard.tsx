@@ -41,6 +41,7 @@ import { applyOrderUpdate } from '../../lib/orders/applyOrderUpdate';
 import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE, shouldBlockCallDriver } from '../../lib/orders/dispatchErrors';
 import { canAccessEstTab } from '../../lib/navPermissions';
 import { playNewOrderSound } from '../../utils/audio';
+import { useNewOrderAlarm } from '../../lib/orders/newOrderAlarm';
 
 interface EstablishmentDashboardProps {
   onNavigate?: (tab: string) => void;
@@ -162,6 +163,9 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
     try { sessionStorage.setItem(FOCUS_ORDER_KEY, order.id); } catch { /* sem storage */ }
     onNavigate?.('est-orders');
   };
+
+  // 19/10: bipe a cada ~5 s enquanto houver pedido em "Novo" (para quando todos forem aceitos)
+  const newOrderAlarm = useNewOrderAlarm((remoteOrders || []).filter(o => o.status === 'PENDING').length);
 
   if (!activeTenant) return null;
 
@@ -441,6 +445,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         onView={handleAlertView}
         onViewAll={onNavigate ? () => onNavigate('est-orders') : undefined}
         onGoInventory={onNavigate && canAccessEstTab(activeRole, 'est-inventory') ? () => onNavigate('est-inventory') : undefined}
+        sound={{ enabled: newOrderAlarm.enabled, unlocked: newOrderAlarm.unlocked, onToggle: newOrderAlarm.toggle }}
       />
 
       {/* ========================================================================= */}

@@ -26,9 +26,9 @@ describe('orderAlerts: Novos / Atrasados / Prontos aguardando entregador', () =>
     expect(a.prontosRetirada.map(x => x.id)).toEqual([readyPickup.id]);
     expect(a.total).toBe(8);
   });
-  it('sem preparo configurado usa 30 min', () => {
-    expect(lateThresholdMs(undefined)).toBe(30 * MIN);
-    expect(lateThresholdMs(0)).toBe(30 * MIN);
+  it('sem preparo configurado usa 25 min', () => {
+    expect(lateThresholdMs(undefined)).toBe(25 * MIN);
+    expect(lateThresholdMs(0)).toBe(25 * MIN);
     expect(lateThresholdMs(15)).toBe(15 * MIN);
     expect(buildOrderAlerts([o('PREPARING', 31)], { now: NOW }).atrasados).toHaveLength(1);
   });

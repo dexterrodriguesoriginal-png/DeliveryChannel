@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { Bell, Clock, Bike, Package, MessageCircle, Eye, CheckCircle2, ChefHat, ShoppingBag, ArrowRight, X } from 'lucide-react';
+import { Bell, Clock, Bike, Package, MessageCircle, Eye, CheckCircle2, ChefHat, ShoppingBag, ArrowRight, X, Flame, ClockAlert, Boxes, Volume2, VolumeX } from 'lucide-react';
 import type { Order, RoleId } from '../../../types';
 import { formatBRL } from '../../../lib/pricing/money';
 import { paymentMethodLabel } from '../../../lib/orders/labels';
 import { OrderAgeBadge } from '../OrderAgeBadge';
-import { statusChip, FILTER_CHIP_CLASS } from '../../../lib/orders/statusChip';
+import { FILTER_CHIP_CLASS } from '../../../lib/orders/statusChip';
+import { OrderStatusChip } from '../StatusIcon';
+import { SlaTimerChip } from '../SlaTimerChip';
+import { prepLimitMinutes } from '../../../lib/orders/sla';
+import { orderAgeInfo } from '../../../lib/orders/orderAge';
 import { alertTone, ALERT_TONE_CLASS } from '../../../lib/orders/alertTone';
 import {
   OrderAlerts, NextStep, AlertFilter, nextStepFor, waitingLabel, itemsSummary, addressLine, whatsappLink,
@@ -30,6 +34,8 @@ interface Props {
   onGoInventory?: () => void;
   /** Linhas visíveis na faixa (padrão 3). */
   maxRows?: number;
+  /** Alarme de pedido novo (botão "Ativar som"). */
+  sound?: { enabled: boolean; unlocked: boolean; onToggle: () => void };
 }
 
 const STEP_STYLE: Record<NextStep['kind'], string> = {
@@ -45,7 +51,7 @@ const STEP_ICON: Record<NextStep['kind'], React.ReactNode> = {
   call_driver: <Bike className="w-3.5 h-3.5" />, pickup_done: <ShoppingBag className="w-3.5 h-3.5" />,
 };
 
-interface ChipDef { key: AlertFilter | 'estoque'; label: string; count: number; on: string }
+interface ChipDef { key: AlertFilter | 'estoque'; label: string; count: number; on: string; icon: React.ReactNode }
 
 /**
  * 19/10 (compacto): "Alertas de pedidos" numa faixa fina, da altura do cartão da loja.
@@ -54,22 +60,22 @@ interface ChipDef { key: AlertFilter | 'estoque'; label: string; count: number; 
  */
 export const OrderAlertsCard: React.FC<Props> = ({
   alerts, role, loading, highlightIds, busyOrderId, lowStockCount = 0, prepMinutes,
-  onStep, onView, onViewAll, onGoInventory, maxRows = 3,
+  onStep, onView, onViewAll, onGoInventory, maxRows = 3, sound,
 }) => {
   const [filter, setFilter] = useState<AlertFilter | null>(null);
   const counts = alertCounts(alerts);
   const list = alertList(alerts, filter);
   const visible = list.slice(0, maxRows);
   const more = list.length - visible.length;
-  const lateLimit = prepMinutes && prepMinutes > 0 ? `${prepMinutes} min` : '30 min';
+  const lateLimit = `${prepLimitMinutes(prepMinutes)} min`;
 
   const chips: ChipDef[] = [
-    { key: 'novos', label: 'Novos', count: counts.novos, on: FILTER_CHIP_CLASS.novos },
-    { key: 'emPreparo', label: 'Em preparo', count: counts.emPreparo, on: FILTER_CHIP_CLASS.emPreparo },
-    { key: 'prontos', label: 'Prontos', count: counts.prontos, on: FILTER_CHIP_CLASS.prontos },
-    { key: 'atrasados', label: 'Atrasados', count: counts.atrasados, on: FILTER_CHIP_CLASS.atrasados },
+    { key: 'novos', label: 'Novos', count: counts.novos, on: FILTER_CHIP_CLASS.novos, icon: <Bell className="w-3 h-3" /> },
+    { key: 'emPreparo', label: 'Em preparo', count: counts.emPreparo, on: FILTER_CHIP_CLASS.emPreparo, icon: <Flame className="w-3 h-3" /> },
+    { key: 'prontos', label: 'Prontos', count: counts.prontos, on: FILTER_CHIP_CLASS.prontos, icon: <ShoppingBag className="w-3 h-3" /> },
+    { key: 'atrasados', label: 'Atrasados', count: counts.atrasados, on: FILTER_CHIP_CLASS.atrasados, icon: <ClockAlert className="w-3 h-3" /> },
   ];
-  if (onGoInventory) chips.push({ key: 'estoque', label: 'Estoque baixo', count: lowStockCount, on: FILTER_CHIP_CLASS.neutro });
+  if (onGoInventory) chips.push({ key: 'estoque', label: 'Estoque baixo', count: lowStockCount, on: FILTER_CHIP_CLASS.estoque, icon: <Boxes className="w-3 h-3" /> });
 
   const renderChip = (c: ChipDef) => {
     const active = c.key !== 'estoque' && filter === c.key;
@@ -84,7 +90,7 @@ export const OrderAlertsCard: React.FC<Props> = ({
         className={`inline-flex items-center gap-1 h-7 px-2.5 rounded-full border text-[11px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
           muted ? 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100' : c.on
         } ${active ? 'ring-2 ring-offset-1 ring-slate-900/70' : ''}`}>
-        {c.label} <span className="font-mono font-black">{c.count}</span>
+        {c.icon}{c.label} <span className="font-mono font-black">{c.count}</span>
       </button>
     );
   };
@@ -97,7 +103,6 @@ export const OrderAlertsCard: React.FC<Props> = ({
     const wait = step ? '' : waitingLabel(o);
     const late = alerts.atrasados.some(x => x.id === o.id);
     const pickup = o.fulfillmentType === 'PICKUP';
-    const chip = statusChip(o.status, late);
     return (
       <li key={o.id} data-testid="alert-order" data-order-id={o.id} data-status={o.status}
         title={itemsSummary(o) || undefined}
@@ -107,8 +112,9 @@ export const OrderAlertsCard: React.FC<Props> = ({
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="font-mono font-black text-slate-900 text-sm">#{o.orderNumber}</span>
           <span className="text-[11px] text-slate-500">{new Date(o.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-          <OrderAgeBadge order={o} />
-          <span data-testid="alert-status" className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap ${chip.className}`}>{chip.label}</span>
+          <SlaTimerChip status={o.status} createdAt={o.createdAt} prepMinutes={prepMinutes} />
+          {orderAgeInfo(o).level === 'stale' && <OrderAgeBadge order={o} />}
+          <OrderStatusChip status={o.status} late={late} />
         </div>
         <div className="flex items-center gap-1 min-w-0 flex-1">
           <span className="text-[13px] font-bold text-slate-900 truncate">{o.customerName || 'Cliente'}</span>
@@ -159,8 +165,8 @@ export const OrderAlertsCard: React.FC<Props> = ({
       className={`rounded-xl border border-l-4 p-3 shadow-sm transition-colors duration-300 ${ALERT_TONE_CLASS[tone]}`}>
       <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:gap-3">
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${alerts.novos.length ? 'bg-blue-50' : 'bg-slate-100'}`}>
-            <Bell className={`w-4 h-4 ${alerts.novos.length ? 'text-blue-600 animate-bounce' : 'text-slate-400'}`} />
+          <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${alerts.novos.length ? 'bg-amber-200' : 'bg-white/70'}`}>
+            <Bell className={`w-4 h-4 ${alerts.novos.length ? 'text-amber-700 animate-bounce' : 'text-slate-400'}`} />
           </span>
           <div className="leading-tight">
             <h2 className="text-sm font-black text-slate-900">Alertas de pedidos</h2>
@@ -174,9 +180,18 @@ export const OrderAlertsCard: React.FC<Props> = ({
         <div className="order-3 w-full lg:order-none lg:w-auto flex flex-wrap items-center gap-1.5 lg:flex-1" role="group" aria-label="Filtrar alertas">
           {chips.map(renderChip)}
         </div>
+        {sound && (
+          <button type="button" onClick={sound.onToggle} data-testid="alerts-sound" aria-pressed={sound.enabled && sound.unlocked}
+            title={sound.enabled && sound.unlocked ? 'Som ligado: bipe a cada 5 s enquanto houver pedido novo. Clique para desligar.' : 'Ativar o bipe de pedido novo'}
+            className={`ml-auto lg:ml-0 shrink-0 inline-flex items-center gap-1 h-9 px-2.5 rounded-xl text-[11px] font-bold border cursor-pointer ${
+              sound.enabled && sound.unlocked ? 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50' : 'bg-amber-50 text-amber-900 border-amber-400 hover:bg-amber-100'}`}>
+            {sound.enabled && sound.unlocked ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+            {sound.enabled && sound.unlocked ? 'Som ligado' : 'Ativar som'}
+          </button>
+        )}
         {onViewAll && (
           <button type="button" onClick={onViewAll} data-testid="alerts-view-all"
-            className="ml-auto lg:ml-0 shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 cursor-pointer">
+            className={`${sound ? '' : 'ml-auto'} lg:ml-0 shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 cursor-pointer`}>
             Ver pedidos <ArrowRight className="w-3.5 h-3.5" />
           </button>
         )}

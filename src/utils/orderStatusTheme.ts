@@ -1,3 +1,4 @@
+import { prepLimitMinutes } from '../lib/orders/sla';
 import { OrderStatus } from '../types';
 
 export interface StatusTheme {
@@ -16,21 +17,20 @@ export interface StatusTheme {
   buttonLabel: string;
 }
 
-// 19/10 (painel do dono): cores únicas por status em todo o painel —
-// Novo = azul, Confirmado = índigo, Em preparo = âmbar, Pronto = verde, Em rota = violeta,
-// Entregue/Cancelado = neutros, Atrasado = vermelho. Toda ação principal usa o verde da marca (#15803D).
+// 19/10 (padrão KDS): Novo = âmbar, Confirmado = âmbar claro, Em preparo = azul, Pronto = verde,
+// Em rota = ciano, Entregue = cinza, Cancelado = vermelho suave, Atrasado = vermelho forte. Toda ação principal usa o verde da marca (#15803D).
 export const BRAND_ACTION = { bg: '#15803D', hover: '#166534', text: '#FFFFFF' };
 
 export const ORDER_STATUS_THEME: Record<OrderStatus, StatusTheme> = {
   PENDING: {
-    bg: '#EFF6FF',
-    drawerBg: '#F3F8FF',
-    border: '#93C5FD',
-    accent: '#2563EB',
-    text: '#1E40AF',
-    badgeBg: '#DBEAFE',
-    badgeText: '#1D4ED8',
-    badgeBorder: '#93C5FD',
+    bg: '#FFFBEB',
+    drawerBg: '#FFFCF0',
+    border: '#FCD34D',
+    accent: '#F59E0B',
+    text: '#78350F',
+    badgeBg: '#FEF3C7',
+    badgeText: '#92400E',
+    badgeBorder: '#F59E0B',
     label: 'NOVO',
     buttonBg: '#15803D',
     buttonHover: '#166534',
@@ -38,14 +38,14 @@ export const ORDER_STATUS_THEME: Record<OrderStatus, StatusTheme> = {
     buttonLabel: 'Aceitar Pedido',
   },
   CONFIRMED: {
-    bg: '#EEF2FF',
-    drawerBg: '#F3F5FF',
-    border: '#C7D2FE',
-    accent: '#4F46E5',
-    text: '#3730A3',
-    badgeBg: '#E0E7FF',
-    badgeText: '#4338CA',
-    badgeBorder: '#A5B4FC',
+    bg: '#FFFDF5',
+    drawerBg: '#FFFDF7',
+    border: '#FDE68A',
+    accent: '#D97706',
+    text: '#78350F',
+    badgeBg: '#FFFBEB',
+    badgeText: '#92400E',
+    badgeBorder: '#FDE68A',
     label: 'CONFIRMADO',
     buttonBg: '#15803D',
     buttonHover: '#166534',
@@ -53,14 +53,14 @@ export const ORDER_STATUS_THEME: Record<OrderStatus, StatusTheme> = {
     buttonLabel: 'Iniciar Preparo',
   },
   PREPARING: {
-    bg: '#FFFBEB',
-    drawerBg: '#FFFCF0',
-    border: '#FCD34D',
-    accent: '#D97706',
-    text: '#92400E',
-    badgeBg: '#FEF3C7',
-    badgeText: '#B45309',
-    badgeBorder: '#FCD34D',
+    bg: '#EFF6FF',
+    drawerBg: '#F3F8FF',
+    border: '#93C5FD',
+    accent: '#2563EB',
+    text: '#1E3A8A',
+    badgeBg: '#DBEAFE',
+    badgeText: '#1E40AF',
+    badgeBorder: '#93C5FD',
     label: 'EM PREPARO',
     buttonBg: '#15803D',
     buttonHover: '#166534',
@@ -71,10 +71,10 @@ export const ORDER_STATUS_THEME: Record<OrderStatus, StatusTheme> = {
     bg: '#F0FDF4',
     drawerBg: '#F3FDF6',
     border: '#86EFAC',
-    accent: '#16A34A',
-    text: '#166534',
+    accent: '#15803D',
+    text: '#14532D',
     badgeBg: '#DCFCE7',
-    badgeText: '#15803D',
+    badgeText: '#166534',
     badgeBorder: '#86EFAC',
     label: 'PRONTO',
     buttonBg: '#15803D',
@@ -86,10 +86,10 @@ export const ORDER_STATUS_THEME: Record<OrderStatus, StatusTheme> = {
     bg: '#F0FDF4',
     drawerBg: '#F3FDF6',
     border: '#86EFAC',
-    accent: '#16A34A',
-    text: '#166534',
+    accent: '#15803D',
+    text: '#14532D',
     badgeBg: '#DCFCE7',
-    badgeText: '#15803D',
+    badgeText: '#166534',
     badgeBorder: '#86EFAC',
     label: 'PRONTO',
     buttonBg: '#15803D',
@@ -98,14 +98,14 @@ export const ORDER_STATUS_THEME: Record<OrderStatus, StatusTheme> = {
     buttonLabel: 'Despachar Pedido',
   },
   OUT_FOR_DELIVERY: {
-    bg: '#F5F3FF',
-    drawerBg: '#F7F5FF',
-    border: '#C4B5FD',
-    accent: '#7C3AED',
-    text: '#5B21B6',
-    badgeBg: '#EDE9FE',
-    badgeText: '#6D28D9',
-    badgeBorder: '#C4B5FD',
+    bg: '#ECFEFF',
+    drawerBg: '#F0FEFF',
+    border: '#67E8F9',
+    accent: '#0891B2',
+    text: '#164E63',
+    badgeBg: '#CFFAFE',
+    badgeText: '#155E75',
+    badgeBorder: '#67E8F9',
     label: 'EM ROTA',
     buttonBg: '#15803D',
     buttonHover: '#166534',
@@ -120,7 +120,7 @@ export const ORDER_STATUS_THEME: Record<OrderStatus, StatusTheme> = {
     text: '#334155',
     badgeBg: '#F1F5F9',
     badgeText: '#334155',
-    badgeBorder: '#E2E8F0',
+    badgeBorder: '#CBD5E1',
     label: 'ENTREGUE',
     buttonBg: '#E2E8F0',
     buttonHover: '#CBD5E1',
@@ -128,14 +128,14 @@ export const ORDER_STATUS_THEME: Record<OrderStatus, StatusTheme> = {
     buttonLabel: 'Ver Detalhes',
   },
   CANCELLED: {
-    bg: '#FAFAF9',
-    drawerBg: '#FAFAF9',
-    border: '#D6D3D1',
-    accent: '#78716C',
-    text: '#57534E',
-    badgeBg: '#F5F5F4',
-    badgeText: '#57534E',
-    badgeBorder: '#D6D3D1',
+    bg: '#FEF2F2',
+    drawerBg: '#FEF5F5',
+    border: '#FECACA',
+    accent: '#DC2626',
+    text: '#7F1D1D',
+    badgeBg: '#FEE2E2',
+    badgeText: '#991B1B',
+    badgeBorder: '#FECACA',
     label: 'CANCELADO',
     buttonBg: '#E2E8F0',
     buttonHover: '#CBD5E1',
@@ -161,13 +161,13 @@ export const DELAYED_PREPARING_THEME: StatusTheme = {
     buttonLabel: 'Marcar como Pronto',
 };
 
-// Verifica se um pedido em preparo está atrasado (padrão: 25 minutos)
-export function checkIsPreparingDelayed(createdAt: string | Date, status: OrderStatus, maxMinutes = 25): boolean {
-  if (status !== 'PREPARING') return false;
-  const elapsedMinutes = (Date.now() - new Date(createdAt).getTime()) / (1000 * 60);
-  return elapsedMinutes >= maxMinutes;
+// Atrasado = aceito/em preparo há mais tempo que o Tempo de Preparo da loja (padrão 25 min).
+// Mesma regra da faixa "Alertas de pedidos" (lib/orders/orderAlerts) e do cronômetro vermelho.
+export function checkIsPreparingDelayed(createdAt: string | Date, status: OrderStatus, maxMinutes?: number | null): boolean {
+  if (status !== 'PREPARING' && status !== 'CONFIRMED') return false;
+  const elapsedMs = Date.now() - new Date(createdAt).getTime();
+  return elapsedMs > prepLimitMinutes(maxMinutes) * 60000;
 }
-
 
 /**
  * 19/10: estilo do botão de ação do pedido. Em PRONTO com entrega, "Chamar motoboy" é a ação principal

@@ -17,8 +17,12 @@ import { Order, OrderStatus } from '../../types';
 import { 
   ORDER_STATUS_THEME, 
   DELAYED_PREPARING_THEME, 
-  checkIsPreparingDelayed 
+  checkIsPreparingDelayed,
+  orderActionButtonStyle,
 } from '../../utils/orderStatusTheme';
+import { SlaTimerChip } from './SlaTimerChip';
+import { OrderStatusChip } from './StatusIcon';
+import { orderAgeInfo } from '../../lib/orders/orderAge';
 import { OrderAgeBadge } from './OrderAgeBadge';
 import { formatBRL } from '../../lib/pricing/money';
 
@@ -29,54 +33,9 @@ interface KanbanOrderCardProps {
   onUpdateStatus: (orderId: string, newStatus: OrderStatus) => Promise<void>;
   onAssignDriverClick: (order: Order) => void;
   onCancelClick?: (order: Order) => void;
+  /** Tempo de Preparo da loja (min); padrão 25. */
+  prepMinutes?: number | null;
 }
-
-// Mapeamento oficial de cores do botão de ação por status (COMANDO 133)
-const getKanbanActionButtonColors = (status: OrderStatus) => {
-  switch (status) {
-    case 'PENDING':
-      return {
-        bg: '#EAB308', // 🟡 Amarelo/dourado
-        text: '#0F172A', // Texto escuro de alto contraste
-      };
-    case 'CONFIRMED':
-      return {
-        bg: '#2563EB', // 🔵 Azul
-        text: '#FFFFFF',
-      };
-    case 'PREPARING':
-      return {
-        bg: '#16A34A', // 🟢 Verde
-        text: '#FFFFFF',
-      };
-    case 'READY':
-    case 'WAITING_FOR_DRIVER':
-      return {
-        bg: '#7C3AED', // 🟣 Roxo
-        text: '#FFFFFF',
-      };
-    case 'OUT_FOR_DELIVERY':
-      return {
-        bg: '#2563EB', // 🔵 Azul
-        text: '#FFFFFF',
-      };
-    case 'DELIVERED':
-      return {
-        bg: '#E2E8F0', // 🟢 Verde/cinza neutro
-        text: '#334155',
-      };
-    case 'CANCELLED':
-      return {
-        bg: '#DC2626', // 🔴 Vermelho
-        text: '#FFFFFF',
-      };
-    default:
-      return {
-        bg: '#2563EB',
-        text: '#FFFFFF',
-      };
-  }
-};
 
 export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
   order,
@@ -85,6 +44,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
   onUpdateStatus,
   onAssignDriverClick,
   onCancelClick,
+  prepMinutes,
 }) => {
   const [elapsedSec, setElapsedSec] = useState<number>(() => {
     return Math.max(0, Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 1000));
@@ -108,10 +68,9 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   };
 
-  const isPreparingDelayed = checkIsPreparingDelayed(order.createdAt, order.status, 25);
+  const isPreparingDelayed = checkIsPreparingDelayed(order.createdAt, order.status, prepMinutes);
   const baseTheme = ORDER_STATUS_THEME[order.status] || ORDER_STATUS_THEME.PENDING;
   const theme = isPreparingDelayed ? DELAYED_PREPARING_THEME : baseTheme;
-  const actionButtonColors = getKanbanActionButtonColors(order.status);
 
   const isPending = order.status === 'PENDING';
   const isConfirmed = order.status === 'CONFIRMED';
@@ -173,24 +132,17 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
             <span className="font-mono font-black text-slate-950 text-[10px] sm:text-[10.5px]">
               #{order.orderNumber || order.id.slice(0, 6)}
             </span>
-            {isPending && (
-              <span className="w-1 h-1 rounded-full bg-amber-500 animate-pulse shrink-0" title="Novo Pedido" />
-            )}
-            {isPreparingDelayed && (
-              <span className="inline-flex items-center gap-0.5 text-[7px] font-bold text-red-700 bg-red-100 px-0.5 py-0 rounded border border-red-200">
-                <AlertTriangle className="w-1.5 h-1.5" /> Atrasado
-              </span>
-            )}
+            <OrderStatusChip status={order.status} late={isPreparingDelayed} className="text-[7.5px] px-1 py-0" />
           </div>
 
-          <div className={`flex items-center gap-0.5 font-mono text-[8px] font-bold shrink-0 ${isPreparingDelayed ? 'text-red-700' : 'text-slate-700'}`}>
-            <Clock className={`w-2 h-2 ${isPreparingDelayed ? 'text-red-600 animate-pulse' : 'text-rose-500'}`} />
-            <span>{formatElapsed(elapsedSec)}</span>
-          </div>
+          <SlaTimerChip status={order.status} createdAt={order.createdAt} prepMinutes={prepMinutes}
+            now={new Date(order.createdAt).getTime() + elapsedSec * 1000} label={formatElapsed(elapsedSec)} className="text-[8px] px-1 py-0" />
         </div>
 
-        {/* 19/10: pedido em aberto há 30 min+ (âmbar) ou 1 dia+ (vermelho) */}
-        <OrderAgeBadge order={order} now={new Date(order.createdAt).getTime() + elapsedSec * 1000} />
+        {/* 19/10: o cronômetro faz o semáforo; o selo só aparece para pedido esquecido (1 dia+) */}
+        {orderAgeInfo(order, new Date(order.createdAt).getTime() + elapsedSec * 1000).level === 'stale' && (
+          <OrderAgeBadge order={order} now={new Date(order.createdAt).getTime() + elapsedSec * 1000} />
+        )}
 
         {/* Linha 2: Cliente + Valor */}
         <div className="flex items-center justify-between gap-1">
@@ -260,10 +212,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
         <button
           type="button"
           onClick={handleActionClick}
-          style={{
-            backgroundColor: actionButtonColors.bg,
-            color: actionButtonColors.text,
-          }}
+          style={orderActionButtonStyle(theme, order)}
           className="flex-1 py-0.5 px-1 rounded font-bold text-[8.5px] flex items-center justify-center gap-0.5 shadow-2xs hover:opacity-90 transition-all cursor-pointer active:scale-98 truncate"
         >
           {isPending && <Check className="w-2 h-2 stroke-[3]" />}
