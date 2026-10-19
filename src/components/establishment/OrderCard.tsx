@@ -128,7 +128,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           <span className={`px-2 py-0.5 rounded-md font-mono font-bold text-[10px] uppercase border ${
             isPending ? 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse' :
             isPreparing || isConfirmed ? 'bg-blue-50 text-blue-800 border-blue-200' :
-            isDelivery ? 'bg-purple-50 text-purple-800 border-purple-200' :
+            isDelivery ? 'bg-cyan-50 text-cyan-800 border-cyan-200' :
             isDelivered ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
             'bg-rose-50 text-rose-800 border-rose-200'
           }`}>
@@ -188,9 +188,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
           {/* Motorista Atribuído */}
           {(assignedDriver || order.driverName) && (
-            <div className="flex items-center gap-1.5 text-[11px] text-purple-700 font-semibold pt-1 border-t border-purple-100">
-              <Bike className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-              <span>Entregador: <strong className="text-purple-900">{order.driverName || assignedDriver?.name || 'Motoboy'}</strong></span>
+            <div className="flex items-center gap-1.5 text-[11px] text-cyan-800 font-semibold pt-1 border-t border-cyan-100">
+              <Bike className="w-3.5 h-3.5 text-cyan-700 shrink-0" />
+              <span>Entregador: <strong className="text-cyan-900">{order.driverName || assignedDriver?.name || 'Motoboy'}</strong></span>
             </div>
           )}
         </div>
@@ -352,7 +352,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
               e.stopPropagation();
               onAssignDriverClick(order);
             }}
-            className="w-full py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-purple-600/20 cursor-pointer"
+            className="w-full py-2.5 px-4 rounded-xl bg-[#15803d] hover:bg-[#166534] text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-green-700/20 cursor-pointer"
           >
             <Truck className="w-4 h-4" />
             <span>Despachar com Motoboy</span>
@@ -366,7 +366,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
               e.stopPropagation();
               onAssignDriverClick(order);
             }}
-            className="w-full py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-purple-600/20 cursor-pointer"
+            className="w-full py-2.5 px-4 rounded-xl bg-[#15803d] hover:bg-[#166534] text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-green-700/20 cursor-pointer"
           >
             <Truck className="w-4 h-4" />
             <span>Pronto • Despachar</span>

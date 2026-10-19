@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { KanbanColumnHeader } from '../../components/establishment/KanbanColumnHeader';
 import { ArrivalQueuePanel } from '../../components/pickup/ArrivalQueuePanel';
 import { PickupHandoverModal } from '../../components/pickup/PickupHandoverModal';
 import { arrivalRepository } from '../../repositories/arrivalRepository';
@@ -1000,13 +1001,13 @@ export const OrdersPage: React.FC = () => {
                     const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
                     setSelectedDriverUserId(firstAvail);
                   }}
-                  className="w-full p-1.5 rounded-lg border border-purple-200 bg-purple-50/50 hover:bg-purple-100/60 flex items-center justify-between text-[8.5px] font-bold text-purple-900 transition-colors cursor-pointer"
+                  className="w-full p-1.5 rounded-lg border border-green-300 bg-green-50/60 hover:bg-green-100/60 flex items-center justify-between text-[8.5px] font-bold text-green-900 transition-colors cursor-pointer"
                 >
                   <span className="flex items-center gap-1.5 truncate">
-                    <Truck className="w-2.5 h-2.5 text-purple-700 shrink-0" />
+                    <Truck className="w-2.5 h-2.5 text-green-700 shrink-0" />
                     <span className="truncate">Atribuir Entregador</span>
                   </span>
-                  <ChevronRight className="w-2.5 h-2.5 text-purple-600 shrink-0" />
+                  <ChevronRight className="w-2.5 h-2.5 text-green-700 shrink-0" />
                 </button>
 
                 {selectedOrder.status !== 'CANCELLED' && selectedOrder.status !== 'DELIVERED' && (
@@ -1680,17 +1681,9 @@ export const OrdersPage: React.FC = () => {
                     <div 
                       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                       onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); handleKanbanDrop(id, 'PENDING'); }}
-                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0 bg-[#FFFDF5] border border-[#FDE68A] rounded-xl p-2 flex flex-col min-h-[400px]"
+                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0    rounded-xl p-2 flex flex-col min-h-[400px] border-2" style={{ backgroundColor: ORDER_STATUS_THEME.PENDING.drawerBg, borderColor: ORDER_STATUS_THEME.PENDING.border }}
                     >
-                      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-[#FDE68A]">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-4 h-4 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
-                            <Bell className="w-2.5 h-2.5" />
-                          </span>
-                          <h3 className="font-extrabold text-[11px] uppercase text-slate-900">Novos</h3>
-                          <span className="text-[11px] font-bold text-slate-700 bg-amber-100/70 px-1.5 py-0.2 rounded-full">{countNovos}</span>
-                        </div>
-                      </div>
+                      <KanbanColumnHeader status="PENDING" label="Novos" count={countNovos} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
                         {allOrders.filter(o => o.status === 'PENDING').map(order => (
                           <KanbanOrderCard
@@ -1718,17 +1711,9 @@ export const OrdersPage: React.FC = () => {
                     <div 
                       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                       onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); handleKanbanDrop(id, 'CONFIRMED'); }}
-                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0 bg-[#F8FBFF] border border-[#BFDBFE] rounded-xl p-2 flex flex-col min-h-[400px]"
+                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0    rounded-xl p-2 flex flex-col min-h-[400px] border-2" style={{ backgroundColor: ORDER_STATUS_THEME.CONFIRMED.drawerBg, borderColor: ORDER_STATUS_THEME.CONFIRMED.border }}
                     >
-                      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-[#BFDBFE]">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
-                            <CheckCircle2 className="w-2.5 h-2.5" />
-                          </span>
-                          <h3 className="font-extrabold text-[11px] uppercase text-blue-900">Confirmados</h3>
-                          <span className="text-[11px] font-bold text-blue-950 bg-blue-100/70 px-1.5 py-0.2 rounded-full">{countConfirmados}</span>
-                        </div>
-                      </div>
+                      <KanbanColumnHeader status="CONFIRMED" label="Confirmados" count={countConfirmados} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
                         {allOrders.filter(o => o.status === 'CONFIRMED').map(order => (
                           <KanbanOrderCard
@@ -1756,17 +1741,9 @@ export const OrdersPage: React.FC = () => {
                     <div 
                       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                       onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); handleKanbanDrop(id, 'PREPARING'); }}
-                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0 bg-[#F4FBF7] border border-[#A7F3D0] rounded-xl p-2 flex flex-col min-h-[400px]"
+                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0    rounded-xl p-2 flex flex-col min-h-[400px] border-2" style={{ backgroundColor: ORDER_STATUS_THEME.PREPARING.drawerBg, borderColor: ORDER_STATUS_THEME.PREPARING.border }}
                     >
-                      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-[#A7F3D0]">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                            <UtensilsCrossed className="w-2.5 h-2.5" />
-                          </span>
-                          <h3 className="font-extrabold text-[11px] uppercase text-emerald-900">Em preparo</h3>
-                          <span className="text-[11px] font-bold text-emerald-950 bg-emerald-100/70 px-1.5 py-0.2 rounded-full">{countEmPreparo}</span>
-                        </div>
-                      </div>
+                      <KanbanColumnHeader status="PREPARING" label="Em preparo" count={countEmPreparo} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
                         {allOrders.filter(o => o.status === 'PREPARING').map(order => (
                           <KanbanOrderCard
@@ -1794,17 +1771,9 @@ export const OrdersPage: React.FC = () => {
                     <div 
                       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                       onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); handleKanbanDrop(id, 'READY'); }}
-                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0 bg-[#F9F6FF] border border-[#DDD6FE] rounded-xl p-2 flex flex-col min-h-[400px]"
+                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0    rounded-xl p-2 flex flex-col min-h-[400px] border-2" style={{ backgroundColor: ORDER_STATUS_THEME.READY.drawerBg, borderColor: ORDER_STATUS_THEME.READY.border }}
                     >
-                      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-[#DDD6FE]">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center">
-                            <Package className="w-2.5 h-2.5" />
-                          </span>
-                          <h3 className="font-extrabold text-[11px] uppercase text-purple-900">Prontos</h3>
-                          <span className="text-[11px] font-bold text-purple-950 bg-purple-100/70 px-1.5 py-0.2 rounded-full">{countProntos}</span>
-                        </div>
-                      </div>
+                      <KanbanColumnHeader status="READY" label="Prontos" count={countProntos} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
                         {allOrders.filter(o => o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER').map(order => (
                           <KanbanOrderCard
@@ -1832,17 +1801,9 @@ export const OrdersPage: React.FC = () => {
                     <div 
                       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                       onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); handleKanbanDrop(id, 'OUT_FOR_DELIVERY'); }}
-                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0 bg-[#F8FBFF] border border-[#BFDBFE] rounded-xl p-2 flex flex-col min-h-[400px]"
+                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0    rounded-xl p-2 flex flex-col min-h-[400px] border-2" style={{ backgroundColor: ORDER_STATUS_THEME.OUT_FOR_DELIVERY.drawerBg, borderColor: ORDER_STATUS_THEME.OUT_FOR_DELIVERY.border }}
                     >
-                      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-[#BFDBFE]">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center">
-                            <Truck className="w-2.5 h-2.5" />
-                          </span>
-                          <h3 className="font-extrabold text-[11px] uppercase text-blue-900">Em rota</h3>
-                          <span className="text-[11px] font-bold text-blue-950 bg-blue-100/70 px-1.5 py-0.2 rounded-full">{countEmRota}</span>
-                        </div>
-                      </div>
+                      <KanbanColumnHeader status="OUT_FOR_DELIVERY" label="Em rota" count={countEmRota} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
                         {allOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').map(order => (
                           <KanbanOrderCard
@@ -2123,7 +2084,7 @@ export const OrdersPage: React.FC = () => {
             <Button type="button" variant="outline" size="sm" onClick={() => setAssigningOrder(null)} className="text-xs">
               Cancelar
             </Button>
-            <Button type="submit" variant="primary" size="sm" disabled={isAssigning || !selectedDriverUserId} className="text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white">
+            <Button type="submit" variant="primary" size="sm" disabled={isAssigning || !selectedDriverUserId} className="text-xs font-bold bg-[#15803d] hover:bg-[#166534] text-white">
               {isAssigning ? 'Atribuindo...' : 'Confirmar e Despachar'}
             </Button>
           </div>
