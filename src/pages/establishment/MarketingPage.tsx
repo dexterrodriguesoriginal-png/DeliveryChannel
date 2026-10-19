@@ -1,3 +1,4 @@
+import { ArrivalQrMarketingCard } from '../../components/pickup/ArrivalQrMarketingCard';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { initialPromoFulfillmentTypes, promoFulfillmentTypesForSave } from '../../utils/promoCardFulfillment';
 import { useAuth } from '../../context/AuthContext';
@@ -1196,6 +1197,11 @@ export const MarketingPage: React.FC = () => {
           </Button>
         )}
       </div>
+
+      {activeTenant?.id && (
+        <ArrivalQrMarketingCard tenantId={activeTenant.id} storeName={activeTenant.name}
+          canManage={activeRole === 'OWNER' || activeRole === 'MANAGER'} />
+      )}
 
       {/* Tabs de Navegação */}
       <div className="flex items-center gap-2 border-b border-gray-200">

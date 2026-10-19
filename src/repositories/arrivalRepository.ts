@@ -41,8 +41,10 @@ export const arrivalRepository = {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   },
-  getStoreQr: (tenantId: string) => rpc<{ token: string }>('get_store_arrival_qr', { p_tenant_id: tenantId }),
+  getStoreQr: (tenantId: string) => rpc<{ token: string; showNameOnTv?: boolean }>('get_store_arrival_qr', { p_tenant_id: tenantId }),
   rotateStoreQr: (tenantId: string) => rpc<{ token: string }>('rotate_store_arrival_qr', { p_tenant_id: tenantId }),
+  setTvShowName: (tenantId: string, show: boolean) => rpc<{ showNameOnTv: boolean }>('set_arrival_tv_show_name', { p_tenant_id: tenantId, p_show: show }),
+  resolve: (token: string) => rpc<{ tenantId: string; storeName: string; slug: string; orders: { id: string; orderNumber: number; status: string; createdAt: string }[] }>('resolve_arrival_qr', { p_token: token }),
   checkIn: (token: string, orderId: string) => rpc<MyPickupStatus>('customer_check_in', { p_store_qr_token: token, p_order_id: orderId }),
   myStatus: (orderId: string) => rpc<MyPickupStatus | null>('get_my_pickup_status', { p_order_id: orderId }),
   call: (orderId: string) => rpc<{ success: boolean }>('call_pickup', { p_order_id: orderId }),

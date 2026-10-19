@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseStoreToken, isArrivalFeatureMissing, arrivalQueue, arrivalLine, calledCodes, arrivalErrorMessage, arrivalQrUrl } from '../arrival';
+import { chegadaCodeFromPath, callLabel, tvLabel, ARRIVAL_BASE_URL, parseStoreToken, isArrivalFeatureMissing, arrivalQueue, arrivalLine, calledCodes, arrivalErrorMessage, arrivalQrUrl } from '../arrival';
 
 describe('fila de chegada', () => {
   it('lê o token do QR ou do código digitado', () => {
@@ -36,5 +36,15 @@ describe('fila de chegada', () => {
   });
   it('mensagens', () => {
     expect(arrivalErrorMessage({ message: 'WRONG_STORE: x' })).toMatch(/não é da loja/);
+  });
+  it('rota /chegada e rótulos', () => {
+    expect(arrivalQrUrl(ARRIVAL_BASE_URL, 'K7M2QX')).toBe('https://deliverychannel.ai.studio/chegada/K7M2QX');
+    expect(chegadaCodeFromPath('/chegada/k7m2qx')).toBe('K7M2QX');
+    expect(chegadaCodeFromPath('/chegada/xx')).toBe('');
+    expect(chegadaCodeFromPath('/app/x')).toBeNull();
+    expect(callLabel('Cleusa Aparecida', '568')).toBe('Cleusa – 568');
+    expect(tvLabel('Cleusa Aparecida', '568', false)).toBe('568');
+    expect(tvLabel('Cleusa Aparecida', '568', true)).toBe('Cleusa – 568');
+    expect(arrivalErrorMessage({ message: 'INVALID_QR: x' })).toMatch(/trocado/);
   });
 });

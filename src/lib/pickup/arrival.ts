@@ -9,8 +9,24 @@ export function parseStoreToken(raw: string | null | undefined): string | null {
   return /^[A-Z2-9]{6}$/.test(clean) ? clean : null;
 }
 
-export function arrivalQrUrl(origin: string, token: string): string {
+/** Domínio oficial do app: o QR impresso funciona com a câmera comum do celular. */
+export const ARRIVAL_BASE_URL = 'https://deliverychannel.ai.studio';
+export function arrivalQrUrl(origin: string = ARRIVAL_BASE_URL, token: string = ''): string {
   return `${origin.replace(/\/$/, '')}/chegada/${token}`;
+}
+
+/** Código da rota /chegada/<código> (null se não for essa rota). */
+export function chegadaCodeFromPath(pathname: string): string | null {
+  const m = pathname.match(/^\/chegada\/([^/?#]+)/i);
+  return m ? parseStoreToken(m[1]) ?? '' : null;
+}
+
+/** "Cleusa – 568" (painel) e rótulo da TV (código, ou nome + código se o dono ligou). */
+export function callLabel(name: string | null | undefined, code: string): string {
+  return `${firstName(name)} – ${code}`;
+}
+export function tvLabel(name: string | null | undefined, code: string, showName: boolean): string {
+  return showName && name ? callLabel(name, code) : code;
 }
 
 /** Banco sem a migration (ex.: produção antes de aplicar): esconder a fila, nunca quebrar a tela. */
@@ -24,6 +40,7 @@ export function isArrivalFeatureMissing(err: unknown): boolean {
 
 export function arrivalErrorMessage(err: unknown): string {
   const m = String((err as any)?.message ?? err ?? '');
+  if (m.includes('INVALID_QR')) return 'Este QR Code não é válido ou foi trocado pela loja. Peça o QR atualizado no balcão.';
   if (m.includes('WRONG_STORE')) return 'Este QR Code não é da loja do seu pedido.';
   if (m.includes('NOT_PICKUP')) return 'Este pedido é de entrega, não de retirada.';
   if (m.includes('ORDER_CLOSED')) return 'Este pedido já foi encerrado.';

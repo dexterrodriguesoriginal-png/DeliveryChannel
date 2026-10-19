@@ -116,3 +116,41 @@ describe('Fila de chegada (staging)', () => {
     console.log('ARRIVAL_E2E', JSON.stringify(R));
   });
 });
+
+describe('QR pela câmera comum: /chegada/<código> (migration 2200)', () => {
+  let tok = '', p3: any;
+  it('resolve só os pedidos de retirada abertos do próprio cliente', async () => {
+    await loginAs(USERS.ownerA);
+    const q = await arrivalRepository.getStoreQr(TA);
+    tok = q.token; expect(q.showNameOnTv).toBe(false);
+    await loginAs(USERS.c1);
+    p3 = await orderRepository.createPublicOrder(SLUG_A, order('PICKUP'));
+    const r = await arrivalRepository.resolve(tok.toLowerCase());
+    expect(r.tenantId).toBe(TA); expect(r.slug).toBe(SLUG_A);
+    expect(r.orders.map(o => o.id)).toContain(p3.id);
+    expect(r.orders.every(o => !['DELIVERED', 'CANCELLED'].includes(o.status))).toBe(true);
+    await loginAs(USERS.c2);
+    const r2 = await arrivalRepository.resolve(tok);
+    expect(r2.orders.find(o => o.id === p3.id)).toBeUndefined();
+    expect(await err(arrivalRepository.resolve('ZZZZZZ'))).toMatch(/INVALID_QR/);
+    await loginAs(null);
+    expect(await err(arrivalRepository.resolve(tok))).not.toBe('OK');
+    await loginAs(USERS.c1);
+    const c = await arrivalRepository.checkIn(tok, p3.id);
+    expect(c.position).toBeGreaterThanOrEqual(1);
+  });
+  it('QR trocado deixa de resolver; opção da TV só dono/gerente', async () => {
+    await loginAs(USERS.operatorA);
+    expect(await err(arrivalRepository.setTvShowName(TA, true))).toMatch(/FORBIDDEN/);
+    await loginAs(USERS.ownerA);
+    expect((await arrivalRepository.setTvShowName(TA, true)).showNameOnTv).toBe(true);
+    expect((await arrivalRepository.getStoreQr(TA)).showNameOnTv).toBe(true);
+    await arrivalRepository.setTvShowName(TA, false);
+    const nt = (await arrivalRepository.rotateStoreQr(TA)).token;
+    await loginAs(USERS.c1);
+    expect(await err(arrivalRepository.resolve(tok))).toMatch(/INVALID_QR/);
+    expect((await arrivalRepository.resolve(nt)).tenantId).toBe(TA);
+    await loginAs(USERS.ownerA);
+    await orderRepository.updateStatus(ctx('ownerA', 'OWNER') as any, TA, p3.id, 'CANCELLED', 'E2E: limpeza do pedido sintético');
+  });
+});

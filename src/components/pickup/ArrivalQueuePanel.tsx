@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MapPin, Megaphone, QrCode, CheckCircle2 } from 'lucide-react';
 import type { Order } from '../../types';
 import { arrivalRepository } from '../../repositories/arrivalRepository';
-import { arrivalErrorMessage, arrivalLine, arrivalQueue, type ArrivalRow } from '../../lib/pickup/arrival';
+import { callLabel, arrivalErrorMessage, arrivalLine, arrivalQueue, type ArrivalRow } from '../../lib/pickup/arrival';
 import { StoreArrivalQrModal } from './StoreArrivalQrModal';
 
 function beep() {
@@ -79,7 +79,7 @@ export const ArrivalQueuePanel: React.FC<{
                 {ready && (
                   <button type="button" disabled={busy === q.order_id} onClick={() => call(q.order_id)} data-testid="arrival-call"
                     className="flex items-center gap-1 text-[11px] font-black px-2 py-1 rounded-lg bg-white border border-green-600 text-green-800 hover:bg-green-50 disabled:opacity-50">
-                    <Megaphone className="w-3.5 h-3.5" /> {q.called_at ? 'Chamar de novo' : 'Chamar'}
+                    <Megaphone className="w-3.5 h-3.5" /> {q.called_at ? 'Chamar de novo' : 'Chamar'} <span className="font-mono" data-testid="arrival-call-label">{callLabel(o.customerName, q.pickup_code)}</span>
                   </button>
                 )}
                 {ready && (

@@ -1,4 +1,6 @@
 import { CallScreen } from './components/pickup/CallScreen';
+import { ChegadaPage } from './components/pickup/ChegadaPage';
+import { chegadaCodeFromPath } from './lib/pickup/arrival';
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -117,7 +119,7 @@ function AppContent() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedReturnTo = sessionStorage.getItem('adegafood_auth_return_to');
-      if (savedReturnTo && (savedReturnTo.startsWith('/app/') || savedReturnTo.startsWith('/entregador/convite/')) && window.location.pathname !== savedReturnTo && !window.location.pathname.startsWith('/app/')) {
+      if (savedReturnTo && (savedReturnTo.startsWith('/app/') || savedReturnTo.startsWith('/entregador/convite/') || savedReturnTo.startsWith('/chegada/')) && window.location.pathname !== savedReturnTo && !window.location.pathname.startsWith('/app/')) {
         sessionStorage.removeItem('adegafood_auth_return_to');
         window.location.replace(savedReturnTo);
       }
@@ -131,6 +133,12 @@ function AppContent() {
   if (pathname.startsWith('/app/')) {
     const slug = pathname.replace('/app/', '').split('/')[0];
     return <ClientApp forcedSlug={slug} />;
+  }
+
+  // 19/10: QR de chegada lido pela câmera comum: /chegada/<código>
+  const chegadaCode = chegadaCodeFromPath(pathname);
+  if (chegadaCode !== null) {
+    return <ChegadaPage code={chegadaCode} />;
   }
 
   // 2a. Convite público de entregador: /entregador/convite/:token (antes das demais regras de /entregador)
