@@ -75,7 +75,7 @@ CREATE INDEX IF NOT EXISTS product_option_group_links_tenant_product_sort_idx
 CREATE INDEX IF NOT EXISTS order_item_options_tenant_item_idx
     ON public.order_item_options (tenant_id, order_item_id);
 
-CREATE OR REPLACE FUNCTION public._product_options_public_enabled(p_tenant uuid)
+CREATE OR REPLACE FUNCTION public.product_options_public_enabled(p_tenant uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -88,7 +88,7 @@ AS $$
     ), false);
 $$;
 
-CREATE OR REPLACE FUNCTION public._product_options_can_read_order_item(p_tenant uuid, p_item uuid)
+CREATE OR REPLACE FUNCTION public.product_options_can_read_order_item(p_tenant uuid, p_item uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -112,10 +112,43 @@ AS $$
     );
 $$;
 
-REVOKE ALL ON FUNCTION public._product_options_public_enabled(uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public._product_options_can_read_order_item(uuid, uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public._product_options_public_enabled(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public._product_options_can_read_order_item(uuid, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.product_options_public_enabled(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.product_options_can_read_order_item(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.product_options_public_enabled(uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.product_options_can_read_order_item(uuid, uuid) TO authenticated;
+
+-- Public visibility checks run as definer so the policies below do not query each
+-- other's tables under RLS (groups <-> links would recurse).
+CREATE OR REPLACE FUNCTION public.product_option_link_is_public(p_tenant uuid, p_product uuid, p_group uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT public.product_options_public_enabled(p_tenant)
+      AND EXISTS (SELECT 1 FROM public.products p WHERE p.id = p_product AND p.tenant_id = p_tenant AND p.is_active)
+      AND EXISTS (SELECT 1 FROM public.product_option_groups g WHERE g.id = p_group AND g.tenant_id = p_tenant AND g.active);
+$$;
+
+CREATE OR REPLACE FUNCTION public.product_option_group_is_public(p_tenant uuid, p_group uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.product_option_group_links l
+        WHERE l.tenant_id = p_tenant AND l.group_id = p_group
+          AND public.product_option_link_is_public(l.tenant_id, l.product_id, l.group_id)
+    );
+$$;
+
+REVOKE ALL ON FUNCTION public.product_option_link_is_public(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.product_option_group_is_public(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.product_option_link_is_public(uuid, uuid, uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.product_option_group_is_public(uuid, uuid) TO anon, authenticated;
 
 ALTER TABLE public.product_option_groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.product_options ENABLE ROW LEVEL SECURITY;
@@ -125,15 +158,7 @@ ALTER TABLE public.order_item_options ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS product_option_groups_public_read ON public.product_option_groups;
 CREATE POLICY product_option_groups_public_read ON public.product_option_groups
     FOR SELECT TO anon, authenticated
-    USING (
-      active AND public._product_options_public_enabled(tenant_id)
-      AND EXISTS (
-        SELECT 1 FROM public.product_option_group_links l
-        JOIN public.products p ON p.id = l.product_id AND p.tenant_id = l.tenant_id
-        WHERE l.tenant_id = product_option_groups.tenant_id
-          AND l.group_id = product_option_groups.id AND p.is_active
-      )
-    );
+    USING (public.product_option_group_is_public(tenant_id, id));
 DROP POLICY IF EXISTS product_option_groups_staff_read ON public.product_option_groups;
 CREATE POLICY product_option_groups_staff_read ON public.product_option_groups
     FOR SELECT TO authenticated
@@ -147,16 +172,7 @@ CREATE POLICY product_option_groups_staff_write ON public.product_option_groups
 DROP POLICY IF EXISTS product_options_public_read ON public.product_options;
 CREATE POLICY product_options_public_read ON public.product_options
     FOR SELECT TO anon, authenticated
-    USING (
-      active AND public._product_options_public_enabled(tenant_id)
-      AND EXISTS (
-        SELECT 1 FROM public.product_option_groups g
-        JOIN public.product_option_group_links l ON l.group_id = g.id AND l.tenant_id = g.tenant_id
-        JOIN public.products p ON p.id = l.product_id AND p.tenant_id = l.tenant_id
-        WHERE g.id = product_options.group_id AND g.tenant_id = product_options.tenant_id
-          AND g.active AND p.is_active
-      )
-    );
+    USING (active AND public.product_option_group_is_public(tenant_id, group_id));
 DROP POLICY IF EXISTS product_options_staff_read ON public.product_options;
 CREATE POLICY product_options_staff_read ON public.product_options
     FOR SELECT TO authenticated
@@ -170,19 +186,7 @@ CREATE POLICY product_options_staff_write ON public.product_options
 DROP POLICY IF EXISTS product_option_group_links_public_read ON public.product_option_group_links;
 CREATE POLICY product_option_group_links_public_read ON public.product_option_group_links
     FOR SELECT TO anon, authenticated
-    USING (
-      public._product_options_public_enabled(product_option_group_links.tenant_id)
-      AND EXISTS (
-        SELECT 1 FROM public.products p
-        WHERE p.id = product_option_group_links.product_id
-          AND p.tenant_id = product_option_group_links.tenant_id AND p.is_active
-      )
-      AND EXISTS (
-        SELECT 1 FROM public.product_option_groups g
-        WHERE g.id = product_option_group_links.group_id
-          AND g.tenant_id = product_option_group_links.tenant_id AND g.active
-      )
-    );
+    USING (public.product_option_link_is_public(tenant_id, product_id, group_id));
 DROP POLICY IF EXISTS product_option_group_links_staff_read ON public.product_option_group_links;
 CREATE POLICY product_option_group_links_staff_read ON public.product_option_group_links
     FOR SELECT TO authenticated
@@ -196,7 +200,7 @@ CREATE POLICY product_option_group_links_staff_write ON public.product_option_gr
 DROP POLICY IF EXISTS order_item_options_order_read ON public.order_item_options;
 CREATE POLICY order_item_options_order_read ON public.order_item_options
     FOR SELECT TO authenticated
-    USING (public._product_options_can_read_order_item(tenant_id, order_item_id));
+    USING (public.product_options_can_read_order_item(tenant_id, order_item_id));
 
 REVOKE ALL ON TABLE public.product_option_groups, public.product_options, public.product_option_group_links,
     public.order_item_options FROM PUBLIC, anon, authenticated;
@@ -627,7 +631,7 @@ BEGIN
         ORDER BY osh.created_at ASC), '[]'::jsonb)
     INTO v_history FROM public.order_status_history osh WHERE osh.order_id = v_order.id;
     RETURN jsonb_build_object(
-        'id', v_order.id, 'tenantId', v_order.tenant_id, 'orderNumber', v_order.order_number,
+        'id', v_order.id, 'orderNumber', v_order.order_number,
         'customerName', v_order.customer_name, 'customerPhone', v_order.customer_phone,
         'customerEmail', v_order.customer_email, 'deliveryAddress', v_order.delivery_address,
         'addressDetails', v_order.address_details, 'subtotal', v_order.subtotal, 'deliveryFee', v_order.delivery_fee,

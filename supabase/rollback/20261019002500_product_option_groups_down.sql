@@ -166,8 +166,10 @@ DROP POLICY IF EXISTS product_option_groups_staff_write ON public.product_option
 DROP POLICY IF EXISTS product_option_groups_staff_read ON public.product_option_groups;
 DROP POLICY IF EXISTS product_option_groups_public_read ON public.product_option_groups;
 
-DROP FUNCTION IF EXISTS public._product_options_can_read_order_item(uuid,uuid);
-DROP FUNCTION IF EXISTS public._product_options_public_enabled(uuid);
+DROP FUNCTION IF EXISTS public.product_option_group_is_public(uuid,uuid);
+DROP FUNCTION IF EXISTS public.product_option_link_is_public(uuid,uuid,uuid);
+DROP FUNCTION IF EXISTS public.product_options_can_read_order_item(uuid,uuid);
+DROP FUNCTION IF EXISTS public.product_options_public_enabled(uuid);
 
 DROP TABLE IF EXISTS public.order_item_options;
 DROP TABLE IF EXISTS public.product_option_group_links;
