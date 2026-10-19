@@ -34,7 +34,7 @@ export interface ModuleDefinition {
 export const MODULES: ModuleDefinition[] = [
   { key: 'delivery', label: 'Entrega', description: 'Receba pedidos para entregar no endereço do cliente.', changes: 'Exibe Entregadores e a opção de entrega no catálogo.', implemented: true },
   { key: 'pickup', label: 'Retirada', description: 'Permita que clientes retirem pedidos no estabelecimento.', changes: 'Exibe a opção de retirada no catálogo.', implemented: true },
-  { key: 'addons', label: 'Adicionais', description: 'Ofereça complementos e personalizações nos produtos.', changes: 'Adiciona escolhas de complementos ao cardápio.', implemented: false },
+  { key: 'addons', label: 'Adicionais', description: 'Ofereça complementos e personalizações nos produtos.', changes: 'Adiciona escolhas de complementos ao cardápio.', implemented: true },
   { key: 'kds', label: 'Chamar no TV', description: 'Organize os pedidos em uma tela de preparo.', changes: 'Adiciona uma fila visual para a operação.', implemented: false },
   { key: 'dine_in', label: 'Mesa/Comanda', description: 'Atenda clientes em mesas ou comandas individuais.', changes: 'Adiciona atendimento e acompanhamento por mesa/comanda.', implemented: false },
   { key: 'counter', label: 'Balcão', description: 'Registre pedidos feitos diretamente no balcão.', changes: 'Adiciona o fluxo de atendimento no balcão.', implemented: false },
@@ -56,10 +56,10 @@ export const MODULES: ModuleDefinition[] = [
 export type ModulePreset = Partial<Record<ModuleKey, Record<string, unknown>>>;
 
 export const BUSINESS_PRESETS: Record<BusinessType, ModulePreset> = {
-  RESTAURANTE: { delivery: {}, pickup: {}, addons: {}, kds: {}, dine_in: { mode: 'TABLE' }, service_fee: { percent: 10 }, pos: {} },
-  PIZZARIA: { delivery: {}, pickup: {}, addons: {}, kds: {}, dine_in: { mode: 'TABLE' }, service_fee: { percent: 10 }, pos: {}, loyalty: {} },
-  BAR: { addons: {}, kds: { mode: 'BAR' }, dine_in: { mode: 'INDIVIDUAL' }, counter: {}, service_fee: { percent: 10 }, pos: {} },
-  LANCHONETE_CAFE: { delivery: {}, pickup: {}, addons: {}, kds: {}, counter: {}, pos: {}, loyalty: {} },
+  RESTAURANTE: { delivery: {}, pickup: {}, kds: {}, dine_in: { mode: 'TABLE' }, service_fee: { percent: 10 }, pos: {} },
+  PIZZARIA: { delivery: {}, pickup: {}, kds: {}, dine_in: { mode: 'TABLE' }, service_fee: { percent: 10 }, pos: {}, loyalty: {} },
+  BAR: { kds: { mode: 'BAR' }, dine_in: { mode: 'INDIVIDUAL' }, counter: {}, service_fee: { percent: 10 }, pos: {} },
+  LANCHONETE_CAFE: { delivery: {}, pickup: {}, kds: {}, counter: {}, pos: {}, loyalty: {} },
   MERCADO: { delivery: {}, pickup: {}, weight: {}, barcode: {}, substitution: {}, pos: {} },
   ADEGA: { delivery: {}, pickup: {}, barcode: {}, pos: {}, loyalty: {} },
   ROUPAS: { delivery: {}, pickup: {}, barcode: {}, variants: {}, reserve_exchange: {}, pos: {} },
@@ -73,7 +73,7 @@ export const BUSINESS_PRESETS: Record<BusinessType, ModulePreset> = {
 export const LEGACY_ENABLED_MODULES: ReadonlySet<ModuleKey> = new Set(['delivery', 'pickup', 'pos', 'printing']);
 
 export function isModuleEnabled(modules: ReadonlySet<ModuleKey> | null | undefined, key: ModuleKey): boolean {
-  return modules ? modules.has(key) : true;
+  return modules ? modules.has(key) : key !== 'addons';
 }
 
 export function presetModuleKeys(type: BusinessType): ModuleKey[] {

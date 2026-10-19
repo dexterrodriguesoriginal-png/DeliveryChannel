@@ -164,6 +164,52 @@ export interface Product {
   createdAt?: string;
   updatedAt?: string;
   isDemo?: boolean;
+  optionGroups?: ProductOptionGroup[];
+}
+
+export type ProductOptionGroupType = 'STANDARD' | 'FLAVOR_SPLIT';
+export type ProductOptionPricingRule = 'SUM' | 'HIGHEST' | 'AVERAGE';
+
+export interface ProductOption {
+  id: string;
+  tenantId: string;
+  groupId: string;
+  name: string;
+  extraPriceCents: number;
+  active: boolean;
+  soldOut: boolean;
+  sort: number;
+}
+
+export interface ProductOptionGroup {
+  id: string;
+  tenantId: string;
+  name: string;
+  type: ProductOptionGroupType;
+  minSelect: number;
+  maxSelect: number;
+  allowRepeat: boolean;
+  pricingRule: ProductOptionPricingRule;
+  active: boolean;
+  sort: number;
+  options: ProductOption[];
+}
+
+export interface SelectedProductOption {
+  groupId: string;
+  optionId: string;
+  qty: number;
+  fraction?: number | null;
+}
+
+export interface OrderItemOption {
+  groupId: string;
+  optionId: string;
+  groupName: string;
+  optionName: string;
+  qty: number;
+  unitPriceCents: number;
+  fraction?: number | null;
 }
 
 export type CardFormat = 'HORIZONTAL' | 'SQUARE' | 'QUADRADO' | 'VERTICAL';
@@ -500,6 +546,7 @@ export interface OrderItem {
   totalPrice: number;
   notes?: string;
   unit?: string;
+  options?: OrderItemOption[];
 }
 
 export interface DeliveryAddressDetails {

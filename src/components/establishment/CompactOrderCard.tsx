@@ -89,7 +89,7 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
 
   // Resumo inteligente dos itens para leitura operacional rápida
   const itemsText = order.items && order.items.length > 0
-    ? order.items.map(it => `${it.quantity}x ${it.productName}`).join(', ')
+    ? order.items.map(it => `${it.quantity}x ${it.productName}${it.options?.length ? ` (${it.options.map(option => option.fraction === 0.5 ? `½ ${option.optionName}` : `+ ${option.optionName}`).join(', ')})` : ''}`).join(', ')
     : '';
 
   const handleActionClick = (e: React.MouseEvent) => {
@@ -292,5 +292,4 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
     </div>
   );
 };
-
 

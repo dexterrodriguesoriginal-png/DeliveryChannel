@@ -69,8 +69,20 @@ export const KitchenBoard: React.FC<{
               </div>
               <ul className="space-y-1">
                 {o.items.map(i => (
-                  <li key={i.order_item_id} className="text-lg text-gray-950 leading-tight"><b className="tabular-nums">{i.quantity}×</b> {i.product_name}
-                    {i.notes && <div className="text-sm text-amber-800 font-semibold">↳ {i.notes}</div>}</li>
+                  <React.Fragment key={i.order_item_id}>
+                    <li className="text-lg text-gray-950 leading-tight"><b className="tabular-nums">{i.quantity}×</b> {i.product_name}
+                      {i.notes && <div className="text-sm text-amber-800 font-semibold">↳ {i.notes}</div>}</li>
+                    {i.options?.length ? (
+                      <div className="pl-5 text-sm font-semibold text-gray-700">
+                        {i.options.map((option, index) => (
+                          <div key={`${i.order_item_id}-${index}`}>
+                            {option.fraction && option.fraction < 1 ? `${option.fraction === 0.5 ? '½' : `${Math.round(option.fraction * 100)}%`} ` : '+ '}
+                            {option.option_name}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </React.Fragment>
                 ))}
               </ul>
               {o.notes && <p className="text-sm bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 text-amber-900 font-semibold">Obs.: {o.notes}</p>}

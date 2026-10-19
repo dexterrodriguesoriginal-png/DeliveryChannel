@@ -38,6 +38,15 @@ export function mapStaffOrderRow(row: any, items: any[] = [], history: any[] = [
       totalPrice: num(item.total_price),
       notes: item.notes || undefined,
       unit: item.unit || 'un',
+      options: (item.order_item_options || []).map((option: any) => ({
+        groupId: option.group_id,
+        optionId: option.option_id,
+        groupName: option.group_name_snapshot,
+        optionName: option.option_name_snapshot,
+        qty: num(option.qty),
+        unitPriceCents: num(option.unit_price_cents),
+        fraction: optNum(option.fraction),
+      })),
     })),
     subtotal: num(row.subtotal),
     deliveryFee: num(row.delivery_fee),
@@ -96,6 +105,15 @@ export function mapCustomerOrderRpc(data: any, tenantId: string): Order {
       totalPrice: num(item.totalPrice),
       notes: item.notes || undefined,
       unit: item.unit || 'un',
+      options: (item.options || item.order_item_options || []).map((option: any) => ({
+        groupId: option.groupId || option.group_id,
+        optionId: option.optionId || option.option_id,
+        groupName: option.groupName || option.group_name_snapshot,
+        optionName: option.optionName || option.option_name_snapshot,
+        qty: num(option.qty),
+        unitPriceCents: num(option.unitPriceCents ?? option.unit_price_cents),
+        fraction: optNum(option.fraction),
+      })),
     })),
     subtotal: num(data.subtotal),
     deliveryFee: num(data.deliveryFee),
@@ -168,11 +186,19 @@ export function validateStatusChange(
 }
 
 /** Itens enviados ao servidor: SOMENTE productId, quantity e notes (preço é sempre do servidor). */
-export function toServerItems(items: Array<{ productId: string; quantity: number; notes?: string }>) {
+export function toServerItems(items: Array<{ productId: string; quantity: number; notes?: string; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> }>) {
   return items.map(i => ({
     productId: i.productId,
     quantity: Math.trunc(Number(i.quantity)),
     notes: i.notes && i.notes.trim() ? i.notes.trim() : null,
+    ...(i.options?.length ? {
+      options: i.options.map(option => ({
+        group_id: option.groupId,
+        option_id: option.optionId,
+        qty: Math.trunc(Number(option.qty)),
+        fraction: option.fraction ?? null,
+      })),
+    } : {}),
   }));
 }
 

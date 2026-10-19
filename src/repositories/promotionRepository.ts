@@ -398,7 +398,7 @@ export const promotionRepository = {
   async validateCoupon(
     slug: string,
     code: string,
-    items: Array<{ productId: string; quantity: number }>
+    items: Array<{ productId: string; quantity: number; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> }>
   ): Promise<CouponPreview> {
     requireBackend('cupons');
     requireN1N6('Cupons');
@@ -415,7 +415,7 @@ export const promotionRepository = {
   async validateCouponPos(
     tenantId: string,
     code: string,
-    items: Array<{ productId: string; quantity: number }>,
+    items: Array<{ productId: string; quantity: number; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> }>,
     customerId?: string
   ): Promise<CouponPreview> {
     requireBackend('cupons');
@@ -434,7 +434,7 @@ export const promotionRepository = {
   async validatePublicCoupon(
     slug: string,
     code: string,
-    items: Array<{ productId: string; quantity: number }>
+    items: Array<{ productId: string; quantity: number; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> }>
   ): Promise<ValidateCouponResult> {
     return previewToValidateResult(await this.validateCoupon(slug, code, items));
   },

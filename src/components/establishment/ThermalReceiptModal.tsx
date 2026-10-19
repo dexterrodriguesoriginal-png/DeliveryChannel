@@ -61,13 +61,17 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         <div className="border-b border-dashed border-black pb-3 space-y-1.5">
           <p className="font-bold text-[10px]">ITENS:</p>
           {order.items.map((it, idx) => (
-            <div key={idx} className="flex justify-between text-[11px]">
-              <span className="truncate pr-1">
-                {it.quantity}x {it.productName}
-              </span>
-              <span className="font-bold tabular-nums">
-                {formatBRL(it.totalPrice)}
-              </span>
+            <div key={idx} className="text-[11px]">
+              <div className="flex justify-between">
+                <span className="truncate pr-1">{it.quantity}x {it.productName}</span>
+                <span className="font-bold tabular-nums">{formatBRL(it.totalPrice)}</span>
+              </div>
+              {it.options?.map(option => (
+                <p key={option.optionId} className="pl-3 text-[10px]">
+                  {option.fraction && option.fraction < 1 ? `${option.fraction === 0.5 ? '½' : `${Math.round(option.fraction * 100)}%`} ` : '+ '}
+                  {option.optionName}{option.unitPriceCents > 0 ? ` (${formatBRL(option.unitPriceCents / 100)})` : ''}
+                </p>
+              ))}
             </div>
           ))}
           {order.notes && (

@@ -30,9 +30,12 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { formatBRL } from '../../lib/pricing/money';
+import { useModules } from '../../hooks/useModules';
+import { ProductOptionGroupsPanel } from '../../components/establishment/ProductOptionGroupsPanel';
 
 export const ProductsPage: React.FC = () => {
   const { activeTenant, securityContext } = useAuth();
+  const { isModuleEnabled } = useModules();
   const { showToast } = useToast();
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -594,6 +597,10 @@ export const ProductsPage: React.FC = () => {
           </table>
         </div>
       </Card>
+
+      {isModuleEnabled('addons') && (
+        <ProductOptionGroupsPanel tenantId={activeTenant.id} products={products} />
+      )}
 
       {/* Modal de Criação / Edição de Produto */}
       <Modal

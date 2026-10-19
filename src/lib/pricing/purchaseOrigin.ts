@@ -227,10 +227,11 @@ export function revalidateOriginCart<P extends OriginProduct>(
 }
 
 /** Payload de item enviado ao backend (nunca contém preço). Campos de origem só para itens de campanha (compatível com N2). */
-export function toCheckoutItem(l: { product: { id: string }; quantity: number; notes?: string; origin: PurchaseOrigin }) {
-  const base: { productId: string; quantity: number; notes?: string; source?: 'campaign'; campaignItemId?: string } = {
+export function toCheckoutItem(l: { product: { id: string }; quantity: number; notes?: string; origin: PurchaseOrigin; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> }) {
+  const base: { productId: string; quantity: number; notes?: string; source?: 'campaign'; campaignItemId?: string; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> } = {
     productId: l.product.id, quantity: l.quantity, notes: l.notes,
   };
+  if (l.options?.length) base.options = l.options;
   if (l.origin.source === 'campaign' && l.origin.campaignItemId) {
     base.source = 'campaign';
     base.campaignItemId = l.origin.campaignItemId;

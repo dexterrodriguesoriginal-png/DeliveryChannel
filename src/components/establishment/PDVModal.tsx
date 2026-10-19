@@ -1,21 +1,25 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { isN1N6Backend } from '../../lib/backendSchema';
 import { promotionRepository, normalizeCouponCode } from '../../repositories/promotionRepository';
 import { newIdempotencyKey } from '../../lib/backend';
 import { Barcode, Search, X, Plus, Minus, ShoppingBag, DollarSign } from 'lucide-react';
-import { Product } from '../../types';
+import { Product, SelectedProductOption } from '../../types';
 import { formatBRL } from '../../lib/pricing/money';
+import { ProductOptionsSelector } from '../client/customer/ProductOptionsSelector';
+import { productOptionRepository } from '../../repositories/productOptionRepository';
+import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 
 interface PDVModalProps {
   isOpen: boolean;
   /** Loja ativa — cupom é validado no servidor (validate_coupon_pos). */
   tenantId: string;
   products: Product[];
+  addonsEnabled: boolean;
   onClose: () => void;
   onSubmit: (data: {
     customerName: string;
     customerPhone: string;
-    items: Array<{ productId: string; quantity: number; notes?: string }>;
+    items: Array<{ productId: string; quantity: number; notes?: string; options?: SelectedProductOption[] }>;
     paymentMethod: 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'PIX';
     notes?: string;
     couponCode?: string;
@@ -27,11 +31,16 @@ export const PDVModal: React.FC<PDVModalProps> = ({
   isOpen,
   tenantId,
   products,
+  addonsEnabled,
   onClose,
   onSubmit,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [cart, setCart] = useState<Array<{ product: Product; quantity: number }>>([]);
+  const [cart, setCart] = useState<Array<{ key: string; product: Product; quantity: number; options?: SelectedProductOption[] }>>([]);
+  const [catalogProducts, setCatalogProducts] = useState(products);
+  const [optionsProduct, setOptionsProduct] = useState<Product | null>(null);
+  const [optionChoices, setOptionChoices] = useState<SelectedProductOption[]>([]);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
   // Sem nome/telefone fictícios: em branco, o servidor registra "Cliente Balcão" sem telefone.
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -52,43 +61,72 @@ export const PDVModal: React.FC<PDVModalProps> = ({
     setCouponPreview(null);
   }, [cart]);
 
+  useEffect(() => {
+    let alive = true;
+    async function loadOptions() {
+      setCatalogProducts(products);
+      if (!isOpen || !addonsEnabled) return;
+      try {
+        const byProduct = await productOptionRepository.getPublicForProducts(tenantId, products.map(product => product.id));
+        if (alive) setCatalogProducts(products.map(product => ({ ...product, optionGroups: byProduct.get(product.id) || [] })));
+        if (alive) setOptionsError(null);
+      } catch (error) {
+        if (alive) setOptionsError((error as Error).message);
+      }
+    }
+    void loadOptions();
+    return () => { alive = false; };
+  }, [isOpen, addonsEnabled, tenantId, products]);
+
   if (!isOpen) return null;
 
-  const filteredProducts = products.filter(p => {
+  const filteredProducts = catalogProducts.filter(p => {
     const term = searchTerm.toLowerCase();
     const matchName = p.name.toLowerCase().includes(term);
     const matchSku = p.sku && p.sku.toLowerCase().includes(term);
     return matchName || matchSku;
   });
 
-  const handleAddToCart = (product: Product) => {
+  const cartKey = (productId: string, options: SelectedProductOption[] = []) =>
+    options.length ? `${productId}::${options.map(item => `${item.groupId}:${item.optionId}:${item.qty}`).sort().join('|')}` : productId;
+
+  const handleAddToCart = (product: Product, options?: SelectedProductOption[]) => {
+    if (addonsEnabled && product.optionGroups?.some(group => group.active) && !options) {
+      setOptionsProduct(product);
+      setOptionChoices([]);
+      return;
+    }
+    const selections = options || [];
+    if (product.optionGroups?.length && !validateOptionSelection(product.optionGroups, selections).valid) return;
+    const key = cartKey(product.id, selections);
     setCart(prev => {
-      const idx = prev.findIndex(item => item.product.id === product.id);
+      const idx = prev.findIndex(item => item.key === key);
       if (idx >= 0) {
         const next = [...prev];
         next[idx].quantity += 1;
         return next;
       }
-      return [...prev, { product, quantity: 1 }];
+      return [...prev, { key, product, quantity: 1, options: selections }];
     });
   };
 
-  const handleUpdateQuantity = (productId: string, delta: number) => {
+  const handleUpdateQuantity = (itemKey: string, delta: number) => {
     setCart(prev => {
       return prev
         .map(item => {
-          if (item.product.id === productId) {
+          if (item.key === itemKey) {
             const newQtd = item.quantity + delta;
             return newQtd > 0 ? { ...item, quantity: newQtd } : null;
           }
           return item;
         })
-        .filter(Boolean) as Array<{ product: Product; quantity: number }>;
+        .filter((item): item is NonNullable<typeof item> => item !== null);
     });
   };
 
   // Prévia: o total oficial (preço efetivo, cupom) é calculado em process_pos_sale_atomic.
-  const subtotalPreview = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const subtotalPreview = cart.reduce((sum, item) =>
+    sum + (item.product.price + optionPriceCents(item.product.optionGroups || [], item.options || []) / 100) * item.quantity, 0);
   const totalAmount = Math.max(0, subtotalPreview - (couponPreview?.discount || 0));
 
   const handleApplyCoupon = async () => {
@@ -100,7 +138,7 @@ export const PDVModal: React.FC<PDVModalProps> = ({
       const res = await promotionRepository.validateCouponPos(
         tenantId,
         code,
-        cart.map(i => ({ productId: i.product.id, quantity: i.quantity })),
+        cart.map(i => ({ productId: i.product.id, quantity: i.quantity, options: i.options })),
         undefined
       );
       if (res.valid) {
@@ -137,6 +175,7 @@ export const PDVModal: React.FC<PDVModalProps> = ({
         items: cart.map(i => ({
           productId: i.product.id,
           quantity: i.quantity,
+          options: i.options,
         })),
       });
 
@@ -175,6 +214,24 @@ export const PDVModal: React.FC<PDVModalProps> = ({
 
         {/* Corpo do PDV */}
         <div className="grid grid-cols-1 md:grid-cols-12 flex-1 overflow-hidden">
+          {optionsError && <p role="alert" className="md:col-span-12 px-4 pt-3 text-xs font-semibold text-rose-700">{optionsError}</p>}
+          {optionsProduct && (
+            <div className="md:col-span-12 max-h-64 overflow-y-auto border-b border-gray-200 bg-white p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="font-bold text-sm">Opções de {optionsProduct.name}</h4>
+                <button type="button" onClick={() => setOptionsProduct(null)} className="text-xs text-gray-500">Cancelar</button>
+              </div>
+              <ProductOptionsSelector groups={optionsProduct.optionGroups || []} selections={optionChoices} onChange={setOptionChoices} />
+              <div className="flex justify-end">
+                <button type="button"
+                  disabled={!validateOptionSelection(optionsProduct.optionGroups || [], optionChoices).valid}
+                  onClick={() => { handleAddToCart(optionsProduct, optionChoices); setOptionsProduct(null); }}
+                  className="rounded-xl bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
+                  Adicionar item · {formatBRL(optionsProduct.price + optionPriceCents(optionsProduct.optionGroups || [], optionChoices) / 100)}
+                </button>
+              </div>
+            </div>
+          )}
           {/* Lado Esquerdo: Catálogo */}
           <div className="md:col-span-7 p-4 border-r border-gray-200 overflow-y-auto space-y-3.5">
             <div className="relative">
@@ -244,23 +301,28 @@ export const PDVModal: React.FC<PDVModalProps> = ({
               ) : (
                 <div className="space-y-2 max-h-[36vh] overflow-y-auto pr-1">
                   {cart.map(item => (
-                    <div key={item.product.id} className="p-2.5 bg-white border border-gray-200 rounded-xl flex items-center justify-between">
+                    <div key={item.key} className="p-2.5 bg-white border border-gray-200 rounded-xl flex items-center justify-between">
                       <div className="min-w-0 flex-1 mr-2">
                         <span className="text-xs font-bold text-gray-900 truncate block">{item.product.name}</span>
                         <span className="text-[10px] text-gray-500 font-mono">
-                          {formatBRL(item.product.price)} un.
+                          {formatBRL(item.product.price + optionPriceCents(item.product.optionGroups || [], item.options || []) / 100)} un.
                         </span>
+                        {item.options?.map(option => {
+                          const group = item.product.optionGroups?.find(candidate => candidate.id === option.groupId);
+                          const selected = group?.options.find(candidate => candidate.id === option.optionId);
+                          return <span key={option.optionId} className="block text-[9px] text-gray-500">+ {selected?.name || ''}</span>;
+                        })}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button 
-                          onClick={() => handleUpdateQuantity(item.product.id, -1)}
+                          onClick={() => handleUpdateQuantity(item.key, -1)}
                           className="w-6 h-6 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-900 flex items-center justify-center font-bold text-xs cursor-pointer"
                         >
                           <Minus className="w-3 h-3" />
                         </button>
                         <span className="font-mono font-bold text-xs w-6 text-center">{item.quantity}</span>
                         <button 
-                          onClick={() => handleUpdateQuantity(item.product.id, 1)}
+                          onClick={() => handleUpdateQuantity(item.key, 1)}
                           className="w-6 h-6 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-900 flex items-center justify-center font-bold text-xs cursor-pointer"
                         >
                           <Plus className="w-3 h-3" />

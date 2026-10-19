@@ -47,7 +47,7 @@ import {
 } from './orderMappers';
 import { posSaleNotes, isMissingRpcSignature } from './posSaleNotes';
 
-const STAFF_ORDER_SELECT = '*, order_items(*), order_status_history(*)';
+const STAFF_ORDER_SELECT = '*, order_items(*, order_item_options(*)), order_status_history(*)';
 
 /** Origens aceitas pelo CHECK de orders.origin no 001–020. */
 const LEGACY_ORIGINS: ReadonlySet<string> = new Set([
@@ -129,7 +129,7 @@ export interface PublicOrderInput {
   customerEmail?: string;
   deliveryAddress?: string;
   addressDetails?: Order['addressDetails'];
-  items: Array<{ productId: string; quantity: number; notes?: string; source?: 'catalog' | 'campaign'; campaignItemId?: string }>;
+  items: Array<{ productId: string; quantity: number; notes?: string; source?: 'catalog' | 'campaign'; campaignItemId?: string; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> }>;
   paymentMethod: Order['paymentMethod'];
   fulfillmentType?: Order['fulfillmentType'];
   notes?: string;
@@ -161,7 +161,7 @@ export interface PosSaleInput {
   customerName?: string;
   customerPhone?: string;
   customerId?: string;
-  items: Array<{ productId: string; quantity: number; notes?: string }>;
+  items: Array<{ productId: string; quantity: number; notes?: string; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> }>;
   paymentMethod: Order['paymentMethod'];
   notes?: string;
   couponCode?: string;
@@ -293,9 +293,12 @@ export const orderRepository = {
       p_idempotency_key: input.idempotencyKey && isValidUuid(input.idempotencyKey) ? input.idempotencyKey : newIdempotencyKey(),
     };
     const posNotes = posSaleNotes(input.notes);
-    let { data, error } = await supabase.rpc('process_pos_sale_atomic', posNotes ? { ...posArgs, p_notes: posNotes } : posArgs);
+    const hasOptions = input.items.some(item => item.options?.length);
+    let { data, error } = hasOptions
+      ? await supabase.rpc('process_pos_sale_atomic_v2', { ...posArgs, p_notes: posNotes || null })
+      : await supabase.rpc('process_pos_sale_atomic', posNotes ? { ...posArgs, p_notes: posNotes } : posArgs);
     // Banco ainda sem a 1400 (sem p_notes): repete sem a observação para não bloquear a venda.
-    if (error && posNotes && isMissingRpcSignature(error)) {
+    if (error && !hasOptions && posNotes && isMissingRpcSignature(error)) {
       ({ data, error } = await supabase.rpc('process_pos_sale_atomic', posArgs));
     }
     if (error) throw toBackendError(error, 'Falha ao registrar a venda de balcão.');
@@ -314,7 +317,7 @@ export const orderRepository = {
   async validateCoupon(
     target: { slug: string } | { tenantId: string; customerId?: string },
     code: string,
-    items: Array<{ productId: string; quantity: number; notes?: string }>
+    items: Array<{ productId: string; quantity: number; notes?: string; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> }>
   ): Promise<CouponPreview> {
     requireBackend('cupom');
     if (!isN1N6Backend()) throw n1n6Required('Cupom');
@@ -338,6 +341,28 @@ export const orderRepository = {
       return dataStore.createPublicOrder(slug, orderData as any);
     }
     assertCartCampaignLinesSupported(orderData.items, isN1N6Backend());
+    if (orderData.items.some(item => item.options?.length)) {
+      const { data, error } = await supabase.rpc('process_checkout_atomic_v3', {
+        p_tenant_slug: slug,
+        p_customer_name: orderData.customerName,
+        p_customer_phone: orderData.customerPhone,
+        p_delivery_address: orderData.deliveryAddress || (orderData.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : ''),
+        p_address_details: orderData.addressDetails || {},
+        p_payment_method: orderData.paymentMethod,
+        p_fulfillment_type: orderData.fulfillmentType || 'DELIVERY',
+        p_notes: orderData.notes || null,
+        p_items: toServerItems(orderData.items),
+        p_coupon_code: orderData.couponCode?.trim() || null,
+        p_idempotency_key: orderData.idempotencyKey && isValidUuid(orderData.idempotencyKey) ? orderData.idempotencyKey : newIdempotencyKey(),
+        p_card_id: orderData.cardId && isValidUuid(orderData.cardId) ? orderData.cardId : null,
+      });
+      if (error) throw toBackendError(error, 'Falha ao processar adicionais no servidor.');
+      const summary = mapCheckoutSummary(data);
+      const order = await loadCustomerOrder(summary.orderId, '', unavailableMsg(summary));
+      order.couponCode = summary.couponCode;
+      order.origin = 'storefront';
+      return order;
+    }
     if (!isN1N6Backend()) {
       if (orderData.couponCode && orderData.couponCode.trim()) throw n1n6Required('Cupom');
       const { data: orderId, error } = await supabase.rpc('process_checkout_atomic', {
@@ -444,7 +469,7 @@ export const orderRepository = {
       .select(
         'id, tenant_id, customer_id, order_number, customer_name, customer_phone, customer_email, delivery_address, address_details, subtotal, delivery_fee, discount, total_amount, payment_method, payment_status, fulfillment_type, status, notes, prep_time_minutes, origin, created_at, updated_at' +
           extra +
-          ', order_items(product_id, product_name, quantity, unit_price, total_price, notes, unit)'
+          ', order_items(product_id, product_name, quantity, unit_price, total_price, notes, unit, order_item_options(*))'
       )
       .eq('tenant_id', tenantId)
       .eq('customer_id', customerRow.id)

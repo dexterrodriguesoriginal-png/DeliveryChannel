@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Bike, MapPin, MessageSquare, Minus, Plus, ShoppingBag, Store, Trash2, Ticket } from 'lucide-react';
 import type { Product } from '../../../types';
+import type { OrderItemOption } from '../../../types';
 import { formatBRL } from '../../../lib/pricing/money';
 import { EmptyBlock, PrimaryButton } from './ui';
 import { cn } from '../../../utils/cn';
@@ -12,6 +13,7 @@ export interface CartScreenLine {
   notes?: string;
   unitPrice: number;
   isCampaign: boolean;
+  options?: OrderItemOption[];
 }
 
 /** Aba Sacola: revisar itens antes do checkout (quantidade, remover, observações, subtotal, entrega e total). */
@@ -97,6 +99,12 @@ export const CartScreen: React.FC<{
                 <p className="text-sm font-bold text-gray-900 leading-snug line-clamp-2">{l.product.name}</p>
                 {l.isCampaign && <span className="inline-block mt-0.5 text-[10px] font-bold uppercase text-amber-800 bg-amber-50 border border-amber-200 px-1.5 rounded">Oferta</span>}
                 <p className="text-sm font-extrabold text-gray-900 mt-1">{formatBRL(l.unitPrice * l.quantity)}</p>
+                {l.options?.map(option => (
+                  <p key={option.optionId} className="text-xs text-gray-600 mt-0.5">
+                    ↳ {option.fraction && option.fraction < 1 ? `${Math.round(option.fraction * 100)}% ` : '+ '}
+                    {option.optionName}{option.unitPriceCents > 0 ? ` (${formatBRL(option.unitPriceCents / 100)})` : ''}
+                  </p>
+                ))}
                 {l.notes && noteOpen !== l.key && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">Obs.: {l.notes}</p>}
                 <button type="button" onClick={() => setNoteOpen(noteOpen === l.key ? null : l.key)} className="mt-1 text-xs font-semibold flex items-center gap-1 cursor-pointer" style={{ color: p.color }}>
                   <MessageSquare className="w-3.5 h-3.5" />{l.notes ? 'Editar observação' : 'Adicionar observação'}

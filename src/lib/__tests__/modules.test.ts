@@ -10,10 +10,10 @@ import {
 } from '../modules';
 
 const expectedPresets: Record<string, Array<[ModuleKey, Record<string, unknown>]>> = {
-  RESTAURANTE: [['delivery', {}], ['pickup', {}], ['addons', {}], ['kds', {}], ['dine_in', { mode: 'TABLE' }], ['service_fee', { percent: 10 }], ['pos', {}]],
-  PIZZARIA: [['delivery', {}], ['pickup', {}], ['addons', {}], ['kds', {}], ['dine_in', { mode: 'TABLE' }], ['service_fee', { percent: 10 }], ['pos', {}], ['loyalty', {}]],
-  BAR: [['addons', {}], ['kds', { mode: 'BAR' }], ['dine_in', { mode: 'INDIVIDUAL' }], ['counter', {}], ['service_fee', { percent: 10 }], ['pos', {}]],
-  LANCHONETE_CAFE: [['delivery', {}], ['pickup', {}], ['addons', {}], ['kds', {}], ['counter', {}], ['pos', {}], ['loyalty', {}]],
+  RESTAURANTE: [['delivery', {}], ['pickup', {}], ['kds', {}], ['dine_in', { mode: 'TABLE' }], ['service_fee', { percent: 10 }], ['pos', {}]],
+  PIZZARIA: [['delivery', {}], ['pickup', {}], ['kds', {}], ['dine_in', { mode: 'TABLE' }], ['service_fee', { percent: 10 }], ['pos', {}], ['loyalty', {}]],
+  BAR: [['kds', { mode: 'BAR' }], ['dine_in', { mode: 'INDIVIDUAL' }], ['counter', {}], ['service_fee', { percent: 10 }], ['pos', {}]],
+  LANCHONETE_CAFE: [['delivery', {}], ['pickup', {}], ['kds', {}], ['counter', {}], ['pos', {}], ['loyalty', {}]],
   MERCADO: [['delivery', {}], ['pickup', {}], ['weight', {}], ['barcode', {}], ['substitution', {}], ['pos', {}]],
   ADEGA: [['delivery', {}], ['pickup', {}], ['barcode', {}], ['pos', {}], ['loyalty', {}]],
   ROUPAS: [['delivery', {}], ['pickup', {}], ['barcode', {}], ['variants', {}], ['reserve_exchange', {}], ['pos', {}]],
@@ -36,6 +36,7 @@ describe('business module presets', () => {
     expect(isModuleEnabled(new Set(['scheduling']), 'delivery')).toBe(false);
     expect(isModuleEnabled(new Set(['scheduling']), 'scheduling')).toBe(true);
     expect(isModuleEnabled(null, 'delivery')).toBe(true);
+    expect(isModuleEnabled(null, 'addons')).toBe(false);
     expect(presetModuleKeys('SALAO_BARBEARIA')).not.toContain('delivery');
   });
 

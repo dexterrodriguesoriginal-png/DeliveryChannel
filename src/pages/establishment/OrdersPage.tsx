@@ -829,6 +829,12 @@ export const OrdersPage: React.FC = () => {
                         {item.notes && (
                           <p className="text-[7.5px] text-amber-700 font-medium mt-0.5 italic break-words">Obs: {item.notes}</p>
                         )}
+                        {item.options?.map(option => (
+                          <p key={option.optionId} className="text-[8px] text-slate-600 font-semibold mt-0.5">
+                            {option.fraction && option.fraction < 1 ? `${option.fraction === 0.5 ? '½' : `${Math.round(option.fraction * 100)}%`} ` : '+ '}
+                            {option.optionName}{option.unitPriceCents > 0 ? ` (${formatBRL(option.unitPriceCents / 100)})` : ''}
+                          </p>
+                        ))}
                       </div>
                       <span className="font-mono font-bold text-slate-900 shrink-0 text-[9px] ml-1">
                         {formatBRL(item.totalPrice)}
@@ -2150,6 +2156,7 @@ export const OrdersPage: React.FC = () => {
           isOpen={isPDVOpen}
           tenantId={activeTenant?.id || ''}
           products={storeProducts}
+          addonsEnabled={isModuleEnabled('addons')}
           onClose={() => setIsPDVOpen(false)}
           onSubmit={handlePDVSubmit}
         />

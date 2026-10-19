@@ -1,6 +1,13 @@
 /** 19/10: regras puras da Tela da Cozinha (sem preço nem dado pessoal além do 1º nome na retirada). */
 export type KitchenStatus = 'CONFIRMED' | 'PREPARING';
-export interface KitchenItem { order_item_id: string; product_name: string; quantity: number; unit?: string | null; notes?: string | null }
+export interface KitchenItem {
+  order_item_id: string;
+  product_name: string;
+  quantity: number;
+  unit?: string | null;
+  notes?: string | null;
+  options?: Array<{ group_name: string; option_name: string; qty: number; fraction?: number | null }>;
+}
 export interface KitchenOrder {
   order_id: string; order_number: number; status: KitchenStatus; fulfillment_type: 'DELIVERY' | 'PICKUP';
   created_at: string; notes?: string | null; customer_first_name?: string | null; pickup_code?: string | null;

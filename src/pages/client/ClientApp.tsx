@@ -42,12 +42,14 @@ import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
 import { cartStorageKey } from '../../lib/pwa/storeManifest';
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
+import { productOptionRepository } from '../../repositories/productOptionRepository';
 import { isModuleEnabled } from '../../lib/modules';
+import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
-import { Product, CustomerOrigin, Order, Offer, OrderStatus, TenantTheme, Coupon, RedeemCouponResult } from '../../types';
+import { Product, CustomerOrigin, Order, Offer, OrderStatus, TenantTheme, Coupon, RedeemCouponResult, SelectedProductOption } from '../../types';
 import { 
   Search, 
   ShoppingBag, 
@@ -119,6 +121,7 @@ import {
 } from '../../lib/customer/localStore';
 import { customerAppRepository } from '../../repositories/customerAppRepository';
 import { CartScreen } from '../../components/client/customer/CartScreen';
+import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import { SearchScreen } from '../../components/client/customer/SearchScreen';
 import { OffersScreen } from '../../components/client/customer/OffersScreen';
 import { ProfileScreen, ProfilePage } from '../../components/client/customer/ProfileScreen';
@@ -135,6 +138,12 @@ interface CartItem {
   quantity: number;
   notes?: string;
   origin: PurchaseOrigin;
+  options?: SelectedProductOption[];
+}
+
+function configuredCartLineKey(productId: string, origin: PurchaseOrigin, selections: SelectedProductOption[]): string {
+  const normalized = [...selections].sort((a, b) => `${a.groupId}:${a.optionId}`.localeCompare(`${b.groupId}:${b.optionId}`));
+  return `${cartLineKey(productId, origin)}::${normalized.map(option => `${option.groupId}:${option.optionId}:${option.qty}:${option.fraction ?? ''}`).join('|')}`;
 }
 
 const GoogleIcon: React.FC = () => (
@@ -215,9 +224,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const [expandedFailedGroups, setExpandedFailedGroups] = useState<Record<string, boolean>>({});
   const [focusOrderId, setFocusOrderId] = useState<string | null>(initialTrackingLink.orderId || null);
   const [selectedProductModal, setSelectedProductModal] = useState<Product | null>(null);
+  const [selectedOptionChoices, setSelectedOptionChoices] = useState<SelectedProductOption[]>([]);
+  const [addonsEnabled, setAddonsEnabled] = useState(false);
   // Origem com que o detalhe do produto foi aberto (catálogo ou item de campanha do carrossel).
   const [selectedProductOrigin, setSelectedProductOrigin] = useState<PurchaseOrigin>(CATALOG_ORIGIN);
   const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null);
+  useEffect(() => {
+    setSelectedOptionChoices([]);
+  }, [selectedProductModal?.id, selectedProductOrigin]);
 
   // 4. Carrinho estritamente isolado pelo tenant.id real
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -338,16 +352,26 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       const data = result.status === 'ok' ? result.data : null;
       if (data && data.tenant) {
         const enabledModules = await tenantModuleRepository.getPublicEnabled(data.tenant.id);
+        const addonsAvailable = isModuleEnabled(enabledModules, 'addons');
+        setAddonsEnabled(addonsAvailable);
+        const productOptionGroups = addonsAvailable
+          ? await productOptionRepository.getPublicForProducts(data.tenant.id, data.products.map(product => product.id))
+          : new Map();
+        const productsWithOptions = data.products.map(product => ({
+          ...product,
+          optionGroups: productOptionGroups.get(product.id) || [],
+        }));
         const storeWithModules = enabledModules
           ? {
               ...data,
+              products: productsWithOptions,
               settings: {
                 ...data.settings,
                 deliveryEnabled: isModuleEnabled(enabledModules, 'delivery'),
                 pickupEnabled: isModuleEnabled(enabledModules, 'pickup'),
               },
             }
-          : data;
+          : { ...data, products: productsWithOptions };
         setStoreData(storeWithModules);
         // Carrega carrinho específico deste estabelecimento
         try {
@@ -685,7 +709,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const priceCartItem = (item: CartItem) => {
     const r = priceLineByOrigin({ product: item.product, quantity: item.quantity, origin: item.origin, campaigns: campaignsForPricing, tenantId: tenantIdForPricing });
     // Linha de campanha inválida é convertida pelo efeito de revalidação; até lá, exibe preço de catálogo.
-    return r.ok ? r.line : productToPricingLine(item.product, item.quantity);
+    const priced = r.ok ? r.line : productToPricingLine(item.product, item.quantity);
+    return { ...priced, unitPrice: priced.unitPrice + optionPriceCents(item.product.optionGroups || [], item.options || []) / 100 };
   };
   const pricedLines = cart.map(priceCartItem);
   const subtotal = pricedLines.reduce((acc, l) => acc + l.unitPrice * l.quantity, 0);
@@ -753,7 +778,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       const res = await promotionRepository.validatePublicCoupon(
         storeData.tenant.slug,
         clean,
-        cart.map(item => ({ productId: item.product.id, quantity: item.quantity }))
+        cart.map(item => ({ productId: item.product.id, quantity: item.quantity, options: item.options }))
       );
       if (res.isValid && res.coupon) {
         setAppliedCoupon(res.coupon);
@@ -814,7 +839,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   };
 
   // Manipulação de Carrinho
-  const handleAddToCart = (product: Product, origin: PurchaseOrigin = CATALOG_ORIGIN, opts?: { silent?: boolean }) => {
+  const handleAddToCart = (product: Product, origin: PurchaseOrigin = CATALOG_ORIGIN, opts?: { silent?: boolean; selections?: SelectedProductOption[] }) => {
     const isAvailable = product.isAvailable !== undefined ? product.isAvailable : (product.stockQuantity > 0);
     if (!isAvailable) {
       showToast({
@@ -827,6 +852,27 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
     // Sempre guarda o produto CANÔNICO do catálogo (o preço da campanha vem da origem, nunca de um produto alterado).
     const canonical = storeData?.products.find((x) => x.id === product.id && x.tenantId === storeData.tenant.id) || product;
+    const groups = canonical.optionGroups || [];
+    if (addonsEnabled && groups.some(group => group.active) && !opts?.selections) {
+      setSelectedProductOrigin(origin);
+      setSelectedProductModal(canonical);
+      setSelectedOptionChoices([]);
+      return;
+    }
+    const selections = opts?.selections;
+    if (groups.length && selections && !validateOptionSelection(groups, selections).valid) return;
+    if (selections?.length) {
+      const stableOptions = [...selections].sort((a, b) => `${a.groupId}:${a.optionId}`.localeCompare(`${b.groupId}:${b.optionId}`));
+      const key = configuredCartLineKey(canonical.id, origin, stableOptions);
+      setCart(prev => {
+        const existing = prev.find(item => item.key === key);
+        return existing
+          ? prev.map(item => item.key === key ? { ...item, quantity: item.quantity + 1 } : item)
+          : [...prev, { key, product: canonical, quantity: 1, origin, options: stableOptions }];
+      });
+      if (!opts?.silent) showToast({ type: 'success', title: 'Adicionado à Sacola', message: `${product.name} adicionado com sucesso.` });
+      return;
+    }
     // Mesmo produto de origens diferentes = linhas diferentes (não mescla catálogo com campanha).
     setCart((prev) => addToOriginCart<Product>(prev, canonical, origin) as CartItem[]);
 
@@ -843,11 +889,22 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     setCart((prev) => decrementOriginCart<Product>(prev, lineKey) as CartItem[]);
   };
 
-  const qtyOfCatalog = (productId: string) => cart.find(i => i.key === cartLineKey(productId, CATALOG_ORIGIN))?.quantity || 0;
-  const qtyOfOffer = (it: OfferListItem) => cart.find(i => i.key === cartLineKey(it.product.id, it.origin))?.quantity || 0;
+  const qtyOfCatalog = (productId: string) => {
+    const key = cartLineKey(productId, CATALOG_ORIGIN);
+    return cart.filter(item => item.key === key || item.key.startsWith(`${key}::`)).reduce((sum, item) => sum + item.quantity, 0);
+  };
+  const qtyOfOffer = (it: OfferListItem) => {
+    const key = cartLineKey(it.product.id, it.origin);
+    return cart.filter(item => item.key === key || item.key.startsWith(`${key}::`)).reduce((sum, item) => sum + item.quantity, 0);
+  };
+  const removeProductLine = (productId: string, origin: PurchaseOrigin) => {
+    const baseKey = cartLineKey(productId, origin);
+    const line = [...cart].reverse().find(item => item.key === baseKey || item.key.startsWith(`${baseKey}::`));
+    if (line) handleRemoveFromCart(line.key);
+  };
   const handleIncLine = (lineKey: string) => {
     const line = cart.find(l => l.key === lineKey);
-    if (line) handleAddToCart(line.product, line.origin, { silent: true });
+    if (line) handleAddToCart(line.product, line.origin, { silent: true, selections: line.options || [] });
   };
   const handleRemoveLineEntirely = (lineKey: string) => {
     setCart(prev => prev.filter(l => l.key !== lineKey));
@@ -1537,14 +1594,20 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           </div>
           <div className="space-y-1 max-h-36 overflow-y-auto">
             {order.items.map((item, idx) => (
-              <div key={idx} className="flex justify-between items-center text-gray-800">
-                <span className="truncate pr-2">
-                  <strong className="text-emerald-700 font-mono mr-1.5">{item.quantity}x</strong>
-                  {item.productName}
-                </span>
-                <span className="font-mono font-medium text-gray-700 shrink-0">
-                  {formatBRL(item.totalPrice)}
-                </span>
+              <div key={idx} className="text-gray-800">
+                <div className="flex justify-between items-center">
+                  <span className="truncate pr-2">
+                    <strong className="text-emerald-700 font-mono mr-1.5">{item.quantity}x</strong>
+                    {item.productName}
+                  </span>
+                  <span className="font-mono font-medium text-gray-700 shrink-0">{formatBRL(item.totalPrice)}</span>
+                </div>
+                {item.options?.map(option => (
+                  <div key={option.optionId} className="pl-6 text-[11px] text-gray-600">
+                    {option.fraction && option.fraction < 1 ? `${option.fraction === 0.5 ? '½' : `${Math.round(option.fraction * 100)}%`} ` : '+ '}
+                    {option.optionName}{option.unitPriceCents > 0 ? ` (${formatBRL(option.unitPriceCents / 100)})` : ''}
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -1810,7 +1873,19 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       ) : navTab === 'cart' ? (
         <CartScreen
           storeName={storeData.tenant.name}
-          lines={cart.map((item, idx) => ({ key: item.key, product: item.product, quantity: item.quantity, notes: item.notes, unitPrice: pricedLines[idx]?.unitPrice ?? item.product.price, isCampaign: item.origin.source === 'campaign' }))}
+          lines={cart.map((item, idx) => ({
+            key: item.key, product: item.product, quantity: item.quantity, notes: item.notes,
+            unitPrice: pricedLines[idx]?.unitPrice ?? item.product.price, isCampaign: item.origin.source === 'campaign',
+            options: (item.options || []).map(selected => {
+              const group = item.product.optionGroups?.find(candidate => candidate.id === selected.groupId);
+              const option = group?.options.find(candidate => candidate.id === selected.optionId);
+              return {
+                groupId: selected.groupId, optionId: selected.optionId,
+                groupName: group?.name || '', optionName: option?.name || '',
+                qty: selected.qty, unitPriceCents: option?.extraPriceCents || 0, fraction: selected.fraction,
+              };
+            }),
+          }))}
           color={buttonColor}
           subtotal={subtotal}
           deliveryFee={deliveryFee}
@@ -1849,7 +1924,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           color={buttonColor}
           qtyOf={qtyOfCatalog}
           onAdd={(p) => handleAddToCart(p)}
-          onRemove={(p) => handleRemoveFromCart(cartLineKey(p.id, CATALOG_ORIGIN))}
+          onRemove={(p) => removeProductLine(p.id, CATALOG_ORIGIN)}
           onOpen={(p) => openProductFromList(p)}
           isFavorite={(id) => favoriteIds.includes(id)}
           onToggleFavorite={handleToggleFavorite}
@@ -1865,7 +1940,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           color={buttonColor}
           qtyOf={qtyOfOffer}
           onAdd={(it) => handleAddToCart(it.product, it.origin)}
-          onRemove={(it) => handleRemoveFromCart(cartLineKey(it.product.id, it.origin))}
+          onRemove={(it) => removeProductLine(it.product.id, it.origin)}
           onOpen={(it) => openProductFromList(it.origin.source === 'campaign' ? { ...it.product, promotionalPrice: it.offerPrice } : it.product, it.origin)}
           onCardClick={handleOfferClick}
         />
@@ -1904,7 +1979,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           favoriteProducts={favoriteIds.map(id => storeData.products.find(p => p.id === id)).filter((p): p is Product => Boolean(p))}
           qtyOf={qtyOfCatalog}
           onAdd={(p) => handleAddToCart(p)}
-          onRemove={(p) => handleRemoveFromCart(cartLineKey(p.id, CATALOG_ORIGIN))}
+          onRemove={(p) => removeProductLine(p.id, CATALOG_ORIGIN)}
           onOpenProduct={(p) => openProductFromList(p)}
           onToggleFavorite={handleToggleFavorite}
           onClearSearchHistory={() => { clearSearchHistory(kv, userKey); showToast({ type: 'success', title: 'Histórico de busca apagado' }); }}
@@ -3296,12 +3371,27 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               </div>
             </div>
 
+            {addonsEnabled && Boolean(selectedProductModal.optionGroups?.length) && (
+              <ProductOptionsSelector
+                groups={selectedProductModal.optionGroups || []}
+                selections={selectedOptionChoices}
+                onChange={setSelectedOptionChoices}
+              />
+            )}
+
             {/* Botão de Ação / Adicionar ao Carrinho */}
             <div className="pt-1 flex items-center gap-3">
               {(() => {
-                const modalKey = cartLineKey(selectedProductModal.id, selectedProductOrigin);
+                const groups = addonsEnabled ? (selectedProductModal.optionGroups || []) : [];
+                const optionValidation = validateOptionSelection(groups, selectedOptionChoices);
+                const modalKey = groups.length && selectedOptionChoices.length
+                  ? configuredCartLineKey(selectedProductModal.id, selectedProductOrigin, selectedOptionChoices)
+                  : cartLineKey(selectedProductModal.id, selectedProductOrigin);
                 const inCart = cart.find(i => i.key === modalKey);
                 const isOutOfStock = selectedProductModal.isAvailable === false || selectedProductModal.stockQuantity <= 0;
+                const basePrice = selectedProductModal.promotionalPrice && selectedProductModal.promotionalPrice > 0
+                  ? selectedProductModal.promotionalPrice : selectedProductModal.price;
+                const totalPrice = basePrice + optionPriceCents(groups, selectedOptionChoices) / 100;
 
                 if (isOutOfStock) {
                   return (
@@ -3317,39 +3407,40 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
                 if (inCart) {
                   return (
-                    <div className="w-full flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-xl">
-                      <span className="text-xs font-bold text-emerald-900">
-                        No Carrinho: <strong className="font-mono text-sm">{inCart.quantity}</strong> item(s)
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFromCart(modalKey)}
-                          className="w-8 h-8 rounded-lg bg-white border border-emerald-300 flex items-center justify-center text-emerald-900 hover:bg-emerald-100 cursor-pointer shadow-xs"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAddToCart(selectedProductModal, selectedProductOrigin)}
-                          className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center hover:bg-emerald-800 cursor-pointer shadow-xs"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
+                    <div className="w-full space-y-2">
+                      <p className="text-right text-sm font-bold text-gray-900">Preço do item: {formatBRL(totalPrice)}</p>
+                      <div className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                        <span className="text-xs font-bold text-emerald-900">
+                          No Carrinho: <strong className="font-mono text-sm">{inCart.quantity}</strong> item(s)
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => handleRemoveFromCart(modalKey)}
+                            className="w-8 h-8 rounded-lg bg-white border border-emerald-300 flex items-center justify-center text-emerald-900 hover:bg-emerald-100 cursor-pointer shadow-xs">
+                            <Minus className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={() => handleAddToCart(selectedProductModal, selectedProductOrigin, { selections: selectedOptionChoices })}
+                            className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center hover:bg-emerald-800 cursor-pointer shadow-xs">
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
                 }
 
                 return (
-                  <Button
-                    className="w-full text-xs font-bold py-2.5 rounded-xl cursor-pointer"
-                    onClick={() => handleAddToCart(selectedProductModal, selectedProductOrigin)}
-                    leftIcon={<Plus className="w-4 h-4" />}
-                    style={{ backgroundColor: buttonColor }}
-                  >
-                    Adicionar à Sacola
-                  </Button>
+                  <div className="w-full space-y-2">
+                    {groups.length > 0 && <p className="text-right text-sm font-bold text-gray-900">Total: {formatBRL(totalPrice)}</p>}
+                    <Button
+                      className="w-full text-xs font-bold py-2.5 rounded-xl cursor-pointer"
+                      disabled={!optionValidation.valid}
+                      onClick={() => handleAddToCart(selectedProductModal, selectedProductOrigin, { selections: selectedOptionChoices })}
+                      leftIcon={<Plus className="w-4 h-4" />}
+                      style={{ backgroundColor: buttonColor }}
+                    >
+                      Adicionar à Sacola
+                    </Button>
+                  </div>
                 );
               })()}
             </div>

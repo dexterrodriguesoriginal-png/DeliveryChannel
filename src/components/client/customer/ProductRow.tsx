@@ -60,7 +60,7 @@ export const ProductRow: React.FC<{
             </button>
           </div>
         ) : (
-          <button type="button" onClick={e => { e.stopPropagation(); onAdd(); }} data-testid="add-btn"
+          <button type="button" onClick={e => { e.stopPropagation(); p.optionGroups?.some(group => group.active) && onOpen ? onOpen() : onAdd(); }} data-testid="add-btn"
             className="h-8 px-3 rounded-xl text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer" style={{ backgroundColor: color }}>
             <Plus className="w-3.5 h-3.5" /> Adicionar
           </button>
