@@ -20,7 +20,7 @@ export const OrderAgeBadge: React.FC<Props> = ({ order, now, className = '' }) =
       data-level={info.level}
       title={stale ? 'Pedido em aberto há mais de 1 dia: confira se ainda é válido ou cancele.' : 'Pedido em aberto há mais de 30 minutos.'}
       className={`inline-flex items-center gap-0.5 px-1 py-px rounded border font-bold text-[8.5px] leading-tight whitespace-nowrap ${
-        stale ? 'bg-rose-100 text-rose-800 border-rose-300' : 'bg-amber-50 text-amber-800 border-amber-300'
+        stale ? 'bg-red-50 text-red-700 border-red-300' : 'bg-slate-50 text-slate-700 border-slate-300'
       } ${className}`}
     >
       {stale ? <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> : <Clock className="w-2.5 h-2.5 shrink-0" />}

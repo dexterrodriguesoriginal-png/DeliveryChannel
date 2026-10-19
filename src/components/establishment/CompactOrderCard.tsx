@@ -18,8 +18,7 @@ import { Order, OrderStatus } from '../../types';
 import { 
   ORDER_STATUS_THEME, 
   DELAYED_PREPARING_THEME, 
-  checkIsPreparingDelayed 
-} from '../../utils/orderStatusTheme';
+  checkIsPreparingDelayed, orderActionButtonStyle } from '../../utils/orderStatusTheme';
 import { OrderAgeBadge } from './OrderAgeBadge';
 import { formatBRL } from '../../lib/pricing/money';
 
@@ -261,7 +260,7 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
               type="button"
               data-testid="card-call-driver"
               onClick={(e) => { e.stopPropagation(); onUpdateStatus(order.id, 'WAITING_FOR_DRIVER'); }}
-              className="py-0.1 px-1 rounded font-bold text-[8.5px] bg-emerald-600 text-white flex items-center justify-center gap-0.5 shadow-2xs hover:bg-emerald-700 cursor-pointer"
+              className="py-0.1 px-1 rounded font-bold text-[8.5px] bg-[#15803d] text-white flex items-center justify-center gap-0.5 shadow-2xs hover:bg-[#166534] cursor-pointer"
             >
               <Truck className="w-2 h-2" /><span className="truncate">Chamar motoboy</span>
             </button>
@@ -270,10 +269,7 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
           <button
             type="button"
             onClick={handleActionClick}
-            style={{
-              backgroundColor: theme.buttonBg,
-              color: theme.buttonText,
-            }}
+            style={orderActionButtonStyle(theme, order)}
             className="py-0.1 px-1 rounded font-bold text-[8.5px] flex items-center justify-center gap-0.5 shadow-2xs hover:opacity-90 transition-all cursor-pointer active:scale-98"
           >
             {isPending && <Check className="w-1.5 h-1.5 stroke-[3]" />}

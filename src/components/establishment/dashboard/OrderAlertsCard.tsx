@@ -4,6 +4,7 @@ import type { Order, RoleId } from '../../../types';
 import { formatBRL } from '../../../lib/pricing/money';
 import { paymentMethodLabel } from '../../../lib/orders/labels';
 import { OrderAgeBadge } from '../OrderAgeBadge';
+import { statusChip, FILTER_CHIP_CLASS } from '../../../lib/orders/statusChip';
 import {
   OrderAlerts, NextStep, AlertFilter, nextStepFor, waitingLabel, itemsSummary, addressLine, whatsappLink,
   alertCounts, alertList, shortPlace,
@@ -31,11 +32,12 @@ interface Props {
 }
 
 const STEP_STYLE: Record<NextStep['kind'], string> = {
-  accept: 'bg-[#15803d] hover:bg-emerald-800 text-white',
-  start: 'bg-blue-600 hover:bg-blue-700 text-white',
-  ready: 'bg-amber-500 hover:bg-amber-600 text-slate-950',
-  call_driver: 'bg-purple-600 hover:bg-purple-700 text-white',
-  pickup_done: 'bg-[#15803d] hover:bg-emerald-800 text-white',
+  // 19/10: toda ação principal no verde da marca; a cor do status fica no selo.
+  accept: 'bg-[#15803d] hover:bg-[#166534] text-white',
+  start: 'bg-[#15803d] hover:bg-[#166534] text-white',
+  ready: 'bg-[#15803d] hover:bg-[#166534] text-white',
+  call_driver: 'bg-[#15803d] hover:bg-[#166534] text-white',
+  pickup_done: 'bg-[#15803d] hover:bg-[#166534] text-white',
 };
 const STEP_ICON: Record<NextStep['kind'], React.ReactNode> = {
   accept: <CheckCircle2 className="w-3.5 h-3.5" />, start: <ChefHat className="w-3.5 h-3.5" />, ready: <Package className="w-3.5 h-3.5" />,
@@ -61,12 +63,12 @@ export const OrderAlertsCard: React.FC<Props> = ({
   const lateLimit = prepMinutes && prepMinutes > 0 ? `${prepMinutes} min` : '30 min';
 
   const chips: ChipDef[] = [
-    { key: 'novos', label: 'Novos', count: counts.novos, on: 'bg-[#15803d] text-white border-[#15803d]' },
-    { key: 'emPreparo', label: 'Em preparo', count: counts.emPreparo, on: 'bg-blue-50 text-blue-800 border-blue-300' },
-    { key: 'prontos', label: 'Prontos', count: counts.prontos, on: 'bg-purple-50 text-purple-800 border-purple-300' },
-    { key: 'atrasados', label: 'Atrasados', count: counts.atrasados, on: 'bg-rose-600 text-white border-rose-600' },
+    { key: 'novos', label: 'Novos', count: counts.novos, on: FILTER_CHIP_CLASS.novos },
+    { key: 'emPreparo', label: 'Em preparo', count: counts.emPreparo, on: FILTER_CHIP_CLASS.emPreparo },
+    { key: 'prontos', label: 'Prontos', count: counts.prontos, on: FILTER_CHIP_CLASS.prontos },
+    { key: 'atrasados', label: 'Atrasados', count: counts.atrasados, on: FILTER_CHIP_CLASS.atrasados },
   ];
-  if (onGoInventory) chips.push({ key: 'estoque', label: 'Estoque baixo', count: lowStockCount, on: 'bg-amber-100 text-amber-900 border-amber-300' });
+  if (onGoInventory) chips.push({ key: 'estoque', label: 'Estoque baixo', count: lowStockCount, on: FILTER_CHIP_CLASS.neutro });
 
   const renderChip = (c: ChipDef) => {
     const active = c.key !== 'estoque' && filter === c.key;
@@ -94,17 +96,18 @@ export const OrderAlertsCard: React.FC<Props> = ({
     const wait = step ? '' : waitingLabel(o);
     const late = alerts.atrasados.some(x => x.id === o.id);
     const pickup = o.fulfillmentType === 'PICKUP';
+    const chip = statusChip(o.status, late);
     return (
       <li key={o.id} data-testid="alert-order" data-order-id={o.id} data-status={o.status}
         title={itemsSummary(o) || undefined}
         className={`flex flex-col sm:flex-row sm:items-center gap-x-2 gap-y-1 min-h-11 px-2.5 py-1.5 rounded-xl border bg-white ${
-          hl ? 'ring-2 ring-emerald-300 border-emerald-400 animate-pulse' : late ? 'border-rose-300' : 'border-slate-200'}`}>
+          hl ? 'ring-2 ring-blue-300 border-blue-400 animate-pulse' : late ? 'border-red-300' : 'border-slate-200'}`}>
         <div className="flex items-center gap-2 min-w-0 sm:flex-1">
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="font-mono font-black text-slate-900 text-sm">#{o.orderNumber}</span>
           <span className="text-[11px] text-slate-500">{new Date(o.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
           <OrderAgeBadge order={o} />
-          {hl && <span className="text-[9px] font-extrabold text-emerald-800 bg-emerald-100 px-1 rounded">NOVO</span>}
+          <span data-testid="alert-status" className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap ${chip.className}`}>{chip.label}</span>
         </div>
         <div className="flex items-center gap-1 min-w-0 flex-1">
           <span className="text-[13px] font-bold text-slate-900 truncate">{o.customerName || 'Cliente'}</span>
@@ -150,11 +153,11 @@ export const OrderAlertsCard: React.FC<Props> = ({
 
   const hasOrders = alerts.total > 0;
   return (
-    <div data-testid="order-alerts-card" className={`rounded-2xl border p-3 shadow-sm ${hasOrders ? 'bg-amber-50/60 border-amber-300' : 'bg-white border-slate-200'}`}>
+    <div data-testid="order-alerts-card" className={`rounded-xl border bg-white p-3 shadow-sm ${hasOrders ? 'border-slate-200 border-l-4 border-l-[#15803d]' : 'border-slate-200'}`}>
       <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:gap-3">
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${alerts.novos.length ? 'bg-amber-100' : 'bg-slate-100'}`}>
-            <Bell className={`w-4 h-4 ${alerts.novos.length ? 'text-amber-600 animate-bounce' : 'text-slate-400'}`} />
+          <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${alerts.novos.length ? 'bg-blue-50' : 'bg-slate-100'}`}>
+            <Bell className={`w-4 h-4 ${alerts.novos.length ? 'text-blue-600 animate-bounce' : 'text-slate-400'}`} />
           </span>
           <div className="leading-tight">
             <h2 className="text-sm font-black text-slate-900">Alertas de pedidos</h2>

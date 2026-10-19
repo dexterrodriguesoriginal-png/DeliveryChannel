@@ -37,7 +37,7 @@ export const StoreHeaderCard: React.FC<Props> = ({ tenant, isOpen, canToggleOpen
   const btn = 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl text-xs font-bold transition-colors cursor-pointer disabled:opacity-60';
 
   return (
-    <div data-testid="store-header-card" className="bg-white border border-emerald-200 rounded-2xl p-3 shadow-sm flex flex-col lg:flex-row lg:items-center gap-3">
+    <div data-testid="store-header-card" className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col lg:flex-row lg:items-center gap-3">
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <StoreLogo logoUrl={tenant.theme?.logoUrl} name={name} color={tenant.theme?.primaryColor || '#15803d'} className="w-12 h-12 shrink-0" />
         <div className="min-w-0">
@@ -60,25 +60,25 @@ export const StoreHeaderCard: React.FC<Props> = ({ tenant, isOpen, canToggleOpen
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
         {canToggleOpen && onToggleOpen && (
           <button type="button" onClick={onToggleOpen} disabled={toggling} data-testid="toggle-store-open"
-            className={`${btn} ${isOpen ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-[#15803d] hover:bg-emerald-800 text-white'}`}>
+            className={`${btn} ${isOpen ? 'bg-white hover:bg-red-50 text-red-700 border border-red-300' : 'bg-[#15803d] hover:bg-[#166534] text-white'}`}>
             <Power className="w-4 h-4" /> {toggling ? 'Salvando…' : isOpen ? 'Fechar loja' : 'Abrir loja'}
           </button>
         )}
         {url && (
           <>
-            <a href={url} target="_blank" rel="noopener noreferrer" className={`${btn} bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300`}>
+            <a href={url} target="_blank" rel="noopener noreferrer" className={`${btn} bg-[#15803d] hover:bg-[#166534] text-white`}>
               <ExternalLink className="w-4 h-4" /> Ver loja
             </a>
             <button type="button" onClick={copy} className={`${btn} bg-white hover:bg-slate-50 text-slate-800 border border-slate-300`}>
               {copied ? <Check className="w-4 h-4 text-emerald-700" /> : <Copy className="w-4 h-4" />} {copied ? 'Copiado' : 'Copiar link'}
             </button>
-            <button type="button" onClick={() => setQrOpen(true)} className={`${btn} bg-slate-900 hover:bg-slate-800 text-white`}>
+            <button type="button" onClick={() => setQrOpen(true)} className={`${btn} bg-white hover:bg-slate-50 text-slate-800 border border-slate-300`}>
               <QrCode className="w-4 h-4" /> QR Code
             </button>
           </>
         )}
         {onOpenMarketing && (
-          <button type="button" onClick={onOpenMarketing} className={`${btn} bg-amber-400 hover:bg-amber-500 text-slate-900`}>
+          <button type="button" onClick={onOpenMarketing} className={`${btn} bg-white hover:bg-slate-50 text-slate-800 border border-slate-300`}>
             <Megaphone className="w-4 h-4" /> Banners & Ofertas
           </button>
         )}

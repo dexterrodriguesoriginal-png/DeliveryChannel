@@ -17,7 +17,7 @@ import { ThermalReceiptModal } from '../../components/establishment/ThermalRecei
 import { PDVModal } from '../../components/establishment/PDVModal';
 import { CompactOrderCard, CardDensity } from '../../components/establishment/CompactOrderCard';
 import { KanbanOrderCard } from '../../components/establishment/KanbanOrderCard';
-import { ORDER_STATUS_THEME, DELAYED_PREPARING_THEME, checkIsPreparingDelayed } from '../../utils/orderStatusTheme';
+import { ORDER_STATUS_THEME, DELAYED_PREPARING_THEME, checkIsPreparingDelayed, orderActionButtonStyle } from '../../utils/orderStatusTheme';
 import { 
   ShoppingBag, 
   Bike, 
@@ -203,7 +203,10 @@ export const OrdersPage: React.FC = () => {
       setSelectedOrder(prev => {
         if (focused) return focused;
         if (!prev) {
-          return orderData[0] || null;
+          // 19/10: no celular o detalhe cobre a tela inteira; só abre sozinho em telas largas.
+          const wide = typeof window === 'undefined' || typeof window.matchMedia !== 'function'
+            || window.matchMedia('(min-width: 1024px)').matches;
+          return wide ? (orderData[0] || null) : null;
         }
         return orderData.find(o => o.id === prev.id) || prev;
       });
@@ -857,7 +860,7 @@ export const OrdersPage: React.FC = () => {
 
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
-                    selectedOrder.status !== 'PENDING' ? 'bg-blue-600' : 'bg-slate-300'
+                    selectedOrder.status !== 'PENDING' ? 'bg-indigo-600' : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Confirmação</div>
                   <div className="text-[7.5px] text-slate-500">
@@ -868,7 +871,7 @@ export const OrdersPage: React.FC = () => {
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
                     selectedOrder.status === 'PREPARING' || selectedOrder.status === 'READY' || selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? 'bg-emerald-600'
+                      ? 'bg-amber-500'
                       : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Preparo na Cozinha</div>
@@ -880,7 +883,7 @@ export const OrdersPage: React.FC = () => {
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
                     selectedOrder.status === 'READY' || selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? 'bg-purple-600'
+                      ? 'bg-green-600'
                       : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Pronto para Envio</div>
@@ -892,7 +895,7 @@ export const OrdersPage: React.FC = () => {
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
                     selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? 'bg-blue-600'
+                      ? 'bg-violet-600'
                       : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Em Rota de Entrega</div>
@@ -903,7 +906,7 @@ export const OrdersPage: React.FC = () => {
 
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
-                    selectedOrder.status === 'DELIVERED' ? 'bg-emerald-600' : 'bg-slate-300'
+                    selectedOrder.status === 'DELIVERED' ? 'bg-slate-500' : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Entregue</div>
                   <div className="text-[7.5px] text-slate-500">
@@ -973,7 +976,7 @@ export const OrdersPage: React.FC = () => {
                     type="button"
                     data-testid="panel-call-driver"
                     onClick={() => handleUpdateStatus(selectedOrder.id, 'WAITING_FOR_DRIVER', 'Chamando motoboy')}
-                    className="w-full p-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide cursor-pointer"
+                    className="w-full p-2 rounded-lg bg-[#15803d] hover:bg-[#166534] text-white flex items-center justify-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide cursor-pointer"
                   >
                     <Bike className="w-3 h-3" /> Chamar motoboy
                   </button>
@@ -1073,10 +1076,7 @@ export const OrdersPage: React.FC = () => {
                   setSelectedDriverUserId(firstAvail);
                 } else if (selectedOrder.status === 'OUT_FOR_DELIVERY') handleUpdateStatus(selectedOrder.id, 'DELIVERED');
               }}
-              style={{
-                backgroundColor: selectedOrderTheme.buttonBg,
-                color: selectedOrderTheme.buttonText,
-              }}
+              style={orderActionButtonStyle(selectedOrderTheme, selectedOrder)}
               className="w-full py-1.5 px-1.5 rounded-md font-bold text-[9px] uppercase tracking-wide flex items-center justify-center gap-1 shadow-2xs hover:opacity-90 transition-all cursor-pointer active:scale-98 min-h-[30px] leading-tight text-center"
             >
               <Check className="w-2.5 h-2.5 stroke-[3] shrink-0" />
@@ -1100,7 +1100,7 @@ export const OrdersPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
               <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+                <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
                   Pedidos
                 </h1>
                 <span className="text-xs sm:text-sm px-3 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200 tabular-nums">
@@ -1117,7 +1117,7 @@ export const OrdersPage: React.FC = () => {
                 type="button"
                 onClick={() => fetchOrders()}
                 disabled={isRefreshing}
-                className="h-9 py-2 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs sm:text-[13px] font-bold flex items-center gap-2 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                className="h-9 py-2 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs sm:text-[13px] font-bold flex items-center gap-2 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-emerald-700' : 'text-slate-500'}`} />
                 <span>Atualizar</span>
@@ -1129,7 +1129,7 @@ export const OrdersPage: React.FC = () => {
                 disabled={!isN1N6Backend()}
                 title={isN1N6Backend() ? undefined : N1N6_ONLY_MESSAGE}
                 data-testid="open-pdv"
-                className="disabled:opacity-50 disabled:cursor-not-allowed h-9 py-2 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-[13px] font-bold flex items-center gap-2 transition-colors shadow-2xs cursor-pointer"
+                className="disabled:opacity-50 disabled:cursor-not-allowed h-9 py-2 px-4 rounded-xl bg-[#15803d] hover:bg-[#166534] text-white text-xs sm:text-[13px] font-bold flex items-center gap-2 transition-colors shadow-2xs cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Nova Venda Balcão (PDV)</span>
@@ -1146,14 +1146,14 @@ export const OrdersPage: React.FC = () => {
               type="button"
               onClick={() => setActiveTab(activeTab === 'PENDING' ? 'ALL' : 'PENDING')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'PENDING' ? 'border-amber-400 ring-1 ring-amber-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'PENDING' ? 'border-blue-400 ring-1 ring-blue-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+                <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                   <Bell className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-slate-900 truncate">Novos</span>
+                <span className="text-xs sm:text-[12px] font-bold text-blue-700 truncate">Novos</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countNovos}</div>
@@ -1166,14 +1166,14 @@ export const OrdersPage: React.FC = () => {
               type="button"
               onClick={() => setActiveTab(activeTab === 'CONFIRMED' ? 'ALL' : 'CONFIRMED')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'CONFIRMED' ? 'border-blue-400 ring-1 ring-blue-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'CONFIRMED' ? 'border-indigo-400 ring-1 ring-indigo-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <div className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
                   <CheckCircle2 className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-blue-600 truncate">Confirmados</span>
+                <span className="text-xs sm:text-[12px] font-bold text-indigo-600 truncate">Confirmados</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countConfirmados}</div>
@@ -1181,19 +1181,19 @@ export const OrdersPage: React.FC = () => {
               </div>
             </button>
 
-            {/* 3. Em preparo (VERDE OFICIAL) */}
+            {/* 3. Em preparo (ÂMBAR — 19/10) */}
             <button
               type="button"
               onClick={() => setActiveTab(activeTab === 'PREPARING' ? 'ALL' : 'PREPARING')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'PREPARING' ? 'border-emerald-500 ring-1 ring-emerald-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'PREPARING' ? 'border-amber-500 ring-1 ring-amber-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                <div className="w-5 h-5 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
                   <UtensilsCrossed className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-emerald-700 truncate">Em preparo</span>
+                <span className="text-xs sm:text-[12px] font-bold text-amber-700 truncate">Em preparo</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countEmPreparo}</div>
@@ -1201,19 +1201,19 @@ export const OrdersPage: React.FC = () => {
               </div>
             </button>
 
-            {/* 4. Prontos (ROXO OFICIAL) */}
+            {/* 4. Prontos (VERDE — 19/10) */}
             <button
               type="button"
               onClick={() => setActiveTab(activeTab === 'READY' ? 'ALL' : 'READY')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'READY' ? 'border-purple-400 ring-1 ring-purple-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'READY' ? 'border-green-400 ring-1 ring-green-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-purple-50 text-purple-700 flex items-center justify-center shrink-0">
+                <div className="w-5 h-5 rounded-full bg-green-50 text-green-700 flex items-center justify-center shrink-0">
                   <Package className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-purple-700 truncate">Prontos</span>
+                <span className="text-xs sm:text-[12px] font-bold text-green-700 truncate">Prontos</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countProntos}</div>
@@ -1221,19 +1221,19 @@ export const OrdersPage: React.FC = () => {
               </div>
             </button>
 
-            {/* 5. Em rota (AZUL OFICIAL) */}
+            {/* 5. Em rota (VIOLETA — 19/10) */}
             <button
               type="button"
               onClick={() => setActiveTab(activeTab === 'OUT_FOR_DELIVERY' ? 'ALL' : 'OUT_FOR_DELIVERY')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'OUT_FOR_DELIVERY' ? 'border-blue-400 ring-1 ring-blue-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'OUT_FOR_DELIVERY' ? 'border-violet-400 ring-1 ring-violet-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+                <div className="w-5 h-5 rounded-full bg-violet-50 text-violet-700 flex items-center justify-center shrink-0">
                   <Truck className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-blue-700 truncate">Em rota</span>
+                <span className="text-xs sm:text-[12px] font-bold text-violet-700 truncate">Em rota</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countEmRota}</div>
@@ -1246,14 +1246,14 @@ export const OrdersPage: React.FC = () => {
               type="button"
               onClick={() => setActiveTab(activeTab === 'DELIVERED' ? 'ALL' : 'DELIVERED')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'DELIVERED' ? 'border-emerald-400 ring-1 ring-emerald-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'DELIVERED' ? 'border-slate-400 ring-1 ring-slate-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                <div className="w-5 h-5 rounded-full bg-slate-50 text-slate-600 flex items-center justify-center shrink-0">
                   <CheckCircle2 className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-emerald-700 truncate">Entregues</span>
+                <span className="text-xs sm:text-[12px] font-bold text-slate-700 truncate">Entregues</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countEntregues}</div>
@@ -1266,14 +1266,14 @@ export const OrdersPage: React.FC = () => {
               type="button"
               onClick={() => setActiveTab(activeTab === 'CANCELLED' ? 'ALL' : 'CANCELLED')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'CANCELLED' ? 'border-rose-400 ring-1 ring-rose-300' : 'border-slate-200/90 hover:border-slate-300'
+                activeTab === 'CANCELLED' ? 'border-stone-400 ring-1 ring-stone-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                <div className="w-5 h-5 rounded-full bg-stone-50 text-stone-600 flex items-center justify-center shrink-0">
                   <XCircle className="w-3 h-3" />
                 </div>
-                <span className="text-xs sm:text-[12px] font-bold text-rose-600 truncate">Cancelados</span>
+                <span className="text-xs sm:text-[12px] font-bold text-stone-600 truncate">Cancelados</span>
               </div>
               <div className="pt-1.5">
                 <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countCancelados}</div>
@@ -1486,13 +1486,14 @@ export const OrdersPage: React.FC = () => {
               {/* Legenda Oficial Ultra Discreta: COR = STATUS (+15%) */}
               <div className="flex items-center gap-3.5 pt-2 text-xs sm:text-[12px] text-slate-600 font-semibold overflow-x-auto scrollbar-none border-t border-slate-100">
                 <span className="text-[11px] uppercase font-bold text-slate-400 tracking-wider shrink-0">Legenda:</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#E3A900]"></span>Novo</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#2563EB]"></span>Confirmado</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#008F6B]"></span>Preparo</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#6D3DF5]"></span>Pronto</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#2563EB]"></span>Rota</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#10B981]"></span>Entregue</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#D6455D]"></span>Cancelado</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#2563EB]"></span>Novo</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#4F46E5]"></span>Confirmado</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#D97706]"></span>Preparo</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#16A34A]"></span>Pronto</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#7C3AED]"></span>Rota</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#64748B]"></span>Entregue</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#A8A29E]"></span>Cancelado</span>
+                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#DC2626]"></span>Atrasado</span>
               </div>
 
               {/* Botão de Recolher Painel (Centralizado na base do painel) */}
@@ -1945,10 +1946,7 @@ export const OrdersPage: React.FC = () => {
                                       } else if (order.status === 'OUT_FOR_DELIVERY') handleUpdateStatus(order.id, 'DELIVERED');
                                       else setSelectedOrder(order);
                                     }}
-                                    style={{
-                                      backgroundColor: rowTheme.buttonBg,
-                                      color: rowTheme.buttonText,
-                                    }}
+                                    style={orderActionButtonStyle(rowTheme, order)}
                                     className="py-0.2 px-1.5 rounded text-[8.5px] font-bold shadow-2xs hover:opacity-90 transition-all cursor-pointer"
                                   >
                                     {rowTheme.buttonLabel}

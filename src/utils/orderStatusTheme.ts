@@ -16,157 +16,149 @@ export interface StatusTheme {
   buttonLabel: string;
 }
 
+// 19/10 (painel do dono): cores únicas por status em todo o painel —
+// Novo = azul, Confirmado = índigo, Em preparo = âmbar, Pronto = verde, Em rota = violeta,
+// Entregue/Cancelado = neutros, Atrasado = vermelho. Toda ação principal usa o verde da marca (#15803D).
+export const BRAND_ACTION = { bg: '#15803D', hover: '#166534', text: '#FFFFFF' };
+
 export const ORDER_STATUS_THEME: Record<OrderStatus, StatusTheme> = {
-  // 1. NOVO (Amarelo / Laranja muito suave)
-  // Ação principal: AMARELO (Aceitar Pedido), Secundária: VERMELHO (Recusar)
   PENDING: {
-    bg: '#FFF7D6',
-    drawerBg: '#FFF9E8',
-    border: '#F4C542',
-    accent: '#E3A900',
-    text: '#854D0E',
-    badgeBg: '#FEF08A',
-    badgeText: '#854D0E',
-    badgeBorder: '#FDE047',
-    label: 'NOVO',
-    buttonBg: '#EAB308',
-    buttonHover: '#CA8A04',
-    buttonText: '#0F172A',
-    buttonLabel: 'Aceitar Pedido',
-  },
-  // 2. CONFIRMADO (Azul suave)
-  // Ação: AZUL (Iniciar Preparo)
-  CONFIRMED: {
-    bg: '#EEF5FF',
-    drawerBg: '#F2F7FF',
-    border: '#B9D2FF',
+    bg: '#EFF6FF',
+    drawerBg: '#F3F8FF',
+    border: '#93C5FD',
     accent: '#2563EB',
     text: '#1E40AF',
     badgeBg: '#DBEAFE',
     badgeText: '#1D4ED8',
     badgeBorder: '#93C5FD',
+    label: 'NOVO',
+    buttonBg: '#15803D',
+    buttonHover: '#166534',
+    buttonText: '#FFFFFF',
+    buttonLabel: 'Aceitar Pedido',
+  },
+  CONFIRMED: {
+    bg: '#EEF2FF',
+    drawerBg: '#F3F5FF',
+    border: '#C7D2FE',
+    accent: '#4F46E5',
+    text: '#3730A3',
+    badgeBg: '#E0E7FF',
+    badgeText: '#4338CA',
+    badgeBorder: '#A5B4FC',
     label: 'CONFIRMADO',
-    buttonBg: '#2563EB',
-    buttonHover: '#1D4ED8',
+    buttonBg: '#15803D',
+    buttonHover: '#166534',
     buttonText: '#FFFFFF',
     buttonLabel: 'Iniciar Preparo',
   },
-  // 3. EM PREPARO (Verde suave - Cozinha trabalhando!)
-  // Ação: VERDE (Marcar como Pronto)
   PREPARING: {
-    bg: '#ECF8F2',
-    drawerBg: '#EFF9F4',
-    border: '#A9DEC7',
-    accent: '#008F6B',
-    text: '#065F46',
-    badgeBg: '#D1FAE5',
-    badgeText: '#047857',
-    badgeBorder: '#6EE7B7',
+    bg: '#FFFBEB',
+    drawerBg: '#FFFCF0',
+    border: '#FCD34D',
+    accent: '#D97706',
+    text: '#92400E',
+    badgeBg: '#FEF3C7',
+    badgeText: '#B45309',
+    badgeBorder: '#FCD34D',
     label: 'EM PREPARO',
-    buttonBg: '#16A34A',
-    buttonHover: '#15803D',
+    buttonBg: '#15803D',
+    buttonHover: '#166534',
     buttonText: '#FFFFFF',
     buttonLabel: 'Marcar como Pronto',
   },
-  // 4. PRONTO (Roxo suave - Cozinha finalizou e aguarda saída)
-  // Ação: ROXO (Despachar Pedido)
   READY: {
-    bg: '#F4EEFF',
-    drawerBg: '#F6F1FF',
-    border: '#D7C2FF',
-    accent: '#6D3DF5',
-    text: '#5B21B6',
-    badgeBg: '#EDE9FE',
-    badgeText: '#6D28D9',
-    badgeBorder: '#C4B5FD',
+    bg: '#F0FDF4',
+    drawerBg: '#F3FDF6',
+    border: '#86EFAC',
+    accent: '#16A34A',
+    text: '#166534',
+    badgeBg: '#DCFCE7',
+    badgeText: '#15803D',
+    badgeBorder: '#86EFAC',
     label: 'PRONTO',
-    buttonBg: '#7C3AED',
-    buttonHover: '#6D28D9',
+    buttonBg: '#15803D',
+    buttonHover: '#166534',
     buttonText: '#FFFFFF',
     buttonLabel: 'Despachar Pedido',
   },
   WAITING_FOR_DRIVER: {
-    bg: '#F4EEFF',
-    drawerBg: '#F6F1FF',
-    border: '#D7C2FF',
-    accent: '#6D3DF5',
+    bg: '#F0FDF4',
+    drawerBg: '#F3FDF6',
+    border: '#86EFAC',
+    accent: '#16A34A',
+    text: '#166534',
+    badgeBg: '#DCFCE7',
+    badgeText: '#15803D',
+    badgeBorder: '#86EFAC',
+    label: 'PRONTO',
+    buttonBg: '#15803D',
+    buttonHover: '#166534',
+    buttonText: '#FFFFFF',
+    buttonLabel: 'Despachar Pedido',
+  },
+  OUT_FOR_DELIVERY: {
+    bg: '#F5F3FF',
+    drawerBg: '#F7F5FF',
+    border: '#C4B5FD',
+    accent: '#7C3AED',
     text: '#5B21B6',
     badgeBg: '#EDE9FE',
     badgeText: '#6D28D9',
     badgeBorder: '#C4B5FD',
-    label: 'PRONTO',
-    buttonBg: '#7C3AED',
-    buttonHover: '#6D28D9',
-    buttonText: '#FFFFFF',
-    buttonLabel: 'Despachar Pedido',
-  },
-  // 5. EM ROTA (Azul suave - Movimento, trajeto, entrega)
-  // Ação: AZUL (Marcar como Entregue)
-  OUT_FOR_DELIVERY: {
-    bg: '#EDF5FF',
-    drawerBg: '#F2F7FF',
-    border: '#B8D2FF',
-    accent: '#2563EB',
-    text: '#1E40AF',
-    badgeBg: '#DBEAFE',
-    badgeText: '#1D4ED8',
-    badgeBorder: '#93C5FD',
     label: 'EM ROTA',
-    buttonBg: '#2563EB',
-    buttonHover: '#1D4ED8',
+    buttonBg: '#15803D',
+    buttonHover: '#166534',
     buttonText: '#FFFFFF',
     buttonLabel: 'Marcar como Entregue',
   },
-  // 6. ENTREGUE (Verde / Cinza muito suave - Pedido concluído)
-  // Ação: Neutro / Verde-Cinza (Ver Detalhes)
   DELIVERED: {
-    bg: '#F8FAF9',
-    drawerBg: '#F8FAF9',
-    border: '#D1D5DB',
-    accent: '#10B981',
-    text: '#374151',
-    badgeBg: '#F3F4F6',
-    badgeText: '#374151',
-    badgeBorder: '#E5E7EB',
+    bg: '#F8FAFC',
+    drawerBg: '#F8FAFC',
+    border: '#CBD5E1',
+    accent: '#64748B',
+    text: '#334155',
+    badgeBg: '#F1F5F9',
+    badgeText: '#334155',
+    badgeBorder: '#E2E8F0',
     label: 'ENTREGUE',
     buttonBg: '#E2E8F0',
     buttonHover: '#CBD5E1',
     buttonText: '#334155',
     buttonLabel: 'Ver Detalhes',
   },
-  // 7. CANCELADO (Vermelho suave / opaco - Sem ação operacional)
   CANCELLED: {
-    bg: '#FFF0F1',
-    drawerBg: '#FFF2F3',
-    border: '#F3B7BE',
-    accent: '#D6455D',
-    text: '#9F1239',
-    badgeBg: '#FFE4E6',
-    badgeText: '#BE123C',
-    badgeBorder: '#FDA4AF',
+    bg: '#FAFAF9',
+    drawerBg: '#FAFAF9',
+    border: '#D6D3D1',
+    accent: '#78716C',
+    text: '#57534E',
+    badgeBg: '#F5F5F4',
+    badgeText: '#57534E',
+    badgeBorder: '#D6D3D1',
     label: 'CANCELADO',
-    buttonBg: '#DC2626',
-    buttonHover: '#B91C1C',
-    buttonText: '#FFFFFF',
+    buttonBg: '#E2E8F0',
+    buttonHover: '#CBD5E1',
+    buttonText: '#334155',
     buttonLabel: 'Ver Detalhes',
   },
 };
 
-// Variação de estilo para pedidos EM PREPARO atrasados (ultrapassou limite operacional, ex: 25 min)
+// Variação para pedidos EM PREPARO atrasados (ultrapassou o limite operacional, ex.: 25 min) — vermelho
 export const DELAYED_PREPARING_THEME: StatusTheme = {
-  bg: '#FFF1F2',
-  drawerBg: '#FFF5F5',
-  border: '#FCA5A5',
-  accent: '#DC2626',
-  text: '#991B1B',
-  badgeBg: '#FEE2E2',
-  badgeText: '#B91C1C',
-  badgeBorder: '#F87171',
-  label: 'ATRASADO',
-  buttonBg: '#2563EB',
-  buttonHover: '#1D4ED8',
-  buttonText: '#FFFFFF',
-  buttonLabel: 'Marcar como Pronto',
+    bg: '#FEF2F2',
+    drawerBg: '#FFF5F5',
+    border: '#FCA5A5',
+    accent: '#DC2626',
+    text: '#991B1B',
+    badgeBg: '#FEE2E2',
+    badgeText: '#B91C1C',
+    badgeBorder: '#F87171',
+    label: 'ATRASADO',
+    buttonBg: '#15803D',
+    buttonHover: '#166534',
+    buttonText: '#FFFFFF',
+    buttonLabel: 'Marcar como Pronto',
 };
 
 // Verifica se um pedido em preparo está atrasado (padrão: 25 minutos)
@@ -176,3 +168,17 @@ export function checkIsPreparingDelayed(createdAt: string | Date, status: OrderS
   return elapsedMinutes >= maxMinutes;
 }
 
+
+/**
+ * 19/10: estilo do botão de ação do pedido. Em PRONTO com entrega, "Chamar motoboy" é a ação principal
+ * (verde); "Despachar Pedido" (escolher um entregador) vira secundário, com contorno.
+ */
+export function orderActionButtonStyle(
+  theme: StatusTheme,
+  order: { status: OrderStatus; fulfillmentType?: string },
+): { backgroundColor: string; color: string; border?: string } {
+  if (order.status === 'READY' && order.fulfillmentType !== 'PICKUP') {
+    return { backgroundColor: '#FFFFFF', color: '#166534', border: '1px solid #86EFAC' };
+  }
+  return { backgroundColor: theme.buttonBg, color: theme.buttonText };
+}

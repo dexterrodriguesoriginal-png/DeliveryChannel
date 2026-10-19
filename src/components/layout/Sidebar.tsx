@@ -236,12 +236,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             onCloseMobile();
                           }}
                           className={cn(
-                            'w-full flex items-center gap-2 rounded-md text-[11.8px] font-semibold tracking-tight leading-none transition-all duration-150 cursor-pointer text-left',
+                            'w-full flex items-center gap-2 rounded-lg text-[12.5px] font-semibold tracking-tight leading-none transition-all duration-150 cursor-pointer text-left',
                             isCollapsed
-                              ? 'lg:justify-center lg:px-0 lg:py-1.5 px-2 py-[4.5px]'
-                              : 'px-2 py-[4.5px]',
+                              ? 'lg:justify-center lg:px-0 lg:py-2 px-2.5 py-[7px]'
+                              : 'px-2.5 py-[7px]',
                             isActive
-                              ? 'bg-emerald-700 text-white shadow-2xs font-bold'
+                              ? 'bg-[#15803d] text-white shadow-sm font-bold'
                               : 'text-gray-600 hover:text-gray-950 hover:bg-gray-100/80'
                           )}
                           title={isCollapsed ? item.label : undefined}
