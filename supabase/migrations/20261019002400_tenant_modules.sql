@@ -107,6 +107,13 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
+  -- A tenant with no module rows yet (e.g. created after this migration and the
+  -- preset call failed) keeps the legacy behavior: delivery, pickup, pos, printing on.
+  IF NOT EXISTS (SELECT 1 FROM public.tenant_modules tm WHERE tm.tenant_id = p_tenant) THEN
+    IF p_key IN ('delivery', 'pickup', 'pos', 'printing') THEN
+      RETURN;
+    END IF;
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.tenant_modules tm
     WHERE tm.tenant_id = p_tenant AND tm.module_key = p_key AND tm.enabled
@@ -360,7 +367,11 @@ AS $$
   WHERE tm.tenant_id = p_tenant_id
     AND tm.enabled
     AND t.status = 'ACTIVE'
-  ORDER BY tm.module_key;
+  UNION
+  SELECT legacy.module_key
+  FROM unnest(ARRAY['delivery', 'pickup', 'pos', 'printing']::text[]) AS legacy(module_key)
+  WHERE NOT EXISTS (SELECT 1 FROM public.tenant_modules tm2 WHERE tm2.tenant_id = p_tenant_id)
+  ORDER BY 1;
 $$;
 
 REVOKE ALL ON FUNCTION public.get_public_modules(uuid) FROM PUBLIC;

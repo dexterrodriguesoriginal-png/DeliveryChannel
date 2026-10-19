@@ -39,9 +39,11 @@ export const tenantModuleRepository = {
     if (moduleResult.error) throw toBackendError(moduleResult.error, 'Falha ao carregar os módulos.');
     if (tenantResult.error) throw toBackendError(tenantResult.error, 'Falha ao carregar o segmento do estabelecimento.');
     const validTypes = new Set<string>(BUSINESS_TYPES.map(type => type.key));
+    const rows = moduleResult.data || [];
     return {
       available: true,
-      modules: (moduleResult.data || []).map(row => ({
+      // No rows yet: keep the legacy feature set on (same rule as the database guard).
+      modules: rows.length === 0 ? legacySnapshot().modules : rows.map(row => ({
         key: row.module_key as ModuleKey,
         enabled: Boolean(row.enabled),
         config: row.config && typeof row.config === 'object' ? row.config as Record<string, unknown> : {},

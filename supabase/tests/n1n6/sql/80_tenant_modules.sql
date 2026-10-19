@@ -137,3 +137,21 @@ BEGIN
 END
 $presets$;
 RESET ROLE;
+
+-- Tenant without any module rows keeps the legacy features (guard + public list).
+-- Last checks in the last suite file: tenant B rows are not restored.
+DELETE FROM public.tenant_modules WHERE tenant_id = '10000000-0000-0000-0000-00000000000b';
+SELECT t.is(
+  (SELECT array_agg(m ORDER BY m) FROM public.get_public_modules('10000000-0000-0000-0000-00000000000b') AS m),
+  ARRAY['delivery', 'pickup', 'pos', 'printing']::text[],
+  'tenant with no module rows exposes the legacy public modules'
+);
+SELECT t.lives(
+  $$SELECT public.assert_tenant_module_enabled('10000000-0000-0000-0000-00000000000b', 'delivery')$$,
+  'tenant with no module rows can still take delivery orders'
+);
+SELECT t.throws(
+  $$SELECT public.assert_tenant_module_enabled('10000000-0000-0000-0000-00000000000b', 'dine_in')$$,
+  'MODULE_DISABLED',
+  'tenant with no module rows keeps new modules off'
+);
