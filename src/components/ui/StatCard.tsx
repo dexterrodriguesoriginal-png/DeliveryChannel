@@ -28,7 +28,7 @@ export const StatCard: React.FC<StatCardProps> = ({
   return (
     <div
       className={cn(
-        'bg-white border border-gray-200/80 rounded p-1.5 sm:p-2 shadow-2xs relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col justify-between',
+        'bg-white border border-gray-200/80 rounded p-1.5 sm:p-2 shadow-sm relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col justify-between',
         className
       )}
     >

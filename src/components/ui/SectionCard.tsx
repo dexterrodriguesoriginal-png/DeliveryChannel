@@ -20,7 +20,7 @@ export const SectionCard: React.FC<SectionCardProps> = ({
   return (
     <div
       className={cn(
-        'bg-white border border-slate-200/80 rounded shadow-2xs transition-all duration-150',
+        'bg-white border border-slate-200/80 rounded shadow-sm transition-all duration-150',
         className
       )}
       {...props}

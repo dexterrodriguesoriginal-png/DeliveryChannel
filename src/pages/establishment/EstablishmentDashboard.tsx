@@ -474,7 +474,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
       {/* ALERTA DE ERRO DE CONEXÃO COM RETRY                                       */}
       {/* ========================================================================= */}
       {error && remoteOrders === null && (
-        <div className="bg-white border border-amber-200/80 rounded-lg p-4 text-center space-y-2 shadow-xs">
+        <div className="bg-white border border-amber-200/80 rounded-lg p-4 text-center space-y-2 shadow-sm">
           <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center mx-auto">
             <AlertTriangle className="w-4 h-4" />
           </div>
@@ -503,7 +503,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
       {/* ========================================================================= */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1.5">
         {/* Loja Aberta/Fechada com Toggle Real */}
-        <div className="flex items-center justify-between p-1.5 sm:p-2 bg-white border border-slate-200/80 rounded shadow-2xs">
+        <div className="flex items-center justify-between p-1.5 sm:p-2 bg-white border border-slate-200/80 rounded shadow-sm">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isStoreOpen ? 'bg-emerald-500 ring-1 ring-emerald-500/20' : 'bg-rose-500 ring-1 ring-rose-500/20'}`} />
             <div className="min-w-0">
@@ -529,7 +529,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         </div>
 
         {/* Tempo Médio de Entrega */}
-        <div className="flex items-center justify-between p-1.5 sm:p-2 bg-white border border-slate-200/80 rounded shadow-2xs">
+        <div className="flex items-center justify-between p-1.5 sm:p-2 bg-white border border-slate-200/80 rounded shadow-sm">
           <div className="flex items-center gap-1.5 min-w-0">
             <div className="w-4.5 h-4.5 rounded bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
               <Clock className="w-2.5 h-2.5" />
@@ -552,7 +552,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         </div>
 
         {/* Pedidos em Andamento */}
-        <div className="flex items-center justify-between p-1.5 sm:p-2 bg-white border border-slate-200/80 rounded shadow-2xs">
+        <div className="flex items-center justify-between p-1.5 sm:p-2 bg-white border border-slate-200/80 rounded shadow-sm">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${pendingOrPreparingCount > 0 ? 'bg-amber-500 ring-1 ring-amber-500/20' : 'bg-slate-300'}`} />
             <div className="min-w-0">
@@ -573,7 +573,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         </div>
 
         {/* Entregadores Ativos */}
-        <div className="flex items-center justify-between p-1.5 sm:p-2 bg-white border border-slate-200/80 rounded shadow-2xs">
+        <div className="flex items-center justify-between p-1.5 sm:p-2 bg-white border border-slate-200/80 rounded shadow-sm">
           <div className="flex items-center gap-1.5 min-w-0">
             <div className="w-4.5 h-4.5 rounded bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
               <Bike className="w-2.5 h-2.5" />

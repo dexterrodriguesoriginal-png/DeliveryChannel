@@ -51,6 +51,7 @@ import { ShieldAlert, Store, LogIn, Lock, RefreshCw, AlertTriangle, ShoppingBag 
 import { Button } from './components/ui/Button';
 import { cn } from './utils/cn';
 import { canAccessEstTab } from './lib/navPermissions';
+import { isOwnerPanelTab } from './components/layout/ownerPanel';
 
 function AppContent() {
   const { 
@@ -523,8 +524,13 @@ function AppContent() {
           onCloseMobile={() => setMobileSidebarOpen(false)}
         />
 
-        <main className={cn(
-          "flex-1 min-w-0 h-full flex flex-col bg-slate-50/70",
+        {/* 19/10: painel do dono/equipe com fundo cinza claro para destacar os cartões brancos (CEO mantém o fundo atual) */}
+        <main
+          data-testid="admin-main"
+          data-owner-panel={isOwnerPanelTab(activeTab) ? 'true' : undefined}
+          className={cn(
+          "flex-1 min-w-0 h-full flex flex-col",
+          isOwnerPanelTab(activeTab) ? "bg-slate-100" : "bg-slate-50/70",
           activeTab === 'est-orders' 
             ? "p-0 overflow-hidden" 
             : "p-1.5 sm:p-2 overflow-y-auto"

@@ -150,7 +150,7 @@ export const OrderAlertsCard: React.FC<Props> = ({
 
   const hasOrders = alerts.total > 0;
   return (
-    <div data-testid="order-alerts-card" className={`rounded-2xl border p-3 shadow-xs ${hasOrders ? 'bg-amber-50/60 border-amber-300' : 'bg-white border-slate-200'}`}>
+    <div data-testid="order-alerts-card" className={`rounded-2xl border p-3 shadow-sm ${hasOrders ? 'bg-amber-50/60 border-amber-300' : 'bg-white border-slate-200'}`}>
       <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:gap-3">
         <div className="flex items-center gap-2 shrink-0">
           <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${alerts.novos.length ? 'bg-amber-100' : 'bg-slate-100'}`}>

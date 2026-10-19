@@ -37,7 +37,7 @@ export const StoreHeaderCard: React.FC<Props> = ({ tenant, isOpen, canToggleOpen
   const btn = 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl text-xs font-bold transition-colors cursor-pointer disabled:opacity-60';
 
   return (
-    <div data-testid="store-header-card" className="bg-white border border-emerald-200 rounded-2xl p-3 shadow-xs flex flex-col lg:flex-row lg:items-center gap-3">
+    <div data-testid="store-header-card" className="bg-white border border-emerald-200 rounded-2xl p-3 shadow-sm flex flex-col lg:flex-row lg:items-center gap-3">
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <StoreLogo logoUrl={tenant.theme?.logoUrl} name={name} color={tenant.theme?.primaryColor || '#15803d'} className="w-12 h-12 shrink-0" />
         <div className="min-w-0">
