@@ -5,6 +5,7 @@ import { formatBRL } from '../../../lib/pricing/money';
 import { paymentMethodLabel } from '../../../lib/orders/labels';
 import { OrderAgeBadge } from '../OrderAgeBadge';
 import { statusChip, FILTER_CHIP_CLASS } from '../../../lib/orders/statusChip';
+import { alertTone, ALERT_TONE_CLASS } from '../../../lib/orders/alertTone';
 import {
   OrderAlerts, NextStep, AlertFilter, nextStepFor, waitingLabel, itemsSummary, addressLine, whatsappLink,
   alertCounts, alertList, shortPlace,
@@ -152,8 +153,10 @@ export const OrderAlertsCard: React.FC<Props> = ({
   };
 
   const hasOrders = alerts.total > 0;
+  const tone = alertTone(counts, filter, onGoInventory ? lowStockCount : 0);
   return (
-    <div data-testid="order-alerts-card" className={`rounded-xl border bg-white p-3 shadow-sm ${hasOrders ? 'border-slate-200 border-l-4 border-l-[#15803d]' : 'border-slate-200'}`}>
+    <div data-testid="order-alerts-card" data-tone={tone}
+      className={`rounded-xl border border-l-4 p-3 shadow-sm transition-colors duration-300 ${ALERT_TONE_CLASS[tone]}`}>
       <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:gap-3">
         <div className="flex items-center gap-2 shrink-0">
           <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${alerts.novos.length ? 'bg-blue-50' : 'bg-slate-100'}`}>
