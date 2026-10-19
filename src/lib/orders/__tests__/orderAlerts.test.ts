@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextStepFor, canCancelOrder, cancelLabel, waitingLabel, buildOrderAlerts, canAcceptOrders, canCallDriverRole, itemsSummary, addressLine, whatsappLink, newPendingIds, lateThresholdMs } from '../orderAlerts';
+import { nextStepFor, canCancelOrder, cancelLabel, waitingLabel, buildOrderAlerts, canAcceptOrders, canCallDriverRole, itemsSummary, addressLine, whatsappLink, newPendingIds, lateThresholdMs, alertCounts, alertList, shortPlace } from '../orderAlerts';
 
 const NOW = Date.parse('2026-10-19T20:00:00Z');
 const MIN = 60000;
@@ -84,5 +84,35 @@ describe('orderAlerts: fluxo inteiro pelo Dashboard (um botão por etapa)', () =
     expect(cancelLabel(d('PENDING'))).toBe('Recusar');
     expect(cancelLabel(d('CONFIRMED'))).toBe('Cancelar');
     expect(waitingLabel(d('WAITING_FOR_DRIVER'))).toBe('Aguardando um entregador aceitar');
+  });
+});
+
+describe('orderAlerts: faixa compacta (chips, lista, bairro)', () => {
+  const MIN2 = 60000;
+  const N = Date.now();
+  let k = 100;
+  const x = (status: string, agoMin: number, extra: Record<string, unknown> = {}) => ({
+    id: `x${++k}`, orderNumber: k, status, createdAt: new Date(N - agoMin * MIN2).toISOString(),
+    fulfillmentType: 'DELIVERY', items: [], totalAmount: 10, customerName: 'C', deliveryAddress: 'Rua A, 1', ...extra,
+  }) as any;
+  const novo = x('PENDING', 1), prep = x('PREPARING', 5), late = x('CONFIRMED', 90), ready = x('READY', 5), pick = x('READY', 5, { fulfillmentType: 'PICKUP' });
+  const a = buildOrderAlerts([prep, late, ready, pick, novo], { prepMinutes: 30 });
+
+  it('contagens dos chips', () => {
+    expect(alertCounts(a)).toEqual({ novos: 1, emPreparo: 1, prontos: 2, atrasados: 1 });
+  });
+  it('lista sem filtro: novos, atrasados, prontos, em preparo; com filtro: só o estado', () => {
+    expect(alertList(a).map(o => o.id)).toEqual([novo.id, late.id, ready.id, pick.id, prep.id]);
+    expect(alertList(a, 'prontos').map(o => o.id)).toEqual([ready.id, pick.id]);
+    expect(alertList(a, 'atrasados').map(o => o.id)).toEqual([late.id]);
+    expect(alertList(a, 'novos').map(o => o.id)).toEqual([novo.id]);
+    expect(alertList(a, 'emPreparo').map(o => o.id)).toEqual([prep.id]);
+  });
+  it('local curto: Retirada, bairro do endereço estruturado ou do texto', () => {
+    expect(shortPlace({ fulfillmentType: 'PICKUP', deliveryAddress: 'x' } as any)).toBe('Retirada');
+    expect(shortPlace({ fulfillmentType: 'DELIVERY', deliveryAddress: 'Rua X, 1', addressDetails: { neighborhood: 'Centro' } } as any)).toBe('Centro');
+    expect(shortPlace({ fulfillmentType: 'DELIVERY', deliveryAddress: 'Rua Italo Martinelli, 138 - Vila Silviânia, Carapicuíba' } as any)).toBe('Vila Silviânia');
+    expect(shortPlace({ fulfillmentType: 'DELIVERY', deliveryAddress: '' } as any)).toBe('Entrega');
+    expect(shortPlace({ fulfillmentType: 'DELIVERY', deliveryAddress: 'Avenida Muito Comprida Demais Sem Bairro 123' } as any, 10)).toHaveLength(10);
   });
 });

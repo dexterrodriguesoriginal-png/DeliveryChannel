@@ -158,26 +158,6 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
     }
   };
 
-  const handleAlertCancel = async (order: Order) => {
-    if (!activeTenant?.id) return;
-    const verb = order.status === 'PENDING' ? 'recusar' : 'cancelar';
-    const reason = window.prompt(`Motivo para ${verb} o pedido #${order.orderNumber} (o cliente verá o pedido como cancelado):`, 'Itens esgotados no estoque');
-    if (!reason || !reason.trim()) return;
-    const check = validateStatusChange(order.status, 'CANCELLED', reason);
-    if (!check.ok) { showToast({ type: 'warning', title: 'Cancelamento', message: check.message }); return; }
-    setBusyOrderId(order.id);
-    try {
-      const updated = await orderRepository.updateStatus(securityContext, activeTenant.id, order.id, 'CANCELLED', `Cancelado: ${reason.trim()}`.slice(0, 500), order.status);
-      setRemoteOrders(prev => applyOrderUpdate(prev, updated));
-      showToast({ type: 'success', title: order.status === 'PENDING' ? 'Pedido recusado' : 'Pedido cancelado', message: `Pedido #${order.orderNumber} cancelado. Produtos devolvidos ao estoque.` });
-      await fetchRealData(true);
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Erro ao cancelar', message: err?.message || 'Falha ao cancelar pedido.' });
-    } finally {
-      setBusyOrderId(null);
-    }
-  };
-
   const handleAlertView = (order: Order) => {
     try { sessionStorage.setItem(FOCUS_ORDER_KEY, order.id); } catch { /* sem storage */ }
     onNavigate?.('est-orders');
@@ -485,9 +465,9 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         lowStockCount={canAccessEstTab(activeRole, 'est-inventory') ? lowStockCount : 0}
         prepMinutes={defaultPrepMinutes}
         onStep={handleAlertStep}
-        onCancel={handleAlertCancel}
         onView={handleAlertView}
-        onGoInventory={onNavigate ? () => onNavigate('est-inventory') : undefined}
+        onViewAll={onNavigate ? () => onNavigate('est-orders') : undefined}
+        onGoInventory={onNavigate && canAccessEstTab(activeRole, 'est-inventory') ? () => onNavigate('est-inventory') : undefined}
       />
 
       {/* ========================================================================= */}

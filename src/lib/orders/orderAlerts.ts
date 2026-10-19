@@ -134,3 +134,56 @@ export function waitingLabel(order: Pick<Order, 'status' | 'fulfillmentType' | '
   if (order.status === 'OUT_FOR_DELIVERY') return 'Em rota de entrega';
   return '';
 }
+
+/* ------------------------------------------------------------------ */
+/* 19/10 (compacto): barra única + lista curta de até 3 pedidos.        */
+/* ------------------------------------------------------------------ */
+
+export type AlertFilter = 'novos' | 'emPreparo' | 'prontos' | 'atrasados';
+
+/** Contagens dos chips (Prontos = aguardando entregador + retirada pronta). */
+export function alertCounts(a: OrderAlerts): Record<AlertFilter, number> {
+  return {
+    novos: a.novos.length,
+    emPreparo: a.emPreparo.length,
+    prontos: a.prontosAguardando.length + a.prontosRetirada.length,
+    atrasados: a.atrasados.length,
+  };
+}
+
+/**
+ * Lista para a faixa compacta. Sem filtro: Novos, Atrasados, Prontos, Em preparo (o que pede ação
+ * primeiro), sem repetir pedido. Com filtro: só aquele estado.
+ */
+export function alertList(a: OrderAlerts, filter: AlertFilter | null = null): Order[] {
+  const prontos = [...a.prontosAguardando, ...a.prontosRetirada];
+  if (filter === 'novos') return a.novos;
+  if (filter === 'emPreparo') return a.emPreparo;
+  if (filter === 'prontos') return prontos;
+  if (filter === 'atrasados') return a.atrasados;
+  const seen = new Set<string>();
+  const out: Order[] = [];
+  for (const o of [...a.novos, ...a.atrasados, ...prontos, ...a.emPreparo]) {
+    if (seen.has(o.id)) continue;
+    seen.add(o.id);
+    out.push(o);
+  }
+  return out;
+}
+
+/**
+ * Local curto da linha: "Retirada" ou o bairro (addressDetails.neighborhood; senão o trecho
+ * depois de " - " em "Rua X, 138 - Vila Silviânia, Carapicuíba"; senão o endereço cortado).
+ */
+export function shortPlace(order: Pick<Order, 'fulfillmentType' | 'deliveryAddress' | 'addressDetails'>, maxChars = 24): string {
+  if (order.fulfillmentType === 'PICKUP') return 'Retirada';
+  const nb = order.addressDetails?.neighborhood?.trim();
+  let s = nb || '';
+  if (!s) {
+    const addr = (order.deliveryAddress || '').trim();
+    const dash = addr.split(' - ');
+    s = dash.length > 1 ? dash[1].split(',')[0].trim() : addr;
+  }
+  if (!s) return 'Entrega';
+  return s.length > maxChars ? s.slice(0, maxChars - 1).trimEnd() + '…' : s;
+}
