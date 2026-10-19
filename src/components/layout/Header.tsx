@@ -55,12 +55,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           )}
 
           <div className="flex items-center gap-1">
-            <div className="w-4.5 h-4.5 rounded bg-emerald-700 flex items-center justify-center text-white font-black text-[8px] shadow-2xs tracking-wider shrink-0">
-              AF
+            <div className="w-4.5 h-4.5 rounded bg-[#15803d] flex items-center justify-center text-white font-black text-[8px] shadow-2xs tracking-wider shrink-0">
+              DC
             </div>
             <div className="flex flex-col justify-center min-w-0">
               <span className="font-extrabold text-[9px] sm:text-[9.5px] tracking-tight text-slate-900 font-sans leading-none">
-                ADEGA<span className="text-emerald-700">FOOD</span>
+                DELIVERY <span className="text-[#15803d]">CHANNEL</span>
               </span>
               <span className="text-[6.5px] sm:text-[7px] font-bold text-slate-600 truncate max-w-[120px] sm:max-w-[180px] uppercase tracking-wide mt-0.5 leading-none">
                 {(activeRole === 'CEO' || activeRole === 'SUPER_ADMIN')

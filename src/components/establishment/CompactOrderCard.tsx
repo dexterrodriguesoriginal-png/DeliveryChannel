@@ -20,6 +20,7 @@ import {
   DELAYED_PREPARING_THEME, 
   checkIsPreparingDelayed 
 } from '../../utils/orderStatusTheme';
+import { OrderAgeBadge } from './OrderAgeBadge';
 import { formatBRL } from '../../lib/pricing/money';
 
 export type CardDensity = 'compact' | 'normal' | 'comfortable';
@@ -193,6 +194,9 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
             </button>
           </div>
         </div>
+
+        {/* 19/10: pedido em aberto há 30 min+ (âmbar) ou 1 dia+ (vermelho) */}
+        <OrderAgeBadge order={order} now={new Date(order.createdAt).getTime() + elapsedSec * 1000} />
 
         {/* LINHA 2 (CENTRAL): Cliente + Tipo (em telas compactas) + Resumo dos Itens */}
         <div className="space-y-0.2 min-w-0">

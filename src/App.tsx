@@ -6,6 +6,7 @@ import { Sidebar } from './components/layout/Sidebar';
 import { CeoSupportBanner } from './components/common/CeoSupportBanner';
 import { TenantIsolationTester } from './components/common/TenantIsolationTester';
 import { RoleTenantSwitcher } from './components/layout/RoleTenantSwitcher';
+import { StoreContextBar } from './components/layout/StoreContextBar';
 import { OnboardingCreateTenant } from './components/onboarding/OnboardingCreateTenant';
 import { EmailConfirmationScreen } from './components/auth/EmailConfirmationScreen';
 import { readLastStoreSlug } from './lib/auth/authRedirect';
@@ -509,6 +510,9 @@ function AppContent() {
         activeNavTab={activeTab}
         onToggleSidebar={() => setMobileSidebarOpen(prev => !prev)}
       />
+
+      {/* 19/10: loja atual bem visível + seletor com pedidos novos de cada loja */}
+      <StoreContextBar />
 
       {/* AppShell Global: Header Fixo + Menu Fixo à Esquerda + Conteúdo Flexível (COMANDO 131: 100% da altura da janela) */}
       <div className="flex-1 min-h-0 flex w-full max-w-none overflow-hidden">

@@ -23,6 +23,7 @@ import { customerRepository } from '../../repositories/customerRepository';
 import { orderService } from '../../services/orderService';
 import { OrderPixPanel } from '../../components/client/OrderPixPanel';
 import { OrderTrackingTimeline } from '../../components/client/OrderTrackingTimeline';
+import { customerOrdersTitle, storeDisplayName, CUSTOMER_ORDERS_SCOPE_HINT } from '../../lib/customer/orderStore';
 import { LiveDriverTracking } from '../../components/client/customer/LiveDriverTracking';
 import { isLiveTrackable } from '../../lib/customer/liveTracking';
 import { buildCustomerTimeline } from '../../lib/orders/customerTracking';
@@ -526,12 +527,23 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         if (document.visibilityState === 'visible') loadCustomerOrders({ silent: true });
       };
       document.addEventListener('visibilitychange', onVisible);
+      // 19/10: Supabase Realtime (public.orders na publicação supabase_realtime; RLS filtra os eventos).
+      // Cada mudança do pedido recarrega em ~0,4 s; o polling acima continua como reserva.
+      let rtTimer: ReturnType<typeof setTimeout> | null = null;
+      const unsubscribeRealtime = storeData?.tenant.id && supabaseUser?.id
+        ? orderRepository.subscribeToCustomerOrders(storeData.tenant.id, () => {
+            if (rtTimer) clearTimeout(rtTimer);
+            rtTimer = setTimeout(() => loadCustomerOrders({ silent: true }), 400);
+          })
+        : () => {};
       return () => {
         clearInterval(interval);
         document.removeEventListener('visibilitychange', onVisible);
+        if (rtTimer) clearTimeout(rtTimer);
+        unsubscribeRealtime();
       };
     }
-  }, [navTab, loadCustomerOrders]);
+  }, [navTab, loadCustomerOrders, storeData?.tenant.id, supabaseUser?.id]);
 
   // Favoritos, endereço selecionado e leitura de notificações: por usuário (e por loja quando aplicável).
   useEffect(() => {
@@ -1409,6 +1421,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     );
   }
 
+  const orderStoreName = storeDisplayName(theme.storeName, storeData.tenant.name);
   const renderOrderCard = (order: Order) => {
     const timeline = buildCustomerTimeline(order);
     const isDelivered = timeline.delivered;
@@ -1424,6 +1437,11 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         id={`pedido-${order.id}`}
         className={`p-4 sm:p-5 bg-white rounded-3xl border shadow-xs hover:shadow-md transition-all space-y-4 ${isFocused ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-gray-200/90'}`}
       >
+        {/* 19/10: loja do pedido sempre explícita (o histórico é por loja; evita confundir lojas). */}
+        <div className="flex items-center gap-2 min-w-0" data-testid="order-store">
+          <StoreLogo logoUrl={theme.logoUrl} name={orderStoreName} color={primaryColor} className="w-6 h-6 text-[10px] shrink-0" />
+          <span className="text-xs font-bold text-gray-700 truncate">{orderStoreName}</span>
+        </div>
         <DeliveryCodeCard orderId={order.id} status={order.status} />
         {/* TOPO: NÚMERO DO PEDIDO + DATA + TOTAL EM DESTAQUE */}
         <div className="flex items-start justify-between gap-2">
@@ -1651,9 +1669,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       {/* Visualização de Pedidos do Cliente */}
       {navTab === 'orders' ? (
         <div className="max-w-lg mx-auto p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-extrabold text-gray-900">Pedidos</h2>
-            <Button size="sm" variant="ghost" onClick={() => setNavTab('home')} className="text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <StoreLogo logoUrl={theme.logoUrl} name={orderStoreName} color={primaryColor} className="w-9 h-9 shrink-0" />
+              <div className="min-w-0">
+                <h2 className="text-xl font-extrabold text-gray-900 truncate" data-testid="orders-title">{customerOrdersTitle(orderStoreName)}</h2>
+                <p className="text-[11px] text-gray-500 leading-tight">{CUSTOMER_ORDERS_SCOPE_HINT}</p>
+              </div>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => setNavTab('home')} className="text-xs shrink-0">
               Ver cardápio
             </Button>
           </div>

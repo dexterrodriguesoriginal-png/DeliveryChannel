@@ -19,6 +19,7 @@ import {
   DELAYED_PREPARING_THEME, 
   checkIsPreparingDelayed 
 } from '../../utils/orderStatusTheme';
+import { OrderAgeBadge } from './OrderAgeBadge';
 import { formatBRL } from '../../lib/pricing/money';
 
 interface KanbanOrderCardProps {
@@ -187,6 +188,9 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
             <span>{formatElapsed(elapsedSec)}</span>
           </div>
         </div>
+
+        {/* 19/10: pedido em aberto há 30 min+ (âmbar) ou 1 dia+ (vermelho) */}
+        <OrderAgeBadge order={order} now={new Date(order.createdAt).getTime() + elapsedSec * 1000} />
 
         {/* Linha 2: Cliente + Valor */}
         <div className="flex items-center justify-between gap-1">

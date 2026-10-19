@@ -20,6 +20,7 @@
  *  - Cupom, checkout promocional, PIX por pedido e pagamento por RPC: indisponíveis (N1N6_REQUIRED).
  *  - Motorista (ambos): update_driver_order_status / assign_order_to_driver / unassign_order_driver.
  */
+import { countPendingRows } from '../lib/tenant/storeSwitcher';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Order, OrderStatus, PaymentStatus, OrderPixPayload, CouponPreview, CustomerOrigin } from '../types';
 import { dataStore } from '../services/dataStore';
@@ -479,6 +480,44 @@ export const orderRepository = {
     requireBackend('entregadores');
     const { error } = await supabase.rpc('unassign_order_driver', { p_order_id: orderId });
     if (error) throw toBackendError(error, 'Falha ao remover o entregador.');
+  },
+
+  /**
+   * 19/10: pedidos novos (PENDING) por loja, para o seletor de loja do painel. Uma consulta só;
+   * a RLS de equipe garante que só voltam lojas em que o usuário é staff (as outras ficam 0).
+   */
+  async countPendingByTenant(tenantIds: string[]): Promise<Record<string, number>> {
+    const ids = Array.from(new Set(tenantIds.filter(isValidUuid))).slice(0, 50);
+    if (!isSupabaseConfigured || ids.length === 0) return countPendingRows([], ids);
+    const { data, error } = await supabase
+      .from('orders')
+      .select('tenant_id')
+      .in('tenant_id', ids)
+      .eq('status', 'PENDING')
+      .limit(2000);
+    if (error) throw toBackendError(error, 'Falha ao contar pedidos novos.');
+    return countPendingRows((data || []) as { tenant_id: string }[], ids);
+  },
+
+  /**
+   * 19/10: realtime do CLIENTE (aba Pedidos). Assina UPDATE/INSERT de public.orders da loja; o Supabase
+   * Realtime aplica a RLS (orders_customer_select), então o cliente só recebe eventos dos próprios pedidos.
+   * O payload não é usado: o evento só antecipa o recarregamento (o polling de 8 s continua como reserva).
+   */
+  subscribeToCustomerOrders(tenantId: string, onUpdate: () => void, onStatus?: (status: string) => void): () => void {
+    if (!isSupabaseConfigured || !isValidUuid(tenantId)) return () => {};
+    try {
+      const channel = supabase
+        .channel(`customer-orders-${tenantId}-${Date.now()}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `tenant_id=eq.${tenantId}` }, () => onUpdate())
+        .subscribe(status => onStatus?.(String(status)));
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } catch (err) {
+      console.warn('[orderRepository] realtime do cliente indisponível (segue o polling):', err);
+      return () => {};
+    }
   },
 
   /** Realtime oficial do Supabase. Em modo demo local (DEV), assina o dataStore. */

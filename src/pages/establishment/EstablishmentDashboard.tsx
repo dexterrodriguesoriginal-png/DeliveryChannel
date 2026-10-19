@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { productRepository } from '../../repositories/productRepository';
 import { tenantRepository } from '../../repositories/tenantRepository';
@@ -33,6 +33,14 @@ import {
 import { useToast } from '../../context/ToastContext';
 import { ownerStatusToastMessage } from '../../lib/orders/labels';
 import { formatBRL } from '../../lib/pricing/money';
+import { StoreHeaderCard } from '../../components/establishment/dashboard/StoreHeaderCard';
+import { OrderAlertsCard } from '../../components/establishment/dashboard/OrderAlertsCard';
+import { buildOrderAlerts, newPendingIds, FOCUS_ORDER_KEY, NextStep } from '../../lib/orders/orderAlerts';
+import { validateStatusChange } from '../../repositories/orderMappers';
+import { applyOrderUpdate } from '../../lib/orders/applyOrderUpdate';
+import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE, shouldBlockCallDriver } from '../../lib/orders/dispatchErrors';
+import { canAccessEstTab } from '../../lib/navPermissions';
+import { playNewOrderSound } from '../../utils/audio';
 
 interface EstablishmentDashboardProps {
   onNavigate?: (tab: string) => void;
@@ -46,6 +54,11 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   const [remoteOrders, setRemoteOrders] = useState<Order[] | null>(null);
   const [remoteCustomers, setRemoteCustomers] = useState<Customer[] | null>(null);
   const [remoteDrivers, setRemoteDrivers] = useState<Driver[] | null>(null);
+  // 19/10: alertas de pedidos — lista de entregadores carregada com sucesso? (vazia = loja sem aprovado)
+  const [driversLoaded, setDriversLoaded] = useState(false);
+  const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+  const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
+  const prevPendingIdsRef = useRef<Set<string> | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,9 +78,9 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   const canListDrivers = canAssignDrivers(activeRole);
 
   // Busca dados reais para o tenant ativo
-  const fetchRealData = useCallback(async () => {
+  const fetchRealData = useCallback(async (silent = false) => {
     if (!activeTenant?.id) return;
-    setIsLoading(true);
+    if (!silent) setIsLoading(true);
     setError(null);
     try {
       const [fetchedOrders, fetchedCustomers, fetchedDrivers, tenantProducts] = await Promise.all([
@@ -75,11 +88,23 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         customerRepository.getCustomers(securityContext, activeTenant.id).catch(() => []),
         // 0700 v3.4: list_assignable_drivers (OWNER/MANAGER/DELIVERY_MANAGER; só APPROVED elegíveis).
         canListDrivers
-          ? driverInviteRepository.listAssignableDrivers(activeTenant.id).catch(() => [])
+          ? driverInviteRepository.listAssignableDrivers(activeTenant.id)
+              .then(list => { setDriversLoaded(true); return list; })
+              .catch(() => { setDriversLoaded(false); return [] as Driver[]; })
           : Promise.resolve([] as Driver[]),
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);
       setRemoteOrders(fetchedOrders);
+      // Pedido novo desde a última leitura: som existente + destaque por 15 s (a 1ª leitura não toca).
+      const fresh = newPendingIds(prevPendingIdsRef.current, fetchedOrders);
+      prevPendingIdsRef.current = new Set(fetchedOrders.filter(o => o.status === 'PENDING').map(o => o.id));
+      if (fresh.length > 0) {
+        playNewOrderSound();
+        setHighlightIds(prev => new Set([...prev, ...fresh]));
+        window.setTimeout(() => setHighlightIds(prev => {
+          const next = new Set(prev); fresh.forEach(id => next.delete(id)); return next;
+        }), 15000);
+      }
       setRemoteCustomers(fetchedCustomers);
       setRemoteDrivers(fetchedDrivers);
       setProducts(tenantProducts);
@@ -92,13 +117,71 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   }, [activeTenant?.id, securityContext, canListDrivers]);
 
   useEffect(() => {
+    prevPendingIdsRef.current = null;
     fetchRealData();
     if (!activeTenant?.id) return;
+    // Realtime (public.orders na publicação, migration 2000) + polling de 15 s como reserva.
     const unsubscribe = orderRepository.subscribeToOrders(activeTenant.id, () => {
-      fetchRealData();
+      fetchRealData(true);
     });
-    return unsubscribe;
+    const poll = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      fetchRealData(true);
+    }, 15000);
+    return () => { unsubscribe(); window.clearInterval(poll); };
   }, [fetchRealData, activeTenant?.id]);
+
+  // 19/10: próxima etapa pelo Dashboard — mesma ação (update_order_status) e regras da tela Pedidos.
+  const handleAlertStep = async (order: Order, step: NextStep) => {
+    if (!activeTenant?.id) return;
+    if (step.kind === 'call_driver' && shouldBlockCallDriver({ canListDrivers, driversLoaded, approvedCount: (remoteDrivers || []).length })) {
+      showToast({ type: 'warning', title: NO_APPROVED_DRIVER_TITLE, message: noApprovedDriverMessage() });
+      return;
+    }
+    const check = validateStatusChange(order.status, step.to, step.note);
+    if (!check.ok) { showToast({ type: 'warning', title: 'Alteração não permitida', message: check.message }); return; }
+    setBusyOrderId(order.id);
+    try {
+      const updated = await orderRepository.updateStatus(securityContext, activeTenant.id, order.id, step.to, check.note || undefined, order.status);
+      setRemoteOrders(prev => applyOrderUpdate(prev, updated));
+      showToast({ type: 'success', title: step.label, message: ownerStatusToastMessage(updated?.status || step.to, updated?.orderNumber || order.orderNumber) });
+      await fetchRealData(true);
+    } catch (err: any) {
+      const dispatch = step.kind === 'call_driver';
+      showToast({
+        type: 'error',
+        title: dispatch ? 'Não foi possível chamar o entregador' : 'Falha ao atualizar',
+        message: dispatch ? dispatchErrorMessage(err) : (err?.message || 'Não foi possível atualizar o pedido.'),
+      });
+    } finally {
+      setBusyOrderId(null);
+    }
+  };
+
+  const handleAlertCancel = async (order: Order) => {
+    if (!activeTenant?.id) return;
+    const verb = order.status === 'PENDING' ? 'recusar' : 'cancelar';
+    const reason = window.prompt(`Motivo para ${verb} o pedido #${order.orderNumber} (o cliente verá o pedido como cancelado):`, 'Itens esgotados no estoque');
+    if (!reason || !reason.trim()) return;
+    const check = validateStatusChange(order.status, 'CANCELLED', reason);
+    if (!check.ok) { showToast({ type: 'warning', title: 'Cancelamento', message: check.message }); return; }
+    setBusyOrderId(order.id);
+    try {
+      const updated = await orderRepository.updateStatus(securityContext, activeTenant.id, order.id, 'CANCELLED', `Cancelado: ${reason.trim()}`.slice(0, 500), order.status);
+      setRemoteOrders(prev => applyOrderUpdate(prev, updated));
+      showToast({ type: 'success', title: order.status === 'PENDING' ? 'Pedido recusado' : 'Pedido cancelado', message: `Pedido #${order.orderNumber} cancelado. Produtos devolvidos ao estoque.` });
+      await fetchRealData(true);
+    } catch (err: any) {
+      showToast({ type: 'error', title: 'Erro ao cancelar', message: err?.message || 'Falha ao cancelar pedido.' });
+    } finally {
+      setBusyOrderId(null);
+    }
+  };
+
+  const handleAlertView = (order: Order) => {
+    try { sessionStorage.setItem(FOCUS_ORDER_KEY, order.id); } catch { /* sem storage */ }
+    onNavigate?.('est-orders');
+  };
 
   if (!activeTenant) return null;
 
@@ -129,6 +212,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   const inDeliveryCount = orders.filter(o => o.status === 'OUT_FOR_DELIVERY').length;
   const activeDriversCount = remoteDrivers ? remoteDrivers.filter(d => d.isOnline).length : 0;
   const lowStockCount = products.filter(p => (p.stockQuantity ?? 0) <= (p.minStock ?? 5)).length;
+  const orderAlerts = buildOrderAlerts(orders, { prepMinutes: defaultPrepMinutes });
 
   // Toggle do status operacional da loja (Aberta / Fechada) no Supabase
   const handleToggleStoreOpen = async () => {
@@ -382,6 +466,30 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         </div>
       </div>
 
+      {/* 19/10: cartão da loja + alertas de pedidos (fluxo inteiro pelo Dashboard) */}
+      <StoreHeaderCard
+        tenant={activeTenant}
+        isOpen={isStoreOpen}
+        canToggleOpen={canAccessEstTab(activeRole, 'est-settings')}
+        toggling={isUpdatingStoreStatus}
+        onToggleOpen={handleToggleStoreOpen}
+        onOpenMarketing={onNavigate && canAccessEstTab(activeRole, 'est-marketing') ? () => onNavigate('est-marketing') : undefined}
+        onCopied={() => showToast({ type: 'success', title: 'Link copiado', message: 'O link da sua loja foi copiado.' })}
+      />
+      <OrderAlertsCard
+        alerts={orderAlerts}
+        role={activeRole}
+        loading={remoteOrders === null}
+        highlightIds={highlightIds}
+        busyOrderId={busyOrderId}
+        lowStockCount={canAccessEstTab(activeRole, 'est-inventory') ? lowStockCount : 0}
+        prepMinutes={defaultPrepMinutes}
+        onStep={handleAlertStep}
+        onCancel={handleAlertCancel}
+        onView={handleAlertView}
+        onGoInventory={onNavigate ? () => onNavigate('est-inventory') : undefined}
+      />
+
       {/* ========================================================================= */}
       {/* ALERTA DE ERRO DE CONEXÃO COM RETRY                                       */}
       {/* ========================================================================= */}
@@ -408,29 +516,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
       {/* ========================================================================= */}
       {/* 2. ALERTAS E ATENÇÃO (COMANDO 49 SEÇÃO 10)                                 */}
       {/* ========================================================================= */}
-      {lowStockCount > 0 && (
-        <div className="bg-amber-50/90 border border-amber-200/80 rounded-lg p-2 flex items-center justify-between gap-2 text-amber-900 shadow-2xs">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-5.5 h-5.5 rounded bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-3 h-3" />
-            </div>
-            <div className="min-w-0 text-[10px]">
-              <p className="font-bold text-amber-950">Aviso Operacional: Estoque Baixo</p>
-              <p className="text-amber-800/90 truncate text-[9px]">
-                {lowStockCount} {lowStockCount === 1 ? 'produto atingiu' : 'produtos atingiram'} o nível mínimo cadastrado.
-              </p>
-            </div>
-          </div>
-          {onNavigate && (
-            <button
-              onClick={() => onNavigate('est-inventory')}
-              className="text-[9px] font-bold text-amber-900 hover:underline shrink-0 px-2 py-0.5 rounded bg-amber-100/80 hover:bg-amber-100 transition-colors"
-            >
-              Acessar Kardex
-            </button>
-          )}
-        </div>
-      )}
+      {/* Estoque baixo agora aparece como selo no cartão "Alertas de pedidos". */}
 
       {/* ========================================================================= */}
       {/* 3. STATUS OPERACIONAL (COMANDO 49 SEÇÃO 5 / COMANDO 125)                   */}

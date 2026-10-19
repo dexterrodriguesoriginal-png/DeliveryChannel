@@ -63,6 +63,10 @@ import { paymentMethodLabel, ownerStatusToastMessage } from '../../lib/orders/la
 import { applyOrderUpdate } from '../../lib/orders/applyOrderUpdate';
 import { OrderTotalsLines } from '../../components/establishment/OrderTotalsLines';
 import { formatBRL } from '../../lib/pricing/money';
+import { OrderAgeBadge } from '../../components/establishment/OrderAgeBadge';
+import { FOCUS_ORDER_KEY } from '../../lib/orders/orderAlerts';
+import { sortOrdersNewestFirst, countStaleActiveOrders } from '../../lib/orders/orderAge';
+import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE, shouldBlockCallDriver } from '../../lib/orders/dispatchErrors';
 
 export const OrdersPage: React.FC = () => {
   const { activeTenant, securityContext, availableTenants, switchTenant, supabaseUser, activeRole } = useAuth();
@@ -71,6 +75,8 @@ export const OrdersPage: React.FC = () => {
   // Estados principais da fila de pedidos
   const [remoteOrders, setRemoteOrders] = useState<Order[] | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  // 19/10: true só quando list_assignable_drivers respondeu com sucesso (vazio = loja sem entregador aprovado).
+  const [driversLoaded, setDriversLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
@@ -176,7 +182,9 @@ export const OrdersPage: React.FC = () => {
         orderRepository.getOrders(securityContext, activeTenant.id),
         // 0700 v3.4: list_assignable_drivers (OWNER/MANAGER/DELIVERY_MANAGER; só APPROVED elegíveis).
         canListDrivers
-          ? driverInviteRepository.listAssignableDrivers(activeTenant.id).catch(() => [])
+          ? driverInviteRepository.listAssignableDrivers(activeTenant.id)
+              .then(list => { setDriversLoaded(true); return list; })
+              .catch(() => { setDriversLoaded(false); return [] as Driver[]; })
           : Promise.resolve([] as Driver[]),
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);
@@ -187,7 +195,13 @@ export const OrdersPage: React.FC = () => {
       setLastSyncTime(new Date());
 
       // Se nenhum pedido estiver selecionado e houver pedidos, seleciona o primeiro para exibir o Drawer igual ao print
+      // 19/10: "Ver pedido" no Dashboard abre este pedido selecionado.
+      let focusId: string | null = null;
+      try { focusId = sessionStorage.getItem(FOCUS_ORDER_KEY); } catch { /* sem storage */ }
+      const focused = focusId ? orderData.find(o => o.id === focusId) : undefined;
+      if (focusId) { try { sessionStorage.removeItem(FOCUS_ORDER_KEY); } catch { /* sem storage */ } }
       setSelectedOrder(prev => {
+        if (focused) return focused;
         if (!prev) {
           return orderData[0] || null;
         }
@@ -276,6 +290,12 @@ export const OrdersPage: React.FC = () => {
       if (!reason || !reason.trim()) return;
       note = reason.trim();
     }
+    // 19/10: "Chamar motoboy" sem nenhum entregador aprovado deixaria o pedido esperando para sempre
+    // (o servidor aceita a mudança). Avisa o porquê e o que fazer em vez de chamar.
+    if (newStatus === 'WAITING_FOR_DRIVER' && shouldBlockCallDriver({ canListDrivers, driversLoaded, approvedCount: drivers.length })) {
+      showToast({ type: 'warning', title: NO_APPROVED_DRIVER_TITLE, message: noApprovedDriverMessage() });
+      return;
+    }
     // F5: cancelado é final; cancelamento exige motivo (o servidor reforça as mesmas regras).
     const check = validateStatusChange(current, newStatus, note);
     if (!check.ok) {
@@ -294,10 +314,11 @@ export const OrdersPage: React.FC = () => {
       });
       await fetchOrders(true);
     } catch (err: any) {
+      const isDispatch = newStatus === 'WAITING_FOR_DRIVER' || newStatus === 'OUT_FOR_DELIVERY';
       showToast({
         type: 'error',
-        title: 'Falha ao atualizar',
-        message: err.message || 'Não foi possível atualizar o pedido.',
+        title: isDispatch ? 'Não foi possível chamar o entregador' : 'Falha ao atualizar',
+        message: isDispatch ? dispatchErrorMessage(err) : (err.message || 'Não foi possível atualizar o pedido.'),
       });
     }
   };
@@ -390,8 +411,8 @@ export const OrdersPage: React.FC = () => {
     } catch (err: any) {
       showToast({
         type: 'error',
-        title: 'Erro ao Atribuir',
-        message: err.message || 'Falha ao despachar pedido.',
+        title: 'Não foi possível despachar',
+        message: dispatchErrorMessage(err),
       });
     } finally {
       setIsAssigning(false);
@@ -493,7 +514,8 @@ export const OrdersPage: React.FC = () => {
 
   // Filtragem composta em memória
   const filteredOrders = useMemo(() => {
-    return allOrders.filter(order => {
+    // 19/10: pedido novo sempre no topo; os antigos em aberto ganham o selo "recebido há ...".
+    return sortOrdersNewestFirst(allOrders).filter(order => {
       // 1. Filtro de Status
       if (activeTab !== 'ALL' && order.status !== activeTab) {
         return false;
@@ -531,6 +553,8 @@ export const OrdersPage: React.FC = () => {
       return true;
     });
   }, [allOrders, activeTab, filterFulfillment, filterDriver, filterPeriod, searchQuery]);
+
+  const staleActiveCount = countStaleActiveOrders(allOrders, lastSyncTime.getTime());
 
   const hasActiveFilters = searchQuery !== '' || filterFulfillment !== 'ALL' || filterDriver !== 'ALL' || filterPeriod !== 'ALL' || activeTab !== 'ALL';
 
@@ -629,6 +653,7 @@ export const OrdersPage: React.FC = () => {
                 <Clock className="w-2 h-2 text-slate-400" />
                 <span>{elapsedStr}</span>
               </span>
+              <OrderAgeBadge order={selectedOrder} />
             </div>
 
             <button
@@ -1503,6 +1528,15 @@ export const OrdersPage: React.FC = () => {
 
         {/* ÁREA OPERACIONAL DE PEDIDOS: CARDS / KANBAN / TABELA */}
         <div className="flex-1 min-w-0 p-2.5 sm:p-3 pt-0.5 space-y-3">
+          {staleActiveCount > 0 && (
+            <div data-testid="stale-orders-banner" className="flex items-start gap-2 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-3 py-2 text-[11px]">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>
+                <strong>{staleActiveCount === 1 ? '1 pedido está em aberto há mais de 1 dia.' : `${staleActiveCount} pedidos estão em aberto há mais de 1 dia.`}</strong>{' '}
+                Eles aparecem com o selo vermelho "recebido há ...". Confira se ainda são válidos, conclua ou cancele. Os pedidos novos ficam sempre no topo.
+              </span>
+            </div>
+          )}
           {syncError && (!remoteOrders || remoteOrders.length === 0) ? (
             <div className="bg-white border border-amber-200/80 rounded-2xl p-12 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mx-auto">
@@ -1825,6 +1859,7 @@ export const OrdersPage: React.FC = () => {
                                     <Clock className="w-2 h-2" />
                                     <span>{orderTimeStr}</span>
                                   </span>
+                                  <OrderAgeBadge order={order} />
                                 </div>
                               </td>
 
@@ -1985,8 +2020,12 @@ export const OrdersPage: React.FC = () => {
 
           <div className="space-y-2">
             {drivers.length === 0 ? (
-              <p className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
-                Nenhum motorista disponível no momento.
+              <p data-testid="no-approved-driver" className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
+                {driversLoaded
+                  ? noApprovedDriverMessage()
+                  : canListDrivers
+                    ? 'Não foi possível carregar a lista de entregadores agora. Tente de novo em instantes.'
+                    : 'Seu perfil não vê a lista de entregadores. Use "Chamar motoboy" ou peça ao dono ou gerente para despachar.'}
               </p>
             ) : (
               <select
