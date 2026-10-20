@@ -20,8 +20,15 @@ describe('fulfillmentTabs', () => {
     expect(dineInOrderLabel(dineIn)).toBe('Mesa N – Ana · rodada 3');
     expect(dineInOrderLabel({ ...dineIn, tableLabel: undefined, roundNo: undefined })).toBe('Mesa — – Ana');
     const orders = [o({ id: 'tabbed', fulfillmentType: 'DINE_IN', tabId: 'tab-1' }), o({ id: 'existing', fulfillmentType: 'DINE_IN', tabId: 'tab-2', tableLabel: 'Sala 2' })] as any;
-    expect(resolveDineInTableLabels(orders, new Map([['tab-1', 'Mesa 1'], ['tab-2', 'ignored']])).map(order => order.tableLabel))
+    expect(resolveDineInTableLabels(orders, new Map([['tabbed', 'Mesa 1'], ['existing', 'ignored']])).map(order => order.tableLabel))
       .toEqual(['Mesa 1', 'Sala 2']);
+  });
+  it('uses the label returned for the order without requiring dining-table read access', () => {
+    const order = o({ id: 'operator-order', fulfillmentType: 'DINE_IN', tableLabel: undefined });
+    expect(dineInOrderLabel(resolveDineInTableLabels(
+      [order] as any,
+      new Map([['operator-order', 'Varanda 4']])
+    )[0])).toBe('Mesa Varanda 4');
   });
   it('atrasado vira vermelho', () => {
     const late = o({ status: 'PREPARING', createdAt: new Date(now - 60 * 60000).toISOString() });

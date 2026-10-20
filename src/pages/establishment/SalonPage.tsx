@@ -12,6 +12,7 @@ import { playShortBeep } from '../../utils/audio';
 import { Modal } from '../../components/ui/Modal';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import { validateOptionSelection } from '../../lib/addons';
+import { dineInRoundItem } from '../../lib/customer/dineInCart';
 
 type DiningTable = { id: string; label: string; area: string | null; seats: number; active: boolean };
 type DiningTab = {
@@ -56,6 +57,7 @@ export const SalonPage: React.FC = () => {
   const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
   const [optionChoices, setOptionChoices] = useState<SelectedProductOption[]>([]);
   const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [optionsLoading, setOptionsLoading] = useState(false);
   const [closeRoles, setCloseRoles] = useState<string[]>(['OWNER', 'MANAGER', 'CASHIER']);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -149,16 +151,27 @@ export const SalonPage: React.FC = () => {
     let alive = true;
     setCatalogProducts(products);
     setOptionsError(null);
-    if (!orderOpen || !products.length) return () => { alive = false; };
+    if (!orderOpen || !products.length) {
+      setOptionsLoading(false);
+      return () => { alive = false; };
+    }
+    setOptionsLoading(true);
     void productOptionRepository.getPublicForProducts(activeTenant?.id || '', products.map(product => product.id))
       .then(groups => {
         if (alive) setCatalogProducts(products.map(product => ({ ...product, optionGroups: groups.get(product.id) || [] })));
       })
       .catch(error => {
         if (alive) setOptionsError(error instanceof Error ? error.message : 'Não foi possível carregar os adicionais.');
+      })
+      .finally(() => {
+        if (alive) setOptionsLoading(false);
       });
     return () => { alive = false; };
   }, [activeTenant?.id, orderOpen, products]);
+
+  useEffect(() => {
+    setOptionChoices([]);
+  }, [productId]);
 
   const run = async (key: string, action: () => Promise<unknown>) => {
     setBusy(key);
@@ -204,7 +217,7 @@ export const SalonPage: React.FC = () => {
     }
     void run('submit-round', async () => {
       const { error } = await supabase.rpc('submit_round', {
-        p_items: [{ productId, quantity, notes: notes.trim(), options: optionChoices }],
+        p_items: [dineInRoundItem({ productId, quantity, notes: notes.trim(), options: optionChoices })],
         p_idempotency_key: newIdempotencyKey(),
         p_tab_id: selectedTab.id,
       });
@@ -340,7 +353,7 @@ export const SalonPage: React.FC = () => {
               <div className="mt-2 flex justify-between border-t pt-2 text-base font-black"><span>Total</span><span>{money(subtotal + fee)}</span></div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" onClick={() => setOrderOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-bold text-white"><Plus className="h-4 w-4" />Lançar pedido</button>
+              <button type="button" onClick={() => { setOptionChoices([]); setProductId(''); setOrderOpen(true); }} className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-bold text-white"><Plus className="h-4 w-4" />Lançar pedido</button>
               {canClose && <button type="button" disabled={totalCents <= 0} onClick={() => {
                 setPayments([{ method: 'CAIXA', amount: (totalCents / 100).toFixed(2), tendered: '' }]);
                 setCloseOpen(true);
@@ -352,11 +365,12 @@ export const SalonPage: React.FC = () => {
       <Modal isOpen={orderOpen} onClose={() => setOrderOpen(false)} title="Lançar pedido na mesa">
         <div className="space-y-3">
           <label className="block text-sm font-semibold">Produto
-            <select aria-label="Produto" value={productId} onChange={event => setProductId(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2">
+            <select aria-label="Produto" value={productId} onChange={event => { setOptionChoices([]); setProductId(event.target.value); }} className="mt-1 w-full rounded-lg border px-3 py-2">
               <option value="">Selecione um produto</option>{catalogProducts.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
             </select>
           </label>
           {optionsError && <p role="alert" className="text-sm text-rose-700">{optionsError}</p>}
+          {optionsLoading && <p role="status" className="text-sm text-gray-500">Carregando adicionais…</p>}
           {selectedProduct?.optionGroups?.some(group => group.active) && <ProductOptionsSelector
             groups={selectedProduct.optionGroups}
             selections={optionChoices}
@@ -364,7 +378,7 @@ export const SalonPage: React.FC = () => {
           />}
           <label className="block text-sm font-semibold">Quantidade<input aria-label="Quantidade" type="number" min={1} value={quantity} onChange={event => setQuantity(Math.max(1, Number(event.target.value)))} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
           <label className="block text-sm font-semibold">Observação<input aria-label="Observação" value={notes} onChange={event => setNotes(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-          <button type="button" disabled={!productId || !!busy} onClick={submitStaffRound} className="w-full rounded-xl bg-slate-900 px-4 py-3 font-bold text-white">Enviar para a cozinha</button>
+          <button type="button" disabled={!productId || !!busy || optionsLoading || !!optionsError || !validateOptionSelection(selectedProduct?.optionGroups?.filter(group => group.active) || [], optionChoices).valid} onClick={submitStaffRound} className="w-full rounded-xl bg-slate-900 px-4 py-3 font-bold text-white">Enviar para a cozinha</button>
         </div>
       </Modal>
       <Modal isOpen={closeOpen} onClose={() => setCloseOpen(false)} title="Revisar e fechar conta">

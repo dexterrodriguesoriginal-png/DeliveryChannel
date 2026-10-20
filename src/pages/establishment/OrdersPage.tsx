@@ -213,26 +213,21 @@ export const OrdersPage: React.FC = () => {
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);
       let ordersWithTableLabels = orderData;
-      const tabIds = [...new Set(orderData
-        .filter(order => order.fulfillmentType === 'DINE_IN' && !order.tableLabel && order.tabId)
-        .map(order => order.tabId!))];
-      if (tabIds.length) {
-        try {
-          const { data: tabs, error } = await supabase
-            .from('dining_tabs')
-            .select('id, dining_tables(label)')
-            .eq('tenant_id', activeTenant.id)
-            .in('id', tabIds);
-          if (!error && tabs) {
-            const labels = new Map<string, string>();
-            for (const tab of tabs as any[]) {
-              const table = Array.isArray(tab.dining_tables) ? tab.dining_tables[0] : tab.dining_tables;
-              if (table?.label) labels.set(tab.id, table.label);
-            }
-            ordersWithTableLabels = resolveDineInTableLabels(orderData, labels);
-          }
-        } catch {
-          // The table label is best-effort; keep the order visible if staff metadata is unavailable.
+      const missingTableLabelOrderIds = [...new Set(orderData
+        .filter(order => order.fulfillmentType === 'DINE_IN' && !order.tableLabel)
+        .map(order => order.id))];
+      if (missingTableLabelOrderIds.length) {
+        const { data: labels, error: labelsError } = await supabase.rpc('get_dine_in_order_table_labels', {
+          p_tenant_id: activeTenant.id,
+          p_order_ids: missingTableLabelOrderIds,
+        });
+        if (labelsError) {
+          console.warn('[OrdersPage] Não foi possível carregar os nomes das mesas:', labelsError.message);
+        } else if (labels) {
+          const labelsByOrderId = new Map<string, string>(
+            (labels as Array<{ order_id: string; table_label: string }>).map(row => [row.order_id, row.table_label])
+          );
+          ordersWithTableLabels = resolveDineInTableLabels(orderData, labelsByOrderId);
         }
       }
       setRemoteOrders(ordersWithTableLabels);

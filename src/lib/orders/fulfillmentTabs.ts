@@ -19,10 +19,10 @@ export function dineInOrderLabel(order: Pick<Order, 'fulfillmentType' | 'tableLa
   return `Mesa ${order.tableLabel?.trim() || '—'}${guest ? ` – ${guest}` : ''}${round}`;
 }
 
-export function resolveDineInTableLabels(orders: Order[], labelsByTabId: ReadonlyMap<string, string>): Order[] {
+export function resolveDineInTableLabels(orders: Order[], labelsByOrderId: ReadonlyMap<string, string>): Order[] {
   return orders.map(order =>
-    order.fulfillmentType === 'DINE_IN' && !order.tableLabel && order.tabId && labelsByTabId.has(order.tabId)
-      ? { ...order, tableLabel: labelsByTabId.get(order.tabId) }
+    order.fulfillmentType === 'DINE_IN' && !order.tableLabel && labelsByOrderId.has(order.id)
+      ? { ...order, tableLabel: labelsByOrderId.get(order.id) }
       : order
   );
 }

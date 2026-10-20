@@ -4,13 +4,25 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
 import { formatBRL } from '../../lib/pricing/money';
-import { Product } from '../../types';
+import type { Product, SelectedProductOption } from '../../types';
 import { billSplitAmounts, BillSplitMode, DineInPaymentMethod, parseTenderCents, tenderStatus } from '../../lib/customer/dineIn';
+import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
+import { productOptionRepository } from '../../repositories/productOptionRepository';
+import { isModuleEnabled } from '../../lib/modules';
+import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
+import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
+import {
+  addDineInCartLine,
+  changeDineInCartLineQuantity,
+  dineInCartLineUnitPriceCents,
+  dineInOptionLabels,
+  dineInRoundItems,
+  type DineInCartLine,
+} from '../../lib/customer/dineInCart';
 
 type TableResolution = { available: boolean; tenantSlug?: string; storeName?: string; tableLabel?: string };
 type TabRound = { orderId: string; orderNumber: number; roundNo: number; status: string; customerName: string; subtotal: number; createdAt: string; items: Array<{ name: string; quantity: number; unitPrice: number; totalPrice: number }> };
 type MyTab = { tabId: string; status: 'OPEN' | 'BILL_REQUESTED' | 'CLOSED' | 'CANCELLED'; mode: 'TABLE' | 'INDIVIDUAL'; tableLabel: string; serviceFeePercent: number; serviceFeeRemoved: boolean; rounds: TabRound[]; subtotal: number };
-type CartLine = { product: Product; quantity: number };
 
 const DEVICE_KEY = 'dc_dine_in_device_id';
 const SESSION_KEY_PREFIX = 'dc_dine_in_session:';
@@ -69,7 +81,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   });
   const [sessionId, setSessionId] = useState('');
   const [tab, setTab] = useState<MyTab | null>(null);
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cart, setCart] = useState<DineInCartLine[]>([]);
+  const [optionsProduct, setOptionsProduct] = useState<Product | null>(null);
+  const [optionChoices, setOptionChoices] = useState<SelectedProductOption[]>([]);
   const [busy, setBusy] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
@@ -132,10 +146,16 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           setError('Não foi possível carregar o cardápio desta mesa. Tente novamente ou chame um atendente.');
           return;
         }
+        const enabledModules = await tenantModuleRepository.getPublicEnabled(store.data.tenant.id);
+        const optionGroups = isModuleEnabled(enabledModules, 'addons')
+          ? await productOptionRepository.getPublicForProducts(store.data.tenant.id, store.data.products.map(product => product.id))
+          : new Map();
         setStoreName(result.storeName || store.data.tenant.name);
-        setProducts(store.data.products.filter(product => product.isActive && product.isAvailable));
-      } catch {
-        if (alive) setError('Não foi possível carregar o cardápio desta mesa. Tente novamente ou chame um atendente.');
+        setProducts(store.data.products
+          .filter(product => product.isActive && product.isAvailable)
+          .map(product => ({ ...product, optionGroups: optionGroups.get(product.id) || [] })));
+      } catch (loadError) {
+        if (alive) setError(errorText(loadError) || 'Não foi possível carregar o cardápio desta mesa. Tente novamente ou chame um atendente.');
       } finally {
         if (alive) setLoading(false);
       }
@@ -208,7 +228,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     submitLockRef.current = true;
     setBusy(true);
     setNotice('');
-    const items = cart.map(({ product, quantity }) => ({ productId: product.id, quantity, notes: '', options: [] }));
+    const items = dineInRoundItems(cart);
     const { data, error: submitError } = await supabase.rpc('submit_round', {
       p_items: items,
       p_idempotency_key: submitKeyRef.current,
@@ -245,15 +265,33 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     return () => window.clearInterval(retry);
   }, [pendingApproval, submitRound, tabClosed]);
 
-  const addItem = (product: Product) => setCart(current => {
-    const existing = current.find(line => line.product.id === product.id);
-    return existing
-      ? current.map(line => line.product.id === product.id ? { ...line, quantity: line.quantity + 1 } : line)
-      : [...current, { product, quantity: 1 }];
+  const addItem = (product: Product) => {
+    if (product.optionGroups?.some(group => group.active)) {
+      setOptionsProduct(product);
+      setOptionChoices([]);
+      return;
+    }
+    setCart(current => addDineInCartLine(current, product));
+  };
+  const addConfiguredItem = () => {
+    if (!optionsProduct) return;
+    const groups = optionsProduct.optionGroups?.filter(group => group.active) || [];
+    const validation = validateOptionSelection(groups, optionChoices);
+    if (!validation.valid) {
+      setNotice(validation.messages[0] || 'Confira os adicionais selecionados.');
+      return;
+    }
+    setCart(current => addDineInCartLine(current, optionsProduct, optionChoices));
+    setOptionsProduct(null);
+    setOptionChoices([]);
+    setNotice('');
+  };
+  const changeQuantity = (productId: string, delta: number) => setCart(current => {
+    const line = [...current].reverse().find(item => item.product.id === productId);
+    return line ? changeDineInCartLineQuantity(current, line.key, delta) : current;
   });
-  const changeQuantity = (productId: string, delta: number) => setCart(current => current
-    .map(line => line.product.id === productId ? { ...line, quantity: line.quantity + delta } : line)
-    .filter(line => line.quantity > 0));
+  const changeLineQuantity = (key: string, delta: number) =>
+    setCart(current => changeDineInCartLineQuantity(current, key, delta));
 
   const enterAsGuest = async () => {
     const name = firstName.trim().split(/\s+/)[0];
@@ -340,7 +378,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const unavailable = !loading && (!resolution?.available || Boolean(error));
-  const totalCart = cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0);
+  const totalCartCents = cart.reduce((sum, line) => sum + dineInCartLineUnitPriceCents(line) * line.quantity, 0);
+  const totalCart = totalCartCents / 100;
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-700"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Carregando mesa e cardápio…</div>;
   if (unavailable) {
@@ -388,7 +427,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       <section className="mx-auto max-w-2xl px-4 py-5">
         <h2 className="mb-3 text-lg font-black">Cardápio</h2>
         {products.length ? <div className="space-y-3">{products.map(product => {
-          const quantity = cart.find(line => line.product.id === product.id)?.quantity || 0;
+          const quantity = cart.filter(line => line.product.id === product.id).reduce((sum, line) => sum + line.quantity, 0);
           return <article key={product.id} className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm">
             {product.imageUrl && <img src={product.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover" />}
             <div className="min-w-0 flex-1"><h3 className="font-bold">{product.name}</h3><p className="line-clamp-2 text-xs text-slate-500">{product.description}</p><p className="mt-1 font-bold">{formatBRL(product.price)}</p></div>
@@ -401,12 +440,50 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         })}</div> : <p className="rounded-xl bg-white p-4 text-sm text-slate-600">Nenhum item disponível no cardápio agora.</p>}
         {cart.length > 0 && <section className="mt-5 rounded-2xl border border-emerald-200 bg-white p-4">
           <h2 className="font-extrabold">Sua rodada</h2>
-          {cart.map(line => <div key={line.product.id} className="flex justify-between py-2 text-sm"><span>{line.quantity}× {line.product.name}</span><span>{formatBRL(line.product.price * line.quantity)}</span></div>)}
+          {cart.map(line => {
+            const optionLabels = dineInOptionLabels(line.product, line.options);
+            return <div key={line.key} className="flex items-start justify-between gap-3 border-b border-slate-100 py-2 text-sm">
+              <div className="min-w-0">
+                <p className="font-semibold">{line.quantity}× {line.product.name}</p>
+                {optionLabels.map(label => <p key={label} className="text-xs text-slate-500">{label}</p>)}
+                <p className="text-xs text-slate-500">{formatBRL(dineInCartLineUnitPriceCents(line) / 100)} cada</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button type="button" aria-label={`Remover uma unidade de ${line.product.name}`} onClick={() => changeLineQuantity(line.key, -1)} disabled={orderingDisabled || busy} className="rounded-full bg-slate-100 p-1.5 disabled:opacity-40"><Minus className="h-3.5 w-3.5" /></button>
+                <span>{formatBRL(dineInCartLineUnitPriceCents(line) * line.quantity / 100)}</span>
+                <button type="button" aria-label={`Adicionar uma unidade de ${line.product.name}`} onClick={() => changeLineQuantity(line.key, 1)} disabled={orderingDisabled || busy} className="rounded-full bg-slate-100 p-1.5 disabled:opacity-40"><Plus className="h-3.5 w-3.5" /></button>
+              </div>
+            </div>;
+          })}
           <div className="flex justify-between border-t pt-3 font-bold"><span>Subtotal estimado</span><span>{formatBRL(totalCart)}</span></div>
           <button type="button" onClick={() => void submitRound()} disabled={busy || orderingDisabled} className="mt-3 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Enviar para a cozinha'}</button>
           {pendingApproval && <p className="mt-2 text-xs font-semibold text-amber-800">Aguardando aprovação do garçom. A rodada será enviada automaticamente quando a mesa for liberada.</p>}
           {tab?.status === 'BILL_REQUESTED' && <p className="mt-2 text-xs font-semibold text-amber-800">A conta já foi solicitada. Chame o garçom se precisar reabrir a comanda.</p>}
         </section>}
+        {optionsProduct && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOptionsProduct(null); }}>
+          <section role="dialog" aria-modal="true" aria-label={`Personalizar ${optionsProduct.name}`} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div><h2 className="text-lg font-black">Personalizar {optionsProduct.name}</h2><p className="text-sm text-slate-500">Escolha os adicionais para este item.</p></div>
+              <button type="button" onClick={() => { setOptionsProduct(null); setOptionChoices([]); }} aria-label="Fechar personalização"><X className="h-5 w-5" /></button>
+            </div>
+            <ProductOptionsSelector
+              groups={optionsProduct.optionGroups || []}
+              selections={optionChoices}
+              onChange={setOptionChoices}
+            />
+            <p className="mt-3 text-right text-base font-black">
+              {formatBRL((Math.round(optionsProduct.price * 100) + optionPriceCents(optionsProduct.optionGroups || [], optionChoices)) / 100)}
+            </p>
+            <button
+              type="button"
+              onClick={addConfiguredItem}
+              disabled={!validateOptionSelection(optionsProduct.optionGroups || [], optionChoices).valid}
+              className="mt-4 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50"
+            >
+              Adicionar à rodada
+            </button>
+          </section>
+        </div>}
         {tabClosed && <div role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Conta encerrada. Para pedir de novo, chame o garçom.</div>}
         {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       </section>
