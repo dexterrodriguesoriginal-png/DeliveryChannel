@@ -47,6 +47,41 @@ STOCK=$(Q "SELECT stock_quantity FROM public.products WHERE id='d0000000-0000-00
 echo "estoque: sucesso=$SOK sem_estoque=$SOUT estoque_final=$STOCK"
 rec "estoque 1 sob 8 compradores paralelos: 1 sucesso, 7 OUT_OF_STOCK, estoque 0" "$([ "$SOK" = 1 ] && [ "$SOUT" = 7 ] && [ "$STOCK" = 0 ] && echo true || echo false)" "ok=$SOK out=$SOUT stock=$STOCK"
 
+# Dois pedidos aceitos concorrem pela última unidade no gatilho de reserva.
+PRODUCT='d0000000-0000-0000-0000-0000000000a4'
+Q "UPDATE public.products SET stock_quantity = 1 WHERE id = '$PRODUCT';
+   INSERT INTO public.inventory_movements
+     (tenant_id,product_id,product_name,quantity,type,reason,previous_stock,new_stock,created_by_name,location_id,unit)
+   SELECT p.tenant_id,p.id,p.name,1 - COALESCE(b.ledger_quantity,0),'COUNT_ADJUSTMENT',
+          'Preparação da disputa concorrente',0,1,'Harness',l.id,p.stock_unit
+   FROM public.products p
+   JOIN public.stock_locations l ON l.tenant_id=p.tenant_id AND l.is_default
+   LEFT JOIN public.stock_location_balances b ON b.tenant_id=p.tenant_id AND b.product_id=p.id AND b.location_id=l.id
+   WHERE p.id='$PRODUCT'" >/dev/null
+ORDER_A=$(Q "SELECT t.mk_stock_order('$PRODUCT'::uuid)")
+ORDER_B=$(Q "SELECT t.mk_stock_order('$PRODUCT'::uuid)")
+START=$(date -d '+3 seconds' '+%Y-%m-%d %H:%M:%S%z')
+run_reserver() {
+  local order="$1" tag="$2"
+  psql -X -At -v ON_ERROR_STOP=1 -d "$DB" >"$OUT/$tag.out" 2>&1 <<SQL
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claims', json_build_object('sub','a0000000-0000-0000-0000-000000000001','role','authenticated')::text, false);
+SELECT pg_sleep(GREATEST(0, extract(epoch FROM ('$START'::timestamptz - clock_timestamp()))));
+SELECT public.update_order_status('$order','CONFIRMED',NULL) ->> 'status';
+SQL
+}
+run_reserver "$ORDER_A" reserve_a &
+run_reserver "$ORDER_B" reserve_b &
+wait
+RA_OK=$(grep -l '^CONFIRMED$' "$OUT"/reserve_*.out | wc -l)
+RA_OUT=$(grep -l 'OUT_OF_STOCK' "$OUT"/reserve_*.out | wc -l)
+RA_STATUS=$(Q "SELECT count(*) FROM public.orders WHERE id IN ('$ORDER_A','$ORDER_B') AND status='CONFIRMED'")
+RA_PENDING=$(Q "SELECT count(*) FROM public.orders WHERE id IN ('$ORDER_A','$ORDER_B') AND status='PENDING'")
+RA_STOCK=$(Q "SELECT stock_quantity FROM public.products WHERE id='$PRODUCT'")
+RA_HELD=$(Q "SELECT count(*) FROM public.stock_reservations WHERE order_id IN ('$ORDER_A','$ORDER_B') AND status='ACTIVE'")
+echo "reserva: aceitos=$RA_OK sem_estoque=$RA_OUT estoque=$RA_STOCK reservados=$RA_HELD"
+rec "reserva da última unidade sob duas aceitações concorrentes: exatamente um pedido confirmado" "$([ "$RA_OK" = 1 ] && [ "$RA_OUT" = 1 ] && [ "$RA_STATUS" = 1 ] && [ "$RA_PENDING" = 1 ] && [ "$RA_STOCK" = 0 ] && [ "$RA_HELD" = 1 ] && echo true || echo false)" "ok=$RA_OK out=$RA_OUT status=$RA_STATUS pending=$RA_PENDING stock=$RA_STOCK reserved=$RA_HELD"
+
 # Cancelamentos simultâneos do mesmo pedido com cupom
 ORD=$(grep -h -E '^[0-9a-f-]{36}$' "$OUT"/coupon_*.out | head -1)
 START=$(date -d '+3 seconds' '+%Y-%m-%d %H:%M:%S%z')

@@ -29,6 +29,10 @@ function mapRowToProduct(row: any): Product {
     stockQuantity: stockQty,
     minStock: row.min_stock_alert ? Number(row.min_stock_alert) : undefined,
     unit: row.unit || 'un',
+    stockUnit: row.stock_unit || undefined,
+    safetyStock: row.safety_stock === undefined ? undefined : Number(row.safety_stock),
+    trackLots: Boolean(row.track_lots),
+    stockIsResale: Boolean(row.stock_is_resale),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     isDemo: Boolean(row.is_demo),
@@ -144,6 +148,7 @@ export const productRepository = {
             stock_quantity: data.stockQuantity ?? 0,
             min_stock_alert: data.minStock ?? 5,
             unit: data.unit || 'un',
+            stock_is_resale: Boolean(data.stockIsResale),
             is_demo: data.isDemo ?? false,
           })
           .select()
@@ -193,9 +198,21 @@ export const productRepository = {
         if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
         if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
         if (updates.isFeatured !== undefined) dbUpdates.is_featured = updates.isFeatured;
-        if (updates.stockQuantity !== undefined) dbUpdates.stock_quantity = updates.stockQuantity;
+        if (updates.stockQuantity !== undefined) {
+          const { data: current, error: stockError } = await supabase
+            .from('products')
+            .select('stock_quantity')
+            .eq('tenant_id', tenantId)
+            .eq('id', productId)
+            .single();
+          if (stockError) throw toBackendError(stockError, 'Falha ao validar saldo do produto.');
+          if (Number(current.stock_quantity) !== updates.stockQuantity) {
+            throw new Error('Altere o saldo pela tela Estoque para registrar uma movimentação auditável.');
+          }
+        }
         if (updates.minStock !== undefined) dbUpdates.min_stock_alert = updates.minStock;
         if (updates.unit !== undefined) dbUpdates.unit = updates.unit;
+        if (updates.stockIsResale !== undefined) dbUpdates.stock_is_resale = updates.stockIsResale;
 
         const { data: updated, error } = await supabase
           .from('products')

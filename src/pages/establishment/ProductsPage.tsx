@@ -71,6 +71,7 @@ export const ProductsPage: React.FC = () => {
     isActive: true,
     isAvailable: true,
     isFeatured: false,
+    stockIsResale: false,
   });
 
   const loadData = useCallback(async () => {
@@ -116,6 +117,7 @@ export const ProductsPage: React.FC = () => {
       isActive: true,
       isAvailable: true,
       isFeatured: false,
+      stockIsResale: false,
     });
     setIsModalOpen(true);
   };
@@ -138,6 +140,7 @@ export const ProductsPage: React.FC = () => {
       isActive: p.isActive !== false,
       isAvailable: p.isAvailable !== false,
       isFeatured: !!p.isFeatured,
+      stockIsResale: Boolean(p.stockIsResale),
     });
     setIsModalOpen(true);
   };
@@ -156,7 +159,7 @@ export const ProductsPage: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const stockQty = parseInt(formData.stockQuantity, 10) || 0;
+      const stockQty = parseFloat(formData.stockQuantity) || 0;
       const payload = {
         name: formData.name.trim(),
         description: formData.description.trim(),
@@ -171,6 +174,7 @@ export const ProductsPage: React.FC = () => {
         minStock: parseInt(formData.minStock, 10) || 10,
         isActive: formData.isActive,
         isFeatured: formData.isFeatured,
+        stockIsResale: formData.stockIsResale,
         isAvailable: formData.isActive && stockQty > 0,
       };
 
@@ -716,10 +720,13 @@ export const ProductsPage: React.FC = () => {
               <Input
                 label="Quantidade em Estoque"
                 type="number"
+                step="0.001"
                 placeholder="0"
                 value={formData.stockQuantity}
                 onChange={e => setFormData({ ...formData, stockQuantity: e.target.value })}
+                disabled={Boolean(editingProduct)}
               />
+              {editingProduct && <p className="mt-1 text-[10px] text-gray-500">Registre entradas e ajustes pela tela Estoque para manter o kardex.</p>}
             </div>
 
             <div>
@@ -771,15 +778,29 @@ export const ProductsPage: React.FC = () => {
                 <span className="text-[11px] text-gray-400 block">Exibe estrela de destaque</span>
               </div>
             </label>
+            {activeTenant.businessType === 'SALAO_BARBEARIA' && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.stockIsResale}
+                  onChange={e => setFormData({ ...formData, stockIsResale: e.target.checked })}
+                  className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs text-gray-800 font-semibold block">Produto para revenda</span>
+                  <span className="text-[11px] text-gray-400 block">Controla somente itens revendidos no estoque do salão</span>
+                </div>
+              </label>
+            )}
           </div>
 
           <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-between text-xs">
             <div className="flex items-center gap-2">
-              <div className={`w-2.5 h-2.5 rounded-full ${formData.isActive && (parseInt(formData.stockQuantity, 10) || 0) > 0 ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+              <div className={`w-2.5 h-2.5 rounded-full ${formData.isActive && (parseFloat(formData.stockQuantity) || 0) > 0 ? 'bg-emerald-500' : 'bg-gray-400'}`} />
               <span className="text-gray-600 font-medium">Disponibilidade na Vitrine:</span>
             </div>
-            <span className={`font-bold ${formData.isActive && (parseInt(formData.stockQuantity, 10) || 0) > 0 ? 'text-emerald-700' : 'text-gray-500'}`}>
-              {formData.isActive && (parseInt(formData.stockQuantity, 10) || 0) > 0 ? 'Disponível p/ Venda' : 'Indisponível (Sem estoque ou inativo)'}
+            <span className={`font-bold ${formData.isActive && (parseFloat(formData.stockQuantity) || 0) > 0 ? 'text-emerald-700' : 'text-gray-500'}`}>
+              {formData.isActive && (parseFloat(formData.stockQuantity) || 0) > 0 ? 'Disponível p/ Venda' : 'Indisponível (Sem estoque ou inativo)'}
             </span>
           </div>
 

@@ -63,9 +63,11 @@ mkbase $DB "$MODE" >/dev/null
 P $DB -f "$HERE/sql/01_legacy_data.sql" >/dev/null
 F0=$(q $DB "$FN_MD5"); P0=$(q $DB "$POL"); T0=$(q $DB "$TBL"); G0=$(q $DB "$GR")
 D0=$(q $DB "SELECT md5(string_agg(x, ',' ORDER BY x)) FROM (SELECT to_jsonb(o)::text x FROM public.offers o UNION ALL SELECT to_jsonb(r)::text FROM public.orders r UNION ALL SELECT to_jsonb(c)::text FROM public.customers c UNION ALL SELECT to_jsonb(i)::text FROM public.order_items i UNION ALL SELECT to_jsonb(p)::text FROM public.products p UNION ALL SELECT to_jsonb(s)::text FROM public.tenant_settings s) z")
-apply_n_series $DB >/dev/null && ok $C "N1–N6 aplicadas" || fail $C "N1–N6 aplicadas"
+apply_n_series $DB >/dev/null && ok $C "N1–N6 e estoque fase 1 aplicados" || fail $C "N1–N6 e estoque fase 1 aplicados"
 out=$(P $DB -1 -f "$RB/n6_rollback.sql" 2>&1); [ $? -ne 0 ] && echo "$out" | grep -q "não confirmado" && ok $C "rollback sem confirmação explícita é recusado" || fail $C "rollback sem confirmação explícita é recusado" "$out"
 out=$(rollback $DB 1); echo "$out" | grep -q "abortado" && ok $C "rollback N1 fora de ordem (N2–N6 aplicadas) é recusado" || fail $C "rollback N1 fora de ordem é recusado" "$out"
+out=$(P $DB -1 -f "$RB/20261020003100_stock_phase1_down.sql" 2>&1)
+[ $? -eq 0 ] && ok $C "rollback Estoque Fase 1 executado" || fail $C "rollback Estoque Fase 1 executado" "$(echo "$out" | grep -m1 ERROR)"
 for n in 6 5 4 3 2 1; do
   out=$(rollback $DB $n); [ $? -eq 0 ] && ok $C "rollback N$n executado" || fail $C "rollback N$n executado" "$(echo "$out" | grep -m1 ERROR)"
 done

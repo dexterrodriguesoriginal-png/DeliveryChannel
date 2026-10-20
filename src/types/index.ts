@@ -163,6 +163,10 @@ export interface Product {
   stockQuantity: number;
   minStock?: number;
   unit: string; // 'un', 'kg', 'lata', 'garrafa', 'porção'
+  stockUnit?: 'un' | 'kg' | 'g' | 'l' | 'ml';
+  safetyStock?: number;
+  trackLots?: boolean;
+  stockIsResale?: boolean;
   createdAt?: string;
   updatedAt?: string;
   isDemo?: boolean;
@@ -617,7 +621,11 @@ export interface Order {
   isDemo?: boolean;
 }
 
-export type InventoryMovementType = 'ENTRADA' | 'SAIDA' | 'AJUSTE' | 'VENDA' | 'ESTORNO';
+export type InventoryMovementType =
+  | 'ENTRADA' | 'SAIDA' | 'AJUSTE' | 'VENDA' | 'ESTORNO' | 'PERDA'
+  | 'OPENING_BALANCE' | 'RECEIPT' | 'RESERVATION' | 'SALE' | 'CONSUMPTION'
+  | 'CANCEL_RELEASE' | 'CUSTOMER_RETURN' | 'LOSS' | 'DAMAGE' | 'EXPIRY'
+  | 'COUNT_ADJUSTMENT' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'WEIGHT_CORRECTION';
 
 export interface InventoryMovement {
   id: string;
@@ -632,6 +640,57 @@ export interface InventoryMovement {
   newStock: number;
   timestamp: string;
   createdByName?: string;
+  unit?: string;
+  locationId?: string;
+  locationName?: string;
+  actorUserId?: string;
+  orderId?: string;
+  supplierReference?: string;
+  lotId?: string;
+}
+
+export interface StockProductBalance {
+  productId: string;
+  productName: string;
+  locationId: string;
+  locationName: string;
+  sku?: string;
+  imageUrl?: string;
+  price: number;
+  unit: 'un' | 'kg' | 'g' | 'l' | 'ml';
+  physicalQuantity: number;
+  reservedQuantity: number;
+  blockedQuantity: number;
+  availableQuantity: number;
+  incomingQuantity: number;
+  minStock: number;
+  safetyStock: number;
+  trackLots: boolean;
+  stockIsResale: boolean;
+  isActive: boolean;
+  costPrice: number;
+  stockStatus: 'OUT_OF_STOCK' | 'BELOW_MINIMUM' | 'OK';
+}
+
+export interface StockLocation {
+  id: string;
+  name: string;
+  isDefault: boolean;
+}
+
+export interface StockCount {
+  id: string;
+  tenantId: string;
+  locationId: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  submittedAt: string;
+  items: Array<{
+    productId: string;
+    productName: string;
+    expectedQuantity: number;
+    countedQuantity: number;
+    unit: string;
+  }>;
 }
 
 export interface InternalNotification {

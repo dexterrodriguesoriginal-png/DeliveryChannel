@@ -32,6 +32,7 @@ import { getPublicStorePath, isValidStoreSlug } from '../../utils/publicStoreUrl
 import { canAccessEstTab } from '../../lib/navPermissions';
 import { useModules } from '../../hooks/useModules';
 import { isTabModuleEnabled } from '../../lib/modules';
+import { businessUsesStock } from '../../lib/stock';
 import { supabase } from '../../lib/supabase';
 
 export interface SidebarProps {
@@ -135,7 +136,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       groupTitle: 'OPERAÇÃO',
       items: [
         { id: 'est-drivers', label: 'Frota & Entregadores', icon: <Bike className="w-4 h-4 shrink-0" /> },
-        { id: 'est-inventory', label: 'Estoque & Kardex', icon: <Boxes className="w-4 h-4 shrink-0" /> },
+        ...(businessUsesStock(activeTenant?.businessType)
+          ? [{ id: 'est-inventory', label: 'Estoque', icon: <Boxes className="w-4 h-4 shrink-0" /> }]
+          : []),
         { id: 'est-theme', label: 'Customização Visual', icon: <Palette className="w-4 h-4 shrink-0" /> },
       ],
     },

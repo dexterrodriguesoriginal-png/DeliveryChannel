@@ -22,7 +22,8 @@ category_of() {
     10_*) echo "integridade_migracao";; 11_*) echo "pedidos_status_F5_F7";; 12_*) echo "pix_pagamento";;
     13_*) echo "pii_get_customer_order";; 14_*) echo "seed_F3";; 2[0-1]_*) echo "cupons";; 22_*) echo "checkout";;
     23_*) echo "pdv";; 3*) echo "storage_midia";; 4*) echo "carrossel_ofertas";; 5*) echo "campanhas_analytics";;
-    6*) echo "vitrine_promocional";; 7*) echo "rls_multitenant";; 80_*) echo "concorrencia_real";; *) echo "outros";;
+    6*) echo "vitrine_promocional";; 7*) echo "rls_multitenant";; 80_*) echo "concorrencia_real";;
+    85_*) echo "estoque";; *) echo "outros";;
   esac
 }
 
