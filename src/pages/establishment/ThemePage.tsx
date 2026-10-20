@@ -20,10 +20,11 @@ import {
   validateWcagContrast,
   SAFE_FONT_FAMILIES,
   DEFAULT_DELIVERY_CHANNEL_THEME,
+  safeImageUrl,
 } from '../../lib/theme/themeEngine';
 import { PRESET_THEMES } from '../../lib/theme/presetThemes';
 import { LiveStorePreview } from '../../components/establishment/theme/LiveStorePreview';
-import { ImageUploader } from '../../components/common/ImageUploader';
+import { ThemeImageUploader } from '../../components/establishment/theme/ThemeImageUploader';
 import { useToast } from '../../context/ToastContext';
 import {
   Sparkles,
@@ -185,10 +186,44 @@ export const ThemePage: React.FC = () => {
 
     setIsSaving(true);
     try {
-      // Salva no backend / Supabase
-      const saved = await themeService.updateTheme(securityContext, activeTenant.id, draftTheme);
+      // 3. Sanitização de URLs de imagens com safeImageUrl
+      const sanitizedLogo = draftTheme.logoUrl ? (safeImageUrl(draftTheme.logoUrl) ?? '') : '';
+      const sanitizedBanner = draftTheme.bannerUrl ? (safeImageUrl(draftTheme.bannerUrl) ?? '') : '';
 
-      // Atualiza o estado da aplicação no AuthContext
+      const sanitizedTheme: TenantTheme = {
+        ...draftTheme,
+        logoUrl: sanitizedLogo,
+        bannerUrl: sanitizedBanner,
+        tokens: {
+          ...draftTokens,
+          backgrounds: {
+            general: {
+              ...draftTokens.backgrounds.general,
+              imageUrl: draftTokens.backgrounds.general.imageUrl
+                ? (safeImageUrl(draftTokens.backgrounds.general.imageUrl) ?? '')
+                : undefined,
+            },
+            header: {
+              ...draftTokens.backgrounds.header,
+              imageUrl: draftTokens.backgrounds.header.imageUrl
+                ? (safeImageUrl(draftTokens.backgrounds.header.imageUrl) ?? '')
+                : undefined,
+            },
+            card: {
+              ...draftTokens.backgrounds.card,
+              imageUrl: draftTokens.backgrounds.card.imageUrl
+                ? (safeImageUrl(draftTokens.backgrounds.card.imageUrl) ?? '')
+                : undefined,
+            },
+          },
+        },
+      };
+
+      // Salva no backend / Supabase
+      const saved = await themeService.updateTheme(securityContext, activeTenant.id, sanitizedTheme);
+
+      // Atualiza o estado da aplicação no AuthContext e o rascunho
+      setDraftTheme(saved);
       setActiveTenant({
         ...activeTenant,
         theme: saved,
@@ -538,33 +573,23 @@ export const ThemePage: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                   <div>
-                    <ImageUploader
+                    <ThemeImageUploader
+                      tenantId={activeTenant.id}
+                      imageType="logo"
                       label="Logotipo Oficial da Loja"
-                      description="PNG, JPG ou WEBP até 5MB. Exibido no cabeçalho e ícone do PWA."
                       value={draftTheme.logoUrl || ''}
                       onChange={(url) => setDraftTheme({ ...draftTheme, logoUrl: url })}
-                      tenantId={activeTenant.id}
-                      entityType="branding"
                     />
                   </div>
 
                   <div>
-                    <ImageUploader
+                    <ThemeImageUploader
+                      tenantId={activeTenant.id}
+                      imageType="banner"
                       label="Imagem de Capa / Banner Superior"
-                      description="PNG, JPG ou WEBP até 5MB. Exibido no topo do catálogo."
                       value={draftTheme.bannerUrl || ''}
                       onChange={(url) => setDraftTheme({ ...draftTheme, bannerUrl: url })}
-                      tenantId={activeTenant.id}
-                      entityType="branding"
                     />
-                    <div className="pt-2">
-                      <Input
-                        label="Ou informe URL direta do Banner"
-                        value={draftTheme.bannerUrl || ''}
-                        onChange={(e) => setDraftTheme({ ...draftTheme, bannerUrl: e.target.value })}
-                        placeholder="https://images.unsplash.com/..."
-                      />
-                    </div>
                   </div>
                 </div>
               </div>
@@ -847,11 +872,18 @@ export const ThemePage: React.FC = () => {
                     {/* Controles para Imagem com Camada de Sobreposição */}
                     {currentBg.type === 'image' && (
                       <div className="space-y-3">
-                        <Input
-                          label="URL da Imagem de Fundo"
+                        <ThemeImageUploader
+                          tenantId={activeTenant.id}
+                          imageType="background"
+                          label={`Imagem de Fundo (${
+                            activeBgTarget === 'general'
+                              ? 'Geral da Tela'
+                              : activeBgTarget === 'header'
+                              ? 'Cabeçalho'
+                              : 'Superfície dos Cartões'
+                          })`}
                           value={currentBg.imageUrl || ''}
-                          onChange={(e) => updateCurrentBg({ imageUrl: e.target.value })}
-                          placeholder="https://images.unsplash.com/..."
+                          onChange={(url) => updateCurrentBg({ imageUrl: url })}
                         />
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
