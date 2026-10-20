@@ -63,6 +63,8 @@ import { Button } from './components/ui/Button';
 import { cn } from './utils/cn';
 import { canAccessEstTab } from './lib/navPermissions';
 import { isOwnerPanelTab } from './components/layout/ownerPanel';
+import { isPanelPathname, panelRouteHash, readPanelRoute } from './lib/panelRoute';
+import { isMarketingTab } from './lib/marketingTabs';
 
 function AppContent() {
   const { 
@@ -95,10 +97,56 @@ function AppContent() {
   } = useAuth();
   const { available: modulesAvailable, loading: modulesLoading, isModuleEnabled } = useModules();
 
-  const [activeTab, setActiveTab] = useState<string>('est-dashboard');
+  const [activeTab, setActiveTabState] = useState<string>(() => {
+    const route = readPanelRoute(window.location.hash);
+    return route && route.page !== 'driver' ? route.page : 'est-dashboard';
+  });
+  const [activeSubTab, setActiveSubTab] = useState<string>(() => (
+    readPanelRoute(window.location.hash)?.tab || ''
+  ));
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [wantsMerchantOnboarding, setWantsMerchantOnboarding] = useState(false);
+
+  const savePanelRoute = (page: string, tab?: string) => {
+    if (!isPanelPathname(window.location.pathname)) return;
+    const hash = panelRouteHash({ page, tab: tab || undefined });
+    if (window.location.hash === hash) return;
+    window.history.pushState(null, '', `${window.location.pathname}${window.location.search}${hash}`);
+  };
+
+  const setActiveTab = (page: string) => {
+    setActiveTabState(page);
+    setActiveSubTab('');
+    savePanelRoute(page);
+  };
+
+  const setPanelSubTab = (tab: string) => {
+    setActiveSubTab(tab);
+    savePanelRoute(activeRole === 'DRIVER' ? 'driver' : activeTab, tab);
+  };
+
+  useEffect(() => {
+    const syncPanelRoute = () => {
+      if (!isPanelPathname(window.location.pathname)) return;
+      const route = readPanelRoute(window.location.hash);
+      if (route) {
+        if (route.page !== 'driver') setActiveTabState(route.page);
+        setActiveSubTab(route.tab || '');
+        return;
+      }
+      if (window.location.hash === '' || window.location.hash === '#') {
+        setActiveTabState(activeRole === 'CEO' || activeRole === 'SUPER_ADMIN' ? 'ceo-dashboard' : 'est-dashboard');
+        setActiveSubTab('');
+      }
+    };
+    window.addEventListener('popstate', syncPanelRoute);
+    window.addEventListener('hashchange', syncPanelRoute);
+    return () => {
+      window.removeEventListener('popstate', syncPanelRoute);
+      window.removeEventListener('hashchange', syncPanelRoute);
+    };
+  }, [activeRole]);
 
   // Fecha automaticamente modal de login/conta após sucesso na autenticação
   // - Usuário novo: modal fecha para OnboardingCreateTenant assumir a tela principal
@@ -201,7 +249,7 @@ function AppContent() {
   // Fix PWA: só abre o app do entregador com papel DRIVER resolvido. Sem sessão (deep link/PWA
   // após logout) ou com outro papel, /entregador segue o fluxo normal (login/painel) em vez de tela branca.
   if (activeRole === 'DRIVER') {
-    return <DriverApp />;
+    return <DriverApp activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
   }
 
   // 3. Confirmação de E-mail Obrigatória (Comando 38: EMAIL_CONFIRMATION_REQUIRED)
@@ -470,7 +518,11 @@ function AppContent() {
     if (!isCeoRole && activeTab === 'est-modules' && activeRole !== 'OWNER' && activeRole !== 'MANAGER') {
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
-    const requiredModule = tabRequiredModule(activeTab);
+    const requiredModule = tabRequiredModule(activeTab) || (
+      (activeTab === 'est-marketing' || activeTab === 'est-qrcodes') && activeSubTab === 'pickup-qr'
+        ? 'pickup'
+        : undefined
+    );
     if (!isCeoRole && requiredModule && !modulesLoading && !isModuleEnabled(requiredModule)) {
       return (
         <ModuleDisabledScreen
@@ -521,7 +573,7 @@ function AppContent() {
       case 'est-dashboard':
         return <EstablishmentDashboard onNavigate={setActiveTab} />;
       case 'est-orders':
-        return <OrdersPage />;
+        return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
       case 'est-salon':
         return <SalonPage />;
       case 'est-products':
@@ -535,7 +587,12 @@ function AppContent() {
         return <CustomersPage />;
       case 'est-marketing':
       case 'est-qrcodes':
-        return <MarketingPage />;
+        return (
+          <MarketingPage
+            activeTab={isMarketingTab(activeSubTab) ? activeSubTab : null}
+            onTabChange={setPanelSubTab}
+          />
+        );
       case 'est-theme':
         return <ThemePage />;
       case 'est-drivers':

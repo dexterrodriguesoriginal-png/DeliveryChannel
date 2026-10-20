@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { showPickupQrTab } from '../marketingTabs';
+import { isMarketingTab, showPickupQrTab } from '../marketingTabs';
 
 describe('Marketing pickup QR tab', () => {
+  it('recognizes the supported Marketing sub-tabs', () => {
+    expect(isMarketingTab('pickup-qr')).toBe(true);
+    expect(isMarketingTab('campaigns')).toBe(true);
+    expect(isMarketingTab('not-a-marketing-tab')).toBe(false);
+  });
+
   it('shows only when pickup is enabled', () => {
     expect(showPickupQrTab(k => k === 'pickup')).toBe(true);
     expect(showPickupQrTab(() => false)).toBe(false);

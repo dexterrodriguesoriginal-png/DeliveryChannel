@@ -142,7 +142,12 @@ const PROMO_CARD_MODELS: CardModelConfig[] = [
 
 const DURATION_PRESETS = [3, 5, 7, 10, 15, 20, 30];
 
-export const MarketingPage: React.FC = () => {
+interface MarketingPageProps {
+  activeTab?: MarketingTab | null;
+  onTabChange?: (tab: MarketingTab) => void;
+}
+
+export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: requestedTab, onTabChange }) => {
   const { activeTenant, securityContext, activeRole } = useAuth();
   const { showToast } = useToast();
 
@@ -151,12 +156,20 @@ export const MarketingPage: React.FC = () => {
   const canManage = activeRole === 'OWNER' || activeRole === 'MANAGER' || activeRole === 'SUPER_ADMIN' || activeRole === 'CEO';
 
   // Navegação Interna do Módulo
-  const [activeTab, setActiveTab] = useState<MarketingTab>('creatives');
+  const [internalActiveTab, setInternalActiveTab] = useState<MarketingTab>('creatives');
+  const selectedTab = requestedTab === null ? 'creatives' : requestedTab ?? internalActiveTab;
+  const activeTab = selectedTab === 'campaigns' && !canManageCampaigns ? 'creatives' : selectedTab;
+  const changeActiveTab = (tab: MarketingTab) => {
+    setInternalActiveTab(tab);
+    onTabChange?.(tab);
+  };
   const { isModuleEnabled } = useModules();
   const pickupQrTabVisible = showPickupQrTab(isModuleEnabled);
   useEffect(() => {
-    if (activeTab === 'pickup-qr' && !pickupQrTabVisible) setActiveTab('creatives');
-  }, [activeTab, pickupQrTabVisible]);
+    if (requestedTab === undefined && internalActiveTab === 'pickup-qr' && !pickupQrTabVisible) {
+      setInternalActiveTab('creatives');
+    }
+  }, [requestedTab, internalActiveTab, pickupQrTabVisible]);
 
   // Dados de Criativos e Produtos
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -1208,7 +1221,7 @@ export const MarketingPage: React.FC = () => {
       {/* Tabs de Navegação */}
       <div className="flex items-center gap-2 border-b border-gray-200">
         <button
-          onClick={() => setActiveTab('creatives')}
+          onClick={() => changeActiveTab('creatives')}
           className={`pb-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
             activeTab === 'creatives'
               ? 'border-emerald-600 text-emerald-800'
@@ -1223,7 +1236,7 @@ export const MarketingPage: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('performance')}
+          onClick={() => changeActiveTab('performance')}
           className={`pb-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
             activeTab === 'performance'
               ? 'border-emerald-600 text-emerald-800'
@@ -1237,7 +1250,7 @@ export const MarketingPage: React.FC = () => {
         {canManageCampaigns && (
           <button
             data-testid="tab-campaigns"
-            onClick={() => setActiveTab('campaigns')}
+            onClick={() => changeActiveTab('campaigns')}
             className={`pb-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === 'campaigns'
                 ? 'border-emerald-600 text-emerald-800'
@@ -1250,7 +1263,7 @@ export const MarketingPage: React.FC = () => {
         )}
 
         <button
-          onClick={() => setActiveTab('materials')}
+          onClick={() => changeActiveTab('materials')}
           className={`pb-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
             activeTab === 'materials'
               ? 'border-emerald-600 text-emerald-800'
@@ -1263,7 +1276,7 @@ export const MarketingPage: React.FC = () => {
 
         {pickupQrTabVisible && (
           <button
-            onClick={() => setActiveTab('pickup-qr')}
+            onClick={() => changeActiveTab('pickup-qr')}
             data-testid="tab-pickup-qr"
             className={`pb-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === 'pickup-qr'

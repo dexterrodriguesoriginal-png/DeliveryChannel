@@ -25,12 +25,26 @@ const AVAIL_DOT: Record<string, string> = {
   emerald: 'bg-emerald-500 animate-pulse', amber: 'bg-amber-500', gray: 'bg-gray-400', rose: 'bg-rose-500',
 };
 
-export const DriverApp: React.FC = () => {
+interface DriverAppProps {
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
+}
+
+export const DriverApp: React.FC<DriverAppProps> = ({ activeTab: requestedTab, onTabChange }) => {
   const { activeTenant, securityContext, currentUser, signOut, driverApprovalStatus } = useAuth();
   // F5 (defesa): entregador não aprovado não busca nem assina pedidos.
   const ordersAllowed = canFetchDriverOrders(driverApprovalStatus);
   const { showToast } = useToast();
-  const [navTab, setNavTab] = useState('active-delivery');
+  const [internalNavTab, setInternalNavTab] = useState('active-delivery');
+  const navTab = requestedTab === undefined
+    ? internalNavTab
+    : ['active-delivery', 'history', 'driver-profile'].includes(requestedTab)
+      ? requestedTab
+      : 'active-delivery';
+  const changeNavTab = (tab: string) => {
+    setInternalNavTab(tab);
+    onTabChange?.(tab);
+  };
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   // Fix R3: presença (app aberto) ≠ disponibilidade operacional (drivers.status no servidor).
@@ -461,7 +475,7 @@ export const DriverApp: React.FC = () => {
       <MobileNavigation
         type="driver"
         activeTab={navTab}
-        onTabChange={setNavTab}
+        onTabChange={changeNavTab}
       />
     </div>
   );

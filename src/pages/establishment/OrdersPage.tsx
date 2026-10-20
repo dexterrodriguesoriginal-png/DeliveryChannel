@@ -86,7 +86,23 @@ function orderForCard(order: Order): Order {
     : order;
 }
 
-export const OrdersPage: React.FC = () => {
+interface OrdersPageProps {
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
+}
+
+const ORDER_STATUS_TABS = new Set([
+  'ALL',
+  'PENDING',
+  'CONFIRMED',
+  'PREPARING',
+  'READY',
+  'OUT_FOR_DELIVERY',
+  'DELIVERED',
+  'CANCELLED',
+]);
+
+export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab, onTabChange }) => {
   const { activeTenant, securityContext, availableTenants, switchTenant, supabaseUser, activeRole } = useAuth();
   const { isModuleEnabled } = useModules();
   const { showToast } = useToast();
@@ -142,7 +158,14 @@ export const OrdersPage: React.FC = () => {
   const prepMinutes = activeTenant?.settings?.defaultPrepTimeMinutes;
 
   // Filtros (Padrão: 'ALL' como no print, onde o pill "Todos 12" fica verde)
-  const [activeTab, setActiveTab] = useState<string>('ALL');
+  const [internalActiveTab, setInternalActiveTab] = useState<string>('ALL');
+  const activeTab = requestedTab === undefined
+    ? internalActiveTab
+    : ORDER_STATUS_TABS.has(requestedTab) ? requestedTab : 'ALL';
+  const changeActiveTab = (tab: string) => {
+    setInternalActiveTab(tab);
+    onTabChange?.(tab);
+  };
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterFulfillment, setFilterFulfillment] = useState<'ALL' | FulfillmentTab>('DELIVERY');
   const [filterDriver, setFilterDriver] = useState<'ALL' | 'WITH_DRIVER' | 'WITHOUT_DRIVER'>('ALL');
@@ -624,7 +647,7 @@ export const OrdersPage: React.FC = () => {
     setFilterFulfillment('ALL');
     setFilterDriver('ALL');
     setFilterPeriod('ALL');
-    setActiveTab('ALL');
+    changeActiveTab('ALL');
   };
 
   const formatPaymentMethod = (method?: string) => paymentMethodLabel(method);
@@ -1217,7 +1240,7 @@ export const OrdersPage: React.FC = () => {
             {/* 1. Novos */}
             <button
               type="button"
-              onClick={() => setActiveTab(activeTab === 'PENDING' ? 'ALL' : 'PENDING')}
+              onClick={() => changeActiveTab(activeTab === 'PENDING' ? 'ALL' : 'PENDING')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
                 activeTab === 'PENDING' ? 'border-amber-400 ring-1 ring-amber-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
@@ -1237,7 +1260,7 @@ export const OrdersPage: React.FC = () => {
             {/* 2. Confirmados */}
             <button
               type="button"
-              onClick={() => setActiveTab(activeTab === 'CONFIRMED' ? 'ALL' : 'CONFIRMED')}
+              onClick={() => changeActiveTab(activeTab === 'CONFIRMED' ? 'ALL' : 'CONFIRMED')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
                 activeTab === 'CONFIRMED' ? 'border-amber-400 ring-1 ring-amber-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
@@ -1257,7 +1280,7 @@ export const OrdersPage: React.FC = () => {
             {/* 3. Em preparo (AZUL — padrão KDS) */}
             <button
               type="button"
-              onClick={() => setActiveTab(activeTab === 'PREPARING' ? 'ALL' : 'PREPARING')}
+              onClick={() => changeActiveTab(activeTab === 'PREPARING' ? 'ALL' : 'PREPARING')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
                 activeTab === 'PREPARING' ? 'border-blue-500 ring-1 ring-blue-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
@@ -1277,7 +1300,7 @@ export const OrdersPage: React.FC = () => {
             {/* 4. Prontos (VERDE — padrão KDS) */}
             <button
               type="button"
-              onClick={() => setActiveTab(activeTab === 'READY' ? 'ALL' : 'READY')}
+              onClick={() => changeActiveTab(activeTab === 'READY' ? 'ALL' : 'READY')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
                 activeTab === 'READY' ? 'border-green-400 ring-1 ring-green-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
@@ -1297,7 +1320,7 @@ export const OrdersPage: React.FC = () => {
             {/* 5. Em rota (CIANO — padrão KDS) */}
             <button
               type="button"
-              onClick={() => setActiveTab(activeTab === 'OUT_FOR_DELIVERY' ? 'ALL' : 'OUT_FOR_DELIVERY')}
+              onClick={() => changeActiveTab(activeTab === 'OUT_FOR_DELIVERY' ? 'ALL' : 'OUT_FOR_DELIVERY')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
                 activeTab === 'OUT_FOR_DELIVERY' ? 'border-cyan-400 ring-1 ring-cyan-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
@@ -1317,7 +1340,7 @@ export const OrdersPage: React.FC = () => {
             {/* 6. Entregues */}
             <button
               type="button"
-              onClick={() => setActiveTab(activeTab === 'DELIVERED' ? 'ALL' : 'DELIVERED')}
+              onClick={() => changeActiveTab(activeTab === 'DELIVERED' ? 'ALL' : 'DELIVERED')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
                 activeTab === 'DELIVERED' ? 'border-slate-400 ring-1 ring-slate-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
@@ -1337,7 +1360,7 @@ export const OrdersPage: React.FC = () => {
             {/* 7. Cancelados */}
             <button
               type="button"
-              onClick={() => setActiveTab(activeTab === 'CANCELLED' ? 'ALL' : 'CANCELLED')}
+              onClick={() => changeActiveTab(activeTab === 'CANCELLED' ? 'ALL' : 'CANCELLED')}
               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
                 activeTab === 'CANCELLED' ? 'border-red-400 ring-1 ring-red-300' : 'border-slate-200/90 hover:border-slate-300'
               }`}
@@ -1516,7 +1539,7 @@ export const OrdersPage: React.FC = () => {
                         <button
                           key={tab.id}
                           type="button"
-                          onClick={() => setActiveTab(tab.id)}
+                          onClick={() => changeActiveTab(tab.id)}
                           className={`flex items-center gap-1 px-[7px] py-0.5 rounded-full text-[10.5px] font-bold whitespace-nowrap transition-all cursor-pointer h-6 shrink-0 ${
                             isActive
                               ? 'bg-emerald-700 text-white shadow-2xs'
@@ -1536,7 +1559,7 @@ export const OrdersPage: React.FC = () => {
                     })}
                     <button
                       type="button"
-                      onClick={() => setActiveTab('ALL')}
+                      onClick={() => changeActiveTab('ALL')}
                       className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-50 shrink-0 cursor-pointer text-[10px] font-bold"
                       title="Mais filtros"
                     >
