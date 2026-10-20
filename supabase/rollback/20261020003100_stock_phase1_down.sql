@@ -91,6 +91,16 @@ ALTER TABLE public.inventory_movements
     ALTER COLUMN previous_stock TYPE integer USING previous_stock::integer,
     ALTER COLUMN new_stock TYPE integer USING new_stock::integer;
 
+-- dependents (FKs to products(tenant_id,id) and stock_locations) dropped first
+DROP TABLE IF EXISTS public.stock_count_items;
+DROP TABLE IF EXISTS public.stock_counts;
+DROP TABLE IF EXISTS public.stock_blocks;
+DROP TABLE IF EXISTS public.stock_incoming;
+DROP TABLE IF EXISTS public.stock_reservations;
+DROP TABLE IF EXISTS public.stock_lots;
+DROP TABLE IF EXISTS public.stock_locations;
+DROP TABLE IF EXISTS public.stock_phase1_acl_snapshot;
+
 ALTER TABLE public.products
     DROP CONSTRAINT IF EXISTS products_tenant_id_id_stock_key,
     DROP COLUMN IF EXISTS stock_is_resale,
@@ -100,14 +110,6 @@ ALTER TABLE public.products
     DROP COLUMN IF EXISTS stock_unit,
     ALTER COLUMN stock_quantity TYPE integer USING stock_quantity::integer;
 
-DROP TABLE IF EXISTS public.stock_count_items;
-DROP TABLE IF EXISTS public.stock_counts;
-DROP TABLE IF EXISTS public.stock_blocks;
-DROP TABLE IF EXISTS public.stock_incoming;
-DROP TABLE IF EXISTS public.stock_reservations;
-DROP TABLE IF EXISTS public.stock_lots;
-DROP TABLE IF EXISTS public.stock_locations;
-DROP TABLE IF EXISTS public.stock_phase1_acl_snapshot;
 
 DROP INDEX IF EXISTS public.inventory_movements_location_time_idx;
 DROP INDEX IF EXISTS public.inventory_movements_order_idx;

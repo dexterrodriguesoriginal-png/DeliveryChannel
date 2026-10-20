@@ -26,7 +26,7 @@ SELECT t.throws(format($$SELECT public.update_order_status(%L,'PENDING')$$, curr
 SELECT t.throws(format($$SELECT public.update_order_status(%L,'CANCELLED','x')$$, current_setting('t.o4')), 'TRANSITION_FORBIDDEN', 'OPERATOR: não cancela pedido em PREPARING');
 SELECT t.throws(format($$SELECT public.update_order_status(%L,'CANCELLED')$$, current_setting('t.o1')), 'NOTE_REQUIRED', 'cancelamento exige nota');
 SELECT t.lives(format($$SELECT public.update_order_status(%L,'CANCELLED','cliente desistiu')$$, current_setting('t.o1')), 'OPERATOR: cancela CONFIRMED com nota');
-SELECT t.is(t.stock('d0000000-0000-0000-0000-0000000000a1'), current_setting('t.stock_a1')::int + 1, 'cancelamento devolve estoque no servidor');
+SELECT t.is(t.stock('d0000000-0000-0000-0000-0000000000a1'), current_setting('t.stock_a1')::int, 'cancelamento devolve estoque no servidor (fase 1: reserva na aceitação −1, estorno +1 = saldo líquido inalterado)');
 SELECT t.is(t.sq(format($$SELECT count(*) FROM public.inventory_movements WHERE reference_id = %L AND type = 'ESTORNO'$$, current_setting('t.o1'))), '1', 'devolução registrada uma única vez (ESTORNO)');
 SELECT t.throws(format($$SELECT public.update_order_status(%L,'CANCELLED','de novo')$$, current_setting('t.o1')), 'ORDER_CANCELLED_IS_FINAL', 'cancelar de novo é recusado');
 SELECT t.throws(format($$SELECT public.update_order_status(%L,'READY')$$, current_setting('t.o1')), 'ORDER_CANCELLED_IS_FINAL', 'OPERATOR: cancelado não reabre');

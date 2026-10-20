@@ -12,10 +12,10 @@ SELECT t.is((SELECT data_type FROM information_schema.columns
              WHERE table_schema='public' AND table_name='products' AND column_name='stock_quantity'),
             'numeric', 'estoque: quantidade usa tipo decimal');
 SELECT t.is((SELECT numeric_precision FROM information_schema.columns
-             WHERE table_schema='public' AND table_name='products' AND column_name='stock_quantity'),
+             WHERE table_schema='public' AND table_name='products' AND column_name='stock_quantity')::int,
             14, 'estoque: quantidade tem precisão 14');
 SELECT t.is((SELECT numeric_scale FROM information_schema.columns
-             WHERE table_schema='public' AND table_name='products' AND column_name='stock_quantity'),
+             WHERE table_schema='public' AND table_name='products' AND column_name='stock_quantity')::int,
             3, 'estoque: quantidade tem escala 3');
 SELECT t.ok(NOT EXISTS (
     SELECT 1 FROM pg_proc p
@@ -89,7 +89,10 @@ SELECT t.ok(EXISTS (SELECT 1 FROM public.inventory_movements
 SELECT set_config('t.stock_count', public.stock_submit_count(
     '10000000-0000-0000-0000-00000000000a',
     (SELECT id FROM public.stock_locations WHERE tenant_id='10000000-0000-0000-0000-00000000000a' AND is_default),
-    jsonb_build_array(jsonb_build_object('product_id', current_setting('t.stock_product')::uuid, 'counted_quantity', 3))
+    jsonb_build_array(jsonb_build_object('product_id', current_setting('t.stock_product')::uuid, 'counted_quantity',
+        (SELECT physical_quantity - 1 FROM public.stock_location_balances
+         WHERE product_id = current_setting('t.stock_product')::uuid AND tenant_id='10000000-0000-0000-0000-00000000000a'
+           AND location_id = (SELECT id FROM public.stock_locations WHERE tenant_id='10000000-0000-0000-0000-00000000000a' AND is_default))))
 )::text, false);
 RESET ROLE;
 
@@ -130,20 +133,32 @@ SELECT t.is((SELECT status FROM public.stock_reservations
              WHERE order_id=current_setting('t.stock_order')::uuid),
             'RELEASED', 'estoque: reserva cancelada marcada como liberada');
 SELECT set_config('t.stock_expired_order', t.mk_stock_order(current_setting('t.stock_product')::uuid)::text, false);
-SELECT t.lives(format($$SELECT public.update_order_status(%L,'CONFIRMED',NULL)$$,
-                      current_setting('t.stock_expired_order')),
-               'estoque: pedido pendente recebe reserva');
 RESET ROLE;
+-- simula a baixa legada do checkout (VENDA) que cria a reserva enquanto o pedido está PENDING
+UPDATE public.products SET stock_quantity = stock_quantity - 1 WHERE id = current_setting('t.stock_product')::uuid;
+INSERT INTO public.inventory_movements (tenant_id, product_id, product_name, quantity, type, reference_id, reason, previous_stock, new_stock, created_by_name)
+SELECT tenant_id, id, name, -1, 'VENDA', current_setting('t.stock_expired_order'), 'teste', stock_quantity + 1, stock_quantity, 'teste'
+FROM public.products WHERE id = current_setting('t.stock_product')::uuid;
+SELECT t.is((SELECT count(*) FROM public.stock_reservations
+             WHERE order_id=current_setting('t.stock_expired_order')::uuid AND status='ACTIVE'),
+            1::bigint, 'estoque: pedido pendente recebe reserva');
+SET session_replication_role = replica;
 UPDATE public.orders SET created_at = now() - interval '31 minutes'
 WHERE id = current_setting('t.stock_expired_order')::uuid;
+SET session_replication_role = origin;
+SELECT set_config('t.stock_before_expire', (SELECT stock_quantity::text FROM public.products WHERE id = current_setting('t.stock_product')::uuid), false);
 SET ROLE authenticated;
 SELECT t.login('a0000000-0000-0000-0000-000000000002');
 SELECT t.lives(format($$SELECT public.stock_expire_pending_reservations(
     '10000000-0000-0000-0000-00000000000a', %L)$$, current_setting('t.stock_expired_order')),
     'estoque: expiração libera reserva pendente');
 SELECT t.is((SELECT status FROM public.stock_reservations
-             WHERE order_id=current_setting('t.stock_expired_order')::uuid),
+             WHERE order_id=current_setting('t.stock_expired_order')::uuid)::text,
             'RELEASED', 'estoque: reserva expirada liberada');
+SELECT t.lives(format($$SELECT public.update_order_status(%L,'CANCELLED','Expirado')$$,
+                      current_setting('t.stock_expired_order')), 'estoque: pedido expirado pode ser cancelado');
+SELECT t.is((SELECT stock_quantity FROM public.products WHERE id = current_setting('t.stock_product')::uuid),
+            current_setting('t.stock_before_expire')::numeric + 1, 'estoque: expiração + cancelamento não devolve em dobro');
 RESET ROLE;
 
 SET ROLE authenticated;

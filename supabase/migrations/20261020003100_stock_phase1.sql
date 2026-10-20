@@ -90,9 +90,9 @@ ALTER TABLE public.inventory_movements
     ADD CONSTRAINT inventory_movements_location_fk FOREIGN KEY (tenant_id, location_id)
         REFERENCES public.stock_locations (tenant_id, id) ON DELETE RESTRICT,
     ADD CONSTRAINT inventory_movements_lot_fk FOREIGN KEY (tenant_id, lot_id)
-        REFERENCES public.stock_lots (tenant_id, id) ON DELETE RESTRICT,
-    ADD CONSTRAINT inventory_movements_order_fk FOREIGN KEY (tenant_id, order_id)
-        REFERENCES public.orders (tenant_id, id) ON DELETE RESTRICT;
+        REFERENCES public.stock_lots (tenant_id, id) ON DELETE RESTRICT;
+-- order_id is a soft reference (like reference_id): the ledger is append-only and must
+-- survive the owner's existing "delete CANCELLED order" flow, so no FK to orders here.
 
 CREATE INDEX inventory_movements_location_time_idx
     ON public.inventory_movements (tenant_id, location_id, created_at DESC);
@@ -115,6 +115,7 @@ CROSS JOIN LATERAL aclexplode(relation.relacl) acl
 WHERE relation.oid = 'public.inventory_movements'::regclass
   AND acl.grantee IN (0, 'anon'::regrole::oid, 'authenticated'::regrole::oid);
 REVOKE ALL ON public.stock_phase1_acl_snapshot FROM PUBLIC, anon, authenticated, service_role;
+ALTER TABLE public.stock_phase1_acl_snapshot ENABLE ROW LEVEL SECURITY;
 
 CREATE TABLE public.stock_reservations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -129,9 +130,9 @@ CREATE TABLE public.stock_reservations (
     created_at timestamptz NOT NULL DEFAULT now(),
     closed_at timestamptz,
     CONSTRAINT stock_reservations_order_fk FOREIGN KEY (tenant_id, order_id)
-        REFERENCES public.orders (tenant_id, id) ON DELETE RESTRICT,
+        REFERENCES public.orders (tenant_id, id) ON DELETE CASCADE,
     CONSTRAINT stock_reservations_item_fk FOREIGN KEY (order_item_id)
-        REFERENCES public.order_items (id) ON DELETE RESTRICT,
+        REFERENCES public.order_items (id) ON DELETE CASCADE,
     CONSTRAINT stock_reservations_product_fk FOREIGN KEY (tenant_id, product_id)
         REFERENCES public.products (tenant_id, id) ON DELETE RESTRICT,
     CONSTRAINT stock_reservations_location_fk FOREIGN KEY (tenant_id, location_id)
@@ -357,6 +358,7 @@ DECLARE
     v_reservation public.stock_reservations%ROWTYPE;
     v_location uuid;
     v_actor text;
+    v_restore numeric(14,3);
 BEGIN
     IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status = 'CONFIRMED' AND OLD.status = 'PENDING' THEN
         v_location := public._stock_default_location(NEW.tenant_id);
@@ -403,13 +405,22 @@ BEGIN
             FOR UPDATE
         LOOP
             SELECT * INTO v_product FROM public.products
-            WHERE id = v_reservation.product_id AND tenant_id = NEW.tenant_id;
+            WHERE id = v_reservation.product_id AND tenant_id = NEW.tenant_id FOR UPDATE;
+            v_restore := CASE WHEN EXISTS (
+                SELECT 1 FROM public.inventory_movements e
+                WHERE e.tenant_id = NEW.tenant_id AND e.reference_id = NEW.id::text
+                  AND e.type = 'ESTORNO' AND e.created_at < v_reservation.created_at
+            ) THEN v_reservation.quantity ELSE 0 END;
+            IF v_restore > 0 THEN
+                UPDATE public.products SET stock_quantity = stock_quantity + v_restore, updated_at = now()
+                WHERE id = v_reservation.product_id AND tenant_id = NEW.tenant_id;
+            END IF;
             INSERT INTO public.inventory_movements
                 (tenant_id, product_id, product_name, quantity, type, reference_id, order_id, reason,
                  previous_stock, new_stock, created_by_name, location_id, unit, actor_user_id)
-            VALUES (NEW.tenant_id, v_reservation.product_id, v_product.name, 0,
+            VALUES (NEW.tenant_id, v_reservation.product_id, v_product.name, v_restore,
                     'CANCEL_RELEASE', NEW.id::text, NEW.id, 'Reserva liberada pelo cancelamento do pedido',
-                    v_product.stock_quantity, v_product.stock_quantity, 'Sistema',
+                    v_product.stock_quantity, v_product.stock_quantity + v_restore, 'Sistema',
                     v_reservation.location_id, v_reservation.unit, auth.uid());
             UPDATE public.stock_reservations SET status = 'RELEASED', closed_at = now()
             WHERE id = v_reservation.id;
@@ -474,7 +485,7 @@ BEGIN
             (tenant_id, product_id, product_name, quantity, type, reference_id, order_id, reason,
              previous_stock, new_stock, created_by_name, location_id, unit, actor_user_id)
         VALUES (p_tenant_id, v_reservation.product_id, v_product.name, v_reservation.quantity,
-                'CANCEL_RELEASE', p_order_id::text, p_order_id,
+                'ESTORNO', p_order_id::text, p_order_id,
                 'Liberação de reserva após expiração do pedido pendente',
                 v_product.stock_quantity, v_product.stock_quantity + v_reservation.quantity,
                 COALESCE(v_actor, 'Equipe'), v_reservation.location_id, v_reservation.unit, auth.uid());
@@ -1018,7 +1029,7 @@ BEGIN
            OR v_product.counted_quantity > 99999999999.999 THEN
             RAISE EXCEPTION 'STOCK_COUNT_INVALID_QUANTITY';
         END IF;
-        SELECT available_quantity INTO v_expected
+        SELECT physical_quantity INTO v_expected
         FROM public.stock_location_balances
         WHERE tenant_id = p_tenant_id AND location_id = p_location_id AND product_id = v_product.product_id;
         IF NOT FOUND THEN RAISE EXCEPTION 'STOCK_PRODUCT_NOT_FOUND'; END IF;
@@ -1052,7 +1063,7 @@ BEGIN
     FOR v_item IN SELECT * FROM public.stock_count_items
         WHERE count_id = p_count_id ORDER BY product_id FOR UPDATE
     LOOP
-        SELECT available_quantity INTO v_delta FROM public.stock_location_balances
+        SELECT physical_quantity INTO v_delta FROM public.stock_location_balances
         WHERE tenant_id = v_count.tenant_id AND location_id = v_count.location_id
           AND product_id = v_item.product_id;
         v_delta := v_item.counted_quantity - COALESCE(v_delta, 0);
@@ -1162,6 +1173,21 @@ GRANT EXECUTE ON FUNCTION public.stock_dashboard(uuid),
     public.stock_update_product_settings(uuid,uuid,text,numeric,numeric,boolean,boolean),
     public.stock_set_block(uuid,uuid,uuid,numeric,text,boolean)
     TO authenticated;
+
+DO $widen$
+DECLARE r record; v_def text; v_new text;
+BEGIN
+    FOR r IN SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+             JOIN pg_language l ON l.oid = p.prolang
+             WHERE n.nspname = 'public' AND l.lanname = 'plpgsql' AND p.prosrc LIKE '%stock_quantity%'
+               AND p.prosrc ~* '\m(v_prev|v_prev_stock|v_new_stock)\s+INT(EGER)?\s*;'
+    LOOP
+        v_def := pg_get_functiondef(r.oid);
+        v_new := regexp_replace(v_def, '\m(v_prev|v_prev_stock|v_new_stock)(\s+)INT(EGER)?(\s*;)', '\1\2numeric(14,3)\4', 'gi');
+        IF v_new <> v_def THEN EXECUTE v_new; END IF;
+    END LOOP;
+END
+$widen$;
 
 NOTIFY pgrst, 'reload schema';
 COMMIT;
