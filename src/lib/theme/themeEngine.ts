@@ -191,12 +191,13 @@ export function formatCssBackground(bg: BackgroundStyleConfig): string {
     }
 
     case 'image': {
-      if (!bg.imageUrl) return bg.color || '#f8fafc';
+      const safeUrl = safeImageUrl(bg.imageUrl);
+      if (!safeUrl) return bg.color || '#f8fafc';
       const overlayColor = bg.overlayColor || '#000000';
       const opacity = ((bg.overlayOpacity ?? 40) / 100).toFixed(2);
       const rgb = hexToRgb(overlayColor) || { r: 0, g: 0, b: 0 };
       const overlayRgba = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
-      return `linear-gradient(${overlayRgba}, ${overlayRgba}), url("${bg.imageUrl}")`;
+      return `linear-gradient(${overlayRgba}, ${overlayRgba}), url("${safeUrl}")`;
     }
 
     default:
@@ -296,6 +297,14 @@ export function createDefaultThemeTokens(base?: Partial<TenantTheme>): ThemeToke
       categoryStyle: 'solid',
     },
   };
+}
+
+/** Only https (or same-origin relative) image URLs; strips characters that could escape CSS url(). */
+export function safeImageUrl(raw?: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const v = raw.trim();
+  if (!/^https:\/\/[^\s"'()\\<>]+$/i.test(v) && !/^\/[^\s"'()\\<>]*$/.test(v)) return null;
+  return v;
 }
 
 export function themeToTokens(theme?: Partial<TenantTheme> | null): ThemeTokens {

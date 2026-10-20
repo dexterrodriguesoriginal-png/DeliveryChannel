@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+vi.mock('../../supabase', () => ({ supabase: {}, isSupabaseConfigured: false, ensureValidSession: async () => true }));
 import {
   validateHexColor,
   normalizeHexColor,
