@@ -8,11 +8,19 @@ export interface DineInCartLine {
   options: SelectedProductOption[];
 }
 
+/** Formato do servidor (_normalize_product_option_selections): chaves snake_case. */
+export interface DineInServerOption {
+  group_id: string;
+  option_id: string;
+  qty: number;
+  fraction: number | null;
+}
+
 export interface DineInRoundItem {
   productId: string;
   quantity: number;
   notes: string;
-  options: SelectedProductOption[];
+  options: DineInServerOption[];
 }
 
 function normalizedOptions(options: SelectedProductOption[]): SelectedProductOption[] {
@@ -59,7 +67,7 @@ export function dineInCartLineUnitPriceCents(line: DineInCartLine): number {
 }
 
 export function dineInRoundItem(
-  item: Omit<DineInRoundItem, 'notes' | 'options'> & {
+  item: { productId: string; quantity: number } & {
     notes?: string;
     options?: SelectedProductOption[];
   }
@@ -68,7 +76,12 @@ export function dineInRoundItem(
     productId: item.productId,
     quantity: item.quantity,
     notes: item.notes || '',
-    options: item.options || [],
+    options: (item.options || []).map(option => ({
+      group_id: option.groupId,
+      option_id: option.optionId,
+      qty: Math.trunc(Number(option.qty)),
+      fraction: option.fraction ?? null,
+    })),
   };
 }
 

@@ -47,8 +47,8 @@ describe('dine-in cart options', () => {
     expect(cart.map(dineInCartLineUnitPriceCents)).toEqual([2250, 2400]);
     expect(dineInOptionLabels(product, cart[0].options)).toEqual(['Adicionais: Queijo']);
     expect(dineInRoundItems(cart).map(({ productId, quantity, options }) => ({ productId, quantity, options }))).toEqual([
-      { productId: 'burger-1', quantity: 2, options: [{ groupId: 'extras', optionId: 'cheese', qty: 1 }] },
-      { productId: 'burger-1', quantity: 1, options: [{ groupId: 'extras', optionId: 'bacon', qty: 1 }] },
+      { productId: 'burger-1', quantity: 2, options: [{ group_id: 'extras', option_id: 'cheese', qty: 1, fraction: null }] },
+      { productId: 'burger-1', quantity: 1, options: [{ group_id: 'extras', option_id: 'bacon', qty: 1, fraction: null }] },
     ]);
   });
 
@@ -58,7 +58,7 @@ describe('dine-in cart options', () => {
       productId: 'burger-1',
       quantity: 1,
       notes: '',
-      options: [{ groupId: 'extras', optionId: 'bacon', qty: 1 }],
+      options: [{ group_id: 'extras', option_id: 'bacon', qty: 1, fraction: null }],
     }]);
   });
 
@@ -72,7 +72,7 @@ describe('dine-in cart options', () => {
       productId: 'burger-1',
       quantity: 2,
       notes: 'Sem cebola',
-      options: [{ groupId: 'extras', optionId: 'cheese', qty: 1 }],
+      options: [{ group_id: 'extras', option_id: 'cheese', qty: 1, fraction: null }],
     });
   });
 });
