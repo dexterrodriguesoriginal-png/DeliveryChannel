@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+vi.mock('../../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: false }));
 import { openDiningTabLabels } from '../OpenDiningTabsWarning';
 
 describe('open dining tab warning', () => {

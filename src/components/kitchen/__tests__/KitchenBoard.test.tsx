@@ -1,5 +1,6 @@
 import React from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+vi.mock('../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: false }));
 import { renderToStaticMarkup } from 'react-dom/server';
 import { KitchenBoard } from '../KitchenBoard';
 

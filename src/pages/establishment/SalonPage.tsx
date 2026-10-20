@@ -222,7 +222,7 @@ export const SalonPage: React.FC = () => {
     ? Math.round(subtotal * Number(selectedTab.service_fee_percent) / 100 * 100) / 100
     : 0;
   const totalCents = Math.round((subtotal + fee) * 100);
-  const canClose = activeRole !== 'WAITER' || closeRoles.includes('WAITER');
+  const canClose = activeRole === 'OWNER' || closeRoles.includes(activeRole || '');
   const closeTab = () => {
     if (!selectedTab) return;
     const lines = payments.map(payment => {
@@ -333,7 +333,7 @@ export const SalonPage: React.FC = () => {
             <div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm">
               <div className="flex justify-between"><span>Subtotal</span><b>{money(subtotal)}</b></div>
               <div className="flex justify-between"><span>Taxa de serviço (opcional)</span><b>{money(fee)}</b></div>
-              {selectedTab.service_fee_percent > 0 && !selectedTab.service_fee_removed && activeRole !== 'WAITER' && <>
+              {selectedTab.service_fee_percent > 0 && !selectedTab.service_fee_removed && <>
                 <input aria-label="Motivo para remover a taxa" value={feeReason} onChange={event => setFeeReason(event.target.value)} placeholder="Motivo para remover a taxa" className="mt-3 w-full rounded-lg border px-3 py-2" />
                 <button type="button" onClick={removeFee} disabled={!!busy} className="mt-2 rounded-lg border border-amber-400 px-3 py-2 text-sm font-bold text-amber-900">Remover taxa</button>
               </>}

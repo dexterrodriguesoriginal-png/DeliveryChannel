@@ -13,16 +13,16 @@ SELECT t.ok(
 SELECT t.ok(
   (SELECT prosecdef AND proconfig @> ARRAY['search_path=""'] FROM pg_catalog.pg_proc
    WHERE oid = 'public.request_bill(uuid,text,integer)'::regprocedure)
-  AND (SELECT prosecdef AND proconfig @> ARRAY['search_path=""'] FROM pg_catalog.pg_proc
-       WHERE oid = 'public.request_bill(uuid)'::regprocedure),
-  'overloads de request_bill usam SECURITY DEFINER com search_path vazio'
+  AND (SELECT count(*) = 1 FROM pg_catalog.pg_proc WHERE proname = 'request_bill'
+       AND pronamespace = 'public'::regnamespace),
+  'request_bill tem uma única assinatura (sem ambiguidade) com SECURITY DEFINER e search_path vazio'
 );
 SELECT t.ok(
   has_function_privilege('anon', 'public.request_bill(uuid,text,integer)', 'EXECUTE')
-  AND has_function_privilege('authenticated', 'public.request_bill(uuid)', 'EXECUTE')
+  AND has_function_privilege('authenticated', 'public.request_bill(uuid,text,integer)', 'EXECUTE')
   AND (SELECT pronargdefaults = 2 FROM pg_catalog.pg_proc
        WHERE oid = 'public.request_bill(uuid,text,integer)'::regprocedure),
-  'clientes podem executar ambos os overloads de request_bill'
+  'clientes executam request_bill; chamada com 1 argumento usa os padrões'
 );
 SELECT t.ok(
   (SELECT prosecdef AND proconfig @> ARRAY['search_path=""'] FROM pg_catalog.pg_proc
@@ -78,6 +78,9 @@ SET ROLE authenticated;
 SELECT t.login('a0000000-0000-0000-0000-000000000008');
 SELECT set_config('t.payment_session',
   public.open_or_join_tab('dine-in-payment-test', 'Cliente', 'payment-test-device') ->> 'sessionId', false);
+SELECT t.login('a0000000-0000-0000-0000-000000000001');
+SELECT public.approve_session(current_setting('t.payment_session')::uuid);
+SELECT t.login('a0000000-0000-0000-0000-000000000008');
 SELECT public.submit_round(
   '[{"productId":"d0000000-0000-0000-0000-0000000000a1","quantity":1}]',
   gen_random_uuid(), current_setting('t.payment_session')::uuid
@@ -163,3 +166,17 @@ SELECT t.is(
   true,
   'assinatura de um argumento mantém o comportamento anterior'
 );
+
+-- close_roles vale para todos os papéis (dono sempre pode).
+RESET ROLE;
+SELECT set_config('t.pc_tab', (SELECT tab_id::text FROM public.tab_sessions WHERE id = current_setting('t.payment_session')::uuid), false);
+UPDATE public.tenant_modules SET config = config || '{"close_roles":["OWNER","MANAGER"]}'::jsonb
+WHERE tenant_id = '10000000-0000-0000-0000-00000000000a' AND module_key = 'dine_in';
+SET ROLE authenticated;
+SELECT t.login('a0000000-0000-0000-0000-000000000004');
+SELECT t.throws(format($$SELECT public.close_tab(%L, '[{"method":"PIX","amount_cents":1}]')$$, current_setting('t.pc_tab')),
+  'não está autorizado', 'CASHIER fora de close_roles não encerra conta');
+SELECT t.login('a0000000-0000-0000-0000-000000000001');
+SELECT t.throws(format($$SELECT public.close_tab(%L, '[{"method":"PIX","amount_cents":1}]')$$, current_setting('t.pc_tab')),
+  'PAYMENT_TOTAL_MISMATCH', 'dono passa da checagem de papel mesmo fora de close_roles');
+RESET ROLE;
