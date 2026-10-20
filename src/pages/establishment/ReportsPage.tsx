@@ -308,6 +308,24 @@ export const ReportsPage: React.FC = () => {
         </Card>
       </div>
 
+      {summary && (
+        <Card className="p-5 space-y-3" data-testid="sales-by-channel">
+          <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+            <ShoppingBag className="w-4 h-4 text-emerald-700" />
+            Vendas por canal
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {summary.salesByChannel.map(channel => (
+              <div key={channel.channel} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <div className="text-xs font-bold text-gray-700">{channel.label}</div>
+                <div className="text-lg font-black text-gray-900">{formatBRL(channel.revenue)}</div>
+                <div className="text-[10px] text-gray-500">{channel.orderCount} {channel.orderCount === 1 ? 'pedido' : 'pedidos'}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* ========================================================================= */}
       {/* 3. EVOLUÇÃO DAS VENDAS NO PERÍODO (TIMELINE LEVE)                         */}
       {/* ========================================================================= */}

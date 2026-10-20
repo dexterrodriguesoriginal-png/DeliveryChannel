@@ -7,6 +7,8 @@ import { tenantModuleRepository } from '../../repositories/tenantModuleRepositor
 import { useModules } from '../../hooks/useModules';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { SalonSetupPanel } from '../../components/establishment/SalonSetupPanel';
+import { salonPermissions } from '../../components/establishment/salonSetup';
 
 export const ModulesPage: React.FC = () => {
   const { activeTenant, activeRole } = useAuth();
@@ -16,7 +18,9 @@ export const ModulesPage: React.FC = () => {
   const [savedBusinessType, setSavedBusinessType] = useState<BusinessType | null>(null);
   const [savingKey, setSavingKey] = useState<ModuleKey | null>(null);
   const [savingPreset, setSavingPreset] = useState(false);
+  const [showSalonSetup, setShowSalonSetup] = useState(false);
   const canChange = activeRole === 'OWNER';
+  const salonAccess = salonPermissions(activeRole);
 
   useEffect(() => {
     let mounted = true;
@@ -132,6 +136,12 @@ export const ModulesPage: React.FC = () => {
                 <p className="mt-1 text-xs text-gray-600">{module.description}</p>
                 <p className="mt-1 text-xs text-gray-500"><strong>O que muda no seu painel:</strong> {module.changes}</p>
               </div>
+              <div className="flex shrink-0 items-center gap-3">
+              {module.key === 'dine_in' && isEnabled && salonAccess.canManageSalon && (
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowSalonSetup(value => !value)}>
+                  {showSalonSetup ? 'Fechar configuração' : 'Configurar'}
+                </Button>
+              )}
               <button
                 type="button"
                 role="switch"
@@ -149,10 +159,23 @@ export const ModulesPage: React.FC = () => {
                       {isEnabled && <Check className="h-3 w-3 text-emerald-700" />}
                     </span>}
               </button>
+              </div>
             </Card>
           );
         })}
       </div>
+
+      {showSalonSetup && activeTenant && (
+        <SalonSetupPanel
+          tenantId={activeTenant.id}
+          tenantName={activeTenant.name}
+          canManageTables={salonAccess.canManageSalon}
+          canConfigure={salonAccess.canManageSalon}
+          canManageServiceFeeModule={salonAccess.canManageServiceFeeModule}
+          canRegenerateQr={salonAccess.canRegenerateQr}
+          onConfigSaved={refresh}
+        />
+      )}
 
       <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
         Desativar um módulo não apaga dados: o recurso some dos menus e do catálogo público, mas o histórico continua nos relatórios. Ao reativar, os dados voltam a ficar disponíveis.

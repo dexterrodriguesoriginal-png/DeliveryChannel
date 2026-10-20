@@ -7,6 +7,10 @@ import { isValidUuid } from '../lib/uuid';
 import { localOnly } from '../lib/backend';
 import { requireBackendOrLocalDemo, toBackendError, isLocalDemoAllowed } from '../lib/backend';
 
+export function normalizeCategoryStation(value: unknown): Category['station'] {
+  return value === 'KITCHEN' || value === 'BAR' ? value : null;
+}
+
 function mapRowToCategory(row: any): Category {
   return {
     id: row.id,
@@ -18,6 +22,7 @@ function mapRowToCategory(row: any): Category {
     isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     isDemo: Boolean(row.is_demo),
+    station: normalizeCategoryStation(row.station),
   };
 }
 
@@ -82,6 +87,7 @@ export const categoryRepository = {
             display_order: data.order ?? 0,
             is_active: data.isActive !== undefined ? data.isActive : true,
             is_demo: data.isDemo ?? false,
+            station: data.station ?? null,
           })
           .select()
           .single();
@@ -117,6 +123,7 @@ export const categoryRepository = {
         if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
         if (updates.order !== undefined) dbUpdates.display_order = updates.order;
         if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
+        if (updates.station !== undefined) dbUpdates.station = updates.station;
 
         const { data: updated, error } = await supabase
           .from('categories')

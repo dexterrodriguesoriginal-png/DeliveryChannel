@@ -3,7 +3,7 @@ import { KanbanColumnHeader } from '../../components/establishment/KanbanColumnH
 import { ArrivalQueuePanel } from '../../components/pickup/ArrivalQueuePanel';
 import { PickupHandoverModal } from '../../components/pickup/PickupHandoverModal';
 import { arrivalRepository } from '../../repositories/arrivalRepository';
-import { tabCounts, tabTone, pickupActionLabel, type FulfillmentTab } from '../../lib/orders/fulfillmentTabs';
+import { tabCounts, tabTone, pickupActionLabel, matchesFulfillmentTab, dineInOrderLabel, resolveDineInTableLabels, type FulfillmentTab } from '../../lib/orders/fulfillmentTabs';
 import { PickupCodeBadge } from '../../components/establishment/PickupCodeBadge';
 import { storeDeliveredNeedsReason } from '../../lib/orders/handoff';
 import { useAuth } from '../../context/AuthContext';
@@ -78,6 +78,13 @@ import { OrderAgeBadge } from '../../components/establishment/OrderAgeBadge';
 import { FOCUS_ORDER_KEY } from '../../lib/orders/orderAlerts';
 import { sortOrdersNewestFirst, countStaleActiveOrders } from '../../lib/orders/orderAge';
 import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE, shouldBlockCallDriver } from '../../lib/orders/dispatchErrors';
+import { supabase } from '../../lib/supabase';
+
+function orderForCard(order: Order): Order {
+  return order.fulfillmentType === 'DINE_IN'
+    ? { ...order, customerName: dineInOrderLabel(order) }
+    : order;
+}
 
 export const OrdersPage: React.FC = () => {
   const { activeTenant, securityContext, availableTenants, switchTenant, supabaseUser, activeRole } = useAuth();
@@ -137,7 +144,7 @@ export const OrdersPage: React.FC = () => {
   // Filtros (Padrão: 'ALL' como no print, onde o pill "Todos 12" fica verde)
   const [activeTab, setActiveTab] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [filterFulfillment, setFilterFulfillment] = useState<'ALL' | 'DELIVERY' | 'PICKUP'>('DELIVERY');
+  const [filterFulfillment, setFilterFulfillment] = useState<'ALL' | FulfillmentTab>('DELIVERY');
   const [filterDriver, setFilterDriver] = useState<'ALL' | 'WITH_DRIVER' | 'WITHOUT_DRIVER'>('ALL');
   const [filterPeriod, setFilterPeriod] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | '7D' | '30D'>('ALL');
 
@@ -205,7 +212,30 @@ export const OrdersPage: React.FC = () => {
           : Promise.resolve([] as Driver[]),
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);
-      setRemoteOrders(orderData);
+      let ordersWithTableLabels = orderData;
+      const tabIds = [...new Set(orderData
+        .filter(order => order.fulfillmentType === 'DINE_IN' && !order.tableLabel && order.tabId)
+        .map(order => order.tabId!))];
+      if (tabIds.length) {
+        try {
+          const { data: tabs, error } = await supabase
+            .from('dining_tabs')
+            .select('id, dining_tables(label)')
+            .eq('tenant_id', activeTenant.id)
+            .in('id', tabIds);
+          if (!error && tabs) {
+            const labels = new Map<string, string>();
+            for (const tab of tabs as any[]) {
+              const table = Array.isArray(tab.dining_tables) ? tab.dining_tables[0] : tab.dining_tables;
+              if (table?.label) labels.set(tab.id, table.label);
+            }
+            ordersWithTableLabels = resolveDineInTableLabels(orderData, labels);
+          }
+        } catch {
+          // The table label is best-effort; keep the order visible if staff metadata is unavailable.
+        }
+      }
+      setRemoteOrders(ordersWithTableLabels);
       // Atribuição só para entregadores APPROVED confirmados (sem fallback).
       setDrivers(assignableDrivers(driverData));
       setStoreProducts(productsData);
@@ -215,7 +245,7 @@ export const OrdersPage: React.FC = () => {
       // 19/10: "Ver pedido" no Dashboard abre este pedido selecionado.
       let focusId: string | null = null;
       try { focusId = sessionStorage.getItem(FOCUS_ORDER_KEY); } catch { /* sem storage */ }
-      const focused = focusId ? orderData.find(o => o.id === focusId) : undefined;
+      const focused = focusId ? ordersWithTableLabels.find(o => o.id === focusId) : undefined;
       if (focusId) { try { sessionStorage.removeItem(FOCUS_ORDER_KEY); } catch { /* sem storage */ } }
       setSelectedOrder(prev => {
         if (focused) return focused;
@@ -223,13 +253,13 @@ export const OrdersPage: React.FC = () => {
           // 19/10: no celular o detalhe cobre a tela inteira; só abre sozinho em telas largas.
           const wide = typeof window === 'undefined' || typeof window.matchMedia !== 'function'
             || window.matchMedia('(min-width: 1024px)').matches;
-          return wide ? (orderData[0] || null) : null;
+          return wide ? (ordersWithTableLabels[0] || null) : null;
         }
-        return orderData.find(o => o.id === prev.id) || prev;
+        return ordersWithTableLabels.find(o => o.id === prev.id) || prev;
       });
 
       // Dispara som nativo Web Audio API caso novos pedidos pendentes tenham chegado
-      const currentPendingCount = orderData.filter(o => o.status === 'PENDING').length;
+      const currentPendingCount = ordersWithTableLabels.filter(o => o.status === 'PENDING').length;
       if (soundEnabled && prevPendingCountRef.current !== null && currentPendingCount > prevPendingCountRef.current) {
         playNewOrderSound();
       }
@@ -515,13 +545,14 @@ export const OrdersPage: React.FC = () => {
   };
 
   // Contagens exatas dos 7 status + Faturamento hoje (idêntico ao screenshot)
-  const countNovos = allOrders.filter(o => o.status === 'PENDING').length;
-  const countConfirmados = allOrders.filter(o => o.status === 'CONFIRMED').length;
-  const countEmPreparo = allOrders.filter(o => o.status === 'PREPARING').length;
-  const countProntos = allOrders.filter(o => o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER').length;
-  const countEmRota = allOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').length;
-  const countEntregues = allOrders.filter(o => o.status === 'DELIVERED').length;
-  const countCancelados = allOrders.filter(o => o.status === 'CANCELLED').length;
+  const fulfillmentOrders = allOrders.filter(order => matchesFulfillmentTab(order, filterFulfillment));
+  const countNovos = fulfillmentOrders.filter(o => o.status === 'PENDING').length;
+  const countConfirmados = fulfillmentOrders.filter(o => o.status === 'CONFIRMED').length;
+  const countEmPreparo = fulfillmentOrders.filter(o => o.status === 'PREPARING').length;
+  const countProntos = fulfillmentOrders.filter(o => o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER').length;
+  const countEmRota = fulfillmentOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').length;
+  const countEntregues = fulfillmentOrders.filter(o => o.status === 'DELIVERED').length;
+  const countCancelados = fulfillmentOrders.filter(o => o.status === 'CANCELLED').length;
 
   const faturamentoHoje = allOrders
     .filter(o => o.status === 'DELIVERED')
@@ -529,7 +560,7 @@ export const OrdersPage: React.FC = () => {
 
   // Status pills com contadores
   const statusPills = [
-    { id: 'ALL', label: 'Todos', count: allOrders.length },
+    { id: 'ALL', label: 'Todos', count: fulfillmentOrders.length },
     { id: 'PENDING', label: 'Novos', count: countNovos },
     { id: 'CONFIRMED', label: 'Confirmados', count: countConfirmados },
     { id: 'PREPARING', label: 'Em preparo', count: countEmPreparo },
@@ -549,7 +580,7 @@ export const OrdersPage: React.FC = () => {
       }
 
       // 2. Filtro de Atendimento
-      if (filterFulfillment !== 'ALL' && order.fulfillmentType !== filterFulfillment) {
+      if (!matchesFulfillmentTab(order, filterFulfillment)) {
         return false;
       }
 
@@ -1376,6 +1407,7 @@ export const OrdersPage: React.FC = () => {
                       <option value="ALL">Tipo: Todos</option>
                       <option value="DELIVERY">Delivery</option>
                       <option value="PICKUP">Retirada</option>
+                      <option value="DINE_IN">Salão</option>
                     </select>
 
                     <select
@@ -1445,9 +1477,9 @@ export const OrdersPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 19/10: abas Entrega | Retirada (contador de pedidos que pedem ação, na cor KDS dominante) */}
+                {/* Abas Entrega | Retirada | Salão, cada qual com contador de pedidos acionáveis. */}
                 <div className="flex items-stretch gap-1.5 pt-2 border-t border-slate-100" role="tablist" data-testid="fulfillment-tabs">
-                  {([['DELIVERY', 'Entrega', Bike], ['PICKUP', 'Retirada', ShoppingBag]] as const).map(([id, label, Icon]) => {
+                  {([['DELIVERY', 'Entrega', Bike], ['PICKUP', 'Retirada', ShoppingBag], ['DINE_IN', 'Salão', UtensilsCrossed]] as const).map(([id, label, Icon]) => {
                     const c = tabCounts(allOrders, id as FulfillmentTab, prepMinutes);
                     const tone = tabTone(c);
                     const toneCls: Record<string, string> = {
@@ -1666,7 +1698,7 @@ export const OrdersPage: React.FC = () => {
                     <CompactOrderCard
                       prepMinutes={prepMinutes}
                       key={order.id}
-                      order={order}
+                      order={orderForCard(order)}
                       density={density}
                       isSelected={selectedOrder?.id === order.id}
                       onSelectOrder={(ord) => setSelectedOrder(ord)}
@@ -1699,11 +1731,11 @@ export const OrdersPage: React.FC = () => {
                     >
                       <KanbanColumnHeader status="PENDING" label="Novos" count={countNovos} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {allOrders.filter(o => o.status === 'PENDING').map(order => (
+                        {fulfillmentOrders.filter(o => o.status === 'PENDING').map(order => (
                           <KanbanOrderCard
                             prepMinutes={prepMinutes}
                             key={order.id}
-                            order={order}
+                            order={orderForCard(order)}
                             isSelected={selectedOrder?.id === order.id}
                             onSelectOrder={(ord) => setSelectedOrder(ord)}
                             onUpdateStatus={handleUpdateStatus}
@@ -1729,11 +1761,11 @@ export const OrdersPage: React.FC = () => {
                     >
                       <KanbanColumnHeader status="CONFIRMED" label="Confirmados" count={countConfirmados} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {allOrders.filter(o => o.status === 'CONFIRMED').map(order => (
+                        {fulfillmentOrders.filter(o => o.status === 'CONFIRMED').map(order => (
                           <KanbanOrderCard
                             prepMinutes={prepMinutes}
                             key={order.id}
-                            order={order}
+                            order={orderForCard(order)}
                             isSelected={selectedOrder?.id === order.id}
                             onSelectOrder={(ord) => setSelectedOrder(ord)}
                             onUpdateStatus={handleUpdateStatus}
@@ -1759,11 +1791,11 @@ export const OrdersPage: React.FC = () => {
                     >
                       <KanbanColumnHeader status="PREPARING" label="Em preparo" count={countEmPreparo} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {allOrders.filter(o => o.status === 'PREPARING').map(order => (
+                        {fulfillmentOrders.filter(o => o.status === 'PREPARING').map(order => (
                           <KanbanOrderCard
                             prepMinutes={prepMinutes}
                             key={order.id}
-                            order={order}
+                            order={orderForCard(order)}
                             isSelected={selectedOrder?.id === order.id}
                             onSelectOrder={(ord) => setSelectedOrder(ord)}
                             onUpdateStatus={handleUpdateStatus}
@@ -1789,11 +1821,11 @@ export const OrdersPage: React.FC = () => {
                     >
                       <KanbanColumnHeader status="READY" label="Prontos" count={countProntos} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {allOrders.filter(o => o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER').map(order => (
+                        {fulfillmentOrders.filter(o => o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER').map(order => (
                           <KanbanOrderCard
                             prepMinutes={prepMinutes}
                             key={order.id}
-                            order={order}
+                            order={orderForCard(order)}
                             isSelected={selectedOrder?.id === order.id}
                             onSelectOrder={(ord) => setSelectedOrder(ord)}
                             onUpdateStatus={handleUpdateStatus}
@@ -1819,11 +1851,11 @@ export const OrdersPage: React.FC = () => {
                     >
                       <KanbanColumnHeader status="OUT_FOR_DELIVERY" label="Em rota" count={countEmRota} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {allOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').map(order => (
+                        {fulfillmentOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').map(order => (
                           <KanbanOrderCard
                             prepMinutes={prepMinutes}
                             key={order.id}
-                            order={order}
+                            order={orderForCard(order)}
                             isSelected={selectedOrder?.id === order.id}
                             onSelectOrder={(ord) => setSelectedOrder(ord)}
                             onUpdateStatus={handleUpdateStatus}
@@ -1912,7 +1944,7 @@ export const OrdersPage: React.FC = () => {
                                 <div className="flex items-center gap-1">
                                   <User className="w-2.5 h-2.5 text-slate-400 shrink-0" />
                                   <div>
-                                    <div className="font-bold text-slate-900 text-[9.5px] leading-tight">{order.customerName}</div>
+                                    <div className="font-bold text-slate-900 text-[9.5px] leading-tight">{dineInOrderLabel(order)}</div>
                                     <div className="text-[8px] text-slate-400 font-mono leading-none">{order.customerPhone}</div>
                                   </div>
                                 </div>
@@ -1931,7 +1963,12 @@ export const OrdersPage: React.FC = () => {
                               {/* Tipo */}
                               <td className="py-1 px-1.5 text-slate-700 text-[9px]">
                                 <span className="flex items-center gap-0.5">
-                                  {order.fulfillmentType === 'PICKUP' ? (
+                                  {order.fulfillmentType === 'DINE_IN' ? (
+                                    <>
+                                      <UtensilsCrossed className="w-2.5 h-2.5 text-slate-400" />
+                                      <span>Salão</span>
+                                    </>
+                                  ) : order.fulfillmentType === 'PICKUP' ? (
                                     <>
                                       <Building2 className="w-2.5 h-2.5 text-slate-400" />
                                       <span>Retirada</span>

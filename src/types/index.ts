@@ -143,6 +143,7 @@ export interface Category {
   isActive: boolean;
   createdAt?: string;
   isDemo?: boolean;
+  station?: 'KITCHEN' | 'BAR' | null;
 }
 
 export interface Product {
@@ -583,6 +584,10 @@ export interface Order {
   paymentMethod: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'CASH';
   paymentStatus: PaymentStatus;
   fulfillmentType: FulfillmentType;
+  /** Identificador da comanda e metadados da rodada do salão (dados staff-only). */
+  tabId?: string;
+  tableLabel?: string;
+  roundNo?: number;
   /** Parcela do desconto referente à retirada (proposta orders.pickup_discount). `discount` = total de descontos. */
   pickupDiscount?: number;
   /** Parcela do desconto referente ao cupom. */

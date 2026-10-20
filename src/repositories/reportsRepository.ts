@@ -25,16 +25,66 @@ export interface DailyReportSale {
   revenue: number;
 }
 
+export interface SalesChannelSummary {
+  channel: 'DELIVERY' | 'PICKUP' | 'DINE_IN';
+  label: string;
+  orderCount: number;
+  revenue: number;
+}
+
 export interface ReportsSummary {
   totalOrders: number;
   totalRevenue: number;
   averageTicket: number;
   activeCustomers: number;
   dailySales: DailyReportSale[];
+  salesByChannel: SalesChannelSummary[];
   topProducts: TopProductSummary[];
   salesByCategory: CategorySalesSummary[];
   startDate: string;
   endDate: string;
+}
+
+const SALES_CHANNELS: Array<Pick<SalesChannelSummary, 'channel' | 'label'>> = [
+  { channel: 'DELIVERY', label: 'Entrega' },
+  { channel: 'PICKUP', label: 'Retirada' },
+  { channel: 'DINE_IN', label: 'Salão' },
+];
+
+export function summarizeSalesByChannel(rows: readonly {
+  fulfillment_type?: string | null;
+  fulfillmentType?: string | null;
+  total_amount?: number | string | null;
+  totalAmount?: number | string | null;
+  status?: string | null;
+}[]): SalesChannelSummary[] {
+  const totals = new Map(SALES_CHANNELS.map(({ channel }) => [channel, { orderCount: 0, revenue: 0 }]));
+  for (const row of rows) {
+    if (row.status === 'CANCELLED') continue;
+    const channel = row.fulfillment_type || row.fulfillmentType;
+    const current = totals.get(channel as SalesChannelSummary['channel']);
+    if (!current) continue;
+    current.orderCount += 1;
+    current.revenue += Number(row.total_amount ?? row.totalAmount ?? 0) || 0;
+  }
+  return SALES_CHANNELS.map(({ channel, label }) => {
+    const total = totals.get(channel)!;
+    return { channel, label, orderCount: total.orderCount, revenue: Number(total.revenue.toFixed(2)) };
+  });
+}
+
+async function fetchSalesByChannel(tenantId: string, startDate: Date, endDate: Date): Promise<SalesChannelSummary[] | null> {
+  try {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('fulfillment_type, total_amount, status')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', startDate.toISOString())
+      .lt('created_at', endDate.toISOString());
+    return error || !data ? null : summarizeSalesByChannel(data);
+  } catch {
+    return null;
+  }
 }
 
 export interface ExportOrderRow {
@@ -71,6 +121,7 @@ export const reportsRepository = {
         });
 
         if (!error && data) {
+          const channelSales = await fetchSalesByChannel(tenantId, startDate, endDate);
           return {
             totalOrders: Number(data.totalOrders || 0),
             totalRevenue: Number(data.totalRevenue || 0),
@@ -81,6 +132,7 @@ export const reportsRepository = {
               orderCount: Number(ds.orderCount || 0),
               revenue: Number(ds.revenue || 0),
             })),
+            salesByChannel: channelSales || summarizeSalesByChannel(data.salesByChannel || []),
             topProducts: (data.topProducts || []).map((tp: any) => ({
               productId: tp.productId,
               productName: tp.productName || 'Produto',
@@ -102,7 +154,7 @@ export const reportsRepository = {
         // Consulta de contingência direta no Supabase
         const { data: orders, error: ordersError } = await supabase
           .from('orders')
-          .select('id, total_amount, status, created_at, customer_id, order_items(product_id, product_name, quantity, total_price)')
+          .select('id, total_amount, status, fulfillment_type, created_at, customer_id, order_items(product_id, product_name, quantity, total_price)')
           .eq('tenant_id', tenantId)
           .gte('created_at', startDate.toISOString())
           .lt('created_at', endDate.toISOString());
@@ -164,6 +216,7 @@ export const reportsRepository = {
             averageTicket,
             activeCustomers,
             dailySales,
+            salesByChannel: summarizeSalesByChannel(validOrders),
             topProducts,
             salesByCategory: [],
             startDate: startDate.toISOString(),
@@ -213,6 +266,11 @@ export const reportsRepository = {
       averageTicket,
       activeCustomers: distinctCustomers.size,
       dailySales: [],
+      salesByChannel: summarizeSalesByChannel(validOrders.map(order => ({
+        fulfillmentType: order.fulfillmentType,
+        totalAmount: order.totalAmount,
+        status: order.status,
+      }))),
       topProducts,
       salesByCategory: [],
       startDate: startDate.toISOString(),

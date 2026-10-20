@@ -1,11 +1,30 @@
 import type { Order } from '../../types';
 import { checkIsPreparingDelayed } from '../../utils/orderStatusTheme';
 
-/** 19/10: abas Entrega | Retirada no gestor de pedidos. */
-export type FulfillmentTab = 'DELIVERY' | 'PICKUP';
+/** Abas operacionais Entrega | Retirada | Salão no gestor de pedidos. */
+export type FulfillmentTab = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
 
 export function tabOf(order: Pick<Order, 'fulfillmentType'>): FulfillmentTab {
-  return order.fulfillmentType === 'PICKUP' ? 'PICKUP' : 'DELIVERY';
+  return order.fulfillmentType;
+}
+
+export function matchesFulfillmentTab(order: Pick<Order, 'fulfillmentType'>, tab: FulfillmentTab | 'ALL'): boolean {
+  return tab === 'ALL' || order.fulfillmentType === tab;
+}
+
+export function dineInOrderLabel(order: Pick<Order, 'fulfillmentType' | 'tableLabel' | 'customerName' | 'roundNo'>): string {
+  if (order.fulfillmentType !== 'DINE_IN') return order.customerName;
+  const guest = order.customerName?.trim();
+  const round = order.roundNo ? ` · rodada ${order.roundNo}` : '';
+  return `Mesa ${order.tableLabel?.trim() || '—'}${guest ? ` – ${guest}` : ''}${round}`;
+}
+
+export function resolveDineInTableLabels(orders: Order[], labelsByTabId: ReadonlyMap<string, string>): Order[] {
+  return orders.map(order =>
+    order.fulfillmentType === 'DINE_IN' && !order.tableLabel && order.tabId && labelsByTabId.has(order.tabId)
+      ? { ...order, tableLabel: labelsByTabId.get(order.tabId) }
+      : order
+  );
 }
 
 export interface TabCounts {

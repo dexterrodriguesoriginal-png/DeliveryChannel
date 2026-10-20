@@ -15,6 +15,14 @@ export interface ModuleSnapshot {
   businessType: BusinessType | null;
 }
 
+export interface DineInModuleConfig {
+  mode: 'TABLE' | 'INDIVIDUAL';
+  release_required: boolean;
+  round_limit: number;
+  salon_open: boolean;
+  close_roles: string[];
+}
+
 function isMissingModuleSchema(error: { code?: string; message?: string } | null | undefined): boolean {
   if (!error) return false;
   return ['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205'].includes(error.code || '');
@@ -76,6 +84,32 @@ export const tenantModuleRepository = {
     if (error) {
       if (isMissingModuleSchema(error)) throw new BackendError('MODULES_UNAVAILABLE', 'A configuração de módulos ainda não está disponível neste ambiente.');
       throw toBackendError(error, 'Falha ao atualizar o módulo.');
+    }
+  },
+
+  async updateConfig(tenantId: string, key: ModuleKey, config: Record<string, unknown>): Promise<void> {
+    const snapshot = await this.getForTenant(tenantId);
+    const module = snapshot.modules.find(item => item.key === key);
+    if (!module?.enabled) throw new BackendError('MODULE_DISABLED', 'Ative o módulo antes de configurar este recurso.');
+    await this.setEnabled(tenantId, key, true, config);
+  },
+
+  async configureDineIn(
+    tenantId: string,
+    config: DineInModuleConfig,
+    serviceFeeEnabled: boolean,
+    serviceFeeConfig: Record<string, unknown>,
+  ): Promise<void> {
+    requireBackend('configuração do salão');
+    const { error } = await supabase.rpc('configure_dine_in', {
+      p_tenant: tenantId,
+      p_config: config,
+      p_service_fee_enabled: serviceFeeEnabled,
+      p_service_fee_config: serviceFeeConfig,
+    });
+    if (error) {
+      if (isMissingModuleSchema(error)) throw new BackendError('MODULES_UNAVAILABLE', 'A configuração do salão ainda não está disponível neste ambiente.');
+      throw toBackendError(error, 'Falha ao salvar a configuração do salão.');
     }
   },
 

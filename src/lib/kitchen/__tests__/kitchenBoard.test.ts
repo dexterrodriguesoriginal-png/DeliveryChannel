@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { kitchenNextAction, kitchenColumns, minutesInStage, lateLevel, kitchenOrderLabel, normalizePairCode, formatPairCode, pairCodeFromHash, pairUrl, secondsLeft, isKitchenMissing, kitchenErrorMessage, newReadyIds } from '../kitchenBoard';
+import { filterKitchenOrders, kitchenNextAction, kitchenColumns, minutesInStage, lateLevel, kitchenOrderLabel, normalizePairCode, formatPairCode, pairCodeFromHash, pairUrl, secondsLeft, isKitchenMissing, kitchenErrorMessage, newReadyIds } from '../kitchenBoard';
 
 const o = (id: string, status: any, extra: any = {}) => ({ order_id: id, order_number: 1, status, fulfillment_type: 'DELIVERY', created_at: '2026-10-19T10:00:00Z', items: [], ...extra });
 describe('kitchenBoard', () => {
@@ -11,6 +11,19 @@ describe('kitchenBoard', () => {
   it('colunas ordenadas pela confirmação', () => {
     const c = kitchenColumns([o('b', 'CONFIRMED', { confirmed_at: '2026-10-19T10:05:00Z' }), o('a', 'CONFIRMED', { confirmed_at: '2026-10-19T10:01:00Z' }), o('p', 'PREPARING')] as any);
     expect(c.toDo.map(x => x.order_id)).toEqual(['a', 'b']); expect(c.doing.map(x => x.order_id)).toEqual(['p']);
+  });
+  it('filtra itens e remove cartões sem itens da estação selecionada', () => {
+    const kitchen = { order_item_id: 'k', product_name: 'Sopa', quantity: 1, station: 'KITCHEN' };
+    const bar = { order_item_id: 'b', product_name: 'Suco', quantity: 1, station: 'BAR' };
+    const orders = [
+      o('both', 'CONFIRMED', { items: [kitchen, bar] }),
+      o('bar-only', 'PREPARING', { items: [bar] }),
+    ] as any;
+    expect(filterKitchenOrders(orders, 'KITCHEN').map(order => [order.order_id, order.items.map(i => i.order_item_id)]))
+      .toEqual([['both', ['k']]]);
+    expect(filterKitchenOrders(orders, 'BAR').map(order => [order.order_id, order.items.map(i => i.order_item_id)]))
+      .toEqual([['both', ['b']], ['bar-only', ['b']]]);
+    expect(filterKitchenOrders(orders, 'ALL')).toEqual(orders);
   });
   it('tempo na etapa e atraso', () => {
     const now = new Date('2026-10-19T10:12:00Z').getTime();

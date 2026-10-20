@@ -15,6 +15,16 @@ export interface KitchenOrder {
   table_label?: string | null; round_no?: number | null;
   confirmed_at?: string | null; preparing_at?: string | null; items: KitchenItem[];
 }
+export type KitchenStationFilter = 'ALL' | 'KITCHEN' | 'BAR';
+
+/** Filtra linhas e remove os pedidos sem itens para a estação escolhida. */
+export function filterKitchenOrders(orders: readonly KitchenOrder[], station: KitchenStationFilter): KitchenOrder[] {
+  if (station === 'ALL') return [...orders];
+  return orders.flatMap(order => {
+    const items = order.items.filter(item => item.station === station);
+    return items.length ? [{ ...order, items }] : [];
+  });
+}
 
 /** Únicas transições que a cozinha pode fazer. */
 export function kitchenNextAction(status: string): { to: 'PREPARING' | 'READY'; label: string } | null {

@@ -32,6 +32,7 @@ export const CategoriesPage: React.FC = () => {
     description: '',
     imageUrl: '',
     isActive: true,
+    station: null as Category['station'],
   });
 
   const loadData = useCallback(async () => {
@@ -66,6 +67,7 @@ export const CategoriesPage: React.FC = () => {
       description: '',
       imageUrl: '',
       isActive: true,
+      station: null,
     });
     setIsModalOpen(true);
   };
@@ -77,6 +79,7 @@ export const CategoriesPage: React.FC = () => {
       description: c.description || '',
       imageUrl: c.imageUrl || '',
       isActive: c.isActive,
+      station: c.station || null,
     });
     setIsModalOpen(true);
   };
@@ -100,6 +103,7 @@ export const CategoriesPage: React.FC = () => {
           description: formData.description || undefined,
           imageUrl: formData.imageUrl || undefined,
           isActive: formData.isActive,
+          station: formData.station,
         });
         setCategories(prev => prev.map(c => c.id === updated.id ? updated : c));
         showToast({
@@ -113,6 +117,7 @@ export const CategoriesPage: React.FC = () => {
           description: formData.description || undefined,
           imageUrl: formData.imageUrl || undefined,
           isActive: formData.isActive,
+          station: formData.station,
           order: categories.length + 1,
         });
         setCategories(prev => [...prev, created]);
@@ -425,6 +430,24 @@ export const CategoriesPage: React.FC = () => {
             required
             autoFocus
           />
+
+          <div>
+            <label htmlFor="category-station" className="mb-1 block text-xs font-semibold text-gray-700">
+              Estação de preparo
+            </label>
+            <select
+              id="category-station"
+              value={formData.station || ''}
+              onChange={e => setFormData({ ...formData, station: (e.target.value || null) as Category['station'] })}
+              disabled={isSaving}
+              className="w-full rounded-xl border border-gray-300 bg-white p-2.5 text-xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="">Nenhum</option>
+              <option value="KITCHEN">Cozinha</option>
+              <option value="BAR">Bar</option>
+            </select>
+            <p className="mt-1 text-[11px] text-gray-500">Produtos desta categoria serão encaminhados à estação selecionada.</p>
+          </div>
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">

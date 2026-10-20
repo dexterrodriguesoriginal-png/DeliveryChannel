@@ -5,6 +5,7 @@ import { RoleId } from '../types';
 export const EST_TAB_PERMISSION: Record<string, Permission | null> = {
   'est-dashboard': null,
   'est-orders': 'view_orders',
+  'est-salon': 'view_orders',
   'est-products': 'manage_products',
   'est-categories': 'manage_categories',
   'est-marketing': 'manage_offers',
@@ -26,6 +27,7 @@ export const EST_TAB_PERMISSION: Record<string, Permission | null> = {
 /** Apenas filtro de UI; a autorização real continua no backend/RLS. */
 export function canAccessEstTab(role: RoleId | null | undefined, tabId: string): boolean {
   if (!(tabId in EST_TAB_PERMISSION)) return true;
+  if (tabId === 'est-salon') return role === 'OWNER' || role === 'MANAGER' || role === 'CASHIER' || role === 'WAITER';
   const perm = EST_TAB_PERMISSION[tabId];
   if (perm === null) return true;
   if (!role) return false;

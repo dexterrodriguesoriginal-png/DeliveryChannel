@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { ChefHat, Lock, Clock, ShoppingBag, Bike, Utensils } from 'lucide-react';
 import { ORDER_STATUS_THEME, BRAND_ACTION } from '../../utils/orderStatusTheme';
 import { kitchenRepository } from '../../repositories/kitchenRepository';
-import { kitchenColumns, kitchenNextAction, kitchenOrderLabel, kitchenErrorMessage, kitchenErrorCode, minutesInStage, lateLevel, type KitchenOrder } from '../../lib/kitchen/kitchenBoard';
+import { filterKitchenOrders, kitchenColumns, kitchenNextAction, kitchenOrderLabel, kitchenErrorMessage, kitchenErrorCode, minutesInStage, lateLevel, type KitchenOrder, type KitchenStationFilter } from '../../lib/kitchen/kitchenBoard';
 import { playShortBeep } from '../../utils/audio';
 
 /** 19/10: quadro da cozinha — 2 colunas (Confirmado → Em preparo), cores KDS, sem preço/dados pessoais. */
@@ -13,6 +13,7 @@ export const KitchenBoard: React.FC<{
   initialOrders?: KitchenOrder[];
 }> = ({ client, tenantId, storeName, deviceName, mode, canLock, onLocked, onFatal, initialOrders }) => {
   const [orders, setOrders] = useState<KitchenOrder[] | null>(initialOrders ?? null);
+  const [station, setStation] = useState<KitchenStationFilter>('ALL');
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [, tick] = useState(0);
@@ -47,7 +48,7 @@ export const KitchenBoard: React.FC<{
     finally { setBusy(null); }
   };
 
-  const cols = kitchenColumns(orders || []);
+  const cols = kitchenColumns(filterKitchenOrders(orders || [], station));
   const Col = ({ status, title, list }: { status: 'CONFIRMED' | 'PREPARING'; title: string; list: KitchenOrder[] }) => {
     const t = ORDER_STATUS_THEME[status];
     return (
@@ -112,10 +113,21 @@ export const KitchenBoard: React.FC<{
       </header>
       {msg && <div className="rounded-xl bg-red-50 border border-red-200 text-red-800 px-3 py-2 font-semibold" role="alert">{msg}</div>}
       {orders === null ? <p className="text-gray-500">Carregando…</p> : (
-        <div className="flex flex-col md:flex-row gap-3">
-          <Col status="CONFIRMED" title="A fazer" list={cols.toDo} />
-          <Col status="PREPARING" title="Em preparo" list={cols.doing} />
-        </div>
+        <>
+          <div className="flex gap-2" role="group" aria-label="Filtrar estação" data-testid="kitchen-station-filter">
+            {([['ALL', 'Todos'], ['KITCHEN', 'Cozinha'], ['BAR', 'Bar']] as const).map(([id, label]) => (
+              <button key={id} type="button" aria-pressed={station === id} data-testid={`kitchen-station-${id}`}
+                onClick={() => setStation(id)}
+                className={`rounded-xl px-4 py-2 font-bold border ${station === id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-col md:flex-row gap-3">
+            <Col status="CONFIRMED" title="A fazer" list={cols.toDo} />
+            <Col status="PREPARING" title="Em preparo" list={cols.doing} />
+          </div>
+        </>
       )}
       <p className="text-xs text-gray-500 text-center">Ao tocar em “Pronto”, o painel do dono é avisado para chamar o entregador ou o cliente.</p>
     </div>

@@ -25,11 +25,13 @@ import {
   ChevronLeft,
   ChevronRight,
   SlidersHorizontal,
+  Utensils,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { getPublicStorePath, isValidStoreSlug } from '../../utils/publicStoreUrl';
 import { canAccessEstTab } from '../../lib/navPermissions';
 import { useModules } from '../../hooks/useModules';
+import { supabase } from '../../lib/supabase';
 
 export interface SidebarProps {
   currentTab: string;
@@ -55,6 +57,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { activeRole, activeTenant } = useAuth();
   const { available: modulesAvailable, isModuleEnabled } = useModules();
+  const [hasDiningTables, setHasDiningTables] = useState(false);
+
+  useEffect(() => {
+    let current = true;
+    if (!activeTenant?.id || !modulesAvailable || !isModuleEnabled('dine_in')) {
+      setHasDiningTables(false);
+      return () => { current = false; };
+    }
+    void supabase.from('dining_tables').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', activeTenant.id).eq('active', true)
+      .then(({ count, error }) => {
+        if (!current) return;
+        if (error) {
+          if (!['PGRST202', 'PGRST205', '42P01', '42883'].includes(error.code || '')) {
+            console.error('[Sidebar] Falha ao verificar mesas do salão:', error);
+          }
+          setHasDiningTables(false);
+          return;
+        }
+        setHasDiningTables((count || 0) > 0);
+      });
+    return () => { current = false; };
+  }, [activeTenant?.id, modulesAvailable, isModuleEnabled]);
 
   // Estado de recolhimento no Desktop com persistência em localStorage
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -90,6 +115,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       groupTitle: 'VENDAS',
       items: [
         { id: 'est-orders', label: 'Pedidos', icon: <ShoppingBag className="w-4 h-4 shrink-0" /> },
+        ...(modulesAvailable && isModuleEnabled('dine_in') && hasDiningTables
+          ? [{ id: 'est-salon', label: 'Salão', icon: <Utensils className="w-4 h-4 shrink-0" /> }]
+          : []),
         { id: 'est-products', label: 'Cardápio / Produtos', icon: <Package className="w-4 h-4 shrink-0" /> },
         { id: 'est-categories', label: 'Categorias', icon: <Layers className="w-4 h-4 shrink-0" /> },
         { id: 'est-marketing', label: 'Marketing', icon: <QrCode className="w-4 h-4 shrink-0" /> },

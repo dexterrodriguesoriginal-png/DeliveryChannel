@@ -10,6 +10,7 @@ import { TeamMember, TeamInvite, RoleId } from '../../types';
 import { Users, UserPlus, Trash2, Mail, Phone, Clock, RefreshCw, XCircle, Send } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { TeamMemberStatusBadge } from '../../components/establishment/statusBadges';
+import { WaiterPhonePairingCard } from '../../components/establishment/WaiterPhonePairingCard';
 
 export const TeamPage: React.FC = () => {
   const { activeTenant, securityContext } = useAuth();
@@ -167,6 +168,8 @@ export const TeamPage: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      <WaiterPhonePairingCard />
 
       {/* Membros Ativos */}
       <div className="space-y-3">

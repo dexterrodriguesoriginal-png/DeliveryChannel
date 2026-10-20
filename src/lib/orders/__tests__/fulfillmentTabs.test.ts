@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tabCounts, tabTone, pickupActionLabel, paymentBadge, pickupWaitingMinutes, tabOf } from '../fulfillmentTabs';
+import { tabCounts, tabTone, pickupActionLabel, paymentBadge, pickupWaitingMinutes, tabOf, matchesFulfillmentTab, dineInOrderLabel, resolveDineInTableLabels } from '../fulfillmentTabs';
 
 const now = Date.now();
 const o = (p: any) => ({ id: Math.random().toString(), createdAt: new Date(now).toISOString(), updatedAt: new Date(now).toISOString(), statusHistory: [], fulfillmentType: 'DELIVERY', status: 'PENDING', ...p });
@@ -10,6 +10,18 @@ describe('fulfillmentTabs', () => {
     expect(tabCounts(list, 'DELIVERY')).toMatchObject({ novo: 1, rota: 1, acionaveis: 1 });
     expect(tabCounts(list, 'PICKUP')).toMatchObject({ novo: 1, pronto: 1, acionaveis: 2 });
     expect(tabOf({ fulfillmentType: 'PICKUP' } as any)).toBe('PICKUP');
+  });
+  it('mantém salão fora das abas Entrega/Retirada e formata mesa, cliente e rodada', () => {
+    const dineIn = o({ fulfillmentType: 'DINE_IN', customerName: 'Ana', tableLabel: 'N', roundNo: 3 });
+    expect(matchesFulfillmentTab(dineIn, 'DELIVERY')).toBe(false);
+    expect(matchesFulfillmentTab(dineIn, 'PICKUP')).toBe(false);
+    expect(matchesFulfillmentTab(dineIn, 'DINE_IN')).toBe(true);
+    expect(matchesFulfillmentTab(dineIn, 'ALL')).toBe(true);
+    expect(dineInOrderLabel(dineIn)).toBe('Mesa N – Ana · rodada 3');
+    expect(dineInOrderLabel({ ...dineIn, tableLabel: undefined, roundNo: undefined })).toBe('Mesa — – Ana');
+    const orders = [o({ id: 'tabbed', fulfillmentType: 'DINE_IN', tabId: 'tab-1' }), o({ id: 'existing', fulfillmentType: 'DINE_IN', tabId: 'tab-2', tableLabel: 'Sala 2' })] as any;
+    expect(resolveDineInTableLabels(orders, new Map([['tab-1', 'Mesa 1'], ['tab-2', 'ignored']])).map(order => order.tableLabel))
+      .toEqual(['Mesa 1', 'Sala 2']);
   });
   it('atrasado vira vermelho', () => {
     const late = o({ status: 'PREPARING', createdAt: new Date(now - 60 * 60000).toISOString() });

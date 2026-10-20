@@ -46,6 +46,7 @@ import { KitchenReadyAlert } from '../../components/kitchen/KitchenReadyAlert';
 import { useNewOrderAlarm } from '../../lib/orders/newOrderAlarm';
 import { arrivalRepository } from '../../repositories/arrivalRepository';
 import { PickupHandoverModal } from '../../components/pickup/PickupHandoverModal';
+import { OpenDiningTabsWarning } from '../../components/establishment/dashboard/OpenDiningTabsWarning';
 
 interface EstablishmentDashboardProps {
   onNavigate?: (tab: string) => void;
@@ -451,6 +452,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         onOpenMarketing={onNavigate && canAccessEstTab(activeRole, 'est-marketing') ? () => onNavigate('est-marketing') : undefined}
         onCopied={() => showToast({ type: 'success', title: 'Link copiado', message: 'O link da sua loja foi copiado.' })}
       />
+      <OpenDiningTabsWarning />
       <PickupHandoverModal order={handoverOrder} onClose={() => setHandoverOrder(null)}
         onDone={() => { setHandoverOrder(null); showToast({ type: 'success', title: 'Retirada confirmada', message: 'Pedido entregue ao cliente.' }); fetchRealData(true); }}
         onOverride={async (id, reason) => {

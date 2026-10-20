@@ -43,10 +43,12 @@ import { ReportsPage } from './pages/establishment/ReportsPage';
 import { TeamPage } from './pages/establishment/TeamPage';
 import { SettingsPage } from './pages/establishment/SettingsPage';
 import { ModulesPage } from './pages/establishment/ModulesPage';
+import { SalonPage } from './pages/establishment/SalonPage';
 import { useModules } from './hooks/useModules';
 
 // Mobile / Apps
 import { ClientApp } from './pages/client/ClientApp';
+import { DineInClientApp } from './pages/client/DineInClientApp';
 import { DriverApp } from './pages/driver/DriverApp';
 import { DriverStatusScreen } from './pages/driver/DriverStatusScreen';
 import { DriverInvitePage } from './pages/driver/DriverInvitePage';
@@ -120,6 +122,12 @@ function AppContent() {
     }
   }, [activeRole, activeTab]);
 
+  useEffect(() => {
+    if (activeRole === 'WAITER' && window.location.pathname === '/garcom') {
+      setActiveTab('est-salon');
+    }
+  }, [activeRole]);
+
   // Restaura navegação de retorno se o login com Google veio de uma loja pública (/app/:slug)
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -133,6 +141,12 @@ function AppContent() {
 
   // Rotas públicas ou dedicadas verificadas antes do gate administrativo
   const pathname = window.location.pathname;
+
+  // QR Code da mesa: /mesa/:token
+  const tableToken = pathname.match(/^\/mesa\/([^/]+)\/?$/)?.[1];
+  if (tableToken) {
+    return <DineInClientApp token={decodeURIComponent(tableToken)} />;
+  }
 
   // 1. Catálogo Público PWA da Adega/Loja: /app/:slug
   if (pathname.startsWith('/app/')) {
@@ -454,6 +468,9 @@ function AppContent() {
     if (!isCeoRole && activeTab === 'est-modules' && activeRole !== 'OWNER' && activeRole !== 'MANAGER') {
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
+    if (!isCeoRole && activeTab === 'est-salon' && (!modulesAvailable || !isModuleEnabled('dine_in'))) {
+      return <EstablishmentDashboard onNavigate={setActiveTab} />;
+    }
     if (!isCeoRole && activeTab === 'est-drivers' && modulesAvailable && !isModuleEnabled('delivery')) {
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
@@ -499,6 +516,8 @@ function AppContent() {
         return <EstablishmentDashboard onNavigate={setActiveTab} />;
       case 'est-orders':
         return <OrdersPage />;
+      case 'est-salon':
+        return <SalonPage />;
       case 'est-products':
         return <ProductsPage />;
       case 'est-categories':
