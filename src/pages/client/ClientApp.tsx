@@ -926,6 +926,21 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     return customerAppRepository.getMyCpf(storeData.tenant.id, supabaseUser.id);
   }, [storeData?.tenant.id, supabaseUser?.id]);
 
+  const loadMyContactConsent = useCallback(async () => {
+    if (!storeData?.tenant.id || !supabaseUser?.id) return { registered: false, contactConsent: false };
+    return customerAppRepository.getMyContactConsent(storeData.tenant.id);
+  }, [storeData?.tenant.id, supabaseUser?.id]);
+
+  const handleSetMyContactConsent = useCallback(async (accepted: boolean) => {
+    if (!storeData?.tenant.id || !supabaseUser?.id) throw new Error('Entre na sua conta para alterar esta permissão.');
+    await customerAppRepository.setMyContactConsent(storeData.tenant.id, accepted);
+  }, [storeData?.tenant.id, supabaseUser?.id]);
+
+  const handleRegisterForStore = useCallback(async (d: { name: string; phone: string; consentLgpd: boolean; contactConsent: boolean }) => {
+    if (!storeData?.tenant.id || !supabaseUser?.id) throw new Error('Entre na sua conta para se cadastrar nesta loja.');
+    await customerAppRepository.registerMyStoreCustomer(storeData.tenant.id, d);
+  }, [storeData?.tenant.id, supabaseUser?.id]);
+
   const handleSaveProfile = useCallback(async (d: { name: string; phone: string; cpf: string }) => {
     if (!storeData || !supabaseUser) return;
     const digits = d.phone.trim() ? normalizeBRPhone(d.phone) : '';
@@ -1978,6 +1993,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           loadCoupons={customerAppRepository.listStoreCoupons}
           loadCpf={loadMyCpf}
           onSaveProfile={handleSaveProfile}
+          loadContactConsent={loadMyContactConsent}
+          onSetContactConsent={handleSetMyContactConsent}
+          onRegisterForStore={handleRegisterForStore}
           favoriteProducts={favoriteIds.map(id => storeData.products.find(p => p.id === id)).filter((p): p is Product => Boolean(p))}
           qtyOf={qtyOfCatalog}
           onAdd={(p) => handleAddToCart(p)}

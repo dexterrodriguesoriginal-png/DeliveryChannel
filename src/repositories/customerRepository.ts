@@ -46,12 +46,54 @@ export interface CustomerOrderHistoryItem {
   fulfillmentType: string;
 }
 
+export interface CustomerCrmOrderHistoryItem {
+  id: string;
+  orderNumber: number;
+  createdAt: string;
+  status: string;
+  totalAmount: number;
+}
+
 export interface CreateCustomerInput {
   name: string;
   phone: string;
   email?: string;
   origin: CustomerOrigin;
   consentLgpd: boolean;
+  contactConsent: boolean;
+}
+
+export interface CustomerCrmItem {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  origin: CustomerOrigin;
+  totalOrders: number;
+  totalSpent: number;
+  lastOrderAt?: string;
+  contactConsent: boolean;
+  hasLgpdConsent: boolean;
+  isManual: boolean;
+  notes: string;
+  tags: string[];
+}
+
+export interface CustomerCrmListResponse {
+  totalCount: number;
+  customers: CustomerCrmItem[];
+  limit: number;
+  offset: number;
+}
+
+export interface CustomerCrmExportRow {
+  name: string;
+  phone: string;
+  origin: CustomerOrigin;
+  totalOrders: number;
+  totalSpent: number;
+  lastOrderAt?: string;
+  contactConsent: boolean;
 }
 
 function mapRowToCustomer(row: any): Customer {
@@ -73,6 +115,138 @@ function mapRowToCustomer(row: any): Customer {
 }
 
 export const customerRepository = {
+  async getCrmCustomers(
+    tenantId: string,
+    params: { search?: string; origin?: string; limit?: number; offset?: number }
+  ): Promise<CustomerCrmListResponse> {
+    if (!isSupabaseConfigured || !isValidUuid(tenantId)) {
+      throw new Error('O CRM exige uma conexão autenticada com a loja.');
+    }
+    const { data, error } = await supabase.rpc('crm_list_customers', {
+      p_tenant_id: tenantId,
+      p_search: params.search || null,
+      p_origin: params.origin && params.origin !== 'ALL' ? params.origin : null,
+      p_limit: params.limit ?? 50,
+      p_offset: params.offset ?? 0,
+    });
+    if (error) throw new Error(`Falha ao carregar clientes: ${error.message}`);
+    return {
+      totalCount: Number(data?.totalCount ?? 0),
+      limit: Number(data?.limit ?? params.limit ?? 50),
+      offset: Number(data?.offset ?? params.offset ?? 0),
+      customers: (data?.customers ?? []).map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        phone: row.phone,
+        email: row.email || undefined,
+        origin: row.origin || 'direct',
+        totalOrders: Number(row.totalOrders ?? 0),
+        totalSpent: Number(row.totalSpent ?? 0),
+        lastOrderAt: row.lastOrderAt || undefined,
+        contactConsent: Boolean(row.contactConsent),
+        hasLgpdConsent: Boolean(row.hasLgpdConsent),
+        isManual: Boolean(row.isManual),
+        notes: row.notes || '',
+        tags: Array.isArray(row.tags) ? row.tags : [],
+      })),
+    };
+  },
+
+  async getCrmCustomerOrderHistory(tenantId: string, customerId: string): Promise<CustomerCrmOrderHistoryItem[]> {
+    if (!isSupabaseConfigured || !isValidUuid(tenantId) || !isValidUuid(customerId)) {
+      throw new Error('Histórico indisponível sem uma conexão válida com a loja.');
+    }
+    const { data, error } = await supabase.rpc('crm_get_customer_orders', {
+      p_tenant_id: tenantId,
+      p_customer_id: customerId,
+    });
+    if (error) throw new Error(`Falha ao carregar histórico: ${error.message}`);
+    return (data ?? []).map((row: any) => ({
+      id: row.id,
+      orderNumber: Number(row.orderNumber ?? 0),
+      createdAt: row.createdAt,
+      status: row.status,
+      totalAmount: Number(row.totalAmount ?? 0),
+    }));
+  },
+
+  async createCrmManualCustomer(tenantId: string, input: CreateCustomerInput): Promise<void> {
+    if (!isSupabaseConfigured || !isValidUuid(tenantId)) {
+      throw new Error('Cadastro manual exige uma conexão válida com a loja.');
+    }
+    const { error } = await supabase.rpc('crm_create_manual_customer', {
+      p_tenant_id: tenantId,
+      p_name: input.name,
+      p_phone: input.phone,
+      p_email: input.email || null,
+      p_origin: input.origin,
+      p_lgpd_consent: input.consentLgpd,
+      p_contact_consent: input.contactConsent,
+    });
+    if (error) throw new Error(error.message);
+  },
+
+  async updateCrmManualCustomer(
+    tenantId: string,
+    customerId: string,
+    input: Pick<CreateCustomerInput, 'name' | 'phone' | 'email'>
+  ): Promise<void> {
+    const { error } = await supabase.rpc('crm_update_manual_customer', {
+      p_tenant_id: tenantId,
+      p_customer_id: customerId,
+      p_name: input.name,
+      p_phone: input.phone,
+      p_email: input.email || null,
+    });
+    if (error) throw new Error(error.message);
+  },
+
+  async saveCrmCustomerPrivateData(tenantId: string, customerId: string, notes: string, tags: string[]): Promise<void> {
+    const { error } = await supabase.rpc('crm_save_customer_private_data', {
+      p_tenant_id: tenantId,
+      p_customer_id: customerId,
+      p_notes: notes,
+      p_tags: tags,
+    });
+    if (error) throw new Error(error.message);
+  },
+
+  async hideCrmCustomer(tenantId: string, customerId: string): Promise<void> {
+    const { error } = await supabase.rpc('crm_hide_customer', {
+      p_tenant_id: tenantId,
+      p_customer_id: customerId,
+    });
+    if (error) throw new Error(error.message);
+  },
+
+  async getCrmCustomerContactTarget(tenantId: string, customerId: string): Promise<string> {
+    const { data, error } = await supabase.rpc('crm_get_customer_contact_target', {
+      p_tenant_id: tenantId,
+      p_customer_id: customerId,
+    });
+    if (error) throw new Error(error.message);
+    if (typeof data !== 'string') throw new Error('Contato autorizado não disponível.');
+    return data;
+  },
+
+  async exportCrmCustomers(tenantId: string, search?: string, origin?: string): Promise<CustomerCrmExportRow[]> {
+    const { data, error } = await supabase.rpc('crm_export_customers', {
+      p_tenant_id: tenantId,
+      p_search: search || null,
+      p_origin: origin && origin !== 'ALL' ? origin : null,
+    });
+    if (error) throw new Error(`Falha ao exportar clientes: ${error.message}`);
+    return (data ?? []).map((row: any) => ({
+      name: row.name,
+      phone: row.phone,
+      origin: row.origin || 'direct',
+      totalOrders: Number(row.totalOrders ?? 0),
+      totalSpent: Number(row.totalSpent ?? 0),
+      lastOrderAt: row.lastOrderAt || undefined,
+      contactConsent: Boolean(row.contactConsent),
+    }));
+  },
+
   /**
    * Obtém os dados do cliente associado ao auth.uid() autenticado no tenant
    */
@@ -81,7 +255,7 @@ export const customerRepository = {
     try {
       const { data, error } = await supabase
         .from('customers')
-        .select('*')
+        .select('id, tenant_id, user_id, name, phone, email, origin, total_orders, ltv_amount, first_order_date, last_order_date')
         .eq('tenant_id', tenantId)
         .eq('user_id', userId)
         .maybeSingle();
@@ -103,7 +277,7 @@ export const customerRepository = {
       try {
         const { data, error } = await supabase
           .from('customers')
-          .select('*')
+          .select('id, tenant_id, user_id, name, phone, email, origin, total_orders, ltv_amount, first_order_date, last_order_date')
           .eq('tenant_id', tenantId)
           .order('name');
 

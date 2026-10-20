@@ -1,736 +1,639 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../../context/AuthContext';
-import { 
-  customerRepository, 
-  CustomerSummaryItem, 
-  CustomerOrderHistoryItem,
-  CreateCustomerInput 
-} from '../../repositories/customerRepository';
-import { Card } from '../../components/ui/Card';
-import { Badge } from '../../components/ui/Badge';
-import { Input } from '../../components/ui/Input';
-import { Button } from '../../components/ui/Button';
-import { useToast } from '../../context/ToastContext';
-import { CustomerOrigin } from '../../types';
-import { 
-  Users, 
-  Search, 
-  Phone, 
-  ShieldCheck, 
-  ShieldAlert,
-  ShoppingBag, 
-  RefreshCw, 
-  Plus, 
-  X, 
-  ChevronRight, 
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  CalendarDays,
   ChevronLeft,
-  Calendar,
-  DollarSign,
-  AlertTriangle,
+  ChevronRight,
+  Clock3,
+  FileDown,
   History,
-  Mail,
-  UserCheck
+  MessageCircle,
+  NotebookPen,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  ShoppingBag,
+  Tag,
+  Users,
+  X,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
+import { Input } from '../../components/ui/Input';
+import {
+  CustomerCrmItem,
+  CustomerCrmOrderHistoryItem,
+  CreateCustomerInput,
+  customerRepository,
+} from '../../repositories/customerRepository';
+import { CustomerOrigin } from '../../types';
 import { formatBRL } from '../../lib/pricing/money';
-import { paymentMethodLabel, fulfillmentLabel, orderStatusLabel } from '../../lib/orders/labels';
+import { orderStatusLabel } from '../../lib/orders/labels';
+import { customerWhatsAppLink } from '../../lib/customer/crm';
 
 const PAGE_SIZE = 15;
+const EMPTY_FORM: CreateCustomerInput = {
+  name: '',
+  phone: '',
+  email: '',
+  origin: 'whatsapp',
+  consentLgpd: false,
+  contactConsent: false,
+};
+
+const ORIGINS: Record<string, { label: string; variant: 'brand' | 'success' | 'warning' | 'info' | 'neutral' }> = {
+  marketplace: { label: 'Marketplace', variant: 'warning' },
+  qr_code: { label: 'Link / QR Code', variant: 'brand' },
+  whatsapp: { label: 'WhatsApp', variant: 'success' },
+  instagram: { label: 'Instagram', variant: 'info' },
+  google: { label: 'Google', variant: 'neutral' },
+  indicacao: { label: 'Indicação', variant: 'success' },
+  direto: { label: 'Acesso direto', variant: 'neutral' },
+  direct: { label: 'Acesso direto', variant: 'neutral' },
+  promotional_checkout: { label: 'Checkout', variant: 'brand' },
+  storefront: { label: 'Loja online', variant: 'brand' },
+  storefront_promo: { label: 'Loja online', variant: 'brand' },
+  pos: { label: 'Balcão / PDV', variant: 'neutral' },
+  outros: { label: 'Outros', variant: 'neutral' },
+};
+
+function formatDate(value?: string, withTime = false): string {
+  if (!value) return 'Ainda sem pedidos';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('pt-BR', withTime
+    ? { dateStyle: 'short', timeStyle: 'short' }
+    : { dateStyle: 'medium' });
+}
+
+function csvCell(value: string | number | boolean): string {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
 
 export const CustomersPage: React.FC = () => {
-  const { activeTenant, securityContext } = useAuth();
+  const { activeTenant, activeRole } = useAuth();
   const { showToast } = useToast();
-
-  // Estados de listagem e paginação
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [originFilter, setOriginFilter] = useState<string>('ALL');
+  const [customers, setCustomers] = useState<CustomerCrmItem[]>([]);
+  const [search, setSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [origin, setOrigin] = useState('ALL');
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
-  const [customers, setCustomers] = useState<CustomerSummaryItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Estados do Modal de Cadastro Manual
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [savingCustomer, setSavingCustomer] = useState(false);
-  const [newCustomer, setNewCustomer] = useState<CreateCustomerInput>({
-    name: '',
-    phone: '',
-    email: '',
-    origin: 'whatsapp',
-    consentLgpd: false,
-  });
-
-  // Estados do Drawer de Detalhes / Histórico do Cliente
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerSummaryItem | null>(null);
-  const [customerOrders, setCustomerOrders] = useState<CustomerOrderHistoryItem[]>([]);
+  const [error, setError] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerCrmItem | null>(null);
+  const [orders, setOrders] = useState<CustomerCrmOrderHistoryItem[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [tagsText, setTagsText] = useState('');
+  const [savingPrivateData, setSavingPrivateData] = useState(false);
+  const [customerFormOpen, setCustomerFormOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<CustomerCrmItem | null>(null);
+  const [customerForm, setCustomerForm] = useState<CreateCustomerInput>(EMPTY_FORM);
+  const [savingCustomer, setSavingCustomer] = useState(false);
 
-  // Debounce da busca textual
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
-      setPage(0); // Reseta para a primeira página ao alterar o termo
-    }, 350);
-    return () => clearTimeout(handler);
-  }, [searchTerm]);
+    const timer = window.setTimeout(() => {
+      setSearchQuery(search.trim());
+      setPage(0);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-  // Consulta de clientes oficial do Supabase
-  const fetchCustomers = useCallback(async () => {
+  const loadCustomers = useCallback(async () => {
     if (!activeTenant?.id) return;
     setLoading(true);
-    setError(null);
+    setError('');
     try {
-      const response = await customerRepository.getCustomersSummary(
-        securityContext,
-        activeTenant.id,
-        {
-          searchTerm: debouncedSearch,
-          origin: originFilter,
-          limit: PAGE_SIZE,
-          offset: page * PAGE_SIZE,
-        }
-      );
+      const response = await customerRepository.getCrmCustomers(activeTenant.id, {
+        search: searchQuery,
+        origin,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      });
       setCustomers(response.customers);
       setTotalCount(response.totalCount);
-    } catch (err: any) {
-      console.error('[CustomersPage] Erro ao carregar clientes do Supabase:', err);
-      setError(err.message || 'Falha ao buscar clientes do servidor.');
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Falha ao carregar clientes.';
+      setError(message);
+      console.error('[CustomersPage] Não foi possível carregar o CRM:', cause);
     } finally {
       setLoading(false);
     }
-  }, [activeTenant?.id, securityContext, debouncedSearch, originFilter, page]);
+  }, [activeTenant?.id, origin, page, searchQuery]);
 
-  // Carregamento inicial e Supabase Realtime oficial
   useEffect(() => {
-    fetchCustomers();
-    if (!activeTenant?.id) return;
+    void loadCustomers();
+  }, [loadCustomers]);
 
-    // Escuta inserções e atualizações em customers e orders
-    const unsubscribe = customerRepository.subscribeToCustomers(activeTenant.id, () => {
-      fetchCustomers();
-    });
-    return unsubscribe;
-  }, [fetchCustomers, activeTenant?.id]);
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const currentOrigin = useMemo(() => (value: string) => ORIGINS[value] || {
+    label: value,
+    variant: 'neutral' as const,
+  }, []);
 
-  // Carrega histórico quando um cliente é selecionado
-  const handleSelectCustomer = async (c: CustomerSummaryItem) => {
-    setSelectedCustomer(c);
+  const openCustomer = async (customer: CustomerCrmItem) => {
+    setSelectedCustomer(customer);
+    setNotes(customer.notes);
+    setTagsText(customer.tags.join(', '));
+    setOrders([]);
     if (!activeTenant?.id) return;
     setLoadingOrders(true);
     try {
-      const orders = await customerRepository.getCustomerOrderHistory(
-        securityContext,
-        activeTenant.id,
-        c.id
-      );
-      setCustomerOrders(orders);
-    } catch (err: any) {
-      console.error('[CustomersPage] Erro ao carregar histórico:', err);
+      setOrders(await customerRepository.getCrmCustomerOrderHistory(activeTenant.id, customer.id));
+    } catch (cause) {
       showToast({
         type: 'error',
-        title: 'Histórico Indisponível',
-        message: 'Não foi possível carregar os pedidos deste cliente.',
+        title: 'Histórico indisponível',
+        message: cause instanceof Error ? cause.message : 'Não foi possível carregar os pedidos.',
       });
     } finally {
       setLoadingOrders(false);
     }
   };
 
-  // Submissão do cadastro manual de cliente
-  const handleCreateCustomer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeTenant?.id) return;
-    if (!newCustomer.name.trim() || !newCustomer.phone.trim()) {
+  const closeCustomer = () => {
+    setSelectedCustomer(null);
+    setOrders([]);
+  };
+
+  const savePrivateData = async () => {
+    if (!activeTenant?.id || !selectedCustomer) return;
+    setSavingPrivateData(true);
+    try {
+      const tags = [...new Set(tagsText.split(',').map((tag) => tag.trim()).filter(Boolean))];
+      await customerRepository.saveCrmCustomerPrivateData(activeTenant.id, selectedCustomer.id, notes, tags);
+      showToast({ type: 'success', title: 'Salvo', message: 'Observações e etiquetas foram atualizadas.' });
+      await loadCustomers();
+    } catch (cause) {
       showToast({
         type: 'error',
-        title: 'Campos Obrigatórios',
-        message: 'Por favor, informe ao menos o nome e o WhatsApp do cliente.',
+        title: 'Não foi possível salvar',
+        message: cause instanceof Error ? cause.message : 'Falha ao salvar os dados privados.',
+      });
+    } finally {
+      setSavingPrivateData(false);
+    }
+  };
+
+  const hideCustomer = async (customer: CustomerCrmItem) => {
+    if (!activeTenant?.id) return;
+    if (!window.confirm(`Remover ${customer.name} da lista desta loja? A conta do cliente não será excluída.`)) return;
+    try {
+      await customerRepository.hideCrmCustomer(activeTenant.id, customer.id);
+      if (selectedCustomer?.id === customer.id) closeCustomer();
+      showToast({ type: 'success', title: 'Cliente removido da lista', message: 'A conta e o histórico foram preservados.' });
+      await loadCustomers();
+    } catch (cause) {
+      showToast({
+        type: 'error',
+        title: 'Não foi possível remover',
+        message: cause instanceof Error ? cause.message : 'Falha ao ocultar cliente.',
+      });
+    }
+  };
+
+  const contactCustomer = async (customer: CustomerCrmItem) => {
+    if (!activeTenant?.id) return;
+    const popup = window.open('about:blank', '_blank');
+    if (!popup) {
+      showToast({ type: 'error', title: 'Ação bloqueada', message: 'Permita a abertura de uma nova aba para usar o WhatsApp.' });
+      return;
+    }
+    try {
+      const phone = await customerRepository.getCrmCustomerContactTarget(activeTenant.id, customer.id);
+      const link = customerWhatsAppLink(phone, true);
+      if (!link) throw new Error('O telefone autorizado não é válido para abrir o WhatsApp.');
+      popup.opener = null;
+      popup.location.href = link;
+    } catch (cause) {
+      popup.close();
+      showToast({
+        type: 'error',
+        title: 'Contato não autorizado',
+        message: cause instanceof Error ? cause.message : 'A permissão de contato não está ativa.',
+      });
+      await loadCustomers();
+    }
+  };
+
+  const startCreateCustomer = () => {
+    setEditingCustomer(null);
+    setCustomerForm(EMPTY_FORM);
+    setCustomerFormOpen(true);
+  };
+
+  const startEditCustomer = (customer: CustomerCrmItem) => {
+    setEditingCustomer(customer);
+    setCustomerForm({
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email || '',
+      origin: customer.origin,
+      consentLgpd: true,
+      contactConsent: customer.contactConsent,
+    });
+    setCustomerFormOpen(true);
+  };
+
+  const saveCustomer = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!activeTenant?.id) return;
+    if (!editingCustomer && !customerForm.consentLgpd) {
+      showToast({
+        type: 'error',
+        title: 'Consentimento necessário',
+        message: 'Registre o consentimento LGPD antes de adicionar um cliente manual.',
       });
       return;
     }
-
     setSavingCustomer(true);
     try {
-      await customerRepository.createCustomerManual(securityContext, activeTenant.id, newCustomer);
+      if (editingCustomer) {
+        await customerRepository.updateCrmManualCustomer(activeTenant.id, editingCustomer.id, customerForm);
+      } else {
+        await customerRepository.createCrmManualCustomer(activeTenant.id, customerForm);
+      }
+      setCustomerFormOpen(false);
+      setEditingCustomer(null);
       showToast({
         type: 'success',
-        title: 'Cliente Cadastrado',
-        message: `${newCustomer.name} foi adicionado à sua base com sucesso.`,
+        title: editingCustomer ? 'Cadastro atualizado' : 'Cliente adicionado',
+        message: editingCustomer ? 'O registro manual foi atualizado.' : 'O cliente foi adicionado à lista desta loja.',
       });
-      setIsAddModalOpen(false);
-      setNewCustomer({
-        name: '',
-        phone: '',
-        email: '',
-        origin: 'whatsapp',
-        consentLgpd: false,
-      });
-      fetchCustomers();
-    } catch (err: any) {
+      await loadCustomers();
+      if (editingCustomer) {
+        const updated = { ...editingCustomer, ...customerForm };
+        setSelectedCustomer((current) => current?.id === updated.id ? { ...current, ...updated } : current);
+      }
+    } catch (cause) {
       showToast({
         type: 'error',
-        title: 'Erro ao Cadastrar',
-        message: err.message || 'Falha ao salvar cliente.',
+        title: 'Não foi possível salvar',
+        message: cause instanceof Error ? cause.message : 'Falha ao salvar o cliente.',
       });
     } finally {
       setSavingCustomer(false);
     }
   };
 
-  if (!activeTenant) return null;
-
-  const originLabels: Record<CustomerOrigin, { label: string; variant: 'brand' | 'success' | 'warning' | 'info' | 'neutral' }> = {
-    marketplace: { label: 'Marketplace', variant: 'warning' },
-    qr_code: { label: 'QR Code Embalagem', variant: 'brand' },
-    whatsapp: { label: 'WhatsApp', variant: 'success' },
-    instagram: { label: 'Instagram', variant: 'info' },
-    google: { label: 'Google', variant: 'neutral' },
-    indicacao: { label: 'Indicação', variant: 'success' },
-    direto: { label: 'Acesso Direto', variant: 'neutral' },
-    direct: { label: 'Acesso Direto', variant: 'neutral' },
-    promotional_checkout: { label: 'Checkout Promocional', variant: 'brand' },
-    outros: { label: 'Outros Canais', variant: 'neutral' },
+  const exportCustomers = async () => {
+    if (!activeTenant?.id) return;
+    try {
+      const rows = await customerRepository.exportCrmCustomers(activeTenant.id, searchQuery, origin);
+      const header = ['Nome', 'Telefone', 'Canal', 'Pedidos', 'Total gasto', 'Último pedido', 'Contato permitido'];
+      const csv = [
+        header.map(csvCell).join(';'),
+        ...rows.map((row) => [
+          row.name,
+          row.phone,
+          currentOrigin(row.origin).label,
+          row.totalOrders,
+          row.totalSpent.toFixed(2),
+          row.lastOrderAt ? formatDate(row.lastOrderAt) : '',
+          row.contactConsent ? 'Sim' : 'Não',
+        ].map(csvCell).join(';')),
+      ].join('\n');
+      const objectUrl = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `clientes-${activeTenant.slug}.csv`;
+      link.click();
+      URL.revokeObjectURL(objectUrl);
+      showToast({ type: 'success', title: 'Exportação concluída', message: `${rows.length} clientes exportados.` });
+    } catch (cause) {
+      showToast({
+        type: 'error',
+        title: 'Exportação indisponível',
+        message: cause instanceof Error ? cause.message : 'Não foi possível exportar clientes.',
+      });
+    }
   };
 
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  if (!activeTenant) return null;
 
   return (
-    <div className="space-y-6">
-      {/* ========================================================================= */}
-      {/* 1. CABEÇALHO COM CONTROLES E BOTÃO ADICIONAR CLIENTE                     */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="space-y-5">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-gray-900">Base de Clientes & CRM Próprio</h2>
-            <Badge variant="brand" size="sm">SUPABASE OFICIAL</Badge>
+            <h1 className="text-xl font-bold text-gray-900">Clientes</h1>
+            <Badge variant="brand" size="sm">CRM da loja</Badge>
           </div>
-          <p className="text-xs text-gray-500">
-            Contatos, histórico de recompra e valor vitalício real gerado pelo seu catálogo
+          <p className="mt-1 text-sm text-gray-500">
+            Clientes que chegaram pelo link/QR ou fizeram um pedido. Dados e anotações são privados desta loja.
           </p>
         </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setIsAddModalOpen(true)}
-            leftIcon={<Plus className="w-4 h-4" />}
-            className="text-xs cursor-pointer w-full sm:w-auto"
-          >
-            Adicionar Cliente
+        <div className="flex flex-wrap gap-2">
+          {activeRole === 'OWNER' && (
+            <Button variant="outline" size="sm" onClick={() => void exportCustomers()} leftIcon={<FileDown className="h-4 w-4" />}>
+              Exportar
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" onClick={startCreateCustomer} leftIcon={<Plus className="h-4 w-4" />}>
+            Adicionar cliente
           </Button>
         </div>
-      </div>
+      </header>
 
-      {/* ========================================================================= */}
-      {/* 2. FILTROS E BUSCA SERVER-SIDE                                            */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-gray-100 shadow-xs">
-        <div className="relative flex-1">
-          <Input
-            placeholder="Buscar por nome, telefone ou e-mail..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            leftIcon={<Search className="w-4 h-4 text-gray-400" />}
-          />
-        </div>
-
-        {/* Seletor de Origem */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Canal:</span>
-          <select
-            value={originFilter}
-            onChange={(e) => {
-              setOriginFilter(e.target.value);
-              setPage(0);
-            }}
-            className="text-xs font-medium bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-700 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-          >
-            <option value="ALL">Todos os Canais</option>
-            <option value="whatsapp">WhatsApp</option>
-            <option value="qr_code">QR Code Embalagem</option>
-            <option value="instagram">Instagram</option>
-            <option value="google">Google</option>
-            <option value="direto">Acesso Direto</option>
-            <option value="marketplace">Marketplace</option>
-            <option value="indicacao">Indicação</option>
-            <option value="outros">Outros</option>
-          </select>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => fetchCustomers()}
-            disabled={loading}
-            className="text-xs p-2 text-gray-500 hover:text-gray-900 cursor-pointer"
-            title="Atualizar lista"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 3. ESTADO DE ERRO DEDICADO OU TABELA DE CLIENTES                         */}
-      {/* ========================================================================= */}
-      {error ? (
-        <Card className="p-8 text-center space-y-4 border-gray-100 shadow-xs bg-white">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mx-auto shadow-inner">
-            <AlertTriangle className="w-6 h-6" />
+      <Card className="p-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex-1">
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar por nome ou telefone"
+              leftIcon={<Search className="h-4 w-4 text-gray-400" />}
+              aria-label="Buscar clientes"
+            />
           </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-bold text-gray-900">Não foi possível carregar os clientes</h3>
-            <p className="text-xs text-gray-500 max-w-md mx-auto">
-              Ocorreu uma falha de comunicação com o servidor ao consultar sua base de clientes.
-              Verifique sua conexão ou tente novamente.
-            </p>
-            {error && error !== 'Falha ao buscar clientes do servidor.' && (
-              <p className="text-[11px] text-gray-400 font-mono mt-1 max-w-sm mx-auto truncate">
-                Detalhe: {error}
-              </p>
-            )}
-          </div>
-          <div>
-            <Button 
-              size="sm" 
-              variant="primary" 
-              onClick={() => fetchCustomers()} 
-              disabled={loading}
-              className="text-xs cursor-pointer px-4 py-2"
+          <div className="flex items-center gap-2">
+            <label htmlFor="customer-origin" className="text-xs font-semibold text-gray-500">Canal</label>
+            <select
+              id="customer-origin"
+              value={origin}
+              onChange={(event) => { setOrigin(event.target.value); setPage(0); }}
+              className="min-h-9 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-600/30"
             >
-              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-              {loading ? 'Tentando novamente...' : 'Tentar Novamente'}
+              <option value="ALL">Todos</option>
+              <option value="qr_code">Link / QR Code</option>
+              <option value="storefront">Loja online</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="direct">Acesso direto</option>
+              <option value="direto">Acesso direto</option>
+              <option value="pos">Balcão / PDV</option>
+              <option value="marketplace">Marketplace</option>
+              <option value="instagram">Instagram</option>
+              <option value="google">Google</option>
+              <option value="indicacao">Indicação</option>
+              <option value="outros">Outros</option>
+            </select>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void loadCustomers()}
+              disabled={loading}
+              aria-label="Atualizar lista"
+              title="Atualizar lista"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
+        </div>
+      </Card>
+
+      {error ? (
+        <Card className="p-8 text-center">
+          <p className="font-semibold text-gray-900">Não foi possível carregar o CRM</p>
+          <p className="mt-1 text-sm text-gray-500">{error}</p>
+          <Button className="mt-4" variant="outline" size="sm" onClick={() => void loadCustomers()}>Tentar novamente</Button>
         </Card>
       ) : (
-        <Card className="p-0 overflow-hidden shadow-xs border-gray-100">
+        <Card className="overflow-hidden p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-100">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead className="border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 <tr>
-                  <th className="p-3">Cliente</th>
-                  <th className="p-3">Telefone</th>
-                  <th className="p-3">Canal</th>
-                  <th className="p-3 text-center">Status</th>
-                  <th className="p-3 text-center">Pedidos Válidos</th>
-                  <th className="p-3 text-right">LTV Real</th>
-                  <th className="p-3 text-right">Ticket Médio</th>
-                  <th className="p-3 text-center">LGPD</th>
-                  <th className="p-3 text-right">Ação</th>
+                  <th className="px-4 py-3">Cliente</th>
+                  <th className="px-4 py-3">Canal</th>
+                  <th className="px-4 py-3 text-center">Pedidos</th>
+                  <th className="px-4 py-3">Último pedido</th>
+                  <th className="px-4 py-3 text-right">Total gasto</th>
+                  <th className="px-4 py-3">Consentimento</th>
+                  <th className="px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {loading && customers.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="p-8 text-center text-gray-400">
-                      <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-emerald-600" />
-                      Carregando base de clientes do Supabase...
-                    </td>
-                  </tr>
+                  <tr><td colSpan={7} className="p-10 text-center text-gray-500"><RefreshCw className="mx-auto mb-2 h-5 w-5 animate-spin" />Carregando clientes…</td></tr>
                 ) : customers.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="p-8 text-center text-gray-400">
-                      <Users className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                      <p className="font-semibold text-gray-700">
-                        {searchTerm || originFilter !== 'ALL' 
-                          ? 'Nenhum cliente encontrado com os filtros selecionados.' 
-                          : 'Você ainda não possui clientes cadastrados.'}
-                      </p>
-                      <p className="text-[11px] text-gray-400 mt-1">
-                        Cadastre um cliente manualmente no botão acima ou aguarde os pedidos dos clientes.
-                      </p>
+                    <td colSpan={7} className="p-10 text-center">
+                      <Users className="mx-auto mb-2 h-8 w-8 text-gray-300" />
+                      <p className="font-semibold text-gray-800">Nenhum cliente nesta busca</p>
+                      <p className="mt-1 text-xs text-gray-500">Clientes da loja aparecem após cadastro ou primeiro pedido.</p>
                     </td>
                   </tr>
-                ) : (
-                  customers.map((c) => {
-                    const badge = originLabels[c.origin] || { label: c.origin, variant: 'neutral' as const };
-                    return (
-                      <tr 
-                        key={c.id} 
-                        onClick={() => handleSelectCustomer(c)}
-                        className="hover:bg-emerald-50/40 transition-colors cursor-pointer"
-                      >
-                        <td className="p-3">
-                          <div className="font-bold text-gray-900">{c.name}</div>
-                          {c.email && <div className="text-[10px] text-gray-400">{c.email}</div>}
-                        </td>
-                        <td className="p-3 font-mono text-gray-700">{c.phone}</td>
-                        <td className="p-3">
-                          <Badge variant={badge.variant} size="sm">
-                            {badge.label}
-                          </Badge>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            c.status === 'RECORRENTE' 
-                              ? 'bg-emerald-100 text-emerald-800' 
-                              : c.status === 'INATIVO' 
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {c.status}
+                ) : customers.map((customer) => {
+                  const channel = currentOrigin(customer.origin);
+                  const chatLink = customerWhatsAppLink(customer.phone, customer.contactConsent);
+                  return (
+                    <tr key={customer.id} className="hover:bg-emerald-50/30">
+                      <td className="px-4 py-3">
+                        <button className="text-left" onClick={() => void openCustomer(customer)}>
+                          <span className="block font-semibold text-gray-900 hover:text-emerald-800">{customer.name}</span>
+                          <span className="text-xs text-gray-500">{customer.phone}</span>
+                          {customer.isManual && <span className="ml-2 text-[10px] font-medium text-gray-400">Manual</span>}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3"><Badge variant={channel.variant} size="sm">{channel.label}</Badge></td>
+                      <td className="px-4 py-3 text-center font-medium text-gray-800">{customer.totalOrders}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{formatDate(customer.lastOrderAt)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatBRL(customer.totalSpent)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1 text-xs">
+                          <span className={`inline-flex items-center gap-1 ${customer.hasLgpdConsent ? 'text-emerald-700' : 'text-gray-500'}`}>
+                            {customer.hasLgpdConsent ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldAlert className="h-3.5 w-3.5" />}
+                            Dados {customer.hasLgpdConsent ? 'registrados' : 'sem registro'}
                           </span>
-                        </td>
-                        <td className="p-3 text-center font-mono font-bold text-gray-900">
-                          {c.totalOrders} {c.totalOrders === 1 ? 'ped' : 'peds'}
-                        </td>
-                        <td className="p-3 text-right font-mono font-black text-emerald-800">
-                          R$ {c.ltvAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="p-3 text-right font-mono text-gray-600">
-                          R$ {c.averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="p-3 text-center">
-                          {c.hasLgpdConsent ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-semibold" title="Consentimento LGPD Ativo no Banco">
-                              <ShieldCheck className="w-3.5 h-3.5" /> Consentido
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-gray-400 font-normal" title="Sem registro formal de consentimento">
-                              <ShieldAlert className="w-3.5 h-3.5 text-gray-300" /> Não registrado
-                            </span>
+                          <span className={customer.contactConsent ? 'text-emerald-700' : 'text-gray-400'}>
+                            Contato {customer.contactConsent ? 'permitido' : 'não autorizado'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-1">
+                          {chatLink && (
+                            <button
+                              type="button"
+                              onClick={() => void contactCustomer(customer)}
+                              aria-label={`Abrir WhatsApp de ${customer.name}`}
+                              title="WhatsApp autorizado"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-50"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </button>
                           )}
-                        </td>
-                        <td className="p-3 text-right">
-                          <ChevronRight className="w-4 h-4 text-gray-400 inline-block" />
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
+                          <button
+                            onClick={() => void openCustomer(customer)}
+                            aria-label={`Ver histórico de ${customer.name}`}
+                            title="Histórico e detalhes"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+                          >
+                            <History className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => void hideCustomer(customer)}
+                            aria-label={`Remover ${customer.name} desta lista`}
+                            title="Remover desta loja"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-rose-50 hover:text-rose-700"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-
-          {/* Paginação */}
-          {totalCount > PAGE_SIZE && (
-            <div className="flex items-center justify-between p-3.5 bg-gray-50 border-t border-gray-100 text-xs">
-              <span className="text-gray-500">
-                Mostrando <strong className="text-gray-900">{page * PAGE_SIZE + 1}</strong> a{' '}
-                <strong className="text-gray-900">{Math.min((page + 1) * PAGE_SIZE, totalCount)}</strong> de{' '}
-                <strong className="text-gray-900">{totalCount}</strong> clientes
-              </span>
-
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.max(0, p - 1))}
-                  disabled={page === 0 || loading}
-                  leftIcon={<ChevronLeft className="w-3.5 h-3.5" />}
-                  className="text-xs px-2.5 py-1"
-                >
-                  Anterior
-                </Button>
-                <span className="px-2 font-mono text-gray-600">
-                  {page + 1} / {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1 || loading}
-                  rightIcon={<ChevronRight className="w-3.5 h-3.5" />}
-                  className="text-xs px-2.5 py-1"
-                >
-                  Próxima
-                </Button>
-              </div>
+          <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500">
+            <span>{totalCount} clientes</span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={page === 0 || loading} onClick={() => setPage((value) => Math.max(0, value - 1))}>
+                <ChevronLeft className="h-4 w-4" /> Anterior
+              </Button>
+              <span>{page + 1} / {pageCount}</span>
+              <Button variant="outline" size="sm" disabled={page + 1 >= pageCount || loading} onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}>
+                Próxima <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
-          )}
+          </div>
         </Card>
       )}
 
-      {/* ========================================================================= */}
-      {/* 4. MODAL: ADICIONAR CLIENTE MANUALMENTE                                  */}
-      {/* ========================================================================= */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-gray-100">
-            <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <UserCheck className="w-5 h-5 text-emerald-700" />
-                Cadastrar Novo Cliente
-              </h3>
-              <button 
-                type="button" 
-                onClick={() => setIsAddModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+      {customerFormOpen && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-gray-900/40 p-4" role="dialog" aria-modal="true" aria-labelledby="customer-form-title">
+          <form onSubmit={(event) => void saveCustomer(event)} className="w-full max-w-lg space-y-4 rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 id="customer-form-title" className="font-bold text-gray-900">{editingCustomer ? 'Editar cliente manual' : 'Adicionar cliente'}</h2>
+                <p className="mt-1 text-xs text-gray-500">Para clientes atendidos presencialmente ou por telefone.</p>
+              </div>
+              <button type="button" onClick={() => setCustomerFormOpen(false)} aria-label="Fechar" className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
             </div>
-
-            <form onSubmit={handleCreateCustomer} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Nome Completo *
+            <label className="block text-xs font-semibold text-gray-700">
+              Nome
+              <Input required minLength={2} maxLength={255} value={customerForm.name} onChange={(event) => setCustomerForm({ ...customerForm, name: event.target.value })} className="mt-1" />
+            </label>
+            <label className="block text-xs font-semibold text-gray-700">
+              Telefone com DDD
+              <Input required value={customerForm.phone} onChange={(event) => setCustomerForm({ ...customerForm, phone: event.target.value })} placeholder="(11) 99999-8888" className="mt-1" />
+            </label>
+            <label className="block text-xs font-semibold text-gray-700">
+              E-mail (opcional)
+              <Input type="email" value={customerForm.email || ''} onChange={(event) => setCustomerForm({ ...customerForm, email: event.target.value })} className="mt-1" />
+            </label>
+            {!editingCustomer && (
+              <>
+                <label className="block text-xs font-semibold text-gray-700">
+                  Canal
+                  <select value={customerForm.origin} onChange={(event) => setCustomerForm({ ...customerForm, origin: event.target.value as CustomerOrigin })} className="mt-1 min-h-9 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm">
+                    <option value="whatsapp">WhatsApp / telefone</option>
+                    <option value="direct">Balcão / acesso direto</option>
+                    <option value="indicacao">Indicação</option>
+                    <option value="outros">Outros</option>
+                  </select>
                 </label>
-                <Input
-                  required
-                  placeholder="Ex: Carlos Silva"
-                  value={newCustomer.name}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  WhatsApp com DDD *
+                <label className="flex items-start gap-2 text-xs text-gray-600">
+                  <input type="checkbox" required checked={customerForm.consentLgpd} onChange={(event) => setCustomerForm({ ...customerForm, consentLgpd: event.target.checked })} className="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-600" />
+                  <span>Consentimento LGPD para registrar os dados deste cliente foi obtido e registrado.</span>
                 </label>
-                <Input
-                  required
-                  placeholder="Ex: 11999998888"
-                  value={newCustomer.phone}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
-                />
-                <span className="text-[10px] text-gray-400 mt-0.5 block">
-                  Apenas números ou com máscara. O telefone é chave única no seu estabelecimento.
-                </span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  E-mail (opcional)
+                <label className="flex items-start gap-2 text-xs text-gray-600">
+                  <input type="checkbox" checked={customerForm.contactConsent} onChange={(event) => setCustomerForm({ ...customerForm, contactConsent: event.target.checked })} className="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-600" />
+                  <span>O cliente autorizou mensagens comerciais e ofertas pelo WhatsApp. Sem esta autorização, o botão de contato não será exibido.</span>
                 </label>
-                <Input
-                  type="email"
-                  placeholder="cliente@email.com"
-                  value={newCustomer.email || ''}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Canal de Aquisição / Origem
-                </label>
-                <select
-                  value={newCustomer.origin}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, origin: e.target.value as CustomerOrigin })}
-                  className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-700 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="whatsapp">WhatsApp / Telefone</option>
-                  <option value="direto">Balcão / Acesso Direto</option>
-                  <option value="indicacao">Indicação de Amigo</option>
-                  <option value="qr_code">QR Code Embalagem</option>
-                  <option value="instagram">Instagram</option>
-                  <option value="outros">Outros</option>
-                </select>
-              </div>
-
-              <div className="pt-1">
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newCustomer.consentLgpd}
-                    onChange={(e) => setNewCustomer({ ...newCustomer, consentLgpd: e.target.checked })}
-                    className="mt-0.5 rounded-sm border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span className="text-xs text-gray-600">
-                    O cliente consentiu verbalmente ou por escrito com o armazenamento de seus dados para contato (LGPD).
-                  </span>
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsAddModalOpen(false)}
-                  disabled={savingCustomer}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="sm"
-                  disabled={savingCustomer}
-                  leftIcon={savingCustomer ? <RefreshCw className="w-4 h-4 animate-spin" /> : undefined}
-                >
-                  {savingCustomer ? 'Salvando...' : 'Cadastrar Cliente'}
-                </Button>
-              </div>
-            </form>
-          </div>
+              </>
+            )}
+            <div className="flex justify-end gap-2 border-t border-gray-100 pt-3">
+              <Button type="button" variant="outline" size="sm" onClick={() => setCustomerFormOpen(false)} disabled={savingCustomer}>Cancelar</Button>
+              <Button type="submit" size="sm" isLoading={savingCustomer}>{editingCustomer ? 'Salvar alterações' : 'Cadastrar cliente'}</Button>
+            </div>
+          </form>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 5. DRAWER / MODAL: DETALHES E HISTÓRICO DE COMPRAS DO CLIENTE            */}
-      {/* ========================================================================= */}
       {selectedCustomer && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-end p-0 sm:p-4">
-          <div className="bg-white h-full sm:h-auto sm:max-h-[90vh] sm:rounded-2xl max-w-lg w-full flex flex-col shadow-2xl overflow-hidden border border-gray-100 animate-in slide-in-from-right duration-200">
-            {/* Header do Drawer */}
-            <div className="p-4 bg-gray-50/80 border-b border-gray-100 flex items-start justify-between">
+        <div className="fixed inset-0 z-[1100] flex justify-end bg-gray-900/40" role="dialog" aria-modal="true" aria-labelledby="customer-detail-title">
+          <aside className="flex h-full w-full max-w-xl flex-col bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-gray-100 p-5">
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-gray-900">{selectedCustomer.name}</h3>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    selectedCustomer.status === 'RECORRENTE' 
-                      ? 'bg-emerald-100 text-emerald-800' 
-                      : selectedCustomer.status === 'INATIVO' 
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-blue-100 text-blue-800'
-                  }`}>
-                    {selectedCustomer.status}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
-                  <span className="flex items-center gap-1 font-mono">
-                    <Phone className="w-3.5 h-3.5 text-gray-400" />
-                    {selectedCustomer.phone}
-                  </span>
-                  {selectedCustomer.email && (
-                    <span className="flex items-center gap-1">
-                      <Mail className="w-3.5 h-3.5 text-gray-400" />
-                      {selectedCustomer.email}
-                    </span>
-                  )}
+                <h2 id="customer-detail-title" className="text-lg font-bold text-gray-900">{selectedCustomer.name}</h2>
+                <p className="mt-1 text-sm text-gray-500">{selectedCustomer.phone}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Badge variant={currentOrigin(selectedCustomer.origin).variant} size="sm">{currentOrigin(selectedCustomer.origin).label}</Badge>
+                  {selectedCustomer.isManual && <Badge variant="neutral" size="sm">Cadastro manual</Badge>}
                 </div>
               </div>
-
-              <button
-                type="button"
-                onClick={() => setSelectedCustomer(null)}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex gap-1">
+                {selectedCustomer.isManual && (
+                  <Button variant="outline" size="sm" onClick={() => startEditCustomer(selectedCustomer)} leftIcon={<Pencil className="h-4 w-4" />}>
+                    Editar
+                  </Button>
+                )}
+                <button onClick={closeCustomer} aria-label="Fechar detalhes" className="rounded-lg p-2 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+              </div>
             </div>
-
-            {/* Conteúdo scrollável */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {/* Cards de Métricas Reais */}
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
               <div className="grid grid-cols-3 gap-2">
-                <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-100 text-center">
-                  <span className="text-[10px] uppercase font-bold text-gray-400">Pedidos Válidos</span>
-                  <div className="text-lg font-black text-gray-900 font-mono mt-0.5">
-                    {selectedCustomer.totalOrders}
-                  </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                  <ShoppingBag className="mx-auto h-4 w-4 text-gray-500" />
+                  <p className="mt-1 text-lg font-bold text-gray-900">{selectedCustomer.totalOrders}</p>
+                  <p className="text-[10px] text-gray-500">Pedidos</p>
                 </div>
-
-                <div className="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-100 text-center">
-                  <span className="text-[10px] uppercase font-bold text-emerald-700">LTV Real</span>
-                  <div className="text-lg font-black text-emerald-800 font-mono mt-0.5">
-                    {formatBRL(selectedCustomer.ltvAmount)}
-                  </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                  <CalendarDays className="mx-auto h-4 w-4 text-gray-500" />
+                  <p className="mt-1 truncate text-xs font-semibold text-gray-900">{formatDate(selectedCustomer.lastOrderAt)}</p>
+                  <p className="text-[10px] text-gray-500">Último pedido</p>
                 </div>
-
-                <div className="p-2.5 bg-blue-50/50 rounded-xl border border-blue-100 text-center">
-                  <span className="text-[10px] uppercase font-bold text-blue-700">Ticket Médio</span>
-                  <div className="text-lg font-black text-blue-900 font-mono mt-0.5">
-                    {formatBRL(selectedCustomer.averageTicket)}
-                  </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                  <Clock3 className="mx-auto h-4 w-4 text-emerald-700" />
+                  <p className="mt-1 text-sm font-bold text-emerald-800">{formatBRL(selectedCustomer.totalSpent)}</p>
+                  <p className="text-[10px] text-gray-500">Total gasto</p>
                 </div>
               </div>
 
-              {/* Informações de Cadastro */}
-              <div className="text-xs bg-gray-50 p-3 rounded-xl space-y-1.5 border border-gray-100">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Canal de Aquisição:</span>
-                  <span className="font-semibold text-gray-900">{selectedCustomer.origin}</span>
+              <section className="rounded-xl border border-gray-100 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <NotebookPen className="h-4 w-4 text-emerald-700" />
+                  <h3 className="text-sm font-semibold text-gray-900">Anotações privadas da loja</h3>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Primeira Compra:</span>
-                  <span className="font-mono text-gray-900">
-                    {selectedCustomer.firstOrderDate 
-                      ? new Date(selectedCustomer.firstOrderDate).toLocaleDateString('pt-BR') 
-                      : 'Nenhuma compra'}
-                  </span>
+                <textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={5000} rows={4} placeholder="Escreva uma observação visível somente para esta loja…" className="w-full resize-y rounded-xl border border-gray-200 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/30" />
+                <div className="mb-3 mt-3 flex items-center gap-2">
+                  <Tag className="h-4 w-4 text-gray-500" />
+                  <label htmlFor="customer-tags" className="text-xs font-semibold text-gray-700">Etiquetas</label>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Última Compra:</span>
-                  <span className="font-mono text-gray-900">
-                    {selectedCustomer.lastOrderDate 
-                      ? new Date(selectedCustomer.lastOrderDate).toLocaleDateString('pt-BR') 
-                      : 'Nenhuma compra'}
-                  </span>
+                <Input id="customer-tags" value={tagsText} onChange={(event) => setTagsText(event.target.value)} placeholder="VIP, prefere retirada (separadas por vírgula)" />
+                <p className="mt-1 text-[10px] text-gray-400">Até 10 etiquetas. Somente usuários autorizados desta loja podem ver.</p>
+                <div className="mt-3 flex justify-end">
+                  <Button size="sm" isLoading={savingPrivateData} onClick={() => void savePrivateData()}>Salvar notas e etiquetas</Button>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Consentimento LGPD:</span>
-                  <span className={`font-semibold ${selectedCustomer.hasLgpdConsent ? 'text-emerald-700' : 'text-gray-400'}`}>
-                    {selectedCustomer.hasLgpdConsent ? 'Ativo no banco' : 'Não registrado'}
-                  </span>
-                </div>
-              </div>
+              </section>
 
-              {/* Histórico de Pedidos */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-gray-900 uppercase flex items-center gap-1.5">
-                  <History className="w-4 h-4 text-emerald-700" />
-                  Histórico de Pedidos Realizados
-                </h4>
-
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900"><History className="h-4 w-4 text-emerald-700" />Histórico de pedidos</h3>
                 {loadingOrders ? (
-                  <div className="p-6 text-center text-gray-400 text-xs">
-                    <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-1 text-emerald-600" />
-                    Carregando pedidos do cliente...
-                  </div>
-                ) : customerOrders.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-xl">
-                    Nenhum pedido registrado para este cliente até o momento.
-                  </p>
+                  <div className="p-6 text-center text-sm text-gray-500"><RefreshCw className="mx-auto mb-2 h-4 w-4 animate-spin" />Carregando histórico…</div>
+                ) : orders.length === 0 ? (
+                  <p className="rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">Nenhum pedido encontrado nesta loja.</p>
                 ) : (
                   <div className="space-y-2">
-                    {customerOrders.map(ord => (
-                      <div 
-                        key={ord.id} 
-                        className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
-                          ord.status === 'CANCELLED' 
-                            ? 'bg-rose-50/50 border-rose-100 text-rose-900' 
-                            : 'bg-white border-gray-100'
-                        }`}
-                      >
+                    {orders.map((order) => (
+                      <div key={order.id} className="flex items-center justify-between rounded-xl border border-gray-100 p-3">
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-gray-900">#{ord.orderNumber}</span>
-                            <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-bold ${
-                              ord.status === 'CANCELLED' 
-                                ? 'bg-rose-200 text-rose-800' 
-                                : 'bg-gray-100 text-gray-700'
-                            }`}>
-                              {orderStatusLabel(ord.status)}
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-gray-400 font-mono block mt-0.5">
-                            {new Date(ord.createdAt).toLocaleString('pt-BR')} • {paymentMethodLabel(ord.paymentMethod)} • {fulfillmentLabel(ord.fulfillmentType)}
-                          </span>
+                          <p className="text-sm font-semibold text-gray-900">Pedido #{order.orderNumber} · {orderStatusLabel(order.status)}</p>
+                          <p className="mt-1 text-xs text-gray-500">{formatDate(order.createdAt, true)}</p>
                         </div>
-
-                        <div className="text-right font-mono">
-                          <div className="font-bold text-gray-900">
-                            {formatBRL(ord.totalAmount)}
-                          </div>
-                          {ord.status === 'CANCELLED' && (
-                            <span className="text-[10px] text-rose-600 block">Não faturado</span>
-                          )}
-                        </div>
+                        <p className="text-sm font-semibold text-gray-900">{formatBRL(order.totalAmount)}</p>
                       </div>
                     ))}
                   </div>
                 )}
+              </section>
+              <div className="rounded-xl bg-gray-50 p-3 text-xs text-gray-600">
+                <p>Consentimento LGPD para cadastro: <strong>{selectedCustomer.hasLgpdConsent ? 'registrado' : 'não registrado'}</strong></p>
+                <p className="mt-1">Permissão de contato: <strong>{selectedCustomer.contactConsent ? 'autorizado' : 'não autorizado'}</strong></p>
+                <p className="mt-2 text-[10px] text-gray-400">CPF e demais dados de conta não são exibidos nem editáveis nesta tela.</p>
               </div>
+              <Button variant="danger" size="sm" onClick={() => void hideCustomer(selectedCustomer)} className="w-full">Remover somente desta loja</Button>
             </div>
-
-            {/* Footer do Drawer */}
-            <div className="p-3 bg-gray-50 border-t border-gray-100 flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSelectedCustomer(null)}
-                className="text-xs"
-              >
-                Fechar
-              </Button>
-            </div>
-          </div>
+          </aside>
         </div>
       )}
     </div>

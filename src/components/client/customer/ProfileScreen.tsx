@@ -5,11 +5,11 @@ import {
 import type { Campaign, Order, Product } from '../../../types';
 import { Accordion, MenuRow } from './ui';
 import { CustomerNotification } from '../../../lib/customer/notifications';
-import { AccountDataPage, CouponsPage, DeleteAccountSheet, FavoritesPage, HelpPage, LegalPage, NotificationSettingsPage, NotificationsPage } from './ProfilePages';
-import { StoreCoupon } from '../../../repositories/customerAppRepository';
+import { AccountDataPage, ContactConsentPage, CouponsPage, DeleteAccountSheet, FavoritesPage, HelpPage, LegalPage, NotificationSettingsPage, NotificationsPage } from './ProfilePages';
+import type { MyStoreContactConsent, StoreCoupon } from '../../../repositories/customerAppRepository';
 
 export type ProfilePage =
-  | 'menu' | 'notifications' | 'coupons' | 'account-data' | 'favorites' | 'notif-settings' | 'help' | 'terms' | 'privacy';
+  | 'menu' | 'notifications' | 'coupons' | 'account-data' | 'favorites' | 'notif-settings' | 'contact-consent' | 'help' | 'terms' | 'privacy';
 
 export const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || '1.2.0';
 
@@ -38,6 +38,9 @@ export interface ProfileScreenProps {
   // conta
   loadCpf: () => Promise<string | null>;
   onSaveProfile: (d: { name: string; phone: string; cpf: string }) => Promise<void>;
+  loadContactConsent: () => Promise<MyStoreContactConsent>;
+  onSetContactConsent: (accepted: boolean) => Promise<void>;
+  onRegisterForStore: (d: { name: string; phone: string; consentLgpd: boolean; contactConsent: boolean }) => Promise<void>;
   // favoritos
   favoriteProducts: Product[];
   qtyOf: (productId: string) => number;
@@ -70,6 +73,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = (props) => {
   if (page === 'account-data') return <AccountDataPage {...props} onBack={back} />;
   if (page === 'favorites') return <FavoritesPage {...props} onBack={back} />;
   if (page === 'notif-settings') return <NotificationSettingsPage {...props} onBack={back} />;
+  if (page === 'contact-consent') return <ContactConsentPage {...props} onBack={back} />;
   if (page === 'help') return <HelpPage {...props} onBack={() => { props.onClearHelpOrder(); back(); }} />;
   if (page === 'terms') return <LegalPage kind="terms" onBack={back} />;
   if (page === 'privacy') return <LegalPage kind="privacy" onBack={back} />;
@@ -110,6 +114,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = (props) => {
         </Accordion>
         <Accordion testId="menu-settings" open={openSections.settings} onOpenChange={setSection('settings')} icon={<Settings className="w-5 h-5" />} title="Configurações" subtitle="Notificações, privacidade e conta">
           <MenuRow testId="menu-notif-settings" icon={<BellRing className="w-4 h-4" />} title="Gerenciar notificações" onClick={() => onNavigate('notif-settings')} />
+          {user && <MenuRow testId="menu-contact-consent" icon={<ShieldCheck className="w-4 h-4" />} title="Permissão para contato" subtitle="Autorize ou revogue mensagens da loja" onClick={() => onNavigate('contact-consent')} />}
           <MenuRow testId="menu-clear-search" icon={<Eraser className="w-4 h-4" />} title="Limpar histórico de busca" onClick={props.onClearSearchHistory} right={<span />} />
           <MenuRow testId="menu-terms" icon={<FileText className="w-4 h-4" />} title="Termos de uso" onClick={() => onNavigate('terms')} />
           <MenuRow testId="menu-privacy" icon={<ShieldCheck className="w-4 h-4" />} title="Política de privacidade" onClick={() => onNavigate('privacy')} />
@@ -126,4 +131,3 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = (props) => {
     </div>
   );
 };
-

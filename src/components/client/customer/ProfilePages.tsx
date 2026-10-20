@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, ChevronDown, Heart, MessageCircle, ThumbsDown, ThumbsUp, Ticket, Copy, AlertTriangle, Package } from 'lucide-react';
+import { Bell, ChevronDown, Heart, MessageCircle, ThumbsDown, ThumbsUp, Ticket, Copy, AlertTriangle, Package, ShieldCheck } from 'lucide-react';
 import type { ProfileScreenProps } from './ProfileScreen';
 import { EmptyBlock, PrimaryButton, ScreenHeader, SkeletonRows, BottomSheet } from './ui';
 import { ProductRow } from './ProductRow';
@@ -175,6 +175,150 @@ export const AccountDataPage: React.FC<P> = ({ onBack, customerName, customerPho
         </label>
         <PrimaryButton color={color} loading={saving} onClick={submit} data-testid="acc-save">Salvar</PrimaryButton>
       </div>
+    </div>
+  );
+};
+
+export const ContactConsentPage: React.FC<P> = ({
+  onBack,
+  user,
+  customerName,
+  customerPhone,
+  loadContactConsent,
+  onSetContactConsent,
+  onRegisterForStore,
+  color,
+}) => {
+  const [consent, setConsent] = useState<{ registered: boolean; contactConsent: boolean } | null>(null);
+  const [name, setName] = useState(customerName);
+  const [phone, setPhone] = useState(customerPhone);
+  const [registrationConsent, setRegistrationConsent] = useState(false);
+  const [registrationContactConsent, setRegistrationContactConsent] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    let alive = true;
+    loadContactConsent()
+      .then(value => {
+        if (!alive) return;
+        setConsent(value);
+        if (!value.registered) {
+          setName(customerName);
+          setPhone(customerPhone);
+        }
+      })
+      .catch(error => {
+        if (alive) showToast({
+          type: 'error',
+          title: 'Permissão indisponível',
+          message: error instanceof Error ? error.message : 'Não foi possível consultar sua permissão.',
+        });
+      });
+    return () => { alive = false; };
+  }, [customerName, customerPhone, loadContactConsent, showToast]);
+
+  const changeConsent = async (accepted: boolean) => {
+    setSaving(true);
+    try {
+      await onSetContactConsent(accepted);
+      setConsent(current => current ? { ...current, contactConsent: accepted } : current);
+      showToast({
+        type: 'success',
+        title: 'Preferência atualizada',
+        message: accepted ? 'Você autorizou mensagens comerciais da loja.' : 'A loja não poderá iniciar mensagens comerciais pelo WhatsApp.',
+      });
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'Não foi possível salvar',
+        message: error instanceof Error ? error.message : 'Tente novamente mais tarde.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const register = async () => {
+    if (!registrationConsent || !name.trim() || !phone.trim()) return;
+    setSaving(true);
+    try {
+      await onRegisterForStore({
+        name: name.trim(),
+        phone: phone.trim(),
+        consentLgpd: true,
+        contactConsent: registrationContactConsent,
+      });
+      setConsent({ registered: true, contactConsent: registrationContactConsent });
+      showToast({ type: 'success', title: 'Cadastro concluído', message: 'Seu cadastro foi criado somente nesta loja.' });
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'Não foi possível concluir',
+        message: error instanceof Error ? error.message : 'Confira os dados e tente novamente.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-lg mx-auto bg-white min-h-[70vh] dc-screen-in" data-testid="contact-consent-page">
+      <ScreenHeader title="Permissão para contato" onBack={onBack} />
+      {!user ? (
+        <EmptyBlock icon={<ShieldCheck className="w-7 h-7" />} title="Entre para gerenciar esta permissão" text="A autorização fica vinculada à sua conta nesta loja." />
+      ) : consent === null ? (
+        <div className="p-8 text-center text-sm text-gray-500">Carregando sua preferência…</div>
+      ) : !consent.registered ? (
+        <div className="space-y-4 p-4">
+          <p className="text-sm text-gray-600">Cadastre-se nesta loja para manter seu cadastro e histórico. Esse registro é separado da sua conta global.</p>
+          <label className="block text-xs font-semibold text-gray-700">
+            Nome
+            <input value={name} onChange={event => setName(event.target.value)} className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm" />
+          </label>
+          <label className="block text-xs font-semibold text-gray-700">
+            Telefone com DDD
+            <input value={phone} onChange={event => setPhone(event.target.value)} inputMode="tel" className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm" />
+          </label>
+          <label className="flex items-start gap-2 text-xs text-gray-600">
+            <input type="checkbox" checked={registrationConsent} onChange={event => setRegistrationConsent(event.target.checked)} className="mt-0.5 rounded border-gray-300" />
+            <span>Autorizo o armazenamento destes dados por esta loja para manter meu cadastro e histórico, conforme a LGPD.</span>
+          </label>
+          <label className="flex items-start gap-2 text-xs text-gray-600">
+            <input type="checkbox" checked={registrationContactConsent} onChange={event => setRegistrationContactConsent(event.target.checked)} className="mt-0.5 rounded border-gray-300" />
+            <span>Também autorizo mensagens comerciais e ofertas pelo WhatsApp. Esta permissão é opcional.</span>
+          </label>
+          <PrimaryButton color={color} loading={saving} onClick={() => void register()} data-testid="store-customer-register">
+            Cadastrar nesta loja
+          </PrimaryButton>
+        </div>
+      ) : (
+        <div className="p-4">
+          <div className="flex items-start gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" style={{ color }} />
+            <div className="flex-1">
+              <p className="text-sm font-bold text-gray-900">Mensagens da loja e ofertas pelo WhatsApp</p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-600">
+                Esta autorização é opcional e pode ser revogada quando quiser.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-label="Permitir contato pelo WhatsApp"
+              aria-checked={consent.contactConsent}
+              disabled={saving}
+              onClick={() => void changeConsent(!consent.contactConsent)}
+              className="relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50"
+              style={{ backgroundColor: consent.contactConsent ? color : '#d1d5db' }}
+              data-testid="contact-consent-toggle"
+            >
+              <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all', consent.contactConsent ? 'left-[22px]' : 'left-0.5')} />
+            </button>
+          </div>
+          <p className="mt-3 text-xs text-gray-500">Sua permissão se aplica somente a {user.email || 'esta conta'} nesta loja.</p>
+        </div>
+      )}
     </div>
   );
 };

@@ -22,6 +22,11 @@ export interface StoreCoupon {
   source: 'campaign' | 'personal' | 'store';
 }
 
+export interface MyStoreContactConsent {
+  registered: boolean;
+  contactConsent: boolean;
+}
+
 /** RPC ausente (PostgREST PGRST202 / Postgres 42883) ou coluna ausente (42703). */
 export function isMissingBackendFeature(err: unknown): boolean {
   const e = (err || {}) as { code?: string; message?: string };
@@ -53,6 +58,46 @@ export function couponsFromCampaigns(campaigns: Campaign[]): StoreCoupon[] {
 }
 
 export const customerAppRepository = {
+  async getMyContactConsent(tenantId: string): Promise<MyStoreContactConsent> {
+    if (!isSupabaseConfigured || !isValidUuid(tenantId)) {
+      throw new Error('A permissão de contato exige uma conexão válida com a loja.');
+    }
+    const { data, error } = await supabase.rpc('crm_get_my_contact_consent', { p_tenant_id: tenantId });
+    if (error) throw new Error(error.message || 'Não foi possível consultar sua permissão de contato.');
+    return {
+      registered: Boolean(data?.registered),
+      contactConsent: Boolean(data?.contactConsent),
+    };
+  },
+
+  async registerMyStoreCustomer(
+    tenantId: string,
+    input: { name: string; phone: string; consentLgpd: boolean; contactConsent: boolean }
+  ): Promise<void> {
+    if (!isSupabaseConfigured || !isValidUuid(tenantId)) {
+      throw new Error('O cadastro nesta loja exige uma conexão válida.');
+    }
+    const { error } = await supabase.rpc('crm_register_my_store_customer', {
+      p_tenant_id: tenantId,
+      p_name: input.name,
+      p_phone: input.phone,
+      p_lgpd_consent: input.consentLgpd,
+      p_contact_consent: input.contactConsent,
+    });
+    if (error) throw new Error(error.message || 'Não foi possível cadastrar seus dados nesta loja.');
+  },
+
+  async setMyContactConsent(tenantId: string, accepted: boolean): Promise<void> {
+    if (!isSupabaseConfigured || !isValidUuid(tenantId)) {
+      throw new Error('A permissão de contato exige uma conexão válida com a loja.');
+    }
+    const { error } = await supabase.rpc('crm_set_my_contact_consent', {
+      p_tenant_id: tenantId,
+      p_accepted: accepted,
+    });
+    if (error) throw new Error(error.message || 'Não foi possível salvar sua permissão de contato.');
+  },
+
   /** Cupons que o cliente pode ver nesta loja. */
   async listStoreCoupons(slug: string, campaigns: Campaign[]): Promise<StoreCoupon[]> {
     const fromCampaigns = couponsFromCampaigns(campaigns);
