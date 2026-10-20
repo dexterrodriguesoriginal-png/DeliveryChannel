@@ -1,4 +1,6 @@
 import { ArrivalQrMarketingCard } from '../../components/pickup/ArrivalQrMarketingCard';
+import { useModules } from '../../hooks/useModules';
+import { showPickupQrTab, type MarketingTab } from '../../lib/marketingTabs';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { initialPromoFulfillmentTypes, promoFulfillmentTypesForSave } from '../../utils/promoCardFulfillment';
 import { useAuth } from '../../context/AuthContext';
@@ -149,7 +151,12 @@ export const MarketingPage: React.FC = () => {
   const canManage = activeRole === 'OWNER' || activeRole === 'MANAGER' || activeRole === 'SUPER_ADMIN' || activeRole === 'CEO';
 
   // Navegação Interna do Módulo
-  const [activeTab, setActiveTab] = useState<'creatives' | 'materials' | 'performance' | 'campaigns'>('creatives');
+  const [activeTab, setActiveTab] = useState<MarketingTab>('creatives');
+  const { isModuleEnabled } = useModules();
+  const pickupQrTabVisible = showPickupQrTab(isModuleEnabled);
+  useEffect(() => {
+    if (activeTab === 'pickup-qr' && !pickupQrTabVisible) setActiveTab('creatives');
+  }, [activeTab, pickupQrTabVisible]);
 
   // Dados de Criativos e Produtos
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -1198,11 +1205,6 @@ export const MarketingPage: React.FC = () => {
         )}
       </div>
 
-      {activeTenant?.id && (
-        <ArrivalQrMarketingCard tenantId={activeTenant.id} storeName={activeTenant.name}
-          canManage={activeRole === 'OWNER' || activeRole === 'MANAGER'} />
-      )}
-
       {/* Tabs de Navegação */}
       <div className="flex items-center gap-2 border-b border-gray-200">
         <button
@@ -1258,6 +1260,21 @@ export const MarketingPage: React.FC = () => {
           <QrCode className="w-4 h-4" />
           <span>Materiais & QR Code</span>
         </button>
+
+        {pickupQrTabVisible && (
+          <button
+            onClick={() => setActiveTab('pickup-qr')}
+            data-testid="tab-pickup-qr"
+            className={`pb-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'pickup-qr'
+                ? 'border-emerald-600 text-emerald-800'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <QrCode className="w-4 h-4" />
+            <span>QR Code de Retirada</span>
+          </button>
+        )}
       </div>
 
       {/* ==================================================================== */}
@@ -1568,6 +1585,11 @@ export const MarketingPage: React.FC = () => {
       {/* ==================================================================== */}
       {activeTab === 'campaigns' && canManageCampaigns && (
         <CampaignsPanel tenantId={activeTenant.id} offers={offers} products={products} />
+      )}
+
+      {activeTab === 'pickup-qr' && pickupQrTabVisible && activeTenant?.id && (
+        <ArrivalQrMarketingCard tenantId={activeTenant.id} storeName={activeTenant.name}
+          canManage={activeRole === 'OWNER' || activeRole === 'MANAGER'} />
       )}
 
       {activeTab === 'materials' && (
