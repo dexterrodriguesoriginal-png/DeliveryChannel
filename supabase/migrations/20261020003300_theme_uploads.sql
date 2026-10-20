@@ -7,18 +7,14 @@
 
 BEGIN;
 
--- 1. Garante que o bucket 'catalog' aceita os tipos e limites para o tema
-UPDATE storage.buckets
-SET file_size_limit = 5242880, -- 5 MB
-    allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp']
-WHERE id = 'catalog';
+-- 1. Bucket 'catalog' limits (5 MB, jpeg/png/webp) already enforced server-side since 20260926000012; not modified here.
 
 -- 2. Função auxiliar de segurança para validação estrita de upload de temas
 CREATE OR REPLACE FUNCTION public.can_manage_theme_storage(p_name TEXT)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = ''
 AS $$
 DECLARE
     v_user_id UUID := auth.uid();
@@ -40,9 +36,9 @@ BEGIN
     END IF;
 
     -- Apenas caminhos dentro de 'theme' são geridos por esta política
-    IF v_second_segment <> 'theme' THEN
-        -- Outros diretórios do catálogo mantêm a regra geral can_manage_catalog_storage
-        RETURN public.can_manage_catalog_storage(p_name);
+    IF v_second_segment IS DISTINCT FROM 'theme' OR split_part(p_name, '/', 3) = ''
+       OR split_part(p_name, '/', 4) <> '' THEN
+        RETURN false; -- other catalog paths keep their existing policies
     END IF;
 
     v_tenant_id := v_first_segment::uuid;
@@ -52,7 +48,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.can_manage_theme_storage(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.can_manage_theme_storage(TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.can_manage_theme_storage(TEXT) TO authenticated;
 
 -- 3. Policy explícita de inserção para assets de tema
