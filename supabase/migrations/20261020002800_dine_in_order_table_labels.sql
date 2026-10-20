@@ -6,6 +6,7 @@ CREATE OR REPLACE FUNCTION public.get_dine_in_order_table_labels(
 )
 RETURNS TABLE(order_id uuid, table_label text)
 LANGUAGE plpgsql
+STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
@@ -15,6 +16,10 @@ BEGIN
     public.has_tenant_role(auth.uid(), p_tenant_id, ARRAY['OWNER', 'MANAGER', 'OPERATOR', 'CASHIER', 'DELIVERY_MANAGER'])
   ) THEN
     RAISE EXCEPTION 'FORBIDDEN: acesso negado aos rótulos das mesas.' USING ERRCODE = '42501';
+  END IF;
+
+  IF cardinality(p_order_ids) > 500 THEN
+    RAISE EXCEPTION 'TOO_MANY_ORDERS: máximo de 500 pedidos por consulta.' USING ERRCODE = '22023';
   END IF;
 
   RETURN QUERY
@@ -28,7 +33,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.get_dine_in_order_table_labels(uuid, uuid[]) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.get_dine_in_order_table_labels(uuid, uuid[]) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.get_dine_in_order_table_labels(uuid, uuid[]) TO authenticated;
 
 COMMIT;
