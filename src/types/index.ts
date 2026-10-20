@@ -39,6 +39,9 @@ export interface TenantEmailConfirmation {
   updatedAt: string;
 }
 
+import { ThemeTokens } from './theme';
+export * from './theme';
+
 export interface TenantTheme {
   primaryColor: string;
   secondaryColor: string;
@@ -52,6 +55,7 @@ export interface TenantTheme {
   logoUrl?: string;
   storeName: string;
   tagline: string;
+  tokens?: ThemeTokens;
 }
 
 export interface TenantSettings {

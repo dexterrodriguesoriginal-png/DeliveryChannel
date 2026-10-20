@@ -12,6 +12,7 @@ import { isLocalDemoAllowed } from '../lib/backend';
 import { classifyMemberships, DriverApprovalLookup } from '../lib/membershipResolution';
 import { driverInviteRepository } from '../repositories/driverRepository';
 import { BusinessType } from '../lib/modules';
+import { themeService } from '../services/themeService';
 
 export interface TenantMembership {
   tenantId: string;
@@ -162,6 +163,7 @@ function mapDbTenant(row: any, settingsRow?: any, themeRow?: any): Tenant {
     textColor: themeRow?.text_color || '#0f172a',
     borderRadius: themeRow?.border_radius || '1rem',
     fontFamily: themeRow?.font_family || 'Inter',
+    tokens: themeRow?.theme_tokens || undefined,
   };
 
   return {
@@ -1359,6 +1361,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCurrentUser(null);
     setActiveRole(null);
     setActiveTenantState(null);
+    themeService.clearCache();
     setAvailableTenants([]);
     setHasTenantMembership(false);
     setIsAccountSuspended(false);
@@ -1692,6 +1695,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const setActiveTenant = (tenant: Tenant | null) => {
+    themeService.clearCache();
     setActiveTenantState(tenant);
   };
 

@@ -62,6 +62,7 @@ function mapRowToTenant(row: any, settingsRow?: any, themeRow?: any): Tenant {
       textColor: themeRow?.text_color || '#0f172a',
       borderRadius: themeRow?.border_radius || '1rem',
       fontFamily: themeRow?.font_family || 'Inter',
+      tokens: themeRow?.theme_tokens || undefined,
     }
   };
 }
@@ -180,10 +181,22 @@ export const tenantRepository = {
         if (themeUpdates.textColor !== undefined) dbTheme.text_color = themeUpdates.textColor;
         if (themeUpdates.borderRadius !== undefined) dbTheme.border_radius = themeUpdates.borderRadius;
         if (themeUpdates.fontFamily !== undefined) dbTheme.font_family = themeUpdates.fontFamily;
+        if (themeUpdates.tokens !== undefined) dbTheme.theme_tokens = themeUpdates.tokens;
 
-        const { error } = await supabase
+        let { error } = await supabase
           .from('tenant_themes')
           .upsert({ tenant_id: tenantId, ...dbTheme }, { onConflict: 'tenant_id' });
+
+        // Fallback defensivo: se a coluna theme_tokens ainda não existir no ambiente remoto
+        if (error && (error.message?.includes('theme_tokens') || (error as any).code === '42703')) {
+          const fallbackDbTheme = { ...dbTheme };
+          delete fallbackDbTheme.theme_tokens;
+          const retry = await supabase
+            .from('tenant_themes')
+            .upsert({ tenant_id: tenantId, ...fallbackDbTheme }, { onConflict: 'tenant_id' });
+          error = retry.error;
+        }
+
         if (error) throw toBackendError(error, 'Falha ao salvar o tema.');
       } catch (err) {
         throw toBackendError(err, 'Falha ao salvar o tema.');

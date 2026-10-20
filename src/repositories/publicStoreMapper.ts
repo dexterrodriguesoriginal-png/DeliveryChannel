@@ -157,6 +157,7 @@ export function mapTheme(raw: unknown, tenantName: string): TenantTheme {
     logoUrl: str(pick(t, 'logoUrl', 'logo_url')),
     storeName: str(pick(t, 'storeName', 'store_name')) || tenantName,
     tagline: str(pick(t, 'tagline')) || '',
+    tokens: (pick(t, 'tokens', 'theme_tokens') as any) || undefined,
   };
 }
 

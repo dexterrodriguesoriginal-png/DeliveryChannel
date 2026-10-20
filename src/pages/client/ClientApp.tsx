@@ -40,6 +40,7 @@ import { Card } from '../../components/ui/Card';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
+import { themeToTokens, generateCssVariables } from '../../lib/theme/themeEngine';
 import { cartStorageKey } from '../../lib/pwa/storeManifest';
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
@@ -698,6 +699,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const primaryColor = theme.primaryColor || '#15803d';
   const buttonColor = theme.buttonColor || primaryColor;
   const borderRadius = theme.borderRadius || '1rem';
+  const activeTokens = useMemo(() => themeToTokens(theme), [theme]);
+  const activeCssVars = useMemo(() => generateCssVariables(activeTokens) as React.CSSProperties, [activeTokens]);
 
   // --------------------------------------------------------------------------
   // CÁLCULOS DO CARRINHO
@@ -1675,10 +1678,11 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
   return (
     <div
-      className="min-h-screen pb-44 font-sans text-gray-900 transition-colors"
+      className="min-h-screen pb-44 font-sans text-gray-900 transition-colors client-store-container"
       style={{ 
-        backgroundColor: theme.backgroundColor || '#f8fafc',
-        fontFamily: theme.fontFamily || 'Inter'
+        ...activeCssVars,
+        backgroundColor: activeTokens.palette.bgGeneral || theme.backgroundColor || '#f8fafc',
+        fontFamily: 'var(--dc-font-family, Inter, sans-serif)',
       }}
     >
       <InstallStoreAppHint

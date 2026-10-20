@@ -139,7 +139,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ...(businessUsesStock(activeTenant?.businessType)
           ? [{ id: 'est-inventory', label: 'Estoque', icon: <Boxes className="w-4 h-4 shrink-0" /> }]
           : []),
-        { id: 'est-theme', label: 'Customização Visual', icon: <Palette className="w-4 h-4 shrink-0" /> },
+        { id: 'est-theme', label: 'Design do App', icon: <Palette className="w-4 h-4 shrink-0" /> },
       ],
     },
     {
