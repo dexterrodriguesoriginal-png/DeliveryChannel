@@ -88,3 +88,14 @@ export function pickupWaitingMinutes(order: Pick<Order, 'status' | 'statusHistor
 export function waitingText(min: number): string {
   return `aguardando cliente há ${min} min`;
 }
+
+/** Abas de Pedidos: só módulos ativos, mas uma aba com pedidos existentes nunca some. */
+export function visibleFulfillmentTabsFor(
+  isEnabled: (key: 'delivery' | 'pickup' | 'dine_in') => boolean,
+  orders: ReadonlyArray<Pick<Order, 'fulfillmentType'>>
+): FulfillmentTab[] {
+  const tabs: Array<[FulfillmentTab, 'delivery' | 'pickup' | 'dine_in']> = [['DELIVERY', 'delivery'], ['PICKUP', 'pickup'], ['DINE_IN', 'dine_in']];
+  return tabs
+    .filter(([tab, key]) => isEnabled(key) || orders.some(order => matchesFulfillmentTab(order as Order, tab)))
+    .map(([tab]) => tab);
+}

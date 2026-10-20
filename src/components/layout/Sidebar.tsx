@@ -31,6 +31,7 @@ import { cn } from '../../utils/cn';
 import { getPublicStorePath, isValidStoreSlug } from '../../utils/publicStoreUrl';
 import { canAccessEstTab } from '../../lib/navPermissions';
 import { useModules } from '../../hooks/useModules';
+import { isTabModuleEnabled } from '../../lib/modules';
 import { supabase } from '../../lib/supabase';
 
 export interface SidebarProps {
@@ -56,7 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile = () => {},
 }) => {
   const { activeRole, activeTenant } = useAuth();
-  const { available: modulesAvailable, isModuleEnabled } = useModules();
+  const { available: modulesAvailable, modules: enabledModuleSet, isModuleEnabled } = useModules();
   const [hasDiningTables, setHasDiningTables] = useState(false);
 
   useEffect(() => {
@@ -148,12 +149,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       groupTitle: 'GESTÃO',
       items: [
-        { id: 'est-team', label: 'Equipe & Permissões', icon: <UserPlus className="w-4 h-4 shrink-0" /> },
-        { id: 'est-kitchen', label: 'Tela da Cozinha', icon: <ChefHat className="w-4 h-4 shrink-0" /> },
-        { id: 'est-settings', label: 'Configurações da Loja', icon: <Settings className="w-4 h-4 shrink-0" /> },
         ...(modulesAvailable && (activeRole === 'OWNER' || activeRole === 'MANAGER')
           ? [{ id: 'est-modules', label: 'Módulos', icon: <SlidersHorizontal className="w-4 h-4 shrink-0" /> }]
           : []),
+        { id: 'est-team', label: 'Equipe & Permissões', icon: <UserPlus className="w-4 h-4 shrink-0" /> },
+        { id: 'est-kitchen', label: 'Tela da Cozinha', icon: <ChefHat className="w-4 h-4 shrink-0" /> },
+        { id: 'est-settings', label: 'Configurações da Loja', icon: <Settings className="w-4 h-4 shrink-0" /> },
         ...(isSecurityLabEnabled ? [{ id: 'security-lab', label: 'Laboratório de Isolamento', icon: <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" /> }] : []),
       ],
     },
@@ -192,7 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ...g,
           items: g.items.filter(it =>
             canAccessEstTab(activeRole, it.id) &&
-            !(it.id === 'est-drivers' && modulesAvailable && !isModuleEnabled('delivery'))
+            isTabModuleEnabled(enabledModuleSet, it.id)
           ),
         }))
         .filter(g => g.items.length > 0);

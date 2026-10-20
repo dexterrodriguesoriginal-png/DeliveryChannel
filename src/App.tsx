@@ -45,6 +45,8 @@ import { SettingsPage } from './pages/establishment/SettingsPage';
 import { ModulesPage } from './pages/establishment/ModulesPage';
 import { SalonPage } from './pages/establishment/SalonPage';
 import { useModules } from './hooks/useModules';
+import { tabRequiredModule } from './lib/modules';
+import { ModuleDisabledScreen } from './components/establishment/ModuleDisabledScreen';
 
 // Mobile / Apps
 import { ClientApp } from './pages/client/ClientApp';
@@ -91,7 +93,7 @@ function AppContent() {
     driverApprovalStatus,
     pendingTenantName,
   } = useAuth();
-  const { available: modulesAvailable, isModuleEnabled } = useModules();
+  const { available: modulesAvailable, loading: modulesLoading, isModuleEnabled } = useModules();
 
   const [activeTab, setActiveTab] = useState<string>('est-dashboard');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -468,11 +470,15 @@ function AppContent() {
     if (!isCeoRole && activeTab === 'est-modules' && activeRole !== 'OWNER' && activeRole !== 'MANAGER') {
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
-    if (!isCeoRole && activeTab === 'est-salon' && (!modulesAvailable || !isModuleEnabled('dine_in'))) {
-      return <EstablishmentDashboard onNavigate={setActiveTab} />;
-    }
-    if (!isCeoRole && activeTab === 'est-drivers' && modulesAvailable && !isModuleEnabled('delivery')) {
-      return <EstablishmentDashboard onNavigate={setActiveTab} />;
+    const requiredModule = tabRequiredModule(activeTab);
+    if (!isCeoRole && requiredModule && !modulesLoading && !isModuleEnabled(requiredModule)) {
+      return (
+        <ModuleDisabledScreen
+          moduleKey={requiredModule}
+          canManageModules={modulesAvailable && (activeRole === 'OWNER' || activeRole === 'MANAGER')}
+          onOpenModules={() => setActiveTab('est-modules')}
+        />
+      );
     }
     if (!isCeoRole && activeTab.startsWith('est-') && activeTab !== 'est-modules' && !canAccessEstTab(activeRole, activeTab)) {
       return <EstablishmentDashboard onNavigate={setActiveTab} />;

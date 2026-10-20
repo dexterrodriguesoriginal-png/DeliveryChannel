@@ -35,7 +35,7 @@ export const MODULES: ModuleDefinition[] = [
   { key: 'delivery', label: 'Entrega', description: 'Receba pedidos para entregar no endereço do cliente.', changes: 'Exibe Entregadores e a opção de entrega no catálogo.', implemented: true },
   { key: 'pickup', label: 'Retirada', description: 'Permita que clientes retirem pedidos no estabelecimento.', changes: 'Exibe a opção de retirada no catálogo.', implemented: true },
   { key: 'addons', label: 'Adicionais', description: 'Ofereça complementos e personalizações nos produtos.', changes: 'Adiciona escolhas de complementos ao cardápio.', implemented: true },
-  { key: 'kds', label: 'Chamar no TV', description: 'Organize os pedidos em uma tela de preparo.', changes: 'Adiciona uma fila visual para a operação.', implemented: false },
+  { key: 'kds', label: 'Tela da Cozinha', description: 'Organize os pedidos em uma tela de preparo para a cozinha.', changes: 'Exibe Tela da Cozinha, alertas de pedido pronto e Tempo de Preparo no painel.', implemented: true },
   { key: 'dine_in', label: 'Mesa/Comanda', description: 'Atenda clientes em mesas ou comandas individuais.', changes: 'Adiciona atendimento e acompanhamento por mesa/comanda.', implemented: true },
   { key: 'counter', label: 'Balcão', description: 'Registre pedidos feitos diretamente no balcão.', changes: 'Adiciona o fluxo de atendimento no balcão.', implemented: false },
   { key: 'service_fee', label: 'Taxa de serviço', description: 'Configure a taxa opcional do atendimento no salão.', changes: 'Aplica a taxa configurada somente às comandas de salão.', implemented: true },
@@ -93,4 +93,24 @@ export const MODULE_DISABLE_CHECKS: Partial<Record<ModuleKey, CanDisableModule>>
 
 export function canDisableModule(key: ModuleKey, tenantId: string): Promise<DisableCheck> {
   return (MODULE_DISABLE_CHECKS[key] || (async () => ({ allowed: true })))(tenantId);
+}
+
+/** Telas do painel que dependem de um módulo. Telas fora daqui não dependem de módulo. */
+export const TAB_MODULES: Readonly<Record<string, ModuleKey>> = {
+  'est-kitchen': 'kds',
+  'est-drivers': 'delivery',
+  'est-salon': 'dine_in',
+};
+
+export function tabRequiredModule(tab: string): ModuleKey | undefined {
+  return TAB_MODULES[tab];
+}
+
+export function isTabModuleEnabled(modules: ReadonlySet<ModuleKey> | null | undefined, tab: string): boolean {
+  const key = tabRequiredModule(tab);
+  return !key || isModuleEnabled(modules, key);
+}
+
+export function moduleLabel(key: ModuleKey): string {
+  return MODULES.find(module => module.key === key)?.label || key;
 }

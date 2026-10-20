@@ -42,6 +42,7 @@ import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE
 import { canAccessEstTab } from '../../lib/navPermissions';
 import { playNewOrderSound, playReadySound } from '../../utils/audio';
 import { newReadyIds } from '../../lib/kitchen/kitchenBoard';
+import { useModules } from '../../hooks/useModules';
 import { KitchenReadyAlert } from '../../components/kitchen/KitchenReadyAlert';
 import { useNewOrderAlarm } from '../../lib/orders/newOrderAlarm';
 import { arrivalRepository } from '../../repositories/arrivalRepository';
@@ -87,6 +88,9 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   const [salesPeriod, setSalesPeriod] = useState<'today' | '7d' | '30d'>('7d');
 
   const canListDrivers = canAssignDrivers(activeRole);
+  const { isModuleEnabled } = useModules();
+  const kitchenOn = isModuleEnabled('kds');
+  const deliveryOn = isModuleEnabled('delivery');
 
   // Busca dados reais para o tenant ativo
   const fetchRealData = useCallback(async (silent = false) => {
@@ -459,13 +463,13 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
           if (!activeTenant?.id) return;
           await orderRepository.updateStatus(securityContext, activeTenant.id, id, 'DELIVERED', reason, 'READY');
         }} />
-      <KitchenReadyAlert
+      {kitchenOn && <KitchenReadyAlert
         orders={(remoteOrders || []).filter(o => o.status === 'READY' && readyAlertIds.includes(o.id))}
         busyId={busyOrderId}
         onCallDriver={(o) => { const st = nextStepFor(o, activeRole); if (st) handleAlertStep(o, st); }}
         onOpenPickup={(o) => handleAlertView(o)}
         onDismiss={(id) => setReadyAlertIds(prev => prev.filter(x => x !== id))}
-      />
+      />}
       <OrderAlertsCard
         alerts={orderAlerts}
         role={activeRole}
@@ -542,7 +546,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         )}
 
         {/* Tempo Médio de Entrega */}
-        <div className="flex flex-col items-start sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 p-2.5 sm:p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+        {kitchenOn && <div className="flex flex-col items-start sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 p-2.5 sm:p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
           <div className="flex items-center gap-1.5 min-w-0">
             <div className="hidden sm:flex w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 items-center justify-center shrink-0">
               <Clock className="w-4 h-4" />
@@ -562,7 +566,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
               Ajustar
             </button>
           )}
-        </div>
+        </div>}
 
         {/* Pedidos em Andamento */}
         <div className="flex flex-col items-start sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 p-2.5 sm:p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
@@ -586,7 +590,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         </div>
 
         {/* Entregadores Ativos */}
-        <div className="flex flex-col items-start sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 p-2.5 sm:p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+        {deliveryOn && <div className="flex flex-col items-start sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 p-2.5 sm:p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
           <div className="flex items-center gap-1.5 min-w-0">
             <div className="hidden sm:flex w-8 h-8 rounded-lg bg-slate-100 text-slate-700 items-center justify-center shrink-0">
               <Bike className="w-4 h-4" />
@@ -608,7 +612,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
               Frota
             </button>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* ========================================================================= */}

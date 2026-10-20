@@ -3,7 +3,7 @@ import { KanbanColumnHeader } from '../../components/establishment/KanbanColumnH
 import { ArrivalQueuePanel } from '../../components/pickup/ArrivalQueuePanel';
 import { PickupHandoverModal } from '../../components/pickup/PickupHandoverModal';
 import { arrivalRepository } from '../../repositories/arrivalRepository';
-import { tabCounts, tabTone, pickupActionLabel, matchesFulfillmentTab, dineInOrderLabel, resolveDineInTableLabels, type FulfillmentTab } from '../../lib/orders/fulfillmentTabs';
+import { tabCounts, tabTone, pickupActionLabel, matchesFulfillmentTab, dineInOrderLabel, resolveDineInTableLabels, visibleFulfillmentTabsFor, type FulfillmentTab } from '../../lib/orders/fulfillmentTabs';
 import { PickupCodeBadge } from '../../components/establishment/PickupCodeBadge';
 import { storeDeliveredNeedsReason } from '../../lib/orders/handoff';
 import { useAuth } from '../../context/AuthContext';
@@ -508,6 +508,14 @@ export const OrdersPage: React.FC = () => {
   };
 
   const allOrders = remoteOrders || [];
+  const visibleFulfillmentTabs = visibleFulfillmentTabsFor(isModuleEnabled, allOrders);
+  const visibleTabsKey = visibleFulfillmentTabs.join(',');
+  useEffect(() => {
+    if (filterFulfillment !== 'ALL' && !visibleFulfillmentTabs.includes(filterFulfillment)) {
+      setFilterFulfillment(visibleFulfillmentTabs[0] || 'ALL');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleTabsKey, filterFulfillment]);
   // 19/10: bipe a cada ~5 s enquanto houver pedido em "Novo" (mesma preferência do Dashboard)
   const newOrderAlarm = useNewOrderAlarm(allOrders.filter(o => o.status === 'PENDING').length);
 
@@ -1474,7 +1482,7 @@ export const OrdersPage: React.FC = () => {
 
                 {/* Abas Entrega | Retirada | Salão, cada qual com contador de pedidos acionáveis. */}
                 <div className="flex items-stretch gap-1.5 pt-2 border-t border-slate-100" role="tablist" data-testid="fulfillment-tabs">
-                  {([['DELIVERY', 'Entrega', Bike], ['PICKUP', 'Retirada', ShoppingBag], ['DINE_IN', 'Salão', UtensilsCrossed]] as const).map(([id, label, Icon]) => {
+                  {([['DELIVERY', 'Entrega', Bike], ['PICKUP', 'Retirada', ShoppingBag], ['DINE_IN', 'Salão', UtensilsCrossed]] as const).filter(([id]) => visibleFulfillmentTabs.includes(id)).map(([id, label, Icon]) => {
                     const c = tabCounts(allOrders, id as FulfillmentTab, prepMinutes);
                     const tone = tabTone(c);
                     const toneCls: Record<string, string> = {
