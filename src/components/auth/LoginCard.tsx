@@ -1,3 +1,5 @@
+import { LegalCheckbox } from '../legal/LegalUI';
+import { legalSignupMetadata } from '../../lib/legal/documents';
 import React, { useState } from 'react';
 import { INVALID_CREDENTIALS_MSG } from '../../lib/auth/authErrors';
 import { useAuth } from '../../context/AuthContext';
@@ -47,6 +49,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [legalAccepted, setLegalAccepted] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -107,6 +110,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
     e.preventDefault();
     setFormError(null);
     setFormSuccess(null);
+    if (!legalAccepted) { setFormError('Aceite os Termos de Uso e a Política de Privacidade para continuar.'); return; }
 
     if (!fullName.trim()) {
       setFormError('Informe seu nome completo.');
@@ -133,7 +137,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
 
     setLoading(true);
     try {
-      const res = await signUp(email.trim(), password, fullName.trim(), phone.trim());
+      const res = await signUp(email.trim(), password, fullName.trim(), phone.trim(), legalSignupMetadata(legalAccepted, intent));
       if (res.success) {
         if (res.requiresEmailConfirmation) {
           showToast('Cadastro realizado! Enviamos um link de confirmação para o seu e-mail.', 'info');
@@ -356,6 +360,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
       {/* Formulário: CADASTRO */}
       {mode === 'SIGNUP' && (
         <form onSubmit={handleSignUp} className="space-y-3 mt-2">
+              <LegalCheckbox checked={legalAccepted} onChange={setLegalAccepted} audience={intent} />
           <Input
             label="Nome Completo *"
             placeholder="Ex: Carlos Oliveira"

@@ -6,6 +6,7 @@
  */
 import 'dotenv/config';
 import express from 'express';
+import { createFeedbackRouter } from './server/feedback/routes';
 import path from 'node:path';
 import { createPwaRouter } from './server/pwa/routes';
 import fs from 'node:fs/promises';
@@ -24,6 +25,9 @@ function pickResolver(): { resolver: StoreResolver; mode: string } {
 async function start() {
   const app = express();
   app.disable('x-powered-by');
+  // Explicit trusted ingress CIDRs only; arbitrary forwarded headers never define the sender.
+  if (process.env.TRUSTED_PROXY_CIDRS) app.set('trust proxy', process.env.TRUSTED_PROXY_CIDRS.split(',').map(s => s.trim()).filter(Boolean));
+  app.use(createFeedbackRouter());
   const port = Number(process.env.PORT) || 3000;
   const distDir = path.resolve(process.cwd(), 'dist');
   const { resolver, mode } = pickResolver();

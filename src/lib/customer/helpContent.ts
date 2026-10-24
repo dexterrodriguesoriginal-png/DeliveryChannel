@@ -47,22 +47,8 @@ export const FAQ_SECTIONS: FaqSection[] = [
   },
 ];
 
-export const LEGAL_REVIEW_NOTE = 'Texto provisório, pendente de revisão jurídica.';
-
-export const TERMS_OF_USE: Array<{ h: string; p: string }> = [
-  { h: '1. Sobre o Delivery Channel', p: 'O Delivery Channel é uma plataforma que permite a estabelecimentos comerciais oferecerem seu próprio aplicativo de pedidos. O estabelecimento é o responsável pelos produtos, preços, preparo e atendimento do seu pedido.' },
-  { h: '2. Sua conta', p: 'Você é responsável pelas informações que fornece e por manter seu acesso seguro. Uma conta Delivery Channel pode ser usada em diferentes estabelecimentos parceiros.' },
-  { h: '3. Pedidos e pagamentos', p: 'Os valores exibidos são confirmados pelo servidor no momento do pedido. Pagamentos na entrega/retirada são feitos diretamente ao estabelecimento. Cupons e promoções seguem as regras definidas por cada loja.' },
-  { h: '4. Entrega', p: 'A taxa de entrega é fixa e informada antes da confirmação. O código de entrega deve ser informado apenas quando você receber o pedido.' },
-  { h: '5. Cancelamentos', p: 'Pedidos podem ser cancelados pela loja quando não puderem ser atendidos. Em caso de dúvidas, use a Ajuda do pedido para falar com o estabelecimento.' },
-  { h: '6. Alterações', p: 'Estes termos podem ser atualizados. Avisaremos no aplicativo quando houver mudanças relevantes.' },
-];
-
-export const PRIVACY_POLICY: Array<{ h: string; p: string }> = [
-  { h: '1. Dados que coletamos', p: 'Nome, e-mail, telefone/WhatsApp, CPF (opcional), endereços de entrega e localização aproximada quando você permite, além do histórico de pedidos.' },
-  { h: '2. Para que usamos', p: 'Para processar e entregar seus pedidos, permitir que a loja fale com você, prevenir fraudes e melhorar o aplicativo. Não vendemos seus dados.' },
-  { h: '3. Com quem compartilhamos', p: 'Com o estabelecimento do seu pedido e com o entregador (somente o necessário para a entrega, como nome, endereço e telefone).' },
-  { h: '4. Dados no seu aparelho', p: 'Endereços salvos, favoritos e preferências podem ficar guardados no seu aparelho para agilizar seus próximos pedidos. Você pode apagá-los a qualquer momento.' },
-  { h: '5. Seus direitos (LGPD)', p: 'Você pode acessar, corrigir e pedir a exclusão dos seus dados pessoais. Em Perfil > Configurações > Excluir minha conta você solicita a anonimização. Registros de pedidos podem ser mantidos pelo prazo exigido por lei, sem identificar você.' },
-  { h: '6. Contato', p: 'Dúvidas sobre privacidade podem ser enviadas pelo canal de Ajuda do aplicativo.' },
-];
+// One versioned source for public documents and the in-app profile.
+export { LEGAL_VERSION, LEGAL_DATE } from '../legal/documents';
+import { legalDocuments } from '../legal/documents';
+export const TERMS_OF_USE = legalDocuments['terms-customer'].sections;
+export const PRIVACY_POLICY = legalDocuments.privacy.sections;

@@ -1,3 +1,6 @@
+import { analyticsAllowed, openCookiePreferences } from '../../lib/legal/cookies';
+import { LegalCheckbox } from '../../components/legal/LegalUI';
+import { legalSignupMetadata } from '../../lib/legal/documents';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { normalizeBRPhone, formatBRPhone, brPhoneDigits } from '../../lib/phone/brPhone';
 import { DeliveryCodeCard } from '../../components/client/DeliveryCodeCard';
@@ -252,6 +255,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const [isPromoCheckoutOpen, setIsPromoCheckoutOpen] = useState(false);
 
   // 7. Autenticação do Cliente no Checkout
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -1053,7 +1057,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     }
 
     // N5 (somente n1n6): clique no card como evento de funil (estimativa; best-effort).
-    if (storeData?.tenant.slug) {
+    if (storeData?.tenant.slug && analyticsAllowed()) {
       void campaignRepository.trackEvent({
         storeSlug: storeData.tenant.slug,
         eventType: 'CARD_CLICK',
@@ -1198,7 +1202,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           setIsAuthenticating(false);
           return;
         }
-        const res = await signUp(authEmail.trim(), authPassword, authName.trim(), phoneDigits ? `+55${phoneDigits}` : undefined, { user_type: 'customer' });
+        const res = await signUp(authEmail.trim(), authPassword, authName.trim(), phoneDigits ? `+55${phoneDigits}` : undefined, { user_type: 'customer', ...legalSignupMetadata(legalAccepted, 'customer') });
         if (!res.success) throw new Error(res.error || 'Falha ao criar conta.');
         setCustomerName(authName.trim());
         if (phoneDigits) setCustomerPhone(formatBRPhone(phoneDigits));
@@ -2422,6 +2426,13 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         </div>
       )}
 
+      <footer className="max-w-lg mx-auto px-4 py-6 flex flex-col items-start gap-3 text-sm">
+        <button type="button" className="underline" onClick={() => { setProfilePage('feedback'); setNavTab('profile'); window.scrollTo({ top: 0 }); }}>Enviar sugestão, elogio ou reclamação</button>
+        <a className="underline" href="/legal/terms-customer" target="_blank" rel="noopener noreferrer">Termos de Uso</a>
+        <a className="underline" href="/legal/privacy" target="_blank" rel="noopener noreferrer">Política de Privacidade</a>
+        <a className="underline" href="/legal/cookies" target="_blank" rel="noopener noreferrer">Política de Cookies</a>
+        <button type="button" className="underline" onClick={openCookiePreferences}>Preferências de cookies</button>
+      </footer>
       {/* Floating Bottom Cart Bar */}
       {cart.length > 0 && !isCheckoutOpen && (navTab === 'home' || navTab === 'search' || navTab === 'offers') && (
         <div className="fixed bottom-16 left-0 right-0 z-40 p-4 max-w-lg mx-auto pointer-events-none">
@@ -2530,6 +2541,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               )}
               {!(authNotice && authNotice.kind === 'signup') && (
               <form onSubmit={handleEmailAuth} className="space-y-3">
+              {authMode === 'signup' && <LegalCheckbox checked={legalAccepted} onChange={setLegalAccepted} audience={'customer'} />}
                 {authMode === 'signup' && (
                   <Input
                     label="Seu Nome Completo"
@@ -3302,6 +3314,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           )}
           {!(authNotice && authNotice.kind === 'signup') && (
           <form onSubmit={handleEmailAuth} className="space-y-3">
+              {authMode === 'signup' && <LegalCheckbox checked={legalAccepted} onChange={setLegalAccepted} audience={'customer'} />}
             {authMode === 'signup' && (
               <Input
                 label="Seu Nome Completo"

@@ -1,0 +1,16 @@
+BEGIN;
+DROP TRIGGER IF EXISTS legal_customer_checkout ON public.orders;
+DROP TRIGGER IF EXISTS legal_customer_registration ON public.customers;
+DROP TRIGGER IF EXISTS legal_tenant_registration ON public.tenants;
+DROP TRIGGER IF EXISTS legal_signup_record ON auth.users;
+DROP TRIGGER IF EXISTS legal_signup_check ON auth.users;
+DROP FUNCTION IF EXISTS public._legal_business_gate();
+DROP FUNCTION IF EXISTS public._legal_signup_record();
+DROP FUNCTION IF EXISTS public._legal_signup_check();
+DROP FUNCTION IF EXISTS public.export_my_customer_data();
+DROP FUNCTION IF EXISTS public._require_current_legal(text);
+DROP FUNCTION IF EXISTS public.accept_current_legal(text,text);
+DROP FUNCTION IF EXISTS public.get_my_legal_status(text);
+DROP FUNCTION IF EXISTS public._legal_version();
+DROP TABLE IF EXISTS public.legal_acceptances;
+COMMIT;

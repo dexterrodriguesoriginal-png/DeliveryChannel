@@ -11,6 +11,7 @@ export const EST_TAB_PERMISSION: Record<string, Permission | null> = {
   'est-marketing': 'manage_offers',
   'est-qrcodes': 'manage_offers',
   'est-customers': 'manage_customers',
+  'est-feedback': null,
   'est-promotions': 'manage_offers',
   'est-offers': 'manage_offers',
   'est-drivers': 'manage_drivers',
@@ -58,6 +59,7 @@ export function getDefaultAllowedTab(role: RoleId | null | undefined): string {
  */
 export function canAccessEstTab(role: RoleId | null | undefined, tabId: string): boolean {
   if (!role) return false;
+  if (tabId === 'est-feedback') return role === 'OWNER' || role === 'MANAGER';
   if (role === 'DRIVER' || role === 'CUSTOMER') return false;
 
   // Laboratório de segurança: somente CEO e SUPER_ADMIN

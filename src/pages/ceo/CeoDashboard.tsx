@@ -1,3 +1,4 @@
+import { CeoFeedbackCounts } from '../establishment/FeedbackPage';
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { dataStore } from '../../services/dataStore';
@@ -35,6 +36,7 @@ export const CeoDashboard: React.FC<{ onNavigate: (tabId: string) => void }> = (
 
   return (
     <div className="space-y-6">
+      <CeoFeedbackCounts />
       {/* Top Banner Notice: CEO Overview */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-linear-to-r from-emerald-900 to-green-950 text-white shadow-sm">
         <div className="space-y-1">

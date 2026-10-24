@@ -15,6 +15,7 @@ const PANEL_PAGES = new Set([
   'est-promotions',
   'est-offers',
   'est-customers',
+  'est-feedback',
   'est-marketing',
   'est-qrcodes',
   'est-theme',

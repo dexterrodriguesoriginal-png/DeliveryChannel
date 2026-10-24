@@ -1,3 +1,5 @@
+import { LegalCheckbox } from '../legal/LegalUI';
+import { legalSignupMetadata } from '../../lib/legal/documents';
 import React, { useState, useEffect, useRef } from 'react';
 import { INVALID_CREDENTIALS_MSG } from '../../lib/auth/authErrors';
 import { useAuth } from '../../context/AuthContext';
@@ -102,6 +104,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [legalAccepted, setLegalAccepted] = useState(false);
   // Senha e confirmação lidas do próprio campo a cada alteração (onChange e onInput): o onChange do React
   // ignora eventos quando o valor interno dele já coincide com o do campo (ex.: preenchimento automático do
   // navegador/gerenciador de senhas), e o aviso ficava defasado até o campo perder o foco.
@@ -222,6 +225,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
     e.preventDefault();
     setFormError(null);
     setFormSuccess(null);
+    if (!legalAccepted) { setFormError('Aceite os Termos de Uso e a Política de Privacidade para continuar.'); return; }
     // Valores atuais dos campos (mesma fonte do aviso "Senhas coincidem").
     const pwd = passwordRef.current?.value ?? password;
     const confirmPwd = confirmPasswordRef.current?.value ?? confirmPassword;
@@ -256,7 +260,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
 
     setLoading(true);
     try {
-      const res = await signUp(email.trim(), pwd, fullName.trim(), phone.trim());
+      const res = await signUp(email.trim(), pwd, fullName.trim(), phone.trim(), legalSignupMetadata(legalAccepted, 'owner'));
       if (res.success) {
         if (res.requiresEmailConfirmation) {
           if (onEmailConfirmationRequired) {
@@ -652,6 +656,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
             )}
 
             <form onSubmit={handleSignUp} className="space-y-3">
+              <LegalCheckbox checked={legalAccepted} onChange={setLegalAccepted} audience={'owner'} />
               <Input
                 label="Nome Completo *"
                 placeholder="Ex: Carlos Silva"

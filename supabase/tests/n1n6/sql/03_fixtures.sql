@@ -44,3 +44,11 @@ INSERT INTO public.coupons (id, tenant_id, code, discount_type, discount_value, 
 -- Cupom de concorrência: limite 20
 INSERT INTO public.coupons (id, tenant_id, code, discount_type, discount_value, usage_limit, status) VALUES
  ('c1000000-0000-0000-0000-000000000020','10000000-0000-0000-0000-00000000000a','CONC20','FIXED_AMOUNT',1,20,'ACTIVE');
+-- Usuários de fixture aceitaram os termos atuais (gate LGPD 20261024003700), quando presente.
+DO $$ BEGIN
+  IF to_regclass('public.legal_acceptances') IS NOT NULL THEN
+    INSERT INTO public.legal_acceptances(user_id, audience, version)
+    SELECT u.id, a.audience, public._legal_version() FROM auth.users u CROSS JOIN (VALUES ('owner'),('customer')) a(audience)
+    ON CONFLICT DO NOTHING;
+  END IF;
+END $$;
