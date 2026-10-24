@@ -52,4 +52,34 @@ describe('customer contact consent', () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
     await expect(customerAppRepository.setMyContactConsent(TENANT_ID, true)).rejects.toThrow('permission denied');
   });
+
+  it('safely handles collision when a manual store record already exists with the phone', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'PHONE_MANUAL_RECORD_CONFLICT: Já existe um cadastro interno do estabelecimento' },
+    });
+    await expect(
+      customerAppRepository.registerMyStoreCustomer(TENANT_ID, {
+        name: 'Cliente Novo',
+        phone: '11999998888',
+        consentLgpd: true,
+        contactConsent: false,
+      })
+    ).rejects.toThrow(/cadastro presencial anterior com este telefone/);
+  });
+
+  it('safely rejects registration when the phone is already tied to another digital account', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'PHONE_ALREADY_REGISTERED: Este telefone já está associado a outra conta' },
+    });
+    await expect(
+      customerAppRepository.registerMyStoreCustomer(TENANT_ID, {
+        name: 'Cliente Teste',
+        phone: '11999998888',
+        consentLgpd: true,
+        contactConsent: false,
+      })
+    ).rejects.toThrow(/número de telefone já está registrado/);
+  });
 });

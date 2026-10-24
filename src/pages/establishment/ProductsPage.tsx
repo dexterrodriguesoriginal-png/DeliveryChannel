@@ -9,7 +9,12 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
-import { Product, Category } from '../../types';
+import { Product, Category, StockControlMode, StockUnit } from '../../types';
+import {
+  STOCK_CONTROL_MODE_LABELS,
+  STOCK_UNIT_LABELS,
+  validateUnitMigration,
+} from '../../lib/stock';
 import { 
   Plus, 
   Search, 
@@ -64,7 +69,13 @@ export const ProductsPage: React.FC = () => {
     promotionalPrice: '',
     cost: '',
     sku: '',
-    unit: 'un',
+    unit: 'un' as StockUnit,
+    stockControlMode: 'UNIT' as StockControlMode,
+    packageQuantity: '1',
+    leadTimeDays: '3',
+    safetyStock: '0',
+    trackLots: false,
+    trackSerials: false,
     imageUrl: '',
     stockQuantity: '50',
     minStock: '10',
@@ -111,6 +122,12 @@ export const ProductsPage: React.FC = () => {
       cost: '',
       sku: '',
       unit: 'un',
+      stockControlMode: 'UNIT',
+      packageQuantity: '1',
+      leadTimeDays: '3',
+      safetyStock: '0',
+      trackLots: false,
+      trackSerials: false,
       imageUrl: '',
       stockQuantity: '50',
       minStock: '10',
@@ -125,6 +142,10 @@ export const ProductsPage: React.FC = () => {
   // Open Edit Modal
   const handleOpenEdit = (p: Product) => {
     setEditingProduct(p);
+    const resolvedUnit = (p.stockUnit ||
+      (['un', 'kg', 'g', 'l', 'ml', 'm', 'cm', 'm2', 'cm2', 'pack', 'cx', 'fd'].includes((p.unit || '').toLowerCase())
+        ? p.unit.toLowerCase()
+        : 'un')) as StockUnit;
     setFormData({
       name: p.name,
       description: p.description,
@@ -133,10 +154,16 @@ export const ProductsPage: React.FC = () => {
       promotionalPrice: p.promotionalPrice ? p.promotionalPrice.toString() : '',
       cost: p.cost ? p.cost.toString() : '',
       sku: p.sku || '',
-      unit: p.unit || 'un',
+      unit: resolvedUnit,
+      stockControlMode: p.stockControlMode || (p.trackLots ? 'LOT_EXPIRY' : 'UNIT'),
+      packageQuantity: String(p.packageQuantity || 1),
+      leadTimeDays: String(p.leadTimeDays || 3),
+      safetyStock: String(p.safetyStock || 0),
+      trackLots: Boolean(p.trackLots),
+      trackSerials: Boolean(p.trackSerials),
       imageUrl: p.imageUrl,
       stockQuantity: p.stockQuantity.toString(),
-      minStock: p.minStock ? p.minStock.toString() : '10',
+      minStock: p.minStock !== undefined ? p.minStock.toString() : '10',
       isActive: p.isActive !== false,
       isAvailable: p.isAvailable !== false,
       isFeatured: !!p.isFeatured,
@@ -157,9 +184,31 @@ export const ProductsPage: React.FC = () => {
       return;
     }
 
+    if (editingProduct) {
+      const prevUnit = (editingProduct.stockUnit ||
+        (['un', 'kg', 'g', 'l', 'ml', 'm', 'cm', 'm2', 'cm2', 'pack', 'cx', 'fd'].includes((editingProduct.unit || '').toLowerCase())
+          ? editingProduct.unit.toLowerCase()
+          : 'un')) as StockUnit;
+      const migrationCheck = validateUnitMigration(
+        prevUnit,
+        formData.unit,
+        editingProduct.stockQuantity,
+        parseFloat(formData.packageQuantity) || 1
+      );
+      if (!migrationCheck.valid) {
+        showToast({
+          type: 'error',
+          title: 'Troca de Unidade Bloqueada',
+          message: migrationCheck.errorMessage || 'Grandeza física incompatível com o saldo atual.',
+        });
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
-      const stockQty = parseFloat(formData.stockQuantity) || 0;
+      const noStockControl = formData.stockControlMode === 'NONE';
+      const stockQty = noStockControl ? 999 : parseFloat(formData.stockQuantity) || 0;
       const payload = {
         name: formData.name.trim(),
         description: formData.description.trim(),
@@ -169,13 +218,20 @@ export const ProductsPage: React.FC = () => {
         cost: formData.cost ? parseFloat(formData.cost) : undefined,
         sku: formData.sku ? formData.sku.trim() : undefined,
         unit: formData.unit,
+        stockUnit: formData.unit,
+        stockControlMode: formData.stockControlMode,
+        packageQuantity: Math.max(1, parseFloat(formData.packageQuantity) || 1),
+        leadTimeDays: Math.max(1, parseInt(formData.leadTimeDays, 10) || 3),
+        safetyStock: Math.max(0, parseFloat(formData.safetyStock) || 0),
+        trackLots: formData.trackLots || formData.stockControlMode === 'LOT_EXPIRY',
+        trackSerials: formData.trackSerials || formData.stockControlMode === 'SERIAL',
         imageUrl: formData.imageUrl || '',
         stockQuantity: stockQty,
-        minStock: parseInt(formData.minStock, 10) || 10,
+        minStock: noStockControl ? 0 : Math.max(0, parseFloat(formData.minStock) || 0),
         isActive: formData.isActive,
         isFeatured: formData.isFeatured,
         stockIsResale: formData.stockIsResale,
-        isAvailable: formData.isActive && stockQty > 0,
+        isAvailable: formData.isActive && (noStockControl || stockQty > 0),
       };
 
       if (editingProduct) {
@@ -184,7 +240,7 @@ export const ProductsPage: React.FC = () => {
         showToast({
           type: 'success',
           title: 'Produto Atualizado',
-          message: `"${payload.name}" atualizado no banco de dados com sucesso.`,
+          message: `"${payload.name}" atualizado com sucesso.`,
         });
       } else {
         const created = await productRepository.create(securityContext, activeTenant.id, payload);
@@ -192,7 +248,7 @@ export const ProductsPage: React.FC = () => {
         showToast({
           type: 'success',
           title: 'Produto Criado',
-          message: `"${payload.name}" cadastrado no banco e disponível na vitrine.`,
+          message: `"${payload.name}" cadastrado e disponível na vitrine.`,
         });
       }
 
@@ -201,8 +257,8 @@ export const ProductsPage: React.FC = () => {
       console.error('[ProductsPage] Erro ao salvar produto:', err);
       showToast({
         type: 'error',
-        title: 'Erro ao Salvar no Banco',
-        message: err.message || 'Falha ao persistir produto no Supabase.',
+        title: 'Erro ao Salvar',
+        message: err.message || 'Falha ao persistir produto.',
       });
     } finally {
       setIsSaving(false);

@@ -37,6 +37,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
     signUp, 
     signInWithGoogle, 
     resetPassword,
+    enterPreviewWithoutLogin,
   } = useAuth();
   const { showToast } = useToast();
 
@@ -461,8 +462,27 @@ export const LoginCard: React.FC<LoginCardProps> = ({
         </form>
       )}
 
+      {/* Botão de Acesso Rápido sem Login (Modo Edição) */}
+      {enterPreviewWithoutLogin && (
+        <div className="mt-4 pt-3 border-t border-dashed border-amber-200">
+          <button
+            type="button"
+            data-testid="enter-without-login-btn"
+            onClick={() => {
+              enterPreviewWithoutLogin();
+              showToast('Modo Edição ativado! Acesso liberado sem login.', 'info');
+              onSuccess?.();
+            }}
+            className="w-full py-2.5 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs"
+          >
+            <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Entrar sem precisar logar (Modo Edição)</span>
+          </button>
+        </div>
+      )}
+
       {/* Footer com Garantia de Segurança */}
-      <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
+      <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
         <div className="flex items-center gap-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
           <span>Segurança SSL & RLS Multi-Tenant</span>

@@ -18,6 +18,23 @@ const env: Record<string, unknown> =
 /** Modo demonstração local (dataStore) — somente em DEV e sem Supabase. */
 export const isLocalDemoAllowed: boolean = !isSupabaseConfigured && env.DEV === true;
 
+export const PREVIEW_BYPASS_SESSION_KEY = 'adegafood_dev_preview_bypass';
+
+/** Verifica se o modo rápido de edição sem login no preview está ativo na sessão atual. */
+export function isPreviewBypassActive(): boolean {
+  try {
+    if (typeof window === 'undefined') return false;
+    const search = window.location?.search || '';
+    if (search.includes('preview=true') || search.includes('demo=true')) {
+      window.sessionStorage?.setItem(PREVIEW_BYPASS_SESSION_KEY, 'true');
+      return true;
+    }
+    return window.sessionStorage?.getItem(PREVIEW_BYPASS_SESSION_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 export class BackendError extends Error {
   code: string;
   constructor(code: string, message: string) {
@@ -29,7 +46,7 @@ export class BackendError extends Error {
 
 /** Garante que existe backend real ou que o modo demo local é permitido. */
 export function requireBackendOrLocalDemo(feature: string): void {
-  if (isLocalDemoAllowed) return;
+  if (isLocalDemoAllowed || isPreviewBypassActive()) return;
   if (isSupabaseConfigured) {
     // Com Supabase configurado nunca há cópia local (nem para tenant/id não-UUID).
     throw new BackendError(

@@ -3,7 +3,11 @@ import { TenantTheme } from '../../../types';
 import {
   themeToTokens,
   generateCssVariables,
-  formatCssBackground,
+  getSurfaceBackgroundStyle,
+  computeTypographyStyles,
+  computeCardBoxShadow,
+  resolveCardBorderRadius,
+  resolveCardBorderWidth,
 } from '../../../lib/theme/themeEngine';
 import {
   Smartphone,
@@ -13,11 +17,8 @@ import {
   Star,
   Plus,
   Clock,
-  Sparkles,
-  Tag,
-  CheckCircle2,
-  MapPin,
   Flame,
+  Home,
 } from 'lucide-react';
 
 export interface LiveStorePreviewProps {
@@ -40,7 +41,15 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
 
   const p = tokens.palette;
   const c = tokens.components;
-  const t = tokens.typography;
+  const typo = computeTypographyStyles(tokens.typography);
+
+  const generalBgStyle = getSurfaceBackgroundStyle(tokens.backgrounds.general, p.bgGeneral);
+  const headerBgStyle = getSurfaceBackgroundStyle(tokens.backgrounds.header, p.bgHeader);
+  const cardBgStyle = getSurfaceBackgroundStyle(tokens.backgrounds.card, p.bgCard);
+
+  const cardBorderRadius = resolveCardBorderRadius(c);
+  const cardBorderWidth = resolveCardBorderWidth(c);
+  const cardBoxShadow = computeCardBoxShadow(c);
 
   const categories = [
     { id: 'all', label: 'Todos' },
@@ -86,21 +95,11 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
     },
   ];
 
-  // Helper de sombra dos cards
-  const cardShadowClass =
-    c.cardShadow === 'none'
-      ? 'shadow-none'
-      : c.cardShadow === 'md'
-      ? 'shadow-md'
-      : c.cardShadow === 'lg'
-      ? 'shadow-lg'
-      : 'shadow-xs';
-
-  // Helper de estilo das categorias
+  // Estilo isolado para os botões de categoria:
+  // Controlado exclusivamente por p.categoryBg (Botão Categoria), sem depender de p.bgCard, p.buttonBg ou p.primary
   const renderCategoryButton = (cat: { id: string; label: string }) => {
     const isSelected = activeCategory === cat.id;
-    let style: React.CSSProperties = {};
-    let className = 'px-3 py-1.5 text-xs font-semibold transition-all shrink-0 cursor-pointer ';
+    let className = 'px-3 py-1.5 text-xs transition-all shrink-0 cursor-pointer border ';
 
     if (c.categoryStyle === 'pill') {
       className += 'rounded-full ';
@@ -109,24 +108,25 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
     }
 
     if (isSelected) {
-      style = {
-        backgroundColor: p.primary,
-        color: p.buttonText || '#ffffff',
-      };
-      className += 'shadow-xs';
+      className += 'font-bold ring-1 ring-black/15 shadow-2xs';
     } else {
-      style = {
-        backgroundColor: c.categoryStyle === 'outline' ? 'transparent' : p.bgCard,
-        color: p.textSecondary,
-        borderColor: p.border,
-      };
-      className += 'border hover:opacity-90';
+      className += 'font-medium opacity-90 hover:opacity-100';
     }
+
+    const style: React.CSSProperties = {
+      backgroundColor: c.categoryStyle === 'outline' ? 'transparent' : p.categoryBg,
+      color: p.textTitle,
+      borderColor: p.border,
+      fontFamily: typo.cssFont,
+      fontSize: `${Math.round(11 * typo.scaleFactor)}px`,
+    };
 
     return (
       <button
         key={cat.id}
         type="button"
+        data-testid="preview-category-btn"
+        data-category-id={cat.id}
         onClick={() => setActiveCategory(cat.id)}
         style={style}
         className={className}
@@ -136,8 +136,37 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
     );
   };
 
+  // Estilos tipográficos isolados para títulos vs textos corridos
+  const titleTextStyle: React.CSSProperties = {
+    color: p.textTitle,
+    fontFamily: typo.cssFont,
+    fontWeight: typo.titleWeight,
+    fontStyle: typo.titleFontStyle,
+    textTransform: typo.titleTextTransform,
+    letterSpacing: typo.letterSpacing,
+    lineHeight: typo.lineHeight,
+    fontSize: `${Math.round(12 * typo.scaleFactor)}px`,
+  };
+
+  const bodyTextStyle: React.CSSProperties = {
+    color: p.textMain,
+    fontFamily: typo.cssFont,
+    fontWeight: typo.bodyWeight,
+    fontStyle: 'normal',
+    textTransform: 'none',
+    letterSpacing: typo.letterSpacing,
+    lineHeight: typo.lineHeight,
+    fontSize: `${Math.round(10 * typo.scaleFactor)}px`,
+  };
+
+  const secondaryTextStyle: React.CSSProperties = {
+    color: p.textSecondary,
+    fontFamily: typo.cssFont,
+    fontSize: `${Math.round(10 * typo.scaleFactor)}px`,
+  };
+
   return (
-    <div className="flex flex-col items-center w-full">
+    <div className="flex flex-col items-center w-full" data-testid="live-store-preview">
       {/* Controles de visualização: Celular vs Desktop */}
       <div className="flex items-center justify-between w-full pb-3 border-b border-gray-100 mb-4">
         <div className="flex items-center gap-2">
@@ -152,8 +181,9 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
         <div className="flex items-center bg-gray-100 p-0.5 rounded-lg">
           <button
             type="button"
+            data-testid="preview-mode-mobile"
             onClick={() => setViewMode('mobile')}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
               viewMode === 'mobile'
                 ? 'bg-white text-gray-900 shadow-2xs'
                 : 'text-gray-500 hover:text-gray-900'
@@ -164,8 +194,9 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
           </button>
           <button
             type="button"
+            data-testid="preview-mode-desktop"
             onClick={() => setViewMode('desktop')}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
               viewMode === 'desktop'
                 ? 'bg-white text-gray-900 shadow-2xs'
                 : 'text-gray-500 hover:text-gray-900'
@@ -186,29 +217,39 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
             <div className="w-2.5 h-2.5 bg-gray-900 rounded-full border border-gray-800 ml-3" />
           </div>
 
-          {/* Tela interna */}
+          {/* Tela interna (Superfície de Fundo Geral) */}
           <div
+            data-testid="preview-general-surface"
             className="relative flex-1 w-full rounded-[38px] overflow-hidden flex flex-col shadow-inner transition-colors duration-200"
             style={{
               ...cssVars,
-              background: formatCssBackground(tokens.backgrounds.general),
-              fontFamily: 'var(--dc-font-family)',
+              ...generalBgStyle,
+              fontFamily: typo.cssFont,
             }}
           >
             {/* Status bar */}
-            <div className="pt-2.5 px-6 flex items-center justify-between text-[11px] font-semibold text-gray-800 z-20">
-              <span style={{ color: p.textSecondary }}>12:45</span>
-              <div className="flex items-center gap-1 text-xs" style={{ color: p.textSecondary }}>
-                <Clock className="w-3 h-3" />
-                <span>30-45m</span>
+            <div className="pt-2.5 px-6 flex items-center justify-between text-[11px] font-semibold z-20">
+              <span data-testid="preview-text-secondary" style={secondaryTextStyle}>
+                12:45
+              </span>
+              <div className="flex items-center gap-1 text-xs">
+                <Clock
+                  data-testid="preview-icon-clock"
+                  className="w-3 h-3"
+                  style={{ color: p.iconColor }}
+                />
+                <span data-testid="preview-delivery-time-label" style={secondaryTextStyle}>
+                  30-45m
+                </span>
               </div>
             </div>
 
-            {/* Cabeçalho */}
+            {/* Cabeçalho (Superfície Fundo do Cabeçalho) */}
             <div
+              data-testid="preview-header"
               className="pt-3 pb-3 px-4 flex items-center justify-between border-b shadow-2xs transition-colors duration-200"
               style={{
-                background: formatCssBackground(tokens.backgrounds.header),
+                ...headerBgStyle,
                 borderColor: p.border,
               }}
             >
@@ -222,10 +263,11 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
                   />
                 ) : (
                   <div
+                    data-testid="preview-logo-fallback"
                     className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0"
                     style={{
                       backgroundColor: p.primary,
-                      color: p.buttonText || '#ffffff',
+                      color: '#ffffff',
                     }}
                   >
                     {(theme.storeName || 'L').charAt(0).toUpperCase()}
@@ -233,12 +275,13 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
                 )}
                 <div className="min-w-0">
                   <h4
-                    className="text-xs font-bold truncate leading-tight"
-                    style={{ color: p.textTitle }}
+                    data-testid="preview-store-title"
+                    className="truncate"
+                    style={titleTextStyle}
                   >
                     {theme.storeName || 'Sua Loja Delivery'}
                   </h4>
-                  <div className="flex items-center gap-1.5 text-[10px]" style={{ color: p.textSecondary }}>
+                  <div className="flex items-center gap-1.5" style={secondaryTextStyle}>
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${isOpen ? 'bg-emerald-500' : 'bg-rose-500'}`}
                     />
@@ -253,11 +296,12 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
 
               <button
                 type="button"
+                data-testid="preview-header-action-button"
                 className="w-8 h-8 rounded-full flex items-center justify-center shadow-xs shrink-0 transition-transform active:scale-95"
                 style={{
-                  backgroundColor: p.primary,
-                  color: p.buttonText || '#ffffff',
-                  borderRadius: c.buttonRadius,
+                  backgroundColor: p.buttonBg,
+                  color: p.buttonText,
+                  borderRadius: c.buttonRadius || cardBorderRadius,
                 }}
               >
                 <ShoppingBag className="w-4 h-4" />
@@ -266,108 +310,158 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
 
             {/* Conteúdo rolável */}
             <div className="flex-1 overflow-y-auto px-3.5 py-3 space-y-3 no-scrollbar text-xs">
-              {/* Barra de Busca */}
+              {/* Barra de Busca (Superfície neutra própria, independente de bgCard) */}
               <div className="relative">
                 <Search
+                  data-testid="preview-icon-search"
                   className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2"
-                  style={{ color: p.textSecondary }}
+                  style={{ color: p.iconColor }}
                 />
                 <div
+                  data-testid="preview-search-bar"
                   className="w-full border pl-8 pr-3 py-2 text-[11px] shadow-2xs"
                   style={{
-                    backgroundColor: p.bgCard,
+                    backgroundColor: '#ffffff',
                     borderColor: p.border,
                     color: p.textSecondary,
-                    borderRadius: c.borderRadius,
+                    borderRadius: cardBorderRadius,
+                    fontFamily: typo.cssFont,
                   }}
                 >
                   Buscar no cardápio...
                 </div>
               </div>
 
-              {/* Banner / Oferta */}
+              {/* Banner / Oferta (Usa Cor Principal e Cor Secundária sem afetar botões ou cards) */}
               <div
+                data-testid="preview-promo-banner"
                 className="p-3.5 relative overflow-hidden shadow-xs"
                 style={{
                   backgroundColor: p.primary,
-                  color: p.buttonText || '#ffffff',
-                  borderRadius: c.borderRadius,
+                  color: '#ffffff',
+                  borderRadius: cardBorderRadius,
                 }}
               >
                 <div className="relative z-10 space-y-1">
-                  <span
-                    className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1"
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      data-testid="preview-accent-badge"
+                      className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1"
+                      style={{
+                        backgroundColor: p.accent,
+                        color: '#ffffff',
+                      }}
+                    >
+                      <Flame className="w-2.5 h-2.5" /> OFERTA DO DIA
+                    </span>
+                    <span
+                      data-testid="preview-secondary-element"
+                      className="px-2 py-0.5 rounded-full text-[9px] font-bold"
+                      style={{
+                        backgroundColor: p.secondary,
+                        color: '#ffffff',
+                      }}
+                    >
+                      App Exclusivo
+                    </span>
+                  </div>
+                  <p
+                    className="font-extrabold leading-tight"
                     style={{
-                      backgroundColor: 'rgba(255,255,255,0.22)',
-                      color: p.buttonText || '#ffffff',
+                      fontFamily: typo.cssFont,
+                      fontSize: `${Math.round(12 * typo.scaleFactor)}px`,
                     }}
                   >
-                    <Flame className="w-2.5 h-2.5" /> OFERTA DO DIA
-                  </span>
-                  <p className="font-extrabold text-xs leading-tight">
                     {theme.tagline || 'Seu canal de compras direto e exclusivo.'}
                   </p>
                   <p className="text-[10px] opacity-90">Descontos exclusivos no app próprio</p>
                 </div>
               </div>
 
-              {/* Categorias */}
+              {/* Categorias (Controladas exclusivamente por p.categoryBg) */}
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
                 {categories.map(renderCategoryButton)}
               </div>
 
-              {/* Lista de Produtos */}
+              {/* Lista de Produtos (Cards controlados exclusivamente por bgCard / backgrounds.card) */}
               <div className="space-y-2">
                 {sampleProducts.map((prod) => (
                   <div
                     key={prod.id}
-                    className={`p-2.5 flex items-center justify-between gap-2 transition-all ${cardShadowClass}`}
+                    data-testid="preview-product-card"
+                    data-product-id={prod.id}
+                    className="p-2.5 flex items-center justify-between gap-2 transition-all"
                     style={{
-                      background: formatCssBackground(tokens.backgrounds.card),
+                      ...cardBgStyle,
                       borderColor: p.border,
-                      borderWidth: c.cardBorder ? '1px' : '0px',
-                      borderRadius: c.cardRadius || c.borderRadius,
+                      borderWidth: `${cardBorderWidth}px`,
+                      borderStyle: cardBorderWidth > 0 ? 'solid' : 'none',
+                      borderRadius: cardBorderRadius,
+                      boxShadow: cardBoxShadow,
                     }}
                   >
                     <div className="space-y-0.5 min-w-0 flex-1">
                       <div className="flex items-center gap-1">
                         <span
-                          className="font-bold text-[11px] truncate"
-                          style={{ color: p.textTitle }}
+                          data-testid="preview-product-title"
+                          className="truncate"
+                          style={titleTextStyle}
                         >
                           {prod.name}
                         </span>
                       </div>
                       <p
-                        className="text-[9px] line-clamp-1 leading-tight"
-                        style={{ color: p.textSecondary }}
+                        data-testid="preview-product-desc"
+                        className="line-clamp-2"
+                        style={bodyTextStyle}
                       >
                         {prod.desc}
                       </p>
                       <div className="flex items-center gap-1.5 pt-1">
-                        <span
-                          className="font-extrabold text-xs"
-                          style={{ color: prod.hasPromo ? p.promoPrice : p.price }}
-                        >
-                          {prod.promoPrice || prod.price}
-                        </span>
-                        {prod.hasPromo && (
+                        {prod.hasPromo ? (
                           <span
-                            className="text-[9px] line-through"
-                            style={{ color: p.textSecondary }}
+                            data-testid="preview-promo-price"
+                            className="font-extrabold"
+                            style={{
+                              color: p.promoPrice,
+                              fontFamily: typo.cssFont,
+                              fontSize: `${Math.round(12 * typo.scaleFactor)}px`,
+                            }}
+                          >
+                            {prod.promoPrice}
+                          </span>
+                        ) : (
+                          <span
+                            data-testid="preview-normal-price"
+                            className="font-extrabold"
+                            style={{
+                              color: p.price,
+                              fontFamily: typo.cssFont,
+                              fontSize: `${Math.round(12 * typo.scaleFactor)}px`,
+                            }}
                           >
                             {prod.price}
                           </span>
                         )}
                         {prod.hasPromo && (
                           <span
-                            className="text-[8px] font-bold px-1 py-0.2 rounded"
+                            data-testid="preview-strikethrough-price"
+                            className="line-through"
+                            style={secondaryTextStyle}
+                          >
+                            {prod.price}
+                          </span>
+                        )}
+                        {prod.tag && (
+                          <span
+                            data-testid="preview-product-accent-tag"
+                            className="text-[8px] font-bold px-1.5 py-0.5 rounded"
                             style={{
-                              backgroundColor: `${p.promoPrice}15`,
-                              color: p.promoPrice,
+                              backgroundColor: p.accent,
+                              color: '#ffffff',
                             }}
                           >
-                            PROMO
+                            {prod.tag}
                           </span>
                         )}
                       </div>
@@ -382,14 +476,17 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
                       />
                       <button
                         type="button"
-                        className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center shadow-xs cursor-pointer"
+                        data-testid="preview-action-button"
+                        className="absolute -bottom-1 -right-1 px-1.5 h-5 rounded-full flex items-center justify-center gap-0.5 shadow-xs cursor-pointer text-[9px] font-bold"
                         style={{
                           backgroundColor: p.buttonBg,
-                          color: p.buttonText || '#ffffff',
-                          borderRadius: c.buttonRadius,
+                          color: p.buttonText,
+                          borderRadius: c.buttonRadius || cardBorderRadius,
+                          fontFamily: typo.cssFont,
                         }}
                       >
-                        <Plus className="w-3 h-3" />
+                        <Plus className="w-2.5 h-2.5" />
+                        <span>Add</span>
                       </button>
                     </div>
                   </div>
@@ -397,30 +494,64 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
               </div>
             </div>
 
-            {/* Bottom Nav */}
+            {/* Bottom Nav (Controlada exclusivamente por p.bgMenu para o fundo e p.iconColor para os ícones) */}
             <div
+              data-testid="preview-bottom-menu"
               className="py-2.5 px-6 border-t flex items-center justify-around z-10"
               style={{
-                backgroundColor: p.bgMenu || p.bgCard,
+                backgroundColor: p.bgMenu,
                 borderColor: p.border,
               }}
             >
-              <div className="flex flex-col items-center gap-0.5" style={{ color: p.primary }}>
-                <div className="w-1.5 h-1.5 rounded-full bg-current" />
-                <span className="text-[9px] font-bold">Início</span>
+              <div className="flex flex-col items-center gap-0.5">
+                <Home
+                  data-testid="preview-icon-nav-home"
+                  className="w-3.5 h-3.5"
+                  style={{ color: p.iconColor }}
+                />
+                <span
+                  data-testid="preview-nav-label"
+                  className="text-[9px] font-bold"
+                  style={{ color: p.textSecondary, fontFamily: typo.cssFont }}
+                >
+                  Início
+                </span>
               </div>
-              <div className="flex flex-col items-center gap-0.5" style={{ color: p.textSecondary }}>
-                <Search className="w-3.5 h-3.5" />
-                <span className="text-[9px]">Buscar</span>
+              <div className="flex flex-col items-center gap-0.5">
+                <Search
+                  data-testid="preview-icon-nav-search"
+                  className="w-3.5 h-3.5"
+                  style={{ color: p.iconColor }}
+                />
+                <span
+                  data-testid="preview-nav-label"
+                  className="text-[9px]"
+                  style={{ color: p.textSecondary, fontFamily: typo.cssFont }}
+                >
+                  Buscar
+                </span>
               </div>
-              <div className="flex flex-col items-center gap-0.5" style={{ color: p.textSecondary }}>
-                <ShoppingBag className="w-3.5 h-3.5" />
-                <span className="text-[9px]">Sacola</span>
+              <div className="flex flex-col items-center gap-0.5">
+                <ShoppingBag
+                  data-testid="preview-icon-nav-bag"
+                  className="w-3.5 h-3.5"
+                  style={{ color: p.iconColor }}
+                />
+                <span
+                  data-testid="preview-nav-label"
+                  className="text-[9px]"
+                  style={{ color: p.textSecondary, fontFamily: typo.cssFont }}
+                >
+                  Sacola
+                </span>
               </div>
             </div>
 
             {/* iOS Home bar */}
-            <div className="h-4 flex items-center justify-center pb-1">
+            <div
+              className="h-4 flex items-center justify-center pb-1"
+              style={{ backgroundColor: p.bgMenu }}
+            >
               <div className="w-24 h-1 bg-gray-300 rounded-full" />
             </div>
           </div>
@@ -428,19 +559,21 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
       ) : (
         /* Vista Desktop / Tablet */
         <div
+          data-testid="preview-general-surface"
           className="w-full max-w-2xl rounded-2xl border overflow-hidden shadow-lg transition-colors duration-200"
           style={{
             ...cssVars,
-            background: formatCssBackground(tokens.backgrounds.general),
+            ...generalBgStyle,
             borderColor: p.border,
-            fontFamily: 'var(--dc-font-family)',
+            fontFamily: typo.cssFont,
           }}
         >
           {/* Top Bar Desktop */}
           <div
+            data-testid="preview-header"
             className="px-6 py-4 border-b flex items-center justify-between"
             style={{
-              background: formatCssBackground(tokens.backgrounds.header),
+              ...headerBgStyle,
               borderColor: p.border,
             }}
           >
@@ -457,17 +590,17 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
                   className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
                   style={{
                     backgroundColor: p.primary,
-                    color: p.buttonText || '#ffffff',
+                    color: '#ffffff',
                   }}
                 >
                   {(theme.storeName || 'L').charAt(0).toUpperCase()}
                 </div>
               )}
               <div>
-                <h3 className="font-bold text-sm leading-tight" style={{ color: p.textTitle }}>
+                <h3 data-testid="preview-store-title" style={titleTextStyle}>
                   {theme.storeName || 'Sua Loja Delivery'}
                 </h3>
-                <p className="text-xs" style={{ color: p.textSecondary }}>
+                <p style={secondaryTextStyle}>
                   {theme.tagline || 'Seu canal de compras direto e exclusivo.'}
                 </p>
               </div>
@@ -475,11 +608,13 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
 
             <button
               type="button"
+              data-testid="preview-action-button"
               className="px-4 py-2 text-xs font-bold flex items-center gap-2 shadow-xs cursor-pointer"
               style={{
                 backgroundColor: p.buttonBg,
-                color: p.buttonText || '#ffffff',
-                borderRadius: c.buttonRadius,
+                color: p.buttonText,
+                borderRadius: c.buttonRadius || cardBorderRadius,
+                fontFamily: typo.cssFont,
               }}
             >
               <ShoppingBag className="w-4 h-4" />
@@ -496,16 +631,19 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
               </div>
               <div className="relative w-full sm:w-56">
                 <Search
+                  data-testid="preview-icon-search"
                   className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2"
-                  style={{ color: p.textSecondary }}
+                  style={{ color: p.iconColor }}
                 />
                 <div
+                  data-testid="preview-search-bar"
                   className="w-full border pl-8 pr-3 py-1.5 text-xs shadow-2xs"
                   style={{
-                    backgroundColor: p.bgCard,
+                    backgroundColor: '#ffffff',
                     borderColor: p.border,
                     color: p.textSecondary,
-                    borderRadius: c.borderRadius,
+                    borderRadius: cardBorderRadius,
+                    fontFamily: typo.cssFont,
                   }}
                 >
                   Buscar itens...
@@ -518,11 +656,15 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
               {sampleProducts.map((prod) => (
                 <div
                   key={prod.id}
-                  className={`p-4 flex flex-col justify-between gap-3 border transition-all ${cardShadowClass}`}
+                  data-testid="preview-product-card"
+                  className="p-4 flex flex-col justify-between gap-3 transition-all"
                   style={{
-                    background: formatCssBackground(tokens.backgrounds.card),
+                    ...cardBgStyle,
                     borderColor: p.border,
-                    borderRadius: c.cardRadius || c.borderRadius,
+                    borderWidth: `${cardBorderWidth}px`,
+                    borderStyle: cardBorderWidth > 0 ? 'solid' : 'none',
+                    borderRadius: cardBorderRadius,
+                    boxShadow: cardBoxShadow,
                   }}
                 >
                   <div className="flex gap-3">
@@ -533,10 +675,10 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
                       style={{ borderColor: p.border }}
                     />
                     <div className="min-w-0 space-y-1">
-                      <h5 className="font-bold text-xs truncate" style={{ color: p.textTitle }}>
+                      <h5 data-testid="preview-product-title" className="truncate" style={titleTextStyle}>
                         {prod.name}
                       </h5>
-                      <p className="text-[11px] line-clamp-2" style={{ color: p.textSecondary }}>
+                      <p data-testid="preview-product-desc" className="line-clamp-2" style={bodyTextStyle}>
                         {prod.desc}
                       </p>
                     </div>
@@ -544,14 +686,29 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
 
                   <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: p.border }}>
                     <div className="flex items-baseline gap-1.5">
-                      <span
-                        className="font-extrabold text-sm"
-                        style={{ color: prod.hasPromo ? p.promoPrice : p.price }}
-                      >
-                        {prod.promoPrice || prod.price}
-                      </span>
+                      {prod.hasPromo ? (
+                        <span
+                          data-testid="preview-promo-price"
+                          className="font-extrabold text-sm"
+                          style={{ color: p.promoPrice, fontFamily: typo.cssFont }}
+                        >
+                          {prod.promoPrice}
+                        </span>
+                      ) : (
+                        <span
+                          data-testid="preview-normal-price"
+                          className="font-extrabold text-sm"
+                          style={{ color: p.price, fontFamily: typo.cssFont }}
+                        >
+                          {prod.price}
+                        </span>
+                      )}
                       {prod.hasPromo && (
-                        <span className="text-xs line-through" style={{ color: p.textSecondary }}>
+                        <span
+                          data-testid="preview-strikethrough-price"
+                          className="text-xs line-through"
+                          style={secondaryTextStyle}
+                        >
                           {prod.price}
                         </span>
                       )}
@@ -559,11 +716,13 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
 
                     <button
                       type="button"
+                      data-testid="preview-action-button"
                       className="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer"
                       style={{
                         backgroundColor: p.buttonBg,
-                        color: p.buttonText || '#ffffff',
-                        borderRadius: c.buttonRadius,
+                        color: p.buttonText,
+                        borderRadius: c.buttonRadius || cardBorderRadius,
+                        fontFamily: typo.cssFont,
                       }}
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -572,6 +731,47 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Bottom Nav Desktop */}
+          <div
+            data-testid="preview-bottom-menu"
+            className="py-3 px-8 border-t flex items-center justify-around"
+            style={{
+              backgroundColor: p.bgMenu,
+              borderColor: p.border,
+            }}
+          >
+            <div className="flex items-center gap-1.5">
+              <Home
+                data-testid="preview-icon-nav-home"
+                className="w-4 h-4"
+                style={{ color: p.iconColor }}
+              />
+              <span className="text-xs font-bold" style={secondaryTextStyle}>
+                Início
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Search
+                data-testid="preview-icon-nav-search"
+                className="w-4 h-4"
+                style={{ color: p.iconColor }}
+              />
+              <span className="text-xs" style={secondaryTextStyle}>
+                Buscar
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ShoppingBag
+                data-testid="preview-icon-nav-bag"
+                className="w-4 h-4"
+                style={{ color: p.iconColor }}
+              />
+              <span className="text-xs" style={secondaryTextStyle}>
+                Sacola
+              </span>
             </div>
           </div>
         </div>

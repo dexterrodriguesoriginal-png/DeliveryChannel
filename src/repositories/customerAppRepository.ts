@@ -84,7 +84,28 @@ export const customerAppRepository = {
       p_lgpd_consent: input.consentLgpd,
       p_contact_consent: input.contactConsent,
     });
-    if (error) throw new Error(error.message || 'Não foi possível cadastrar seus dados nesta loja.');
+    if (error) {
+      const msg = String(error.message || '');
+      if (
+        msg.includes('PHONE_MANUAL_RECORD_CONFLICT') ||
+        msg.includes('cadastro presencial') ||
+        msg.includes('registro presencial')
+      ) {
+        throw new Error(
+          'Identificamos um cadastro presencial anterior com este telefone nesta loja. Para sua segurança e privacidade, confirme seus dados no estabelecimento para ativar sua conta digital.'
+        );
+      }
+      if (
+        msg.includes('PHONE_ALREADY_REGISTERED') ||
+        msg.includes('já está associado a outra conta') ||
+        msg.includes('customers_tenant_id_phone_key')
+      ) {
+        throw new Error(
+          'Este número de telefone já está registrado nesta loja. Não é possível vincular a mesma identificação sem validação prévia.'
+        );
+      }
+      throw new Error(msg || 'Não foi possível cadastrar seus dados nesta loja.');
+    }
   },
 
   async setMyContactConsent(tenantId: string, accepted: boolean): Promise<void> {

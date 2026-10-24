@@ -8,7 +8,7 @@ import type { User as SupabaseUser, Session as SupabaseSession } from '@supabase
 import { dataStore } from '../services/dataStore';
 import { isValidUuid } from '../lib/uuid';
 import { tenantSettingsColumns } from '../lib/dbColumns';
-import { isLocalDemoAllowed } from '../lib/backend';
+import { isLocalDemoAllowed, isPreviewBypassActive, PREVIEW_BYPASS_SESSION_KEY } from '../lib/backend';
 import { classifyMemberships, DriverApprovalLookup } from '../lib/membershipResolution';
 import { driverInviteRepository } from '../repositories/driverRepository';
 import { BusinessType } from '../lib/modules';
@@ -125,6 +125,7 @@ interface AuthContextType {
   // Modo Demo (ativo EXCLUSIVAMENTE quando VITE_ENABLE_DEMO_MODE=true)
   isDemoModeEnabled: boolean;
   loginAsPersona?: (role: RoleId, tenantId?: string) => void;
+  enterPreviewWithoutLogin?: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -206,6 +207,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeRole, setActiveRole] = useState<RoleId | null>(null);
   const [activeTenant, setActiveTenantState] = useState<Tenant | null>(null);
   const [isCeoSupportMode, setIsCeoSupportMode] = useState<boolean>(false);
+  const [isPreviewBypass, setIsPreviewBypass] = useState<boolean>(() => isPreviewBypassActive());
 
   // Bypass de login removido (bloqueador do piloto): não existe acesso ao painel sem sessão Supabase.
   // Limpa qualquer marcador legado deixado por versões anteriores.
@@ -294,12 +296,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [driverApprovalStatus, setDriverApprovalStatus] = useState<DriverApprovalLookup>(null);
   const [pendingTenantName, setPendingTenantName] = useState<string | null>(null);
 
-  // Carrega os dados reais do Tenant do banco a partir do tenant_id de forma tolerante a falhas
   const fetchTenantData = useCallback(async (tenantId: string): Promise<Tenant | null> => {
     if (!isValidUuid(tenantId)) {
-      // Tenants não-UUID só existem no modo demo local (DEV sem Supabase); nunca em produção.
-      if (!isLocalDemoAllowed) return null;
-      return dataStore.getTenantById({ userId: 'local-demo', userRole: 'OWNER', userName: 'Demo' }, tenantId) || dataStore.getTenantBySlug(tenantId) || null;
+      // Tenants não-UUID só existem no modo demo local ou no modo edição rápido; nunca em produção.
+      if (!isLocalDemoAllowed && !isPreviewBypassActive() && !isPreviewBypass) return null;
+      return (
+        dataStore.getTenantById({ userId: 'local-demo', userRole: 'OWNER', userName: 'Demo', tenantId }, tenantId) ||
+        dataStore.getTenantBySlug(tenantId) ||
+        dataStore.getTenants({ userId: 'local-demo', userRole: 'CEO', userName: 'Demo' }).find(t => t.id === tenantId) ||
+        null
+      );
     }
 
     try {
@@ -758,6 +764,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
 
       // Seleção do tenant preferencial
+      if (mappedActiveTenants.length === 0) {
+        console.warn('[AuthContext] Nenhum vínculo ativo válido em mappedActiveTenants');
+        setMembershipStatus('MEMBERSHIP_RESOLVED_EMPTY');
+        setHasTenantMembership(false);
+        setActiveRole(null);
+        setActiveTenantState(null);
+        setAvailableTenants([]);
+        return;
+      }
+
       let preferredMembership = mappedActiveTenants[0];
       if (mappedActiveTenants.length > 1) {
         const savedTenantPref = localStorage.getItem(`adegafood_pref_tenant_${sessionUserId}`);
@@ -828,6 +844,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
+      if (!chosenTenant) {
+        console.warn('[AuthContext] Não foi possível resolver dados do tenant:', preferredMembership.tenantId);
+        setMembershipStatus('MEMBERSHIP_ERROR');
+        setMembershipError('Não foi possível carregar as informações do seu estabelecimento no momento. Verifique sua conexão e tente novamente.');
+        setHasTenantMembership(false);
+        setActiveRole(null);
+        setActiveTenantState(null);
+        return;
+      }
+
       // F1/F5: para DRIVER ativo, lê o próprio approval_status; só APPROVED confirmado abre o app.
       if (preferredMembership.roleId === 'DRIVER') {
         const approval = await driverInviteRepository.getOwnApprovalStatus(preferredMembership.tenantId);
@@ -896,7 +922,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return false;
     }
 
-    const tenantData = await fetchTenantData(validMembership.tenantId);
+    let tenantData = await fetchTenantData(validMembership.tenantId);
+    if (!tenantData && (isPreviewBypass || isPreviewBypassActive())) {
+      tenantData = dataStore.getTenants({ userId: 'local-demo', userRole: 'CEO', userName: 'Demo' }).find(t => t.id === targetTenantId) || null;
+    }
     if (!tenantData) {
       console.error('[AuthContext] Erro ao carregar dados do tenant associado:', targetTenantId);
       return false;
@@ -912,10 +941,99 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: validMembership.roleId,
         tenantId: validMembership.tenantId,
       } : null);
+    } else if (isPreviewBypass) {
+      setCurrentUser(prev => prev ? {
+        ...prev,
+        role: validMembership.roleId,
+        tenantId: validMembership.tenantId,
+      } : null);
     }
 
     return true;
-  }, [availableTenants, fetchTenantData, supabaseUser]);
+  }, [availableTenants, fetchTenantData, supabaseUser, isPreviewBypass]);
+
+  const enterPreviewWithoutLogin = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem(PREVIEW_BYPASS_SESSION_KEY, 'true');
+      }
+    } catch {
+      // ignore
+    }
+    const demoTenants = dataStore.getTenants({
+      userId: 'demo-owner',
+      userRole: 'CEO',
+      userName: 'Modo Edição',
+    });
+    const fallbackTenant: Tenant = {
+      id: 'tenant-adega-01',
+      slug: 'adega-premium',
+      name: 'Adega Premium Jardins',
+      legalName: 'Jardins Vinhos & Bebidas Ltda',
+      document: '42.198.345/0001-89',
+      phone: '(11) 98765-4321',
+      email: 'contato@adegapremium.com.br',
+      category: 'ADEGA',
+      status: 'ACTIVE',
+      planTier: 'PRO',
+      createdAt: '2026-01-15T10:00:00Z',
+      gmvMonthly: 84320.50,
+      activeOrdersToday: 42,
+      totalCustomers: 1280,
+      isDemo: true,
+      settings: {
+        isOpen: true,
+        minOrderValue: 0,
+        deliveryFee: 5,
+        estimatedDeliveryTime: '30-45 min',
+        address: 'Rua Oscar Freire, 1000 - Jardins',
+        city: 'São Paulo - SP',
+        phoneWhatsApp: '(11) 98765-4321',
+      },
+      theme: {
+        storeName: 'Adega Premium Jardins',
+        tagline: 'Vinhos & Destilados Selecionados',
+        logoUrl: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=200&h=200&fit=crop',
+        bannerUrl: 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=1200&h=400&fit=crop',
+        primaryColor: '#15803d',
+        secondaryColor: '#166534',
+        backgroundColor: '#f8fafc',
+        cardColor: '#ffffff',
+        buttonColor: '#15803d',
+        textColor: '#0f172a',
+        borderRadius: '1rem',
+        fontFamily: 'Inter',
+      },
+    };
+    const validTenants = demoTenants.length > 0 ? demoTenants : [fallbackTenant];
+    const chosenTenant = validTenants[0];
+    const memberships: TenantMembership[] = validTenants.map((t) => ({
+      tenantId: t.id,
+      roleId: 'OWNER',
+      status: 'ACTIVE',
+      tenantName: t.name,
+      tenantSlug: t.slug,
+      category: t.category,
+    }));
+
+    setIsPreviewBypass(true);
+    setIsCeoSupportMode(false);
+    setAvailableTenants(memberships);
+    setActiveRole('OWNER');
+    setActiveTenantState(chosenTenant);
+    setHasTenantMembership(true);
+    setIsAccountSuspended(false);
+    setMembershipStatus('MEMBERSHIP_RESOLVED_WITH_DATA');
+    setIsLoadingAuth(false);
+    setIsMembershipLoading(false);
+    setCurrentUser({
+      id: 'demo-owner',
+      name: 'Modo Edição (Dono)',
+      email: 'edicao@deliverychannel.dev',
+      role: 'OWNER',
+      tenantId: chosenTenant?.id,
+    });
+  }, []);
 
   // Inicializa Sessão do Supabase e Registra Listener de Mudança de Auth com sincronização estrita
   useEffect(() => {
@@ -998,9 +1116,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (!isSupabaseConfigured) {
-      setIsLoadingAuth(false);
-      setIsMembershipLoading(false);
-      setMembershipStatus('UNAUTHENTICATED');
+      if (isPreviewBypassActive()) {
+        enterPreviewWithoutLogin();
+      } else {
+        setIsLoadingAuth(false);
+        setIsMembershipLoading(false);
+        setMembershipStatus('UNAUTHENTICATED');
+      }
       return;
     }
 
@@ -1038,17 +1160,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
 
         if (!isOAuthRedirect) {
-          setIsLoadingAuth(false);
-          setIsMembershipLoading(false);
-          setMembershipStatus('UNAUTHENTICATED');
+          if (isPreviewBypassActive()) {
+            enterPreviewWithoutLogin();
+          } else {
+            setIsLoadingAuth(false);
+            setIsMembershipLoading(false);
+            setMembershipStatus('UNAUTHENTICATED');
+          }
         }
       }
     }).catch(err => {
       console.warn('[AuthContext] Falha ao verificar getSession:', err);
       if (mounted) {
-        setIsLoadingAuth(false);
-        setIsMembershipLoading(false);
-        setMembershipStatus('UNAUTHENTICATED');
+        if (isPreviewBypassActive()) {
+          enterPreviewWithoutLogin();
+        } else {
+          setIsLoadingAuth(false);
+          setIsMembershipLoading(false);
+          setMembershipStatus('UNAUTHENTICATED');
+        }
       }
     });
 
@@ -1085,9 +1215,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             window.location.search.includes('code=')
           );
           if (!isOAuthRedirect) {
-            setIsLoadingAuth(false);
-            setIsMembershipLoading(false);
-            setMembershipStatus('UNAUTHENTICATED');
+            if (isPreviewBypassActive()) {
+              enterPreviewWithoutLogin();
+            } else {
+              setIsLoadingAuth(false);
+              setIsMembershipLoading(false);
+              setMembershipStatus('UNAUTHENTICATED');
+            }
           }
         }
       }
@@ -1348,6 +1482,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Logout Oficial
   const signOut = async () => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem(PREVIEW_BYPASS_SESSION_KEY);
+      }
+    } catch {
+      // ignore
+    }
+    setIsPreviewBypass(false);
     try {
       await supabase.auth.signOut();
     } catch (err) {
@@ -1732,7 +1874,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // 3. Sem sessão Supabase
-    if (!supabaseUser) {
+    if (!supabaseUser && !isPreviewBypass) {
       if (isLoadingAuth) {
         return 'AUTHENTICATING';
       }
@@ -1778,6 +1920,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isTenantConfirmationRequired,
     pendingConfirmationTenant,
     currentUser,
+    isPreviewBypass,
   ]);
 
   return (
@@ -1791,7 +1934,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         supabaseUser,
         supabaseSession,
-        isSupabaseAuth: !!supabaseUser,
+        isSupabaseAuth: !!supabaseUser || isPreviewBypass,
         isLoadingAuth,
         isMembershipLoading,
         authError,
@@ -1836,6 +1979,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         isDemoModeEnabled: IS_DEMO_MODE,
         loginAsPersona,
+        enterPreviewWithoutLogin,
 
       }}
     >

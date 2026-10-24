@@ -1,23 +1,38 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCw, Check, Palette } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { RefreshCw, Check, Palette, AlertTriangle } from 'lucide-react';
 import { Button } from './Button';
 
-interface ColorPickerProps {
+export interface ColorPickerProps {
   color: string;
   onChange: (color: string) => void;
   onApply?: (color: string) => void;
   onResetDefault?: () => void;
   defaultColor?: string;
   label?: string;
+  testIdPrefix?: string;
 }
 
-// Helper conversions
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  let clean = hex.replace('#', '');
-  if (clean.length === 3) {
-    clean = clean.split('').map(c => c + c).join('');
+const VALID_HEX_REGEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+export function isValidHexInput(val: string): boolean {
+  if (!val || typeof val !== 'string') return false;
+  const normalized = val.trim().startsWith('#') ? val.trim() : `#${val.trim()}`;
+  return VALID_HEX_REGEX.test(normalized);
+}
+
+export function normalizeHexInput(val: string, fallback = '#15803d'): string {
+  if (!val || typeof val !== 'string') return fallback;
+  const clean = (val.trim().startsWith('#') ? val.trim() : `#${val.trim()}`).toLowerCase();
+  if (!VALID_HEX_REGEX.test(clean)) return fallback;
+  if (clean.length === 4) {
+    return `#${clean[1]}${clean[1]}${clean[2]}${clean[2]}${clean[3]}${clean[3]}`;
   }
-  const num = parseInt(clean, 16);
+  return clean;
+}
+
+export function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const norm = normalizeHexInput(hex, '#15803d');
+  const num = parseInt(norm.slice(1), 16);
   return {
     r: (num >> 16) & 255,
     g: (num >> 8) & 255,
@@ -25,7 +40,7 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
   };
 }
 
-function rgbToHex(r: number, g: number, b: number): string {
+export function rgbToHex(r: number, g: number, b: number): string {
   const toHex = (n: number) => {
     const clamped = Math.max(0, Math.min(255, Math.round(n)));
     return clamped.toString(16).padStart(2, '0');
@@ -33,7 +48,104 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
-function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
+/**
+ * Converte RGB (0-255) para HSV (h: 0-360, s: 0-100, v: 0-100) com precisão para o seletor 2D
+ */
+export function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const d = max - min;
+
+  let h = 0;
+  const s = max === 0 ? 0 : (d / max) * 100;
+  const v = max * 100;
+
+  if (max !== min) {
+    switch (max) {
+      case rn:
+        h = (gn - bn) / d + (gn < bn ? 6 : 0);
+        break;
+      case gn:
+        h = (bn - rn) / d + 2;
+        break;
+      case bn:
+        h = (rn - gn) / d + 4;
+        break;
+    }
+    h *= 60;
+  }
+
+  return {
+    h: Number(h.toFixed(2)),
+    s: Number(s.toFixed(2)),
+    v: Number(v.toFixed(2)),
+  };
+}
+
+/**
+ * Converte HSV (h: 0-360, s: 0-100, v: 0-100) para RGB (0-255)
+ */
+export function hsvToRgb(h: number, s: number, v: number): { r: number; g: number; b: number } {
+  const hn = ((h % 360) + 360) % 360;
+  const sn = Math.max(0, Math.min(100, s)) / 100;
+  const vn = Math.max(0, Math.min(100, v)) / 100;
+
+  const c = vn * sn;
+  const x = c * (1 - Math.abs(((hn / 60) % 2) - 1));
+  const m = vn - c;
+
+  let rPrime = 0;
+  let gPrime = 0;
+  let bPrime = 0;
+
+  if (hn >= 0 && hn < 60) {
+    rPrime = c;
+    gPrime = x;
+    bPrime = 0;
+  } else if (hn >= 60 && hn < 120) {
+    rPrime = x;
+    gPrime = c;
+    bPrime = 0;
+  } else if (hn >= 120 && hn < 180) {
+    rPrime = 0;
+    gPrime = c;
+    bPrime = x;
+  } else if (hn >= 180 && hn < 240) {
+    rPrime = 0;
+    gPrime = x;
+    bPrime = c;
+  } else if (hn >= 240 && hn < 300) {
+    rPrime = x;
+    gPrime = 0;
+    bPrime = c;
+  } else {
+    rPrime = c;
+    gPrime = 0;
+    bPrime = x;
+  }
+
+  return {
+    r: Math.round((rPrime + m) * 255),
+    g: Math.round((gPrime + m) * 255),
+    b: Math.round((bPrime + m) * 255),
+  };
+}
+
+export function hexToHsv(hex: string): { h: number; s: number; v: number } {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToHsv(r, g, b);
+}
+
+export function hsvToHex(h: number, s: number, v: number): string {
+  const { r, g, b } = hsvToRgb(h, s, v);
+  return rgbToHex(r, g, b);
+}
+
+export function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
   r /= 255;
   g /= 255;
   b /= 255;
@@ -67,7 +179,7 @@ function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: n
   };
 }
 
-function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+export function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
   h /= 360;
   s /= 100;
   l /= 100;
@@ -96,6 +208,29 @@ function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: n
   return { r, g, b };
 }
 
+/**
+ * Calcula coordenadas normalizadas (s: 0-100, v: 0-100, leftPercent: 0-100, topPercent: 0-100)
+ * a partir da posição do ponteiro e dos limites (DOMRect) do seletor 2D.
+ */
+export function computePointerSaturationValue(
+  clientX: number,
+  clientY: number,
+  rect: { left: number; top: number; width: number; height: number }
+): { s: number; v: number; leftPercent: number; topPercent: number } {
+  const width = rect.width > 0 ? rect.width : 200;
+  const height = rect.height > 0 ? rect.height : 128;
+
+  const clampedX = Math.max(0, Math.min(width, clientX - rect.left));
+  const clampedY = Math.max(0, Math.min(height, clientY - rect.top));
+
+  const leftPercent = Number(((clampedX / width) * 100).toFixed(2));
+  const topPercent = Number(((clampedY / height) * 100).toFixed(2));
+  const s = leftPercent;
+  const v = Number((100 - topPercent).toFixed(2));
+
+  return { s, v, leftPercent, topPercent };
+}
+
 export const ColorPicker: React.FC<ColorPickerProps> = ({
   color,
   onChange,
@@ -103,59 +238,172 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   onResetDefault,
   defaultColor = '#15803d',
   label = 'Seletor de Cor Profissional',
+  testIdPrefix = 'color-picker',
 }) => {
-  const [currentColor, setCurrentColor] = useState(color);
+  const initialHex = normalizeHexInput(color, defaultColor);
+  const [currentColor, setCurrentColor] = useState<string>(initialHex);
+  const [hsv, setHsv] = useState<{ h: number; s: number; v: number }>(() => hexToHsv(initialHex));
+  const [hexDraft, setHexDraft] = useState<string>(initialHex.replace('#', '').toUpperCase());
+  const [hexError, setHexError] = useState<string | null>(null);
   const [format, setFormat] = useState<'HEX' | 'RGB' | 'HSL'>('HEX');
-  const satValRef = useRef<HTMLDivElement>(null);
-  const isDraggingSatVal = useRef(false);
 
-  // Compute RGB and HSL representations
+  const satValRef = useRef<HTMLDivElement>(null);
+  const isDraggingRef = useRef<boolean>(false);
+  const lastEmittedHexRef = useRef<string>(initialHex.toLowerCase());
+  const hsvRef = useRef(hsv);
+  hsvRef.current = hsv;
+
+  // Sincroniza quando a cor externa muda (ex: usuário trocou de alvo de cor no editor)
+  useEffect(() => {
+    if (!isValidHexInput(color)) return;
+    const norm = normalizeHexInput(color, defaultColor);
+    setCurrentColor(norm);
+    setHexDraft(norm.replace('#', '').toUpperCase());
+    setHexError(null);
+
+    if (norm.toLowerCase() !== lastEmittedHexRef.current.toLowerCase()) {
+      const nextHsv = hexToHsv(norm);
+      setHsv(nextHsv);
+      lastEmittedHexRef.current = norm.toLowerCase();
+    }
+  }, [color, defaultColor]);
+
+  // Recalcula limites caso o container mude de tamanho (ResizeObserver)
+  useEffect(() => {
+    const el = satValRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      // As coordenadas percentuais (hsv.s% e 100-hsv.v%) se adaptam automaticamente,
+      // e cliques subsequentes leem getBoundingClientRect() atualizado.
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const emitValidHexAndSync = useCallback(
+    (newHex: string, nextHsv?: { h: number; s: number; v: number }) => {
+      const norm = normalizeHexInput(newHex, currentColor);
+      lastEmittedHexRef.current = norm.toLowerCase();
+      setCurrentColor(norm);
+      setHexDraft(norm.replace('#', '').toUpperCase());
+      setHexError(null);
+      if (nextHsv) {
+        setHsv(nextHsv);
+      } else {
+        setHsv(hexToHsv(norm));
+      }
+      onChange(norm);
+    },
+    [currentColor, onChange]
+  );
+
+  // Atualiza a posição do cursor 2D e calcula o HEX correspondente
+  const updateFromPointerCoordinates = useCallback(
+    (clientX: number, clientY: number) => {
+      const el = satValRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const { s, v } = computePointerSaturationValue(clientX, clientY, rect);
+      const currentH = hsvRef.current.h;
+      const nextHsv = { h: currentH, s, v };
+      const nextHex = hsvToHex(currentH, s, v);
+      emitValidHexAndSync(nextHex, nextHsv);
+    },
+    [emitValidHexAndSync]
+  );
+
+  // Listeners globais para arraste contínuo com mouse e toque
+  useEffect(() => {
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      e.preventDefault();
+      updateFromPointerCoordinates(e.clientX, e.clientY);
+    };
+
+    const handleWindowMouseUp = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+      }
+    };
+
+    const handleWindowTouchMove = (e: TouchEvent) => {
+      if (!isDraggingRef.current || !e.touches[0]) return;
+      updateFromPointerCoordinates(e.touches[0].clientX, e.touches[0].clientY);
+    };
+
+    const handleWindowTouchEnd = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+      }
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+    window.addEventListener('touchmove', handleWindowTouchMove, { passive: true });
+    window.addEventListener('touchend', handleWindowTouchEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+      window.removeEventListener('touchmove', handleWindowTouchMove);
+      window.removeEventListener('touchend', handleWindowTouchEnd);
+    };
+  }, [updateFromPointerCoordinates]);
+
   const rgb = hexToRgb(currentColor);
   const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
 
-  useEffect(() => {
-    setCurrentColor(color);
-  }, [color]);
-
-  const updateColorHex = (newHex: string) => {
-    setCurrentColor(newHex);
-    onChange(newHex);
-  };
-
-  // Handlers for inputs
   const handleRgbChange = (channel: 'r' | 'g' | 'b', val: number) => {
-    const newRgb = { ...rgb, [channel]: Math.max(0, Math.min(255, val || 0)) };
+    const clamped = Math.max(0, Math.min(255, Number.isNaN(val) ? 0 : val));
+    const newRgb = { ...rgb, [channel]: clamped };
     const newHex = rgbToHex(newRgb.r, newRgb.g, newRgb.b);
-    updateColorHex(newHex);
+    emitValidHexAndSync(newHex);
   };
 
   const handleHslChange = (channel: 'h' | 's' | 'l', val: number) => {
-    const newHsl = { ...hsl, [channel]: val };
+    const maxVal = channel === 'h' ? 360 : 100;
+    const clamped = Math.max(0, Math.min(maxVal, Number.isNaN(val) ? 0 : val));
+    const newHsl = { ...hsl, [channel]: clamped };
     const newRgb = hslToRgb(newHsl.h, newHsl.s, newHsl.l);
     const newHex = rgbToHex(newRgb.r, newRgb.g, newRgb.b);
-    updateColorHex(newHex);
+    emitValidHexAndSync(newHex);
   };
 
   const handleHueSlider = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const hue = parseInt(e.target.value, 10);
-    handleHslChange('h', hue);
+    const newHue = Number(e.target.value);
+    const nextHsv = { h: newHue, s: hsv.s, v: hsv.v };
+    const newHex = hsvToHex(nextHsv.h, nextHsv.s, nextHsv.v);
+    emitValidHexAndSync(newHex, nextHsv);
   };
 
-  // Interactive 2D Saturation / Lightness canvas click & drag
-  const handleSatValPointer = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!satValRef.current) return;
-    const rect = satValRef.current.getBoundingClientRect();
-    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-    const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+  const handleHexInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/^#/, '');
+    setHexDraft(raw.toUpperCase());
 
-    const s = Math.round((x / rect.width) * 100);
-    const v = Math.round((1 - y / rect.height) * 100);
-    // Approximate HSV to HSL
-    const l = (v / 100) * (1 - s / 200) * 100;
-    const finalS = l === 0 || l === 100 ? 0 : ((v - l) / Math.min(l, 100 - l)) * 100;
+    const candidate = `#${raw.trim()}`;
+    if (/^#[0-9a-fA-F]{6}$/.test(candidate)) {
+      const norm = candidate.toLowerCase();
+      const nextHsv = hexToHsv(norm);
+      emitValidHexAndSync(norm, nextHsv);
+    } else if (raw.trim().length === 0) {
+      setHexError('Informe um código hexadecimal válido');
+    } else if (!/^[0-9a-fA-F]{0,6}$/.test(raw.trim())) {
+      setHexError('Caracteres inválidos (use 0-9 e A-F)');
+    } else {
+      setHexError(null);
+    }
+  };
 
-    const newRgb = hslToRgb(hsl.h, Math.round(finalS || 0), Math.round(l));
-    updateColorHex(rgbToHex(newRgb.r, newRgb.g, newRgb.b));
+  const handleHexInputBlur = () => {
+    const candidate = `#${hexDraft.trim()}`;
+    if (VALID_HEX_REGEX.test(candidate)) {
+      const norm = normalizeHexInput(candidate, currentColor);
+      emitValidHexAndSync(norm, hexToHsv(norm));
+    } else {
+      // Não apaga silenciosamente a cor válida anterior; restaura o texto válido e limpa erro
+      setHexDraft(currentColor.replace('#', '').toUpperCase());
+      setHexError(null);
+    }
   };
 
   const PRESET_COLORS = [
@@ -169,8 +417,14 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
     { label: 'Slate Dark', hex: '#1e293b' },
   ];
 
+  const cursorLeftPercent = Number(hsv.s.toFixed(2));
+  const cursorTopPercent = Number((100 - hsv.v).toFixed(2));
+
   return (
-    <div className="p-4 bg-white rounded-2xl border border-gray-200 shadow-sm space-y-4 max-w-sm">
+    <div
+      className="p-4 bg-white rounded-2xl border border-gray-200 shadow-sm space-y-4 max-w-sm"
+      data-testid={`${testIdPrefix}-root`}
+    >
       <div className="flex items-center justify-between pb-1 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <Palette className="w-4 h-4 text-emerald-700" />
@@ -178,38 +432,48 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
         </div>
         <div className="flex items-center gap-1.5">
           <div
+            data-testid={`${testIdPrefix}-swatch`}
             className="w-5 h-5 rounded-full border border-gray-300 shadow-2xs"
             style={{ backgroundColor: currentColor }}
           />
-          <span className="font-mono text-xs font-bold text-gray-700">{currentColor.toUpperCase()}</span>
+          <span
+            data-testid={`${testIdPrefix}-display-hex`}
+            className="font-mono text-xs font-bold text-gray-700"
+          >
+            {currentColor.toUpperCase()}
+          </span>
         </div>
       </div>
 
-      {/* 2D Saturation/Lightness Visual Picker */}
+      {/* 2D HSV Saturation / Value Visual Picker */}
       <div
         ref={satValRef}
+        data-testid={`${testIdPrefix}-surface`}
         onMouseDown={(e) => {
-          isDraggingSatVal.current = true;
-          handleSatValPointer(e);
+          isDraggingRef.current = true;
+          updateFromPointerCoordinates(e.clientX, e.clientY);
         }}
-        onMouseMove={(e) => {
-          if (isDraggingSatVal.current) handleSatValPointer(e);
+        onTouchStart={(e) => {
+          if (!e.touches[0]) return;
+          isDraggingRef.current = true;
+          updateFromPointerCoordinates(e.touches[0].clientX, e.touches[0].clientY);
         }}
-        onMouseUp={() => {
-          isDraggingSatVal.current = false;
-        }}
-        className="relative h-32 w-full rounded-xl cursor-crosshair overflow-hidden select-none"
+        className="relative h-32 w-full rounded-xl cursor-crosshair overflow-hidden select-none touch-none"
         style={{
-          backgroundColor: `hsl(${hsl.h}, 100%, 50%)`,
-          backgroundImage: 'linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent)',
+          backgroundColor: `hsl(${Math.round(hsv.h)}, 100%, 50%)`,
+          backgroundImage:
+            'linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent)',
         }}
       >
-        {/* Circular Pointer Indicator */}
+        {/* Circular Pointer Indicator Synchronized with Exact HSV Coordinates */}
         <div
-          className="absolute w-4 h-4 rounded-full border-2 border-white shadow-md pointer-events-none -translate-x-1/2 -translate-y-1/2"
+          data-testid={`${testIdPrefix}-cursor`}
+          data-left={cursorLeftPercent}
+          data-top={cursorTopPercent}
+          className="absolute w-4 h-4 rounded-full border-2 border-white shadow-md pointer-events-none -translate-x-1/2 -translate-y-1/2 ring-1 ring-black/30"
           style={{
-            left: `${hsl.s}%`,
-            top: `${100 - hsl.l}%`,
+            left: `${cursorLeftPercent}%`,
+            top: `${cursorTopPercent}%`,
             backgroundColor: currentColor,
           }}
         />
@@ -219,17 +483,19 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       <div className="space-y-1">
         <div className="flex justify-between text-[11px] text-gray-500 font-medium">
           <span>Tonalidade (Hue)</span>
-          <span className="font-mono">{hsl.h}°</span>
+          <span className="font-mono">{Math.round(hsv.h)}°</span>
         </div>
         <input
           type="range"
           min="0"
           max="360"
-          value={hsl.h}
+          value={Math.round(hsv.h)}
           onChange={handleHueSlider}
+          data-testid={`${testIdPrefix}-hue-slider`}
           className="w-full h-3 rounded-lg appearance-none cursor-pointer"
           style={{
-            background: 'linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)',
+            background:
+              'linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)',
           }}
         />
       </div>
@@ -243,7 +509,9 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
               type="button"
               onClick={() => setFormat(fmt)}
               className={`px-2 py-0.5 rounded-md cursor-pointer transition-all ${
-                format === fmt ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-500 hover:text-gray-900'
+                format === fmt
+                  ? 'bg-white text-gray-900 shadow-2xs'
+                  : 'text-gray-500 hover:text-gray-900'
               }`}
             >
               {fmt}
@@ -257,16 +525,17 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
             <span className="text-gray-400 text-xs font-mono">#</span>
             <input
               type="text"
-              value={currentColor.replace('#', '')}
-              onChange={(e) => {
-                const val = `#${e.target.value}`;
-                if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) {
-                  setCurrentColor(val);
-                  if (val.length === 7) onChange(val);
-                }
-              }}
-              maxLength={6}
-              className="w-20 px-2 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono uppercase text-center font-bold outline-none focus:border-emerald-600"
+              data-testid={`${testIdPrefix}-hex-input`}
+              value={hexDraft}
+              onChange={handleHexInputChange}
+              onBlur={handleHexInputBlur}
+              maxLength={7}
+              aria-label={label}
+              className={`w-22 px-2 py-1 bg-gray-50 border rounded-lg text-xs font-mono uppercase text-center font-bold outline-none ${
+                hexError
+                  ? 'border-rose-400 text-rose-700'
+                  : 'border-gray-200 focus:border-emerald-600 text-gray-900'
+              }`}
             />
           </div>
         )}
@@ -336,18 +605,32 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
         )}
       </div>
 
+      {hexError && (
+        <p
+          data-testid={`${testIdPrefix}-hex-error`}
+          className="text-[11px] text-rose-600 font-medium flex items-center gap-1"
+        >
+          <AlertTriangle className="w-3 h-3 shrink-0" />
+          <span>{hexError}</span>
+        </p>
+      )}
+
       {/* Preset Swatches */}
       <div className="space-y-1.5 pt-1">
-        <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Paleta Gastronomia & Bebidas</span>
+        <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">
+          Paleta Gastronomia & Bebidas
+        </span>
         <div className="grid grid-cols-8 gap-1.5">
           {PRESET_COLORS.map((p) => (
             <button
               key={p.hex}
               type="button"
               title={p.label}
-              onClick={() => updateColorHex(p.hex)}
+              onClick={() => emitValidHexAndSync(p.hex, hexToHsv(p.hex))}
               className={`w-6 h-6 rounded-lg border transition-transform hover:scale-110 cursor-pointer ${
-                currentColor.toLowerCase() === p.hex.toLowerCase() ? 'ring-2 ring-emerald-500 scale-105 border-white' : 'border-gray-200'
+                currentColor.toLowerCase() === p.hex.toLowerCase()
+                  ? 'ring-2 ring-emerald-500 scale-105 border-white'
+                  : 'border-gray-200'
               }`}
               style={{ backgroundColor: p.hex }}
             />
@@ -356,36 +639,38 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       </div>
 
       {/* Action Buttons: APLICAR & RESTAURAR PADRÃO */}
-      <div className="flex items-center justify-between pt-2 border-t border-gray-100 gap-2">
-        {onResetDefault && (
-          <Button
-            size="sm"
-            variant="outline"
-            type="button"
-            onClick={() => {
-              updateColorHex(defaultColor);
-              if (onResetDefault) onResetDefault();
-            }}
-            leftIcon={<RefreshCw className="w-3.5 h-3.5 text-gray-500" />}
-            className="text-xs py-1.5 h-8 flex-1"
-          >
-            Restaurar Padrão
-          </Button>
-        )}
+      {(onResetDefault || onApply) && (
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100 gap-2">
+          {onResetDefault && (
+            <Button
+              size="sm"
+              variant="outline"
+              type="button"
+              onClick={() => {
+                emitValidHexAndSync(defaultColor, hexToHsv(defaultColor));
+                onResetDefault();
+              }}
+              leftIcon={<RefreshCw className="w-3.5 h-3.5 text-gray-500" />}
+              className="text-xs py-1.5 h-8 flex-1"
+            >
+              Restaurar Padrão
+            </Button>
+          )}
 
-        {onApply && (
-          <Button
-            size="sm"
-            variant="primary"
-            type="button"
-            onClick={() => onApply(currentColor)}
-            leftIcon={<Check className="w-3.5 h-3.5" />}
-            className="text-xs py-1.5 h-8 flex-1 bg-emerald-700 hover:bg-emerald-800"
-          >
-            Aplicar
-          </Button>
-        )}
-      </div>
+          {onApply && (
+            <Button
+              size="sm"
+              variant="primary"
+              type="button"
+              onClick={() => onApply(currentColor)}
+              leftIcon={<Check className="w-3.5 h-3.5" />}
+              className="text-xs py-1.5 h-8 flex-1 bg-emerald-700 hover:bg-emerald-800"
+            >
+              Aplicar
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

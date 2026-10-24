@@ -85,4 +85,79 @@ describe('store CRM repository', () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
     await expect(customerRepository.getCrmCustomers(TENANT_ID, {})).rejects.toThrow('permission denied');
   });
+
+  it('fetches store-wide overview metrics via crm_get_overview_metrics RPC', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        totalCustomers: 120,
+        vipCustomers: 15,
+        recurringCustomers: 45,
+        newCustomers: 25,
+        inactiveCustomers: 20,
+        withoutOrdersCustomers: 15,
+        totalRevenue: 15800.5,
+        averageTicket: 78.4,
+      },
+      error: null,
+    });
+    const metrics = await customerRepository.getCrmOverviewMetrics(TENANT_ID);
+    expect(rpc).toHaveBeenCalledWith('crm_get_overview_metrics', {
+      p_tenant_id: TENANT_ID,
+    });
+    expect(metrics).toMatchObject({
+      totalCustomers: 120,
+      vipCustomers: 15,
+      recurringCustomers: 45,
+      newCustomers: 25,
+      inactiveCustomers: 20,
+      withoutOrdersCustomers: 15,
+      totalRevenue: 15800.5,
+      averageTicket: 78.4,
+    });
+  });
+
+  it('maps paymentStatus and fulfillmentType in getCrmCustomerOrderHistory', async () => {
+    rpc.mockResolvedValue({
+      data: [
+        {
+          id: 'ord-1',
+          orderNumber: 501,
+          createdAt: '2026-10-20T10:00:00Z',
+          status: 'DELIVERED',
+          paymentStatus: 'PAID',
+          fulfillmentType: 'DELIVERY',
+          totalAmount: 99.5,
+        },
+        {
+          id: 'ord-2',
+          orderNumber: 502,
+          createdAt: '2026-10-19T10:00:00Z',
+          status: 'CANCELLED',
+          paymentStatus: 'REFUNDED',
+          fulfillmentType: 'TAKEOUT',
+          totalAmount: 50,
+        },
+      ],
+      error: null,
+    });
+    const history = await customerRepository.getCrmCustomerOrderHistory(TENANT_ID, CUSTOMER_ID);
+    expect(rpc).toHaveBeenCalledWith('crm_get_customer_orders', {
+      p_tenant_id: TENANT_ID,
+      p_customer_id: CUSTOMER_ID,
+    });
+    expect(history).toHaveLength(2);
+    expect(history[0]).toMatchObject({
+      id: 'ord-1',
+      status: 'DELIVERED',
+      paymentStatus: 'PAID',
+      fulfillmentType: 'DELIVERY',
+      totalAmount: 99.5,
+    });
+    expect(history[1]).toMatchObject({
+      id: 'ord-2',
+      status: 'CANCELLED',
+      paymentStatus: 'REFUNDED',
+      fulfillmentType: 'TAKEOUT',
+    });
+  });
 });

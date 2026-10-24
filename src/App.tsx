@@ -94,6 +94,8 @@ function AppContent() {
     signOut,
     driverApprovalStatus,
     pendingTenantName,
+    switchTenant,
+    enterPreviewWithoutLogin,
   } = useAuth();
   const { available: modulesAvailable, loading: modulesLoading, isModuleEnabled } = useModules();
 
@@ -188,6 +190,24 @@ function AppContent() {
       }
     }
   }, []);
+
+  // Auto-recuperação do estado de carregamento do estabelecimento
+  const [loadingTenantTimeout, setLoadingTenantTimeout] = useState(false);
+  useEffect(() => {
+    if (authState === 'AUTHENTICATED_WITH_MEMBERSHIP' && !activeTenant && activeRole !== 'CEO' && activeRole !== 'SUPER_ADMIN') {
+      const timer = setTimeout(() => {
+        setLoadingTenantTimeout(true);
+        if (availableTenants.length > 0 && availableTenants[0]?.tenantId) {
+          switchTenant(availableTenants[0].tenantId);
+        } else if (enterPreviewWithoutLogin) {
+          enterPreviewWithoutLogin();
+        }
+      }, 2500);
+      return () => clearTimeout(timer);
+    } else {
+      setLoadingTenantTimeout(false);
+    }
+  }, [authState, activeTenant, activeRole, availableTenants, switchTenant, enterPreviewWithoutLogin]);
 
   // Rotas públicas ou dedicadas verificadas antes do gate administrativo
   const pathname = window.location.pathname;
@@ -504,6 +524,46 @@ function AppContent() {
           <span>Carregando dados do estabelecimento...</span>
         </div>
         <p className="text-xs text-gray-400 mt-1 font-medium">Delivery Channel SaaS</p>
+
+        {loadingTenantTimeout && (
+          <div className="mt-6 flex flex-col items-center gap-2 max-w-xs w-full text-center">
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 w-full">
+              O carregamento está demorando mais do que o esperado.
+            </p>
+            {availableTenants.length > 0 && availableTenants[0]?.tenantId && (
+              <Button
+                size="sm"
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer"
+                onClick={() => switchTenant(availableTenants[0].tenantId)}
+              >
+                Conectar a {availableTenants[0].tenantName || 'meu estabelecimento'}
+              </Button>
+            )}
+            {enterPreviewWithoutLogin && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full text-xs font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100 border-amber-300 cursor-pointer"
+                onClick={() => enterPreviewWithoutLogin()}
+              >
+                Abrir Modo Visualização / Edição
+              </Button>
+            )}
+            <button
+              onClick={() => {
+                try {
+                  sessionStorage.removeItem('adegafood_dev_preview_bypass');
+                } catch {
+                  // ignore
+                }
+                signOut();
+              }}
+              className="text-[11px] text-gray-400 hover:text-gray-600 underline pt-1 cursor-pointer"
+            >
+              Voltar para o login
+            </button>
+          </div>
+        )}
       </div>
     );
   }

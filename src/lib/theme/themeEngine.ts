@@ -3,11 +3,14 @@
  * Matemática de contraste WCAG AA, serialização de tokens, CSS Custom Properties e conversão bi-direcional.
  */
 
+import type React from 'react';
 import {
   BackgroundStyleConfig,
+  ComponentStyles,
   ContrastResult,
   ThemePalette,
   ThemeTokens,
+  TypographyConfig,
 } from '../../types/theme';
 import { TenantTheme } from '../../types';
 
@@ -165,8 +168,26 @@ export function validateWcagContrast(fgHex: string, bgHex: string): ContrastResu
 }
 
 // ============================================================================
-// FORMATAÇÃO DE FUNDOS (CSS)
+// FORMATAÇÃO DE FUNDOS (CSS) & SUPERFÍCIES ISOLADAS
 // ============================================================================
+
+export function resolveGradientColors(bg: BackgroundStyleConfig): string[] {
+  const raw = bg.gradientColors && bg.gradientColors.length >= 2
+    ? bg.gradientColors
+    : [bg.color || '#15803d', '#166534'];
+  const stops = bg.gradientStops ?? (raw.length >= 3 ? 3 : 2);
+  if (stops === 3) {
+    return [
+      raw[0] || '#15803d',
+      raw[1] || '#166534',
+      raw[2] || '#22c55e',
+    ];
+  }
+  return [
+    raw[0] || '#15803d',
+    raw[1] || '#166534',
+  ];
+}
 
 export function formatCssBackground(bg: BackgroundStyleConfig): string {
   if (!bg) return '#f8fafc';
@@ -176,17 +197,13 @@ export function formatCssBackground(bg: BackgroundStyleConfig): string {
       return bg.color || '#f8fafc';
 
     case 'gradient-linear': {
-      const colors = (bg.gradientColors && bg.gradientColors.length >= 2)
-        ? bg.gradientColors
-        : [bg.color || '#15803d', '#166534'];
+      const colors = resolveGradientColors(bg);
       const angle = bg.angle !== undefined ? bg.angle : 135;
       return `linear-gradient(${angle}deg, ${colors.join(', ')})`;
     }
 
     case 'gradient-radial': {
-      const colors = (bg.gradientColors && bg.gradientColors.length >= 2)
-        ? bg.gradientColors
-        : [bg.color || '#15803d', '#166534'];
+      const colors = resolveGradientColors(bg);
       return `radial-gradient(circle at center, ${colors.join(', ')})`;
     }
 
@@ -203,6 +220,187 @@ export function formatCssBackground(bg: BackgroundStyleConfig): string {
     default:
       return bg.color || '#f8fafc';
   }
+}
+
+export function getSurfaceBackgroundStyle(
+  bg: BackgroundStyleConfig | undefined,
+  fallbackSolidColor = '#ffffff'
+): React.CSSProperties {
+  if (!bg || bg.type === 'solid') {
+    const c = bg?.color || fallbackSolidColor;
+    return {
+      backgroundColor: c,
+      backgroundImage: 'none',
+    };
+  }
+
+  if (bg.type === 'gradient-linear' || bg.type === 'gradient-radial') {
+    const gradientCss = formatCssBackground(bg);
+    return {
+      backgroundColor: bg.color || fallbackSolidColor,
+      backgroundImage: gradientCss,
+    };
+  }
+
+  if (bg.type === 'image') {
+    const safeUrl = safeImageUrl(bg.imageUrl);
+    if (!safeUrl) {
+      const c = bg.color || fallbackSolidColor;
+      return {
+        backgroundColor: c,
+        backgroundImage: 'none',
+      };
+    }
+    const posX = bg.positionX ?? 50;
+    const posY =
+      bg.positionY ??
+      (bg.position === 'top' ? 0 : bg.position === 'bottom' ? 100 : 50);
+    const zoom = bg.zoom ?? 100;
+    const bgSize = zoom !== 100 ? `${zoom}%` : (bg.size || 'cover');
+
+    return {
+      backgroundColor: bg.color || fallbackSolidColor,
+      backgroundImage: formatCssBackground(bg),
+      backgroundPosition: `${posX}% ${posY}%`,
+      backgroundSize: bgSize,
+      backgroundRepeat: 'no-repeat',
+    };
+  }
+
+  return {
+    backgroundColor: bg.color || fallbackSolidColor,
+  };
+}
+
+// ============================================================================
+// CÁLCULOS DE TIPOGRAFIA E SOMBRAS DE COMPONENTES
+// ============================================================================
+
+export function resolveFontFamilyCss(fontFamily?: string): string {
+  const target = (fontFamily || 'Inter').trim().toLowerCase();
+  const fontObj = SAFE_FONT_FAMILIES.find(
+    f => f.name.toLowerCase() === target || f.id.toLowerCase() === target
+  );
+  return fontObj ? fontObj.cssFamily : (fontFamily || "'Inter', sans-serif");
+}
+
+export interface ComputedTypographyStyles {
+  cssFont: string;
+  titleWeight: number;
+  bodyWeight: number;
+  scaleFactor: number;
+  scalePercent: number;
+  titleTextTransform: 'uppercase' | 'none';
+  titleFontStyle: 'italic' | 'normal';
+  letterSpacing: string;
+  lineHeight: string;
+}
+
+export function computeTypographyStyles(t?: TypographyConfig): ComputedTypographyStyles {
+  const cssFont = resolveFontFamilyCss(t?.fontFamily);
+
+  const titleWeightMap: Record<string, number> = {
+    normal: 400,
+    medium: 500,
+    semibold: 600,
+    bold: 700,
+    extrabold: 800,
+  };
+  const bodyWeightMap: Record<string, number> = {
+    normal: 400,
+    medium: 500,
+    semibold: 600,
+  };
+
+  const titleWeight = titleWeightMap[t?.titleWeight || 'bold'] ?? 700;
+  const bodyWeight = bodyWeightMap[t?.bodyWeight || 'normal'] ?? 400;
+
+  let scalePercent = t?.scalePercent;
+  if (scalePercent === undefined) {
+    if (t?.scale === 'compact') scalePercent = 90;
+    else if (t?.scale === 'spacious') scalePercent = 112;
+    else scalePercent = 100;
+  }
+  scalePercent = Math.max(85, Math.min(125, scalePercent));
+  const scaleFactor = Number((scalePercent / 100).toFixed(2));
+
+  const titleTextTransform = t?.titleUppercase ? 'uppercase' : 'none';
+  const titleFontStyle = t?.titleItalic ? 'italic' : 'normal';
+
+  const letterSpacingMap: Record<string, string> = {
+    tight: '-0.025em',
+    normal: '0em',
+    wide: '0.05em',
+  };
+  const lineHeightMap: Record<string, string> = {
+    tight: '1.2',
+    normal: '1.45',
+    relaxed: '1.65',
+  };
+
+  return {
+    cssFont,
+    titleWeight,
+    bodyWeight,
+    scaleFactor,
+    scalePercent,
+    titleTextTransform,
+    titleFontStyle,
+    letterSpacing: letterSpacingMap[t?.letterSpacing || 'normal'] || '0em',
+    lineHeight: lineHeightMap[t?.lineHeight || 'normal'] || '1.45',
+  };
+}
+
+export function resolveCardBorderRadius(c?: ComponentStyles): string {
+  if (c?.borderRadiusPx !== undefined) {
+    return `${Math.max(0, Math.min(32, c.borderRadiusPx))}px`;
+  }
+  return c?.cardRadius || c?.borderRadius || '1rem';
+}
+
+export function resolveCardBorderWidth(c?: ComponentStyles): number {
+  if (c?.borderWidthPx !== undefined) {
+    return Math.max(0, Math.min(4, c.borderWidthPx));
+  }
+  return c?.cardBorder === false ? 0 : 1;
+}
+
+export function computeCardBoxShadow(c?: ComponentStyles): string {
+  if (!c) return '0px 4px 12px 0px rgba(0, 0, 0, 0.08)';
+
+  let intensity = c.shadowIntensity;
+  if (intensity === undefined) {
+    if (c.cardShadow === 'none') intensity = 0;
+    else if (c.cardShadow === 'sm') intensity = 8;
+    else if (c.cardShadow === 'md') intensity = 16;
+    else if (c.cardShadow === 'lg') intensity = 26;
+    else intensity = 8;
+  }
+
+  if (intensity <= 0) {
+    return 'none';
+  }
+
+  const blur =
+    c.shadowBlur !== undefined
+      ? Math.max(0, Math.min(40, c.shadowBlur))
+      : c.cardShadow === 'lg'
+      ? 24
+      : c.cardShadow === 'md'
+      ? 16
+      : 12;
+
+  const spread =
+    c.shadowSpread !== undefined
+      ? Math.max(-10, Math.min(20, c.shadowSpread))
+      : 0;
+
+  const shadowHex = c.shadowColor || '#000000';
+  const rgb = hexToRgb(shadowHex) || { r: 0, g: 0, b: 0 };
+  const alpha = Number((Math.max(0, Math.min(100, intensity)) / 100).toFixed(2));
+  const offsetY = Math.max(1, Math.round(blur / 3));
+
+  return `0px ${offsetY}px ${blur}px ${spread}px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 }
 
 // ============================================================================
@@ -232,6 +430,8 @@ export const DEFAULT_PALETTE: ThemePalette = {
   bgHeader: '#ffffff',
   bgCard: '#ffffff',
   bgMenu: '#ffffff',
+  categoryBg: '#f1f5f9',
+  iconColor: '#64748b',
   textTitle: '#0f172a',
   textMain: '#334155',
   textSecondary: '#64748b',
@@ -266,6 +466,8 @@ export function createDefaultThemeTokens(base?: Partial<TenantTheme>): ThemeToke
       bgHeader: '#ffffff',
       bgCard,
       bgMenu: '#ffffff',
+      categoryBg: '#f1f5f9',
+      iconColor: '#64748b',
       textTitle,
       textMain: '#334155',
       textSecondary: '#64748b',
@@ -276,22 +478,33 @@ export function createDefaultThemeTokens(base?: Partial<TenantTheme>): ThemeToke
       border: '#e2e8f0',
     },
     backgrounds: {
-      general: { type: 'solid', color: bgGeneral },
-      header: { type: 'solid', color: '#ffffff' },
-      card: { type: 'solid', color: bgCard },
+      general: { type: 'solid', color: bgGeneral, gradientStops: 2, positionX: 50, positionY: 50, zoom: 100 },
+      header: { type: 'solid', color: '#ffffff', gradientStops: 2, positionX: 50, positionY: 50, zoom: 100 },
+      card: { type: 'solid', color: bgCard, gradientStops: 2, positionX: 50, positionY: 50, zoom: 100 },
     },
     typography: {
       fontFamily,
       titleWeight: 'bold',
       bodyWeight: 'normal',
       scale: 'standard',
+      scalePercent: 100,
+      titleUppercase: false,
+      titleItalic: false,
+      letterSpacing: 'normal',
+      lineHeight: 'normal',
     },
     components: {
       borderRadius,
       cardRadius: borderRadius,
       buttonRadius: borderRadius,
+      borderRadiusPx: 16,
+      borderWidthPx: 1,
       cardShadow: 'sm',
       buttonShadow: 'sm',
+      shadowIntensity: 8,
+      shadowBlur: 12,
+      shadowSpread: 0,
+      shadowColor: '#000000',
       cardBorder: true,
       headerStyle: 'solid',
       categoryStyle: 'solid',
@@ -309,12 +522,77 @@ export function safeImageUrl(raw?: string | null): string | null {
 
 export function themeToTokens(theme?: Partial<TenantTheme> | null): ThemeTokens {
   if (theme?.tokens && theme.tokens.version === 1 && theme.tokens.palette) {
-    // Preserva tokens completos já salvos
+    const mergedPalette: ThemePalette = {
+      ...DEFAULT_PALETTE,
+      ...theme.tokens.palette,
+    };
+
+    const rawBgs = theme.tokens.backgrounds;
+    const generalRaw = rawBgs?.general;
+    const headerRaw = rawBgs?.header;
+    const cardRaw = rawBgs?.card;
+
+    const generalBg: BackgroundStyleConfig = {
+      ...generalRaw,
+      type: generalRaw?.type || 'solid',
+      gradientStops: generalRaw?.gradientStops ?? 2,
+      positionX: generalRaw?.positionX ?? 50,
+      positionY: generalRaw?.positionY ?? 50,
+      zoom: generalRaw?.zoom ?? 100,
+      color: mergedPalette.bgGeneral || generalRaw?.color || DEFAULT_PALETTE.bgGeneral,
+    };
+    const headerBg: BackgroundStyleConfig = {
+      ...headerRaw,
+      type: headerRaw?.type || 'solid',
+      gradientStops: headerRaw?.gradientStops ?? 2,
+      positionX: headerRaw?.positionX ?? 50,
+      positionY: headerRaw?.positionY ?? 50,
+      zoom: headerRaw?.zoom ?? 100,
+      color: mergedPalette.bgHeader || headerRaw?.color || DEFAULT_PALETTE.bgHeader,
+    };
+    const cardBg: BackgroundStyleConfig = {
+      ...cardRaw,
+      type: cardRaw?.type || 'solid',
+      gradientStops: cardRaw?.gradientStops ?? 2,
+      positionX: cardRaw?.positionX ?? 50,
+      positionY: cardRaw?.positionY ?? 50,
+      zoom: cardRaw?.zoom ?? 100,
+      color: mergedPalette.bgCard || cardRaw?.color || DEFAULT_PALETTE.bgCard,
+    };
+
+    const rawTypo = theme.tokens.typography;
+    const rawComp = theme.tokens.components;
+
     return {
       ...theme.tokens,
-      palette: {
-        ...DEFAULT_PALETTE,
-        ...theme.tokens.palette,
+      palette: mergedPalette,
+      backgrounds: {
+        general: generalBg,
+        header: headerBg,
+        card: cardBg,
+      },
+      typography: {
+        ...rawTypo,
+        fontFamily: rawTypo?.fontFamily || 'Inter',
+        titleWeight: rawTypo?.titleWeight || 'bold',
+        bodyWeight: rawTypo?.bodyWeight || 'normal',
+        scale: rawTypo?.scale || 'standard',
+        scalePercent: rawTypo?.scalePercent ?? 100,
+        titleUppercase: rawTypo?.titleUppercase ?? false,
+        titleItalic: rawTypo?.titleItalic ?? false,
+        letterSpacing: rawTypo?.letterSpacing || 'normal',
+        lineHeight: rawTypo?.lineHeight || 'normal',
+      },
+      components: {
+        ...rawComp,
+        borderRadius: rawComp?.borderRadius || '1rem',
+        cardRadius: rawComp?.cardRadius || rawComp?.borderRadius || '1rem',
+        buttonRadius: rawComp?.buttonRadius || rawComp?.borderRadius || '1rem',
+        cardShadow: rawComp?.cardShadow || 'sm',
+        buttonShadow: rawComp?.buttonShadow || 'sm',
+        cardBorder: rawComp?.cardBorder ?? true,
+        headerStyle: rawComp?.headerStyle || 'solid',
+        categoryStyle: rawComp?.categoryStyle || 'solid',
       },
     };
   }
@@ -342,7 +620,7 @@ export function tokensToTheme(
     cardColor: p.bgCard,
     buttonColor: p.buttonBg,
     textColor: p.textTitle,
-    borderRadius: tokens.components.borderRadius || '1rem',
+    borderRadius: resolveCardBorderRadius(tokens.components),
     fontFamily: tokens.typography.fontFamily || 'Inter',
     tokens,
   };
@@ -355,14 +633,14 @@ export function tokensToTheme(
 export function generateCssVariables(tokens: ThemeTokens): Record<string, string> {
   const p = tokens.palette;
   const c = tokens.components;
-  const t = tokens.typography;
-
-  const fontObj = SAFE_FONT_FAMILIES.find(f => f.name.toLowerCase() === (t.fontFamily || 'inter').toLowerCase());
-  const cssFont = fontObj ? fontObj.cssFamily : (t.fontFamily || 'Inter, sans-serif');
+  const typo = computeTypographyStyles(tokens.typography);
 
   const bgGeneralCss = formatCssBackground(tokens.backgrounds.general);
   const bgHeaderCss = formatCssBackground(tokens.backgrounds.header);
   const bgCardCss = formatCssBackground(tokens.backgrounds.card);
+  const cardRadius = resolveCardBorderRadius(c);
+  const cardBorderWidth = resolveCardBorderWidth(c);
+  const cardBoxShadow = computeCardBoxShadow(c);
 
   return {
     '--dc-primary': p.primary,
@@ -375,6 +653,8 @@ export function generateCssVariables(tokens: ThemeTokens): Record<string, string
     '--dc-bg-card': bgCardCss,
     '--dc-bg-card-color': p.bgCard,
     '--dc-bg-menu': p.bgMenu,
+    '--dc-category-bg': p.categoryBg,
+    '--dc-icon-color': p.iconColor,
     '--dc-text-title': p.textTitle,
     '--dc-text-main': p.textMain,
     '--dc-text-secondary': p.textSecondary,
@@ -384,8 +664,17 @@ export function generateCssVariables(tokens: ThemeTokens): Record<string, string
     '--dc-promo-price': p.promoPrice,
     '--dc-border': p.border,
     '--dc-radius': c.borderRadius,
-    '--dc-card-radius': c.cardRadius || c.borderRadius,
-    '--dc-button-radius': c.buttonRadius || c.borderRadius,
-    '--dc-font-family': cssFont,
+    '--dc-card-radius': cardRadius,
+    '--dc-button-radius': c.buttonRadius || cardRadius,
+    '--dc-card-border-width': `${cardBorderWidth}px`,
+    '--dc-card-shadow': cardBoxShadow,
+    '--dc-font-family': typo.cssFont,
+    '--dc-title-weight': String(typo.titleWeight),
+    '--dc-body-weight': String(typo.bodyWeight),
+    '--dc-font-scale': String(typo.scaleFactor),
+    '--dc-title-transform': typo.titleTextTransform,
+    '--dc-title-style': typo.titleFontStyle,
+    '--dc-letter-spacing': typo.letterSpacing,
+    '--dc-line-height': typo.lineHeight,
   };
 }

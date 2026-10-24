@@ -1,6 +1,6 @@
 /**
  * Especificação e Tipagem Completa do Sistema de Design do App (DeliveryChannel)
- * Tokens centralizados, paletas semânticas, fundos, tipografia e componentes.
+ * Tokens centralizados, paletas semânticas isoladas, fundos, tipografia e componentes.
  */
 
 export type ColorHex = string;
@@ -8,10 +8,14 @@ export type ColorHex = string;
 export interface BackgroundStyleConfig {
   type: 'solid' | 'gradient-linear' | 'gradient-radial' | 'image';
   color: ColorHex;
+  gradientStops?: 2 | 3; // 2 cores como padrão inicial, 3ª cor opcional
   gradientColors?: [ColorHex, ColorHex, ...ColorHex[]];
   angle?: number; // 0 a 360 graus para linear
   imageUrl?: string;
   position?: 'center' | 'top' | 'bottom';
+  positionX?: number; // 0 a 100 (%) para enquadramento horizontal interativo
+  positionY?: number; // 0 a 100 (%) para enquadramento vertical interativo
+  zoom?: number; // 100 a 250 (%) para zoom do enquadramento
   size?: 'cover' | 'contain' | 'auto';
   overlayColor?: ColorHex;
   overlayOpacity?: number; // 0 a 100 (%)
@@ -23,22 +27,26 @@ export interface ThemePalette {
   secondary: ColorHex;
   accent: ColorHex;
 
-  // Fundos estruturais
+  // Fundos estruturais independentes
   bgGeneral: ColorHex;
   bgHeader: ColorHex;
   bgCard: ColorHex;
   bgMenu: ColorHex;
+  categoryBg: ColorHex;
 
-  // Textos e legibilidade
+  // Ícones independentes
+  iconColor: ColorHex;
+
+  // Textos e legibilidade independentes
   textTitle: ColorHex;
   textMain: ColorHex;
   textSecondary: ColorHex;
 
-  // Botões e Ações
+  // Botões de ação principal independentes
   buttonBg: ColorHex;
   buttonText: ColorHex;
 
-  // Comercial e Preços
+  // Comercial e Preços independentes
   price: ColorHex;
   promoPrice: ColorHex;
 
@@ -51,14 +59,25 @@ export interface TypographyConfig {
   titleWeight: 'normal' | 'medium' | 'semibold' | 'bold' | 'extrabold';
   bodyWeight: 'normal' | 'medium' | 'semibold';
   scale: 'compact' | 'standard' | 'spacious';
+  scalePercent?: number; // 85 a 125 (%)
+  titleUppercase?: boolean;
+  titleItalic?: boolean;
+  letterSpacing?: 'tight' | 'normal' | 'wide';
+  lineHeight?: 'tight' | 'normal' | 'relaxed';
 }
 
 export interface ComponentStyles {
-  borderRadius: string; // Ex: '0.75rem', '1rem'
+  borderRadius: string; // Ex: '0.75rem', '1rem', '16px'
   cardRadius: string;
   buttonRadius: string;
+  borderRadiusPx?: number; // 0 a 32 px
+  borderWidthPx?: number; // 0 a 4 px
   cardShadow: 'none' | 'sm' | 'md' | 'lg';
   buttonShadow: 'none' | 'sm' | 'md';
+  shadowIntensity?: number; // 0 a 100 (%)
+  shadowBlur?: number; // 0 a 40 (px)
+  shadowSpread?: number; // -10 a 20 (px)
+  shadowColor?: ColorHex;
   cardBorder: boolean;
   headerStyle: 'solid' | 'gradient' | 'translucent';
   categoryStyle: 'solid' | 'outline' | 'pill' | 'subtle';

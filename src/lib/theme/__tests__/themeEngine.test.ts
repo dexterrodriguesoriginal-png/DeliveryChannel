@@ -133,7 +133,7 @@ describe('Galeria de 20 Temas Prontos — Validação Completa', () => {
       const p = preset.tokens.palette;
       const paletteKeys: (keyof typeof p)[] = [
         'primary', 'secondary', 'accent', 'bgGeneral', 'bgHeader',
-        'bgCard', 'bgMenu', 'textTitle', 'textMain', 'textSecondary',
+        'bgCard', 'bgMenu', 'categoryBg', 'iconColor', 'textTitle', 'textMain', 'textSecondary',
         'buttonBg', 'buttonText', 'price', 'promoPrice', 'border'
       ];
       for (const key of paletteKeys) {
