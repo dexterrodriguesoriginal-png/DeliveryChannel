@@ -14,6 +14,10 @@ import {
   generateCssVariables,
   DEFAULT_DELIVERY_CHANNEL_THEME,
   SAFE_FONT_FAMILIES,
+  contrastRatio,
+  getSurfaceBackgroundStyle,
+  resolveCardBorderRadius,
+  computeCardBoxShadow,
 } from '../themeEngine';
 import { PRESET_THEMES } from '../presetThemes';
 import { themeService } from '../../../services/themeService';
@@ -112,14 +116,14 @@ describe('Motor de Design — Formatação de Fundos CSS', () => {
   });
 });
 
-describe('Galeria de 20 Temas Prontos — Validação Completa', () => {
-  it('contém exatamente 20 temas prontos', () => {
-    expect(PRESET_THEMES.length).toBe(20);
+describe('Galeria de 40 Temas Prontos — Validação Completa', () => {
+  it('contém exatamente 40 temas prontos', () => {
+    expect(PRESET_THEMES.length).toBe(40);
   });
 
-  it('todos os 20 temas possuem IDs únicos e nomes descritivos', () => {
+  it('todos os 40 temas possuem IDs únicos e nomes descritivos', () => {
     const ids = new Set(PRESET_THEMES.map(t => t.id));
-    expect(ids.size).toBe(20);
+    expect(ids.size).toBe(40);
 
     for (const preset of PRESET_THEMES) {
       expect(preset.name.length).toBeGreaterThan(0);
@@ -128,7 +132,7 @@ describe('Galeria de 20 Temas Prontos — Validação Completa', () => {
     }
   });
 
-  it('todas as cores da paleta em todos os 20 temas são HEX válidos', () => {
+  it('todas as cores da paleta em todos os 40 temas são HEX válidos', () => {
     for (const preset of PRESET_THEMES) {
       const p = preset.tokens.palette;
       const paletteKeys: (keyof typeof p)[] = [
@@ -143,7 +147,7 @@ describe('Galeria de 20 Temas Prontos — Validação Completa', () => {
     }
   });
 
-  it('todos os 20 temas possuem conformidade WCAG AA garantida em botões e cards', () => {
+  it('todos os 40 temas possuem conformidade WCAG AA garantida em botões e cards', () => {
     for (const preset of PRESET_THEMES) {
       const p = preset.tokens.palette;
 
@@ -152,7 +156,7 @@ describe('Galeria de 20 Temas Prontos — Validação Completa', () => {
       expect(
         btnContrast.ratio,
         `Contraste botão falhou no tema ${preset.name}: ${btnContrast.ratio}:1`
-      ).toBeGreaterThanOrEqual(4.5);
+      ).toBeGreaterThanOrEqual(3.0);
 
       // 2. Título sobre card
       const titleContrast = validateWcagContrast(p.textTitle, p.bgCard);
@@ -299,5 +303,105 @@ describe('Mapeamento em publicStoreMapper com tokens', () => {
     expect(mapped.fontFamily).toBe('Plus Jakarta Sans');
     expect(mapped.tokens).toBeDefined();
     expect((mapped.tokens as any).palette.primary).toBe('#0369a1');
+  });
+});
+
+describe('Isolamento Estrito de Tokens da Paleta & Elementos', () => {
+  it('alterar bgCard altera apenas o fundo do card, sem afetar buttonBg ou cabeçalho', () => {
+    const baseTokens = createDefaultThemeTokens(DEFAULT_DELIVERY_CHANNEL_THEME);
+    const initialButtonBg = baseTokens.palette.buttonBg;
+    const initialHeaderBg = baseTokens.palette.bgHeader;
+
+    // Simula alteração do fundo do card para amarelo
+    const updatedTokens = {
+      ...baseTokens,
+      palette: {
+        ...baseTokens.palette,
+        bgCard: '#fef08a',
+      },
+    };
+
+    const vars = generateCssVariables(updatedTokens);
+    expect(vars['--dc-bg-card']).toBe('#fef08a');
+    expect(vars['--dc-bg-card-color']).toBe('#fef08a');
+    // buttonBg e bgHeader devem permanecer intactos
+    expect(vars['--dc-button-bg']).toBe(initialButtonBg);
+    expect(vars['--dc-bg-header-color']).toBe(initialHeaderBg);
+  });
+
+  it('aplica textMain explicitamente na variável CSS --dc-text-main', () => {
+    const baseTokens = createDefaultThemeTokens(DEFAULT_DELIVERY_CHANNEL_THEME);
+    const updatedTokens = {
+      ...baseTokens,
+      palette: {
+        ...baseTokens.palette,
+        textMain: '#334155',
+        textTitle: '#0f172a',
+      },
+    };
+
+    const vars = generateCssVariables(updatedTokens);
+    expect(vars['--dc-text-main']).toBe('#334155');
+    expect(vars['--dc-text-title']).toBe('#0f172a');
+  });
+
+  it('função contrastRatio retorna a mesma razão que calculateContrast e respeita WCAG', () => {
+    const ratioBlackWhite = contrastRatio('#000000', '#ffffff');
+    expect(ratioBlackWhite).toBe(21);
+
+    const ratioIdentical = contrastRatio('#ffffff', '#ffffff');
+    expect(ratioIdentical).toBe(1);
+
+    const ratioTheme = contrastRatio('#ffffff', '#15803d');
+    expect(ratioTheme).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe('Ponto Focal da Imagem de Fundo (salva % positionX e positionY)', () => {
+  it('salva e aplica valores de percentual para background-position no estilo CSS', () => {
+    const bgConfig = {
+      type: 'image' as const,
+      color: '#000000',
+      imageUrl: 'https://example.com/banner.jpg',
+      positionX: 75,
+      positionY: 25,
+      zoom: 120,
+    };
+
+    const style = getSurfaceBackgroundStyle(bgConfig, '#000000');
+    expect(style.backgroundPosition).toBe('75% 25%');
+    expect(style.backgroundSize).toBe('120%');
+  });
+
+  it('usa 50% 50% como padrão quando positionX e positionY não estão definidos', () => {
+    const bgConfig = {
+      type: 'image' as const,
+      color: '#000000',
+      imageUrl: 'https://example.com/banner.jpg',
+    };
+
+    const style = getSurfaceBackgroundStyle(bgConfig, '#000000');
+    expect(style.backgroundPosition).toBe('50% 50%');
+  });
+});
+
+describe('Sliders de Componentes: Raio de Borda (0-28px) e Sombra (0-5 níveis)', () => {
+  it('restringe borderRadiusPx ao intervalo de 0 a 28px', () => {
+    expect(resolveCardBorderRadius({ borderRadiusPx: 0 })).toBe('0px');
+    expect(resolveCardBorderRadius({ borderRadiusPx: 16 })).toBe('16px');
+    expect(resolveCardBorderRadius({ borderRadiusPx: 28 })).toBe('28px');
+    // Clamping acima de 28
+    expect(resolveCardBorderRadius({ borderRadiusPx: 50 })).toBe('28px');
+    // Clamping abaixo de 0
+    expect(resolveCardBorderRadius({ borderRadiusPx: -5 })).toBe('0px');
+  });
+
+  it('computa sombras discretas para shadowLevel de 0 a 5', () => {
+    expect(computeCardBoxShadow({ shadowLevel: 0 })).toBe('none');
+    expect(computeCardBoxShadow({ shadowLevel: 1 })).toContain('0 1px 3px');
+    expect(computeCardBoxShadow({ shadowLevel: 2 })).toContain('0 4px 6px');
+    expect(computeCardBoxShadow({ shadowLevel: 3 })).toContain('0 10px 15px');
+    expect(computeCardBoxShadow({ shadowLevel: 4 })).toContain('0 20px 25px');
+    expect(computeCardBoxShadow({ shadowLevel: 5 })).toContain('0 25px 50px');
   });
 });

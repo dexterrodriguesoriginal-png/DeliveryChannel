@@ -1,6 +1,32 @@
 /**
  * Motor Central de Design do App (DeliveryChannel)
  * Matemática de contraste WCAG AA, serialização de tokens, CSS Custom Properties e conversão bi-direcional.
+ *
+ * ============================================================================
+ * TABELA DE MAPEAMENTO: TOKENS DA PALETA -> ELEMENTOS DO APP
+ * ============================================================================
+ * Token             | Variável CSS                  | Elementos Afetados no App do Cliente
+ * ------------------|-------------------------------|----------------------------------------------------
+ * bgGeneral         | --dc-bg-general, -color       | Fundo geral da página (body / container principal)
+ * bgHeader          | --dc-bg-header, -color        | Cabeçalho superior (Store Header)
+ * bgCard            | --dc-bg-card, -color          | Fundo dos cartões de produtos (NÃO afeta busca/botões)
+ * bgMenu            | --dc-bg-menu                  | Fundo da barra de navegação inferior
+ * categoryBg        | --dc-category-bg              | Fundo dos botões / pílulas de categorias
+ * iconColor         | --dc-icon-color               | Ícones do cabeçalho, pesquisa e navegação
+ * textTitle         | --dc-text-title               | Nome da loja, títulos dos produtos e modais
+ * textMain          | --dc-text-main                | Descrições dos produtos e textos corridos (Texto Principal)
+ * textSecondary     | --dc-text-secondary           | Metadados, tempo de preparo, unidades e legendas
+ * buttonBg          | --dc-button-bg                | Fundo dos botões de ação principal (Adicionar, Sacola)
+ * buttonText        | --dc-button-text              | Texto dos botões de ação principal
+ * price             | --dc-price                    | Preço normal dos produtos (R$)
+ * promoPrice        | --dc-promo-price              | Preço promocional em destaque
+ * border            | --dc-border                   | Bordas dos cartões, cabeçalho e divisórias
+ * primary           | --dc-primary                  | Cor institucional principal da marca
+ * secondary         | --dc-secondary                | Cor secundária complementar
+ * accent            | --dc-accent                   | Badges de destaque (Mais Vendido, Promoção)
+ * borderRadiusPx    | --dc-card-radius (0-28px)     | Raio dos cantos dos cartões de produtos
+ * shadowLevel       | --dc-card-shadow (0-5 níveis) | Sombra dos cartões de produtos
+ * ============================================================================
  */
 
 import type React from 'react';
@@ -132,6 +158,7 @@ export function calculateRelativeLuminance(rgb: { r: number; g: number; b: numbe
 
 /**
  * Razão de contraste entre duas cores hexadecimais (de 1.0:1 até 21.0:1)
+ * Conforme norma WCAG 2.1
  */
 export function calculateContrast(fgHex: string, bgHex: string): number {
   const fgRgb = hexToRgb(fgHex) || { r: 15, g: 23, b: 42 }; // fallback escuro
@@ -148,10 +175,18 @@ export function calculateContrast(fgHex: string, bgHex: string): number {
 }
 
 /**
+ * Função oficial de razão de contraste (alias para calculateContrast)
+ * Texto normal >= 4.5:1 (AA), texto grande ou botões >= 3.0:1
+ */
+export function contrastRatio(fgHex: string, bgHex: string): number {
+  return calculateContrast(fgHex, bgHex);
+}
+
+/**
  * Valida a conformidade WCAG AA (mínimo 4.5:1 para texto normal, 3.0:1 para texto grande)
  */
 export function validateWcagContrast(fgHex: string, bgHex: string): ContrastResult {
-  const ratio = calculateContrast(fgHex, bgHex);
+  const ratio = contrastRatio(fgHex, bgHex);
   const passNormal = ratio >= 4.5;
   const passLarge = ratio >= 3.0;
 
@@ -175,18 +210,12 @@ export function resolveGradientColors(bg: BackgroundStyleConfig): string[] {
   const raw = bg.gradientColors && bg.gradientColors.length >= 2
     ? bg.gradientColors
     : [bg.color || '#15803d', '#166534'];
-  const stops = bg.gradientStops ?? (raw.length >= 3 ? 3 : 2);
-  if (stops === 3) {
-    return [
-      raw[0] || '#15803d',
-      raw[1] || '#166534',
-      raw[2] || '#22c55e',
-    ];
+
+  const count = bg.gradientStops ?? raw.length;
+  if (raw.length <= count) {
+    return raw;
   }
-  return [
-    raw[0] || '#15803d',
-    raw[1] || '#166534',
-  ];
+  return raw.slice(0, count);
 }
 
 export function formatCssBackground(bg: BackgroundStyleConfig): string {
@@ -351,22 +380,43 @@ export function computeTypographyStyles(t?: TypographyConfig): ComputedTypograph
   };
 }
 
-export function resolveCardBorderRadius(c?: ComponentStyles): string {
+export function resolveCardBorderRadius(c?: Partial<ComponentStyles>): string {
   if (c?.borderRadiusPx !== undefined) {
-    return `${Math.max(0, Math.min(32, c.borderRadiusPx))}px`;
+    return `${Math.max(0, Math.min(28, c.borderRadiusPx))}px`;
   }
   return c?.cardRadius || c?.borderRadius || '1rem';
 }
 
-export function resolveCardBorderWidth(c?: ComponentStyles): number {
+export function resolveCardBorderWidth(c?: Partial<ComponentStyles>): number {
   if (c?.borderWidthPx !== undefined) {
     return Math.max(0, Math.min(4, c.borderWidthPx));
   }
   return c?.cardBorder === false ? 0 : 1;
 }
 
-export function computeCardBoxShadow(c?: ComponentStyles): string {
+export function computeCardBoxShadow(c?: Partial<ComponentStyles>): string {
   if (!c) return '0px 4px 12px 0px rgba(0, 0, 0, 0.08)';
+
+  // Suporte a 0–5 níveis discretos de sombra
+  if (c.shadowLevel !== undefined) {
+    const level = Math.max(0, Math.min(5, Math.round(c.shadowLevel)));
+    const shadowHex = c.shadowColor || '#000000';
+    const rgb = hexToRgb(shadowHex) || { r: 0, g: 0, b: 0 };
+    switch (level) {
+      case 0:
+        return 'none';
+      case 1:
+        return `0 1px 3px 0 rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08), 0 1px 2px -1px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08)`;
+      case 2:
+        return `0 4px 6px -1px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.10), 0 2px 4px -2px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08)`;
+      case 3:
+        return `0 10px 15px -3px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.12), 0 4px 6px -4px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08)`;
+      case 4:
+        return `0 20px 25px -5px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15), 0 8px 10px -6px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08)`;
+      case 5:
+        return `0 25px 50px -12px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.25)`;
+    }
+  }
 
   let intensity = c.shadowIntensity;
   if (intensity === undefined) {
@@ -635,9 +685,23 @@ export function generateCssVariables(tokens: ThemeTokens): Record<string, string
   const c = tokens.components;
   const typo = computeTypographyStyles(tokens.typography);
 
-  const bgGeneralCss = formatCssBackground(tokens.backgrounds.general);
-  const bgHeaderCss = formatCssBackground(tokens.backgrounds.header);
-  const bgCardCss = formatCssBackground(tokens.backgrounds.card);
+  const bgGeneralConfig = tokens.backgrounds.general;
+  const bgHeaderConfig = tokens.backgrounds.header;
+  const bgCardConfig = tokens.backgrounds.card;
+
+  const bgGeneralCss =
+    bgGeneralConfig.type === 'solid'
+      ? (p.bgGeneral || bgGeneralConfig.color || '#f8fafc')
+      : formatCssBackground(bgGeneralConfig);
+  const bgHeaderCss =
+    bgHeaderConfig.type === 'solid'
+      ? (p.bgHeader || bgHeaderConfig.color || '#ffffff')
+      : formatCssBackground(bgHeaderConfig);
+  const bgCardCss =
+    bgCardConfig.type === 'solid'
+      ? (p.bgCard || bgCardConfig.color || '#ffffff')
+      : formatCssBackground(bgCardConfig);
+
   const cardRadius = resolveCardBorderRadius(c);
   const cardBorderWidth = resolveCardBorderWidth(c);
   const cardBoxShadow = computeCardBoxShadow(c);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { RefreshCw, Check, Palette, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Check, Palette, AlertTriangle, Pipette } from 'lucide-react';
 import { Button } from './Button';
 
 export interface ColorPickerProps {
@@ -10,6 +10,9 @@ export interface ColorPickerProps {
   defaultColor?: string;
   label?: string;
   testIdPrefix?: string;
+  showOpacity?: boolean;
+  opacity?: number;
+  onOpacityChange?: (opacity: number) => void;
 }
 
 const VALID_HEX_REGEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -239,6 +242,9 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   defaultColor = '#15803d',
   label = 'Seletor de Cor Profissional',
   testIdPrefix = 'color-picker',
+  showOpacity = false,
+  opacity = 100,
+  onOpacityChange,
 }) => {
   const initialHex = normalizeHexInput(color, defaultColor);
   const [currentColor, setCurrentColor] = useState<string>(initialHex);
@@ -273,8 +279,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
     const el = satValRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
-      // As coordenadas percentuais (hsv.s% e 100-hsv.v%) se adaptam automaticamente,
-      // e cliques subsequentes leem getBoundingClientRect() atualizado.
+      // As coordenadas percentuais (hsv.s% e 100-hsv.v%) se adaptam automaticamente
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -312,7 +317,55 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
     [emitValidHexAndSync]
   );
 
-  // Listeners globais para arraste contínuo com mouse e toque
+  // Manipuladores de Pointer Events com Pointer Capture contínuo
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+    isDraggingRef.current = true;
+    updateFromPointerCoordinates(e.clientX, e.clientY);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    updateFromPointerCoordinates(e.clientX, e.clientY);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+  };
+
+  // Suporte à Eyedropper API (conta-gotas nativo do navegador)
+  const hasEyeDropper = typeof window !== 'undefined' && 'EyeDropper' in window;
+  const handleEyeDropper = async () => {
+    if (typeof window !== 'undefined' && 'EyeDropper' in window) {
+      try {
+        const eyeDropper = new (window as any).EyeDropper();
+        const result = await eyeDropper.open();
+        if (result?.sRGBHex) {
+          emitValidHexAndSync(result.sRGBHex);
+        }
+      } catch {
+        // Usuário cancelou a seleção com conta-gotas
+      }
+    }
+  };
+
+  // Listeners globais como fallback para mouse e toque
   useEffect(() => {
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (!isDraggingRef.current) return;
@@ -445,10 +498,14 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
         </div>
       </div>
 
-      {/* 2D HSV Saturation / Value Visual Picker */}
+      {/* 2D HSV Saturation / Value Visual Picker com Pointer Capture contínuo */}
       <div
         ref={satValRef}
         data-testid={`${testIdPrefix}-surface`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
         onMouseDown={(e) => {
           isDraggingRef.current = true;
           updateFromPointerCoordinates(e.clientX, e.clientY);
@@ -500,6 +557,25 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
         />
       </div>
 
+      {/* Opacidade Slider (quando habilitado, ex: Overlay) */}
+      {showOpacity && onOpacityChange && (
+        <div className="space-y-1 pt-1 border-t border-gray-100">
+          <div className="flex justify-between text-[11px] text-gray-500 font-medium">
+            <span>Opacidade / Transparência</span>
+            <span className="font-mono">{opacity ?? 100}%</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={opacity ?? 100}
+            onChange={(e) => onOpacityChange(Number(e.target.value))}
+            data-testid={`${testIdPrefix}-opacity-slider`}
+            className="w-full h-2.5 rounded-lg appearance-none cursor-pointer accent-emerald-700 bg-gray-200"
+          />
+        </div>
+      )}
+
       {/* Format Selector: HEX | RGB | HSL */}
       <div className="flex items-center justify-between border-t border-gray-100 pt-3">
         <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg text-[10px] font-bold">
@@ -531,12 +607,23 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
               onBlur={handleHexInputBlur}
               maxLength={7}
               aria-label={label}
-              className={`w-22 px-2 py-1 bg-gray-50 border rounded-lg text-xs font-mono uppercase text-center font-bold outline-none ${
+              className={`w-20 px-2 py-1 bg-gray-50 border rounded-lg text-xs font-mono uppercase text-center font-bold outline-none ${
                 hexError
                   ? 'border-rose-400 text-rose-700'
                   : 'border-gray-200 focus:border-emerald-600 text-gray-900'
               }`}
             />
+            {hasEyeDropper && (
+              <button
+                type="button"
+                data-testid={`${testIdPrefix}-eyedropper`}
+                title="Conta-gotas (capturar cor da tela)"
+                onClick={handleEyeDropper}
+                className="p-1 rounded-lg border border-gray-200 bg-white hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+              >
+                <Pipette className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         )}
 

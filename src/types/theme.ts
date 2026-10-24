@@ -8,8 +8,8 @@ export type ColorHex = string;
 export interface BackgroundStyleConfig {
   type: 'solid' | 'gradient-linear' | 'gradient-radial' | 'image';
   color: ColorHex;
-  gradientStops?: 2 | 3; // 2 cores como padrão inicial, 3ª cor opcional
-  gradientColors?: [ColorHex, ColorHex, ...ColorHex[]];
+  gradientStops?: number; // Número de paradas (2 a 5)
+  gradientColors?: ColorHex[];
   angle?: number; // 0 a 360 graus para linear
   imageUrl?: string;
   position?: 'center' | 'top' | 'bottom';
@@ -74,6 +74,7 @@ export interface ComponentStyles {
   borderWidthPx?: number; // 0 a 4 px
   cardShadow: 'none' | 'sm' | 'md' | 'lg';
   buttonShadow: 'none' | 'sm' | 'md';
+  shadowLevel?: number; // 0 a 5 níveis de sombra
   shadowIntensity?: number; // 0 a 100 (%)
   shadowBlur?: number; // 0 a 40 (px)
   shadowSpread?: number; // -10 a 20 (px)

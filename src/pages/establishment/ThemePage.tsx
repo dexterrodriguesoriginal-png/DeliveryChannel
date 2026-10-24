@@ -46,6 +46,7 @@ import {
   Move,
   Trash2,
   ZoomIn,
+  Plus,
 } from 'lucide-react';
 
 type EditorTab = 'presets' | 'identity' | 'palette' | 'backgrounds' | 'typography' | 'components';
@@ -95,8 +96,11 @@ export const ThemePage: React.FC = () => {
   // Alvo de fundo selecionado na tab de fundos
   const [activeBgTarget, setActiveBgTarget] = useState<'general' | 'header' | 'card'>('general');
 
-  // Aba de cor de gradiente ativa (1, 2 ou 3)
-  const [activeGradientStopIndex, setActiveGradientStopIndex] = useState<0 | 1 | 2>(0);
+  // Segmento selecionado para filtrar a galeria de temas (40 temas)
+  const [selectedSegmentFilter, setSelectedSegmentFilter] = useState<string>('all');
+
+  // Aba de cor de gradiente ativa (0 a 4)
+  const [activeGradientStopIndex, setActiveGradientStopIndex] = useState<number>(0);
 
   // Estado para arraste do quadro interativo de imagem de fundo
   const imageFrameRef = useRef<HTMLDivElement>(null);
@@ -619,7 +623,7 @@ export const ThemePage: React.FC = () => {
           {/* Navegação entre Seções do Editor */}
           <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl overflow-x-auto no-scrollbar">
             {[
-              { id: 'presets', label: '20 Temas Prontos', icon: <Sparkles className="w-3.5 h-3.5" /> },
+              { id: 'presets', label: '40 Temas Prontos', icon: <Sparkles className="w-3.5 h-3.5" /> },
               { id: 'identity', label: 'Identidade', icon: <Layers className="w-3.5 h-3.5" /> },
               { id: 'palette', label: 'Paleta & Contraste', icon: <Palette className="w-3.5 h-3.5" /> },
               { id: 'backgrounds', label: 'Fundos & Efeitos', icon: <Layout className="w-3.5 h-3.5" /> },
@@ -644,117 +648,184 @@ export const ThemePage: React.FC = () => {
           </div>
 
           {/* ------------------------------------------------------------- */}
-          {/* SEÇÃO 1: GALERIA DOS 20 TEMAS PRONTOS                          */}
+          {/* SEÇÃO 1: GALERIA DOS 40 TEMAS PRONTOS                          */}
           {/* ------------------------------------------------------------- */}
-          {activeTab === 'presets' && (
-            <Card className="p-5 space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-emerald-700" />
-                    Galeria de 20 Temas Prontos
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    Use <strong>Preview</strong> para comparar no emulador sem perder seu rascunho, ou clique em{' '}
-                    <strong>Aplicar este tema</strong> para editar
-                  </p>
-                </div>
-              </div>
+          {activeTab === 'presets' && (() => {
+            const SEGMENT_FILTERS = [
+              'Todos',
+              'Pizzaria',
+              'Padaria',
+              'Barbearia',
+              'Salão',
+              'Mercado',
+              'Açaí',
+              'Hamburgueria',
+              'Japonesa',
+              'Adega',
+              'Farmácia',
+              'Pet',
+              'Perfumaria',
+              'Tabacaria',
+              'Café',
+              'Doceria',
+              'Churrasco',
+              'Hot Dog',
+              'Saudável',
+              'Dark Premium',
+              'Minimal',
+            ];
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[580px] overflow-y-auto pr-1">
-                {PRESET_THEMES.map((preset) => {
-                  const p = preset.tokens.palette;
-                  const isPreviewingThis = previewingPreset?.id === preset.id;
-                  return (
-                    <div
-                      key={preset.id}
-                      data-testid={`preset-card-${preset.id}`}
-                      className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between gap-3 shadow-2xs group ${
-                        isPreviewingThis
-                          ? 'border-emerald-600 bg-emerald-50/40 ring-2 ring-emerald-500/20'
-                          : 'border-gray-200 bg-white hover:border-emerald-500'
-                      }`}
-                    >
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <h4 className="text-xs font-bold text-gray-900 group-hover:text-emerald-700 transition-colors">
-                            {preset.name}
-                          </h4>
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">
-                            {preset.category}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-gray-500 leading-snug line-clamp-2">
-                          {preset.description}
-                        </p>
-                      </div>
-
-                      <div className="space-y-2.5">
-                        {/* Faixa de Cores da Paleta */}
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className="w-5 h-5 rounded-md border border-black/10 shrink-0"
-                            style={{ backgroundColor: p.primary }}
-                            title={`Principal: ${p.primary}`}
-                          />
-                          <span
-                            className="w-5 h-5 rounded-md border border-black/10 shrink-0"
-                            style={{ backgroundColor: p.secondary }}
-                            title={`Secundária: ${p.secondary}`}
-                          />
-                          <span
-                            className="w-5 h-5 rounded-md border border-black/10 shrink-0"
-                            style={{ backgroundColor: p.accent }}
-                            title={`Destaque: ${p.accent}`}
-                          />
-                          <span
-                            className="w-5 h-5 rounded-md border border-black/10 shrink-0"
-                            style={{ backgroundColor: p.bgGeneral }}
-                            title={`Fundo: ${p.bgGeneral}`}
-                          />
-                          <span
-                            className="w-5 h-5 rounded-md border border-black/10 shrink-0"
-                            style={{ backgroundColor: p.buttonBg }}
-                            title={`Botão: ${p.buttonBg}`}
-                          />
-                          <span className="text-[10px] text-gray-400 font-mono ml-auto">
-                            {preset.tokens.typography.fontFamily}
-                          </span>
-                        </div>
-
-                        {/* Duas Ações Visualmente Distintas: Preview (olho) e Aplicar este tema */}
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            data-testid={`preset-preview-${preset.id}`}
-                            onClick={() => handlePreviewPreset(preset)}
-                            className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                              isPreviewingThis
-                                ? 'bg-emerald-700 text-white border-emerald-700'
-                                : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'
-                            }`}
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>Preview</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            data-testid={`preset-apply-${preset.id}`}
-                            onClick={() => handleApplyPreset(preset.tokens)}
-                            className="py-1.5 px-2.5 rounded-lg text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 hover:border-emerald-300 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Aplicar este tema</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+            const filteredPresets =
+              selectedSegmentFilter === 'all' || selectedSegmentFilter === 'Todos'
+                ? PRESET_THEMES
+                : PRESET_THEMES.filter(
+                    (p) => p.category.toLowerCase() === selectedSegmentFilter.toLowerCase()
                   );
-                })}
-              </div>
-            </Card>
-          )}
+
+            return (
+              <Card className="p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gray-100 gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-emerald-700" />
+                      Galeria dos 40 Temas Prontos por Segmento
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      Clique em <strong>👁 Prévia</strong> para testar no emulador sem salvar, ou clique em{' '}
+                      <strong>Aplicar</strong> para carregar no rascunho
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-md self-start sm:self-auto">
+                    {filteredPresets.length} de {PRESET_THEMES.length} temas
+                  </span>
+                </div>
+
+                {/* Filtro por Segmento Comercial */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">
+                    Filtrar por Segmento:
+                  </span>
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 no-scrollbar">
+                    {SEGMENT_FILTERS.map((seg) => {
+                      const isSelected =
+                        (selectedSegmentFilter === 'all' && seg === 'Todos') ||
+                        selectedSegmentFilter.toLowerCase() === seg.toLowerCase();
+                      return (
+                        <button
+                          key={seg}
+                          type="button"
+                          data-testid={`segment-filter-${seg.toLowerCase().replace(/\s+/g, '-')}`}
+                          onClick={() => setSelectedSegmentFilter(seg === 'Todos' ? 'all' : seg)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                            isSelected
+                              ? 'bg-emerald-700 text-white shadow-2xs'
+                              : 'bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+                          }`}
+                        >
+                          {seg}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[580px] overflow-y-auto pr-1">
+                  {filteredPresets.map((preset) => {
+                    const p = preset.tokens.palette;
+                    const isPreviewingThis = previewingPreset?.id === preset.id;
+                    return (
+                      <div
+                        key={preset.id}
+                        data-testid={`preset-card-${preset.id}`}
+                        className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between gap-3 shadow-2xs group ${
+                          isPreviewingThis
+                            ? 'border-emerald-600 bg-emerald-50/40 ring-2 ring-emerald-500/20'
+                            : 'border-gray-200 bg-white hover:border-emerald-500'
+                        }`}
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <h4 className="text-xs font-bold text-gray-900 group-hover:text-emerald-700 transition-colors">
+                              {preset.name}
+                            </h4>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">
+                              {preset.category}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-500 leading-snug line-clamp-2">
+                            {preset.description}
+                          </p>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          {/* Faixa de Cores da Paleta */}
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="w-5 h-5 rounded-md border border-black/10 shrink-0"
+                              style={{ backgroundColor: p.primary }}
+                              title={`Principal: ${p.primary}`}
+                            />
+                            <span
+                              className="w-5 h-5 rounded-md border border-black/10 shrink-0"
+                              style={{ backgroundColor: p.secondary }}
+                              title={`Secundária: ${p.secondary}`}
+                            />
+                            <span
+                              className="w-5 h-5 rounded-md border border-black/10 shrink-0"
+                              style={{ backgroundColor: p.accent }}
+                              title={`Destaque: ${p.accent}`}
+                            />
+                            <span
+                              className="w-5 h-5 rounded-md border border-black/10 shrink-0"
+                              style={{ backgroundColor: p.bgGeneral }}
+                              title={`Fundo: ${p.bgGeneral}`}
+                            />
+                            <span
+                              className="w-5 h-5 rounded-md border border-black/10 shrink-0"
+                              style={{ backgroundColor: p.buttonBg }}
+                              title={`Botão: ${p.buttonBg}`}
+                            />
+                            <span className="text-[10px] text-gray-400 font-mono ml-auto">
+                              {preset.tokens.typography.fontFamily}
+                            </span>
+                          </div>
+
+                          {/* Olho de Prévia 👁 e Botão Aplicar */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              data-testid={`preset-preview-${preset.id}`}
+                              onClick={() => handlePreviewPreset(preset)}
+                              title={`Prévia de ${preset.name} sem salvar`}
+                              className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                isPreviewingThis
+                                  ? 'bg-emerald-700 text-white border-emerald-700'
+                                  : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'
+                              }`}
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Prévia</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              data-testid={`preset-apply-${preset.id}`}
+                              onClick={() => handleApplyPreset(preset.tokens)}
+                              title={`Aplicar ${preset.name} ao rascunho`}
+                              className="py-1.5 px-2.5 rounded-lg text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 hover:border-emerald-300 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Aplicar</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })()}
 
           {/* ------------------------------------------------------------- */}
           {/* SEÇÃO 2: IDENTIDADE & MARCA                                    */}
@@ -948,30 +1019,50 @@ export const ThemePage: React.FC = () => {
                   updateSurfaceBackground(activeBgTarget, updates);
                 };
 
-                const stopsCount: 2 | 3 =
-                  currentBg.gradientStops ??
-                  (currentBg.gradientColors && currentBg.gradientColors.length >= 3 ? 3 : 2);
+                const currentGradientColors: string[] =
+                  currentBg.gradientColors && currentBg.gradientColors.length >= 2
+                    ? currentBg.gradientColors
+                    : [currentBg.color || '#15803d', '#166534'];
 
-                const storedColors = currentBg.gradientColors || [
-                  currentBg.color || '#15803d',
-                  '#166534',
-                  '#22c55e',
-                ];
-                const color1 = storedColors[0] || currentBg.color || '#15803d';
-                const color2 = storedColors[1] || '#166534';
-                const color3 = storedColors[2] || '#22c55e';
+                const activeStopIndex = Math.min(
+                  activeGradientStopIndex,
+                  currentGradientColors.length - 1
+                );
+                const activeStopColor =
+                  currentGradientColors[activeStopIndex] || currentGradientColors[0] || '#15803d';
 
-                const safeStopIndex: 0 | 1 | 2 =
-                  stopsCount === 2 && activeGradientStopIndex === 2 ? 0 : activeGradientStopIndex;
-
-                const handleGradientColorUpdate = (index: 0 | 1 | 2, newHex: string) => {
+                const handleGradientColorUpdate = (index: number, newHex: string) => {
                   if (!validateHexColor(newHex)) return;
                   const norm = normalizeHexColor(newHex);
-                  const nextColors: [string, string, ...string[]] = [color1, color2, color3];
+                  const nextColors = [...currentGradientColors];
                   nextColors[index] = norm;
                   updateCurrentBg({
                     gradientColors: nextColors,
+                    gradientStops: nextColors.length,
                   });
+                };
+
+                const handleAddGradientStop = () => {
+                  if (currentGradientColors.length >= 5) return;
+                  const candidateColors = ['#22c55e', '#3b82f6', '#ec4899', '#f59e0b'];
+                  const newColor =
+                    candidateColors[currentGradientColors.length - 2] || '#10b981';
+                  const nextColors = [...currentGradientColors, newColor];
+                  updateCurrentBg({
+                    gradientColors: nextColors,
+                    gradientStops: nextColors.length,
+                  });
+                  setActiveGradientStopIndex(nextColors.length - 1);
+                };
+
+                const handleRemoveGradientStop = (indexToRemove: number) => {
+                  if (currentGradientColors.length <= 2) return;
+                  const nextColors = currentGradientColors.filter((_, idx) => idx !== indexToRemove);
+                  updateCurrentBg({
+                    gradientColors: nextColors,
+                    gradientStops: nextColors.length,
+                  });
+                  setActiveGradientStopIndex((prev) => Math.min(prev, nextColors.length - 1));
                 };
 
                 const surfaceLabel =
@@ -1039,55 +1130,34 @@ export const ThemePage: React.FC = () => {
                       </div>
                     )}
 
-                    {/* 2. MODO GRADIENTE (LINEAR OU RADIAL) — 2 CORES PADRÃO E 3ª COR OPCIONAL */}
+                    {/* 2. MODO GRADIENTE (LINEAR OU RADIAL) — PARADAS ADICIONÁVEIS E REMOVÍVEIS COM COLORPICKER */}
                     {(currentBg.type === 'gradient-linear' || currentBg.type === 'gradient-radial') && (
                       <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/60 space-y-4">
-                        {/* Escolha explícita: 2 cores (padrão) vs 3 cores */}
+                        {/* Header das paradas do gradiente */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-gray-200/80">
                           <div>
                             <h4 className="text-xs font-bold text-gray-900">
-                              Modo de Cores do Gradiente
+                              Paradas de Cor do Gradiente ({currentGradientColors.length} paradas)
                             </h4>
                             <p className="text-[11px] text-gray-500">
-                              Escolha entre gradiente de 2 cores (padrão) ou 3 cores
+                              Edite, adicione ou remova paradas de cor (mínimo 2, máximo 5)
                             </p>
                           </div>
 
-                          <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-gray-200">
+                          <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              data-testid="gradient-mode-2"
-                              onClick={() => {
-                                updateCurrentBg({
-                                  gradientStops: 2,
-                                  gradientColors: [color1, color2, color3],
-                                });
-                                if (activeGradientStopIndex === 2) setActiveGradientStopIndex(0);
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                stopsCount === 2
-                                  ? 'bg-emerald-700 text-white shadow-2xs'
-                                  : 'text-gray-600 hover:text-gray-900'
+                              data-testid="gradient-add-stop-btn"
+                              onClick={handleAddGradientStop}
+                              disabled={currentGradientColors.length >= 5}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                currentGradientColors.length >= 5
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+                                  : 'bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer shadow-2xs'
                               }`}
                             >
-                              Gradiente de 2 cores
-                            </button>
-                            <button
-                              type="button"
-                              data-testid="gradient-mode-3"
-                              onClick={() =>
-                                updateCurrentBg({
-                                  gradientStops: 3,
-                                  gradientColors: [color1, color2, color3],
-                                })
-                              }
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                stopsCount === 3
-                                  ? 'bg-emerald-700 text-white shadow-2xs'
-                                  : 'text-gray-600 hover:text-gray-900'
-                              }`}
-                            >
-                              Gradiente de 3 cores
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Adicionar Parada</span>
                             </button>
                           </div>
                         </div>
@@ -1103,74 +1173,65 @@ export const ThemePage: React.FC = () => {
                             style={{
                               backgroundImage: formatCssBackground({
                                 ...currentBg,
-                                gradientStops: stopsCount,
-                                gradientColors: [color1, color2, color3],
+                                gradientStops: currentGradientColors.length,
+                                gradientColors: currentGradientColors,
                               }),
                             }}
                           />
                         </div>
 
-                        {/* Seletores das Cores Habilitadas (Cor 1, Cor 2 e, se habilitada, Cor 3) */}
+                        {/* Abas / Botões de Cada Parada de Cor */}
                         <div className="space-y-3">
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {[
-                              { idx: 0 as const, label: 'Cor 1', hex: color1 },
-                              { idx: 1 as const, label: 'Cor 2', hex: color2 },
-                              ...(stopsCount === 3
-                                ? [{ idx: 2 as const, label: 'Cor 3', hex: color3 }]
-                                : []),
-                            ].map((stop) => (
-                              <button
-                                key={stop.idx}
-                                type="button"
-                                data-testid={`gradient-stop-tab-${stop.idx + 1}`}
-                                onClick={() => setActiveGradientStopIndex(stop.idx)}
-                                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
-                                  safeStopIndex === stop.idx
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                            {currentGradientColors.map((hex, idx) => (
+                              <div
+                                key={idx}
+                                data-testid={`gradient-stop-tab-${idx + 1}`}
+                                onClick={() => setActiveGradientStopIndex(idx)}
+                                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-1.5 ${
+                                  activeStopIndex === idx
                                     ? 'border-emerald-600 bg-white shadow-2xs ring-2 ring-emerald-500/20'
                                     : 'border-gray-200 bg-white/70 hover:bg-white'
                                 }`}
                               >
-                                <span
-                                  data-testid={`gradient-stop-swatch-${stop.idx + 1}`}
-                                  className="w-6 h-6 rounded-lg border border-black/15 shrink-0"
-                                  style={{ backgroundColor: stop.hex }}
-                                />
-                                <div>
-                                  <p className="text-xs font-bold text-gray-900">{stop.label}</p>
-                                  <p className="text-[10px] font-mono text-gray-500 uppercase">
-                                    {stop.hex}
-                                  </p>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span
+                                    data-testid={`gradient-stop-swatch-${idx + 1}`}
+                                    className="w-5 h-5 rounded-md border border-black/15 shrink-0"
+                                    style={{ backgroundColor: hex }}
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold text-gray-900 truncate">Parada {idx + 1}</p>
+                                    <p className="text-[10px] font-mono text-gray-500 uppercase truncate">
+                                      {hex}
+                                    </p>
+                                  </div>
                                 </div>
-                              </button>
+                                {currentGradientColors.length > 2 && (
+                                  <button
+                                    type="button"
+                                    data-testid={`gradient-remove-stop-${idx + 1}`}
+                                    title={`Remover Parada ${idx + 1}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRemoveGradientStop(idx);
+                                    }}
+                                    className="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
                             ))}
                           </div>
 
-                          {/* Seletor Gráfico Completo da Cor do Gradiente Selecionada */}
+                          {/* Seletor Gráfico Completo da Cor da Parada Selecionada */}
                           <ColorPicker
-                            color={
-                              safeStopIndex === 0
-                                ? color1
-                                : safeStopIndex === 1
-                                ? color2
-                                : color3
-                            }
-                            onChange={(hex) => handleGradientColorUpdate(safeStopIndex, hex)}
-                            label={`Seletor de ${
-                              safeStopIndex === 0
-                                ? 'Cor 1'
-                                : safeStopIndex === 1
-                                ? 'Cor 2'
-                                : 'Cor 3'
-                            } do Gradiente`}
-                            defaultColor={
-                              safeStopIndex === 0
-                                ? '#15803d'
-                                : safeStopIndex === 1
-                                ? '#166534'
-                                : '#22c55e'
-                            }
-                            testIdPrefix={`gradient-picker-stop-${safeStopIndex + 1}`}
+                            color={activeStopColor}
+                            onChange={(hex) => handleGradientColorUpdate(activeStopIndex, hex)}
+                            label={`Seletor de Cor — Parada ${activeStopIndex + 1} do Gradiente`}
+                            defaultColor={activeStopIndex === 0 ? '#15803d' : '#166534'}
+                            testIdPrefix={`gradient-picker-stop-${activeStopIndex + 1}`}
                           />
                         </div>
 
@@ -1274,6 +1335,14 @@ export const ThemePage: React.FC = () => {
                             data-pos-x={currentBg.positionX ?? 50}
                             data-pos-y={currentBg.positionY ?? 50}
                             data-zoom={currentBg.zoom ?? 100}
+                            onClick={(e) => {
+                              if (!imageFrameRef.current) return;
+                              const rect = imageFrameRef.current.getBoundingClientRect();
+                              if (!rect.width || !rect.height) return;
+                              const x = Math.max(0, Math.min(100, Math.round(((e.clientX - rect.left) / rect.width) * 100)));
+                              const y = Math.max(0, Math.min(100, Math.round(((e.clientY - rect.top) / rect.height) * 100)));
+                              updateCurrentBg({ positionX: x, positionY: y });
+                            }}
                             onMouseDown={(e) => {
                               isDraggingImageRef.current = true;
                               dragStartRef.current = {
@@ -1293,7 +1362,7 @@ export const ThemePage: React.FC = () => {
                                 startY: currentBg.positionY ?? 50,
                               };
                             }}
-                            className="relative h-44 w-full rounded-xl border-2 border-emerald-600/40 overflow-hidden cursor-grab active:cursor-grabbing select-none touch-none shadow-inner flex items-center justify-center"
+                            className="relative h-44 w-full rounded-xl border-2 border-emerald-600/40 overflow-hidden cursor-crosshair active:cursor-grabbing select-none touch-none shadow-inner flex items-center justify-center"
                             style={getSurfaceBackgroundStyle(
                               {
                                 ...currentBg,
@@ -1304,11 +1373,22 @@ export const ThemePage: React.FC = () => {
                               currentBg.color || '#0f172a'
                             )}
                           >
-                            <div className="px-3 py-1.5 rounded-full bg-black/65 text-white text-[11px] font-bold pointer-events-none flex items-center gap-1.5 backdrop-blur-xs">
+                            {/* Marcador Visual do Ponto Focal */}
+                            <div
+                              data-testid="focal-point-marker"
+                              className="absolute w-7 h-7 -ml-3.5 -mt-3.5 rounded-full border-2 border-white shadow-lg bg-emerald-600/85 pointer-events-none flex items-center justify-center ring-2 ring-black/30"
+                              style={{
+                                left: `${currentBg.positionX ?? 50}%`,
+                                top: `${currentBg.positionY ?? 50}%`,
+                              }}
+                            >
+                              <div className="w-1.5 h-1.5 rounded-full bg-white shadow-xs" />
+                            </div>
+
+                            <div className="absolute bottom-2 px-3 py-1.5 rounded-full bg-black/70 text-white text-[11px] font-bold pointer-events-none flex items-center gap-1.5 backdrop-blur-xs">
                               <Move className="w-3.5 h-3.5 text-emerald-400" />
                               <span>
-                                Arraste para mover ({currentBg.positionX ?? 50}% X, {currentBg.positionY ?? 50}% Y · Zoom{' '}
-                                {currentBg.zoom ?? 100}%)
+                                Ponto Focal: {currentBg.positionX ?? 50}% X, {currentBg.positionY ?? 50}% Y (Arraste ou clique)
                               </span>
                             </div>
                           </div>
@@ -1396,6 +1476,9 @@ export const ThemePage: React.FC = () => {
                             label="Cor da Camada de Sobreposição (Overlay)"
                             defaultColor="#000000"
                             testIdPrefix="bg-overlay-picker"
+                            showOpacity={true}
+                            opacity={currentBg.overlayOpacity ?? 40}
+                            onOpacityChange={(op) => updateCurrentBg({ overlayOpacity: op })}
                           />
                         </div>
                       </div>
@@ -1663,25 +1746,25 @@ export const ThemePage: React.FC = () => {
                 </p>
               </div>
 
-              {/* Arredondamento dos Cantos (0 px a 32 px) */}
+              {/* Arredondamento dos Cantos (0 px a 28 px) */}
               <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-gray-800">
-                    Arredondamento dos Cantos
+                    Arredondamento dos Cantos (0 px a 28 px)
                   </label>
                   <span className="text-xs font-mono font-bold text-emerald-700">
-                    {draftTokens.components.borderRadiusPx ?? 16} px
+                    {Math.min(28, Math.max(0, draftTokens.components.borderRadiusPx ?? 16))} px
                   </span>
                 </div>
                 <input
                   type="range"
                   min="0"
-                  max="32"
+                  max="28"
                   step="1"
                   data-testid="component-border-radius-slider"
-                  value={draftTokens.components.borderRadiusPx ?? 16}
+                  value={Math.min(28, Math.max(0, draftTokens.components.borderRadiusPx ?? 16))}
                   onChange={(e) => {
-                    const px = Number(e.target.value);
+                    const px = Math.min(28, Math.max(0, Number(e.target.value)));
                     updateTokens((prev) => ({
                       ...prev,
                       components: {
@@ -1695,6 +1778,52 @@ export const ThemePage: React.FC = () => {
                   }}
                   className="w-full accent-emerald-700 cursor-pointer"
                 />
+                <div className="flex justify-between text-[10px] text-gray-500">
+                  <span>0 px (Reto)</span>
+                  <span>14 px (Médio)</span>
+                  <span>28 px (Máximo)</span>
+                </div>
+              </div>
+
+              {/* Sombra dos Cartões (0 a 5 Níveis) */}
+              <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-800">
+                    Sombra do Card (0 a 5 Níveis)
+                  </label>
+                  <span className="text-xs font-mono font-bold text-emerald-700">
+                    Nível {draftTokens.components.shadowLevel ?? 2}
+                    {draftTokens.components.shadowLevel === 0 ? ' (Nenhuma)' : ''}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="5"
+                  step="1"
+                  data-testid="component-shadow-level-slider"
+                  value={draftTokens.components.shadowLevel ?? 2}
+                  onChange={(e) => {
+                    const lvl = Math.min(5, Math.max(0, Number(e.target.value)));
+                    updateTokens((prev) => ({
+                      ...prev,
+                      components: {
+                        ...prev.components,
+                        shadowLevel: lvl,
+                        cardShadow: lvl === 0 ? 'none' : lvl === 1 ? 'sm' : lvl <= 3 ? 'md' : 'lg',
+                      },
+                    }));
+                  }}
+                  className="w-full accent-emerald-700 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-gray-500 font-medium">
+                  <span>0 (Sem)</span>
+                  <span>1 (Suave)</span>
+                  <span>2 (Padrão)</span>
+                  <span>3 (Médio)</span>
+                  <span>4 (Forte)</span>
+                  <span>5 (Máximo)</span>
+                </div>
               </div>
 
               {/* Espessura da Borda (0 px a 4 px) */}
@@ -1729,10 +1858,10 @@ export const ThemePage: React.FC = () => {
                 />
               </div>
 
-              {/* Controle Preciso das Sombras dos Cartões */}
+              {/* Controle Avançado das Sombras dos Cartões */}
               <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/60 space-y-4">
                 <h4 className="text-xs font-bold text-gray-900">
-                  Sombra dos Cartões (Intensidade, Suavidade, Espalhamento e Cor)
+                  Ajustes Finos de Sombra (Intensidade, Suavidade, Espalhamento e Cor)
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

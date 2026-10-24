@@ -702,6 +702,23 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const activeTokens = useMemo(() => themeToTokens(theme), [theme]);
   const activeCssVars = useMemo(() => generateCssVariables(activeTokens) as React.CSSProperties, [activeTokens]);
 
+  // Carregamento dinâmico de Google Fonts homologadas
+  useEffect(() => {
+    const fontName = activeTokens.typography.fontFamily || theme.fontFamily || 'Inter';
+    if (!fontName || fontName.toLowerCase() === 'system-ui') return;
+
+    const fontSlug = fontName.replace(/\s+/g, '+');
+    const linkId = 'dc-dynamic-google-font';
+    let link = document.getElementById(linkId) as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement('link');
+      link.id = linkId;
+      link.rel = 'stylesheet';
+      document.head.appendChild(link);
+    }
+    link.href = `https://fonts.googleapis.com/css2?family=${fontSlug}:wght@400;500;600;700;800&display=swap`;
+  }, [activeTokens.typography.fontFamily, theme.fontFamily]);
+
   // --------------------------------------------------------------------------
   // CÁLCULOS DO CARRINHO
   // --------------------------------------------------------------------------
@@ -1720,7 +1737,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       {/* Top Header com Marca Oficial do Estabelecimento */}
       <div 
         className="sticky top-0 z-30 shadow-xs px-4 py-3 flex items-center justify-between border-b border-black/5 backdrop-blur-md"
-        style={{ backgroundColor: `${theme.cardColor || '#ffffff'}f2` }}
+        style={{
+          backgroundColor: 'var(--dc-bg-header-color, #ffffff)',
+          backgroundImage: 'var(--dc-bg-header, none)',
+        }}
       >
         <div className="flex items-center gap-3 min-w-0">
           <StoreLogo logoUrl={theme.logoUrl} name={theme.storeName || storeData.tenant.name} color={primaryColor} />
@@ -2280,31 +2300,48 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                     key={p.id}
                     id={`product-${p.id}`}
                     onClick={() => handleSelectProduct(p.id)}
-                    className={`p-3.5 border bg-white flex items-center justify-between gap-3 shadow-xs hover:border-gray-300 transition-all cursor-pointer ${
+                    className={`p-3.5 border flex items-center justify-between gap-3 transition-all cursor-pointer ${
                       highlightedProductId === p.id 
                         ? 'ring-2 ring-emerald-500 bg-emerald-50/50 shadow-md border-emerald-400' 
                         : 'border-gray-200/80'
                     } ${
-                      isOutOfStock ? 'opacity-70 bg-gray-50/50' : ''
+                      isOutOfStock ? 'opacity-70' : ''
                     }`}
-                    style={{ borderRadius }}
+                    style={{
+                      backgroundColor: 'var(--dc-bg-card-color, #ffffff)',
+                      backgroundImage: 'var(--dc-bg-card, none)',
+                      borderRadius: 'var(--dc-card-radius, 1rem)',
+                      boxShadow: 'var(--dc-card-shadow, 0 1px 2px 0 rgba(0, 0, 0, 0.05))',
+                      borderColor: 'var(--dc-border, #e2e8f0)',
+                    }}
                   >
                     <div className="space-y-1 min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-sm text-gray-900 leading-snug truncate">{p.name}</h3>
+                        <h3
+                          className="font-bold text-sm leading-snug truncate"
+                          style={{ color: 'var(--dc-text-title, #0f172a)' }}
+                        >
+                          {p.name}
+                        </h3>
                         {isOutOfStock ? (
                           <Badge variant="danger" size="sm">Esgotado</Badge>
                         ) : null}
                       </div>
 
-                      <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
+                      <p
+                        className="text-xs line-clamp-2 leading-relaxed"
+                        style={{ color: 'var(--dc-text-main, #334155)' }}
+                      >
                         {p.description}
                       </p>
 
                       <div className="flex items-baseline gap-2 pt-1">
                         {p.promotionalPrice && p.promotionalPrice > 0 ? (
                           <>
-                            <span className="font-extrabold text-sm text-emerald-800 font-mono">
+                            <span
+                              className="font-extrabold text-sm font-mono"
+                              style={{ color: 'var(--dc-promo-price, #b91c1c)' }}
+                            >
                               {formatBRL(p.promotionalPrice)}
                             </span>
                             <span className="text-xs text-gray-400 line-through font-mono">
@@ -2312,7 +2349,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                             </span>
                           </>
                         ) : (
-                          <span className="font-extrabold text-sm text-gray-900 font-mono">
+                          <span
+                            className="font-extrabold text-sm font-mono"
+                            style={{ color: 'var(--dc-price, var(--dc-primary, #15803d))' }}
+                          >
                             {formatBRL(p.price)}
                           </span>
                         )}
@@ -2349,7 +2389,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                           <button
                             onClick={(e) => { e.stopPropagation(); handleAddToCart(p); }}
                             className="w-6 h-6 rounded-lg text-white flex items-center justify-center cursor-pointer shadow-xs"
-                            style={{ backgroundColor: buttonColor }}
+                            style={{
+                              backgroundColor: 'var(--dc-button-bg, #15803d)',
+                              color: 'var(--dc-button-text, #ffffff)',
+                            }}
                           >
                             <Plus className="w-3 h-3" />
                           </button>
@@ -2360,7 +2403,11 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                           variant="primary"
                           onClick={(e) => { e.stopPropagation(); handleAddToCart(p); }}
                           className="text-xs py-1 h-7 rounded-xl px-3 cursor-pointer"
-                          style={{ backgroundColor: buttonColor }}
+                          style={{
+                            backgroundColor: 'var(--dc-button-bg, #15803d)',
+                            color: 'var(--dc-button-text, #ffffff)',
+                            borderRadius: 'var(--dc-button-radius, var(--dc-card-radius, 0.75rem))',
+                          }}
                         >
                           Adicionar
                         </Button>
