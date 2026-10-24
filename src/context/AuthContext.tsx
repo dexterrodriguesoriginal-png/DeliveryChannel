@@ -12,6 +12,7 @@ import { isLocalDemoAllowed, isPreviewBypassActive, PREVIEW_BYPASS_SESSION_KEY }
 import { classifyMemberships, DriverApprovalLookup } from '../lib/membershipResolution';
 import { driverInviteRepository } from '../repositories/driverRepository';
 import { BusinessType } from '../lib/modules';
+import { DemoSegment } from '../lib/demoPacks';
 import { themeService } from '../services/themeService';
 
 export interface TenantMembership {
@@ -113,6 +114,7 @@ interface AuthContextType {
     city: string;
     phoneWhatsApp: string;
     businessType: BusinessType;
+    demoSegment: DemoSegment;
   }) => Promise<{ success: boolean; requiresEmailConfirmation?: boolean; data?: any; error?: string }>;
   refreshSession: () => Promise<void>;
 
@@ -1547,6 +1549,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     city: string;
     phoneWhatsApp: string;
     businessType: BusinessType;
+    demoSegment: DemoSegment;
   }): Promise<{ success: boolean; requiresEmailConfirmation?: boolean; data?: any; error?: string }> => {
     try {
       if (!supabaseUser) {
@@ -1572,6 +1575,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         p_address: data.address,
         p_city: data.city || 'São Paulo',
         p_phone_whatsapp: data.phoneWhatsApp,
+        p_demo_segment: data.demoSegment,
       });
 
       if (error) {

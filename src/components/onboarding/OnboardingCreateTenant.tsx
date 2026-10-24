@@ -32,6 +32,7 @@ import {
   Bike as BikeIcon,
 } from 'lucide-react';
 import { BUSINESS_TYPES, BUSINESS_PRESETS, BusinessType, MODULES } from '../../lib/modules';
+import { DEMO_PACKS, DEMO_SEGMENT_BY_BUSINESS_TYPE, DemoSegment } from '../../lib/demoPacks';
 
 const BUSINESS_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Utensils, Beer, Coffee, Pizza, ShoppingBasket, Wine, Shirt, Sparkles, Scissors, Hammer, Bike: BikeIcon, Store,
@@ -82,6 +83,7 @@ export const OnboardingCreateTenant: React.FC<OnboardingCreateTenantProps> = ({
   const [email, setEmail] = useState(currentUser?.email || '');
   const [category, setCategory] = useState('ADEGA');
   const [businessType, setBusinessType] = useState<BusinessType>('ADEGA');
+  const [demoSegment, setDemoSegment] = useState<DemoSegment>('adega');
   const [addressSearch, setAddressSearch] = useState('');
   const [street, setStreet] = useState('');
   const [number, setNumber] = useState('');
@@ -258,6 +260,7 @@ export const OnboardingCreateTenant: React.FC<OnboardingCreateTenantProps> = ({
         city: finalCity,
         phoneWhatsApp: phoneWhatsApp.trim(),
         businessType,
+        demoSegment,
       });
 
       if (!res.success) {
@@ -481,6 +484,7 @@ export const OnboardingCreateTenant: React.FC<OnboardingCreateTenantProps> = ({
                       onClick={() => {
                         setBusinessType(key);
                         setCategory(BUSINESS_CATEGORY[key]);
+                        setDemoSegment(DEMO_SEGMENT_BY_BUSINESS_TYPE[key]);
                       }}
                       className={`flex items-center gap-2 rounded-xl border p-3 text-left text-xs font-semibold transition-colors ${
                         selected
@@ -497,6 +501,24 @@ export const OnboardingCreateTenant: React.FC<OnboardingCreateTenantProps> = ({
               <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-900">
                 Ligamos {presetSummary(businessType)}. Você pode mudar quando quiser.
               </p>
+              <div>
+                <label htmlFor="demo-segment" className="block text-xs font-semibold text-gray-700 mb-1.5">
+                  Catálogo de demonstração
+                </label>
+                <select
+                  id="demo-segment"
+                  value={demoSegment}
+                  onChange={event => setDemoSegment(event.target.value as DemoSegment)}
+                  disabled={loading}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900"
+                  aria-describedby="demo-segment-description"
+                >
+                  {DEMO_PACKS.map(pack => <option key={pack.segment} value={pack.segment}>{pack.label}</option>)}
+                </select>
+                <p id="demo-segment-description" className="mt-1.5 text-xs text-gray-500">
+                  Sua loja começa com exemplos deste segmento. No painel, você pode manter, escolher ou remover os exemplos.
+                </p>
+              </div>
             </section>
 
             <div className="space-y-4 pt-2 border-t border-gray-100">

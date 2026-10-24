@@ -48,6 +48,8 @@ import { useNewOrderAlarm } from '../../lib/orders/newOrderAlarm';
 import { arrivalRepository } from '../../repositories/arrivalRepository';
 import { PickupHandoverModal } from '../../components/pickup/PickupHandoverModal';
 import { OpenDiningTabsWarning } from '../../components/establishment/dashboard/OpenDiningTabsWarning';
+import { DemoPackBanner } from '../../components/establishment/dashboard/DemoPackBanner';
+import { isSupabaseConfigured } from '../../lib/supabase';
 
 interface EstablishmentDashboardProps {
   onNavigate?: (tab: string) => void;
@@ -445,6 +447,9 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
           </button>
         </div>
       </div>
+
+      <DemoPackBanner key={activeTenant.id} tenantId={activeTenant.id} isOwner={isSupabaseConfigured && activeRole === 'OWNER'}
+        onComplete={() => { void fetchRealData(true); }} />
 
       {/* 19/10: cartão da loja + alertas de pedidos (fluxo inteiro pelo Dashboard) */}
       <StoreHeaderCard

@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { promotionRepository } from '../../repositories/promotionRepository';
 import { productRepository } from '../../repositories/productRepository';
 import { customerRepository } from '../../repositories/customerRepository';
-import { PromotionCarousel, PromotionCarouselItem, Coupon, Product, Customer } from '../../types';
+import { offerRepository } from '../../repositories/offerRepository';
+import { PromotionCarousel, PromotionCarouselItem, Coupon, Product, Customer, Offer } from '../../types';
+import { CatalogOffersSection } from '../../components/establishment/CatalogOffersSection';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -47,6 +49,15 @@ export const PromotionsPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
+  const [offerForm, setOfferForm] = useState({ title: '', subtitle: '', description: '', promotionalPrice: '' });
+  const [isSavingOffer, setIsSavingOffer] = useState(false);
+  const [offerLoadError, setOfferLoadError] = useState<{ tenantId: string; message: string } | null>(null);
+  const offerTenantScope = useRef({ tenantId: activeTenant?.id });
+  if (offerTenantScope.current.tenantId !== activeTenant?.id) {
+    offerTenantScope.current = { tenantId: activeTenant?.id };
+  }
 
   // Carousel Modals
   const [isCarouselModalOpen, setIsCarouselModalOpen] = useState(false);
@@ -128,6 +139,72 @@ export const PromotionsPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [activeTenant?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const scope = offerTenantScope.current;
+    const tenantId = activeTenant?.id;
+    setOffers([]);
+    setOfferLoadError(null);
+    setEditingOffer(null);
+    setOfferForm({ title: '', subtitle: '', description: '', promotionalPrice: '' });
+    setIsSavingOffer(false);
+    if (!tenantId) return;
+    offerRepository.getOffers(securityContext, tenantId).then(result => {
+      if (!cancelled && offerTenantScope.current === scope) setOffers(result);
+    }).catch((err: any) => {
+      if (!cancelled && offerTenantScope.current === scope) {
+        setOfferLoadError({ tenantId, message: err.message || 'Falha ao carregar cards de oferta.' });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [activeTenant?.id, securityContext]);
+
+  const handleOpenOffer = (offer: Offer) => {
+    if (offer.tenantId !== activeTenant?.id) return;
+    setEditingOffer(offer);
+    setOfferForm({
+      title: offer.title,
+      subtitle: offer.subtitle || '',
+      description: offer.description || '',
+      promotionalPrice: offer.promotionalPrice?.toString() || '',
+    });
+  };
+
+  const handleSaveOffer = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!activeTenant || !editingOffer || editingOffer.tenantId !== activeTenant.id || !canManage || isSavingOffer) return;
+    const scope = offerTenantScope.current;
+    const tenantId = activeTenant.id;
+    const promotionalPrice = offerForm.promotionalPrice === '' ? undefined : Number(offerForm.promotionalPrice);
+    if (!offerForm.title.trim() || (promotionalPrice !== undefined && (!Number.isFinite(promotionalPrice) || promotionalPrice <= 0))) {
+      showToast({ type: 'error', title: 'Confira a oferta', message: 'Informe um título e um preço maior que zero.' });
+      return;
+    }
+    if (promotionalPrice !== undefined && editingOffer.originalPrice !== undefined && promotionalPrice > editingOffer.originalPrice) {
+      showToast({ type: 'error', title: 'Confira o preço', message: 'O preço promocional deve ser menor ou igual ao preço original.' });
+      return;
+    }
+    setIsSavingOffer(true);
+    try {
+      const updated = await offerRepository.update(securityContext, tenantId, editingOffer.id, {
+        title: offerForm.title.trim(),
+        subtitle: offerForm.subtitle.trim(),
+        description: offerForm.description.trim(),
+        promotionalPrice,
+        isDemo: false,
+      });
+      if (offerTenantScope.current !== scope) return;
+      setOffers(current => current.map(offer => offer.id === updated.id ? updated : offer));
+      setEditingOffer(null);
+      showToast({ type: 'success', title: 'Oferta atualizada', message: 'As alterações foram salvas no seu catálogo.' });
+    } catch (err: any) {
+      if (offerTenantScope.current !== scope) return;
+      showToast({ type: 'error', title: 'Erro ao salvar oferta', message: err.message || 'Não foi possível salvar a oferta.' });
+    } finally {
+      if (offerTenantScope.current === scope) setIsSavingOffer(false);
+    }
+  };
 
   // --------------------------------------------------------------------------
   // CAROUSEL HANDLERS
@@ -527,6 +604,21 @@ export const PromotionsPage: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-6xl pb-16">
+      <Modal isOpen={editingOffer !== null && editingOffer.tenantId === activeTenant?.id} onClose={() => !isSavingOffer && setEditingOffer(null)} title="Editar oferta" size="md">
+        <form onSubmit={handleSaveOffer} className="space-y-4">
+          <Input label="Título da oferta" value={offerForm.title} onChange={event => setOfferForm(current => ({ ...current, title: event.target.value }))} required disabled={isSavingOffer} />
+          <Input label="Subtítulo" value={offerForm.subtitle} onChange={event => setOfferForm(current => ({ ...current, subtitle: event.target.value }))} disabled={isSavingOffer} />
+          <label className="block text-xs font-semibold text-gray-700">
+            Descrição
+            <textarea value={offerForm.description} onChange={event => setOfferForm(current => ({ ...current, description: event.target.value }))} disabled={isSavingOffer} rows={3} className="block mt-1 w-full rounded-xl border border-gray-300 p-2.5 text-xs" />
+          </label>
+          <Input label="Preço promocional (R$)" type="number" min="0.01" step="0.01" value={offerForm.promotionalPrice} onChange={event => setOfferForm(current => ({ ...current, promotionalPrice: event.target.value }))} disabled={isSavingOffer} />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setEditingOffer(null)} disabled={isSavingOffer}>Cancelar</Button>
+            <Button type="submit" disabled={isSavingOffer}>{isSavingOffer ? 'Salvando...' : 'Salvar alterações'}</Button>
+          </div>
+        </form>
+      </Modal>
       {/* Header com identidade da loja e abas principais */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -564,6 +656,9 @@ export const PromotionsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {offerLoadError && offerLoadError.tenantId === activeTenant?.id && <div role="alert" className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-xl p-3">{offerLoadError.message}</div>}
+      <CatalogOffersSection offers={offers.filter(offer => offer.tenantId === activeTenant?.id)} canManage={canManage} onEdit={handleOpenOffer} />
 
       {/* Navegação Interna por Tabs conforme Requisito 39 */}
       <div className="flex items-center gap-2 border-b border-gray-200">

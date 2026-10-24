@@ -392,14 +392,14 @@ export const offerRepository = {
    */
   async update(context: SecurityContext, tenantId: string, offerId: string, updates: Partial<Offer>): Promise<Offer> {
     if (isLocalMode(tenantId)) {
-      return dataStore.updateOffer(context, tenantId, offerId, updates);
+      return dataStore.updateOffer(context, tenantId, offerId, { ...updates, isDemo: false });
     }
     if (!isValidUuid(offerId)) {
       throw new Error('Card promocional inválido (id não reconhecido pelo banco).');
     }
 
     const has = (k: keyof Offer) => hasKey(updates, k);
-    const db: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const db: Record<string, unknown> = { updated_at: new Date().toISOString(), is_demo: false };
 
     if (has('title') && updates.title !== undefined) db.title = updates.title.trim();
     if (has('subtitle')) db.subtitle = trimOrNull(updates.subtitle);

@@ -342,16 +342,4 @@ export const tenantRepository = {
     };
   },
 
-  async removeDemoCatalog(tenantId: string): Promise<{ success: boolean; deletedOffers: number; deletedProducts: number; deletedCategories: number }> {
-    requireBackend('catálogo demo');
-    const { data, error } = await supabase.rpc('remove_demo_catalog_for_current_tenant', { p_tenant_id: tenantId });
-    if (error) throw toBackendError(error, 'Falha ao remover catálogo de demonstração.');
-    return data as { success: boolean; deletedOffers: number; deletedProducts: number; deletedCategories: number };
-  },
-
-  async seedDemoCatalog(tenantId: string): Promise<void> {
-    requireBackend('catálogo demo');
-    const { error } = await supabase.rpc('seed_tenant_demo_catalog', { p_tenant_id: tenantId });
-    if (error) throw toBackendError(error, 'Falha ao carregar catálogo demo.');
-  },
 };
