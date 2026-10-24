@@ -1,7 +1,8 @@
 # Voz do cliente, documentos e direitos LGPD
 
-Implementação sobre `main`. As migrations `20261024003600_store_feedback.sql` e
-`20261024003700_legal_and_data_rights.sql` são propostas para revisão; não foram
+Implementação sobre `main`. As migrations `20261024003600_store_feedback.sql`,
+`20261024003700_legal_and_data_rights.sql` e
+`20261024003800_submit_store_feedback_v2.sql` são propostas para revisão; não foram
 aplicadas a nenhum banco. Seus rollbacks estão em `supabase/rollback` e devem ser
 avaliados na ordem inversa. O rollback de LGPD remove o histórico de aceites;
 antes de usá-lo, preserve os registros conforme a política de retenção aplicável.
@@ -10,13 +11,22 @@ antes de usá-lo, preserve os registros conforme a política de retenção aplic
 
 - Perfil e rodapé de `/app/:slug` permitem enviar sem login ou com sessão real.
   A mensagem tem 10–1000 caracteres; tipo obrigatório, área e nota opcionais.
-- `POST /api/store-feedback/:slug` verifica o JWT quando fornecido e calcula
-  HMAC-SHA256 com segredo do servidor, separado por loja, dia e usuário/IP.
-  Não usa hash enviado pelo cliente, não guarda IP e não registra payloads.
-- A RPC `submit_store_feedback` é executável somente por `service_role` no
-  servidor. Resolve a loja pública ativa pelo slug. O slug é o destino público
-  do envio, necessário inclusive sem sessão; não é uma autorização administrativa.
-  Não há parâmetro `tenant_id` vindo do cliente.
+- O frontend chama `submit_store_feedback_v2` diretamente pelo supabase-js, com a
+  chave publicável e o JWT da sessão quando houver. A RPC SECURITY DEFINER permite
+  execução a `anon` e `authenticated`, com search_path vazio. Valida tipo, área,
+  nota e tamanho da mensagem no servidor.
+- O slug ou UUID recebido seleciona apenas o destino público. O banco resolve o
+  tenant e exige a mesma condição da vitrine `get_public_store`: loja ACTIVE com
+  slug público não vazio. Não existe flag adicional de publicação neste esquema;
+  `is_open` é horário de operação e não controla a publicação da loja.
+- O segredo de 32 bytes é gerado por `extensions.gen_random_bytes(32)` na migration
+  e fica exclusivamente em `private.store_feedback_secret`, com RLS e sem acesso
+  para PUBLIC/anon/authenticated/service_role. Não é retornado por nenhuma RPC.
+  HMAC-SHA256 usa como chave esse segredo e como dados a identidade, UUID canônico
+  da loja e data UTC em ISO. A identidade é `auth.uid()` quando disponível; para
+  visitantes, o primeiro IP de `request.headers` → `x-forwarded-for`, fornecido pelo
+  ingresso Supabase/PostgREST. UUID e slug da mesma loja compartilham a quota.
+  IP e UID nunca são persistidos nos relatos ou contadores, somente o HMAC diário.
 - `list_store_feedback` e `set_store_feedback_state` derivam o tenant dos vínculos
   ativos OWNER/MANAGER de `auth.uid()` no banco. O slug seleciona uma das lojas
   autorizadas desse usuário, inclusive para donos com mais de uma loja. Trocar o
@@ -30,34 +40,44 @@ antes de usá-lo, preserve os registros conforme a política de retenção aplic
   de cada dia por UUID aleatório não revela a sequência de envio. Contagens e
   médias usam todo o filtro; o log tem páginas de 50, sem truncamento silencioso
   pelo limite de linhas do PostgREST.
-- Os dois contadores (usuário e IP) são atualizados atomicamente em ordem estável
-  por chave única; o sexto envio gera erro e reverte ambos. Para visitantes, o
-  contador é o de IP. Contadores antigos são limpos no próximo envio; hashes são
-  separados por dia/loja. Sem informações pessoais incluídas voluntariamente na
-  mensagem, a loja não recebe dados que identifiquem o autor. O formulário explica
-  que o texto livre também deve evitar informações identificadoras.
+- Um contador por remetente/loja/dia é atualizado por UPSERT atômico em chave
+  única; o sexto envio gera erro e reverte a operação, inclusive sob concorrência.
+  Com sessão, a quota é por UID; sem sessão, por IP. O dia UTC altera o hash e
+  reinicia a quota. Contadores antigos são limpos no próximo envio. Sem informações
+  pessoais incluídas voluntariamente na mensagem, a loja não recebe dados que
+  identifiquem o autor. O formulário orienta evitar informações identificadoras.
 - A aba `est-feedback` pertence a OWNER/MANAGER, em todos os planos, fora do mapa
   de módulos. Os gates dos demais módulos continuam nos mesmos locais.
 
-## Configuração do servidor
+## Envio direto ao Supabase e rollback
 
-O app deve ser servido pelo Express (`npm run build` e `npm start`) ou ter a rota
-`/api/store-feedback/*` encaminhada a esse servidor. Hospedar somente os arquivos
-estáticos não atende ao envio. Variáveis de runtime necessárias:
+O envio de feedback funciona com hospedagem estática do frontend e as variáveis
+públicas existentes `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`. A rota
+Express de feedback, seu registro e os testes antigos dessa rota foram removidos.
+O Express continua atendendo suas outras funções, incluindo PWA.
 
-- `SUPABASE_URL` (ou a URL pública existente) e `SUPABASE_SERVICE_ROLE_KEY`.
-- `FEEDBACK_HASH_SECRET`: segredo aleatório exclusivo, com pelo menos 32 caracteres.
-  Guardá-lo no gerenciador de segredos; nunca usar prefixo `VITE_`.
-- `TRUSTED_PROXY_CIDRS`: lista de CIDRs de proxies de ingresso conhecidos, quando
-  houver proxy. O padrão ignora `X-Forwarded-For`. Sem a configuração correta, os
-  visitantes atrás do mesmo proxy compartilham o limite; não usar `true` nem
-  confiar em cabeçalhos arbitrários. O ingresso deve remover cabeçalhos de origem
-  fornecidos pelo visitante antes de inserir o IP validado.
+`FEEDBACK_HASH_SECRET`, `SUPABASE_SERVICE_ROLE_KEY` e `TRUSTED_PROXY_CIDRS` não são
+mais utilizados nem necessários neste fluxo e foram removidos de `.env.example`.
+O alias `SUPABASE_URL` foi retirado desse template; o resolvedor PWA ainda aceita
+esse alias público por compatibilidade. Nenhuma configuração remota foi alterada.
 
-O caminho de feedback retorna 503 quando faltar configuração. Não há fallback
-que simule sucesso, login ou gravação em armazenamento local. A política de logs
-do proxy/ingresso deve evitar corpos de requisição e credenciais nessa rota.
-Nenhuma variável ou credencial de produção foi configurada nesta entrega.
+O ingresso Supabase precisa fornecer `x-forwarded-for` sanitizado; a RPC não recebe
+IP nem identidade como argumento e recusa visitantes sem origem disponível. Os
+logs da infraestrutura devem evitar payloads e credenciais. O frontend mostra
+mensagens genéricas para falhas, sem repassar detalhes internos do banco.
+
+A migration 038 remove a RPC antiga que recebia hashes externos. O rollback em
+`supabase/rollback/20261024003800_submit_store_feedback_v2.sql` restaura exatamente
+a definição anterior e seu EXECUTE exclusivo para `service_role`, remove a RPC v2
+e a tabela de segredo e preserva relatos e contadores. Mantém o schema `private`,
+que pode ser compartilhado com outros objetos. Para restaurar também o fluxo de
+aplicação, reverta o commit e restaure as variáveis do servidor pelo gerenciador de
+segredos. Não armazene seus valores no Git.
+
+A mudança de algoritmo/segredo não permite reaproveitar a quota da versão anterior:
+contadores antigos são preservados, mas os novos hashes começam sua própria quota
+no dia da transição. Para uma futura implantação, prefira a virada do dia UTC.
+Nenhuma migration ou rollback foi aplicado em qualquer banco nesta entrega.
 
 ## Documentos e consentimentos
 
@@ -103,15 +123,17 @@ retenção legal.
 
 ## Validação sem banco
 
-`npm test`, `npm run lint` e `npm run build`. Os testes de HTTP usam Supabase
-mockado e servidor local. Cobrem validação, JWT inválido, spoofing de IP/identidade,
-hashes, resposta de rate-limit, filtros/paginação, estado, dados próprios, cookies,
-entradas de UI, permissões e contratos de migrations/rollbacks. Nenhum teste novo
-aplica SQL ou se conecta a bancos. Testes de integração PostgreSQL não foram
-executados, pois seu setup aplica migrations, contrariando a regra desta tarefa.
-A execução real das funções SQL ainda requer validação posterior autorizada em
-ambiente próprio; os testes offline verificam seus contratos de segurança.
+`npm test`, `npm run lint` e `npm run build`. Os testes de envio exercitam o
+transporte real do supabase-js com fetch mockado, sem rede: visitante e sessão,
+allowlist dos cinco argumentos, limites da mensagem, validação de campos e
+tratamento de erros/rate-limit. Contratos SQL verificam acesso ao segredo, tenant,
+HMAC, quota atômica, dia UTC e restauração exata da RPC anterior no rollback.
+Nenhum teste aplica SQL ou se conecta a bancos. Os testes de integração PostgreSQL
+não são executados, pois o setup aplica migrations, contrariando a regra desta
+tarefa. A execução real das funções SQL requer validação posterior autorizada;
+os contratos offline não comprovam execução ou concorrência em PostgreSQL.
 
-Validação final: suíte completa com 941 testes em 118 arquivos, lint e build
-aprovados. As duas migrations e os dois rollbacks também passaram pelo parser
-pglast (SQL/PL/pgSQL), exclusivamente para análise de sintaxe, sem banco.
+Validação da tarefa E: 949 testes em 119 arquivos, lint e build aprovados; 25 novos
+testes cobrem o envio v2 e seus contratos SQL. A migration 038 e seu rollback
+passaram pelo parser pglast (SQL e PL/pgSQL), exclusivamente para análise de
+sintaxe, sem banco.

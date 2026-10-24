@@ -17,36 +17,25 @@ beforeEach(() => {
     .mockResolvedValue({ data: { session: null }, error: null });
 });
 describe('feedback repository', () => {
-  it('uses only the server endpoint to submit, including a JWT when logged in', async () => {
-    const fetcher = vi.fn().mockResolvedValue({ ok: true });
-    vi.stubGlobal('fetch', fetcher);
-    getSession.mockResolvedValue({
-      data: { session: { access_token: 'token' } },
-    });
+  it('submits directly through the public RPC without handling session tokens', async () => {
+    rpc.mockResolvedValue({ error: null });
     await feedbackRepository.submit('store-a', {
       type: 'elogio',
       area: null,
       rating: 5,
       message: 'Excelente atendimento!',
     });
-    expect(fetcher).toHaveBeenCalledWith(
-      '/api/store-feedback/store-a',
-      expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: 'Bearer token' }),
-      }),
-    );
-    expect(rpc).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledWith('submit_store_feedback_v2', {
+      p_tenant_slug_or_id: 'store-a',
+      p_type: 'elogio',
+      p_area: null,
+      p_rating: 5,
+      p_message: 'Excelente atendimento!',
+    });
+    expect(getSession).not.toHaveBeenCalled();
   });
   it('propagates rate-limit failures without reporting success', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: false,
-          json: async () => ({ message: 'Limite diário' }),
-        }),
-    );
+    rpc.mockResolvedValue({ error: { code: 'P0001', message: 'internal' } });
     await expect(
       feedbackRepository.submit('store-a', {
         type: 'elogio',
