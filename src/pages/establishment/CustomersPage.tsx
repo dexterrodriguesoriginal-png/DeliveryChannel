@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Award,
   CalendarDays,
+  Barcode,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -41,8 +42,12 @@ import {
   CreateCustomerInput,
   customerRepository,
 } from '../../repositories/customerRepository';
-import { CustomerOrigin } from '../../types';
+import { CustomerOrigin, Product } from '../../types';
 import { formatBRL } from '../../lib/pricing/money';
+import { PDVModal } from '../../components/establishment/PDVModal';
+import { orderRepository } from '../../repositories/orderRepository';
+import { productRepository } from '../../repositories/productRepository';
+import { rpcErrorMessage } from '../../lib/rpcErrors';
 import { orderStatusLabel, paymentMethodLabel, fulfillmentLabel } from '../../lib/orders/labels';
 import {
   CUSTOMER_SEGMENT_META,
@@ -138,7 +143,7 @@ function csvCell(value: string | number | boolean): string {
 }
 
 export const CustomersPage: React.FC = () => {
-  const { activeTenant, activeRole } = useAuth();
+  const { activeTenant, activeRole, securityContext } = useAuth();
   const { showToast } = useToast();
 
   const [customers, setCustomers] = useState<CustomerCrmItem[]>([]);
@@ -158,6 +163,11 @@ export const CustomersPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [globalMetrics, setGlobalMetrics] = useState<CustomerCrmOverviewMetrics | null>(null);
+
+  // PDV Balcão state
+  const [isPDVOpen, setIsPDVOpen] = useState(false);
+  const [pdvProducts, setPdvProducts] = useState<Product[]>([]);
+  const [pdvCustomer, setPdvCustomer] = useState<{ name: string; phone: string } | null>(null);
 
   // Drawer details state
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerCrmItem | null>(null);
@@ -329,6 +339,71 @@ export const CustomersPage: React.FC = () => {
   const closeCustomer = () => {
     setSelectedCustomer(null);
     setOrders([]);
+  };
+
+  const openPdvGeneral = async () => {
+    if (!activeTenant?.id) return;
+    try {
+      const prods = await productRepository.getProducts(securityContext, activeTenant.id);
+      setPdvProducts(prods);
+      setPdvCustomer(null);
+      setIsPDVOpen(true);
+    } catch (e: any) {
+      showToast({ type: 'error', title: 'Erro ao abrir PDV', message: e.message || 'Falha ao carregar produtos.' });
+    }
+  };
+
+  const openPdvForCustomer = async (cust: CustomerCrmItem) => {
+    if (!activeTenant?.id) return;
+    try {
+      const prods = await productRepository.getProducts(securityContext, activeTenant.id);
+      setPdvProducts(prods);
+      setPdvCustomer({ name: cust.name, phone: cust.phone || '' });
+      setIsPDVOpen(true);
+    } catch (e: any) {
+      showToast({ type: 'error', title: 'Erro ao abrir PDV', message: e.message || 'Falha ao carregar produtos.' });
+    }
+  };
+
+  const handlePDVSubmit = async (data: {
+    customerName: string;
+    customerPhone: string;
+    items: Array<{ productId: string; quantity: number; notes?: string; options?: any }>;
+    paymentMethod: 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'PIX';
+    notes?: string;
+    couponCode?: string;
+    idempotencyKey: string;
+  }) => {
+    if (!activeTenant?.id) return;
+    try {
+      await orderRepository.createPosSale(securityContext, activeTenant.id, {
+        customerName: data.customerName || undefined,
+        customerPhone: data.customerPhone || undefined,
+        items: data.items,
+        paymentMethod: data.paymentMethod,
+        couponCode: data.couponCode,
+        idempotencyKey: data.idempotencyKey,
+        notes: data.notes,
+      });
+      showToast({
+        type: 'success',
+        title: 'Venda Balcão Registrada',
+        message: 'Pedido de caixa concluído com sucesso.',
+      });
+      setIsPDVOpen(false);
+      if (selectedCustomer?.id) {
+        void openCustomer(selectedCustomer, drawerTab);
+      }
+      void loadCustomers();
+    } catch (err: any) {
+      const msg = rpcErrorMessage(err) || err?.message || 'Falha ao registrar venda no PDV.';
+      showToast({
+        type: 'error',
+        title: 'Erro no PDV',
+        message: msg,
+      });
+      throw err;
+    }
   };
 
   const toggleSuggestedTag = (tagToToggle: string) => {
@@ -663,6 +738,14 @@ export const CustomersPage: React.FC = () => {
             leftIcon={<Plus className="h-4 w-4" />}
           >
             Adicionar cliente
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={openPdvGeneral}
+            leftIcon={<Barcode className="h-4 w-4 text-emerald-700" />}
+          >
+            Frente de Caixa (PDV)
           </Button>
         </div>
       </header>
@@ -1492,6 +1575,14 @@ export const CustomersPage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openPdvForCustomer(selectedCustomer)}
+                  leftIcon={<Barcode className="h-4 w-4 text-emerald-700" />}
+                >
+                  Novo Pedido (PDV)
+                </Button>
                 {selectedCustomer.contactConsent && (
                   <Button
                     variant="outline"
@@ -2030,6 +2121,21 @@ export const CustomersPage: React.FC = () => {
             </div>
           </aside>
         </div>
+      )}
+      {activeTenant?.id && isPDVOpen && (
+        <PDVModal
+          isOpen={isPDVOpen}
+          tenantId={activeTenant.id}
+          products={pdvProducts}
+          addonsEnabled={false}
+          initialCustomerName={pdvCustomer?.name}
+          initialCustomerPhone={pdvCustomer?.phone}
+          onClose={() => {
+            setIsPDVOpen(false);
+            setPdvCustomer(null);
+          }}
+          onSubmit={handlePDVSubmit}
+        />
       )}
     </div>
   );

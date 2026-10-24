@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { orderRepository } from '../../repositories/orderRepository';
 import { validateStatusChange } from '../../repositories/orderMappers';
 import { isN1N6Backend, N1N6_ONLY_MESSAGE } from '../../lib/backendSchema';
+import { rpcErrorMessage } from '../../lib/rpcErrors';
 import { driverRepository, driverInviteRepository } from '../../repositories/driverRepository';
 import { productRepository } from '../../repositories/productRepository';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -512,6 +513,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
         paymentMethod: data.paymentMethod,
         couponCode: data.couponCode,
         idempotencyKey: data.idempotencyKey,
+        notes: data.notes,
       });
       showToast({
         type: 'success',
@@ -521,10 +523,11 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       setIsPDVOpen(false);
       await fetchOrders(true);
     } catch (err: any) {
+      const msg = rpcErrorMessage(err) || err.message || 'Falha ao registrar venda de balcão.';
       showToast({
         type: 'error',
         title: 'Erro no PDV',
-        message: err.message || 'Falha ao registrar venda de balcão.',
+        message: msg,
       });
       throw err;
     }

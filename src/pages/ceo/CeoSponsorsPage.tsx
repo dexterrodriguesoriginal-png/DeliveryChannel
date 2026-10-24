@@ -20,6 +20,10 @@ export const CeoSponsorsPage: React.FC = () => {
             Administração de anunciantes nacionais e globais exibidos nos aplicativos de clientes
           </p>
         </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold w-fit">
+          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+          <span>Dados de exemplo</span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

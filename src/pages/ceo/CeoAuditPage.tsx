@@ -23,8 +23,14 @@ export const CeoAuditPage: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Trilha de Auditoria Forense (Audit Log)</h2>
-          <p className="text-xs text-gray-500">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-gray-900">Trilha de Auditoria Forense (Audit Log)</h2>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              <span>Dados de exemplo</span>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
             Registro imutável de todas as ações administrativas, alterações de preços, configurações e sessões de suporte
           </p>
         </div>

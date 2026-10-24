@@ -31,6 +31,7 @@ const ROLE_LABELS: Record<RoleId, string> = {
   OWNER: 'Proprietário',
   MANAGER: 'Gerente',
   WAITER: 'Garçom',
+  KITCHEN: 'Cozinha',
   OPERATOR: 'Operador',
   CASHIER: 'Caixa',
   DELIVERY_MANAGER: 'Gestão de Entregas',

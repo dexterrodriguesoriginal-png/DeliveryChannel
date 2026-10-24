@@ -26,10 +26,11 @@ export const ROLE_HIERARCHY: Record<RoleId, number> = {
   SUPER_ADMIN: 95,
   OWNER: 80,
   MANAGER: 60,
-  WAITER: 25,
-  OPERATOR: 40,
   CASHIER: 35,
   DELIVERY_MANAGER: 30,
+  WAITER: 25,
+  KITCHEN: 25,
+  OPERATOR: 40,
   DRIVER: 20,
   CUSTOMER: 10,
 };
@@ -101,6 +102,10 @@ export const ROLE_PERMISSIONS: Record<RoleId, Permission[]> = {
     'view_orders',
     'manage_orders',
   ],
+  KITCHEN: [
+    'view_orders',
+    'manage_orders',
+  ],
   OPERATOR: [
     'view_orders',
     'manage_orders',
@@ -109,6 +114,7 @@ export const ROLE_PERMISSIONS: Record<RoleId, Permission[]> = {
   CASHIER: [
     'view_orders',
     'manage_orders',
+    'manage_customers',
   ],
   DELIVERY_MANAGER: [
     'view_orders',

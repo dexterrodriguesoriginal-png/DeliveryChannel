@@ -140,6 +140,21 @@ export const DriverApp: React.FC<DriverAppProps> = ({ activeTab: requestedTab, o
   const historyOrders = driverOrderHistory(orders, driverUserId);
 
   const handleSignOut = async () => {
+    try {
+      if (typeof window !== 'undefined') {
+        const toRemove: string[] = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const k = window.localStorage.key(i);
+          if (k && (k.startsWith('adegafood_') || k.startsWith('deliverychannel_') || k.startsWith('sb-'))) {
+            toRemove.push(k);
+          }
+        }
+        toRemove.forEach(k => window.localStorage.removeItem(k));
+        window.sessionStorage.clear();
+      }
+    } catch {
+      // ignore
+    }
     await signOut();
     window.location.replace('/');
   };

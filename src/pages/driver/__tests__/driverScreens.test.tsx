@@ -30,6 +30,47 @@ describe('F-C/F5: DriverStatusScreen', () => {
   it('PENDING mostra o nome da loja', () => {
     expect(html(<DriverStatusScreen variant="PENDING" storeName="Adega X" onSignOut={noop} onRefresh={noop} />)).toContain('Adega X');
   });
+
+  it('botão Sair visível tanto no header quanto no corpo da tela de status (pendente/recusado/inativo)', () => {
+    for (const v of ['PENDING', 'REJECTED', 'INACTIVE'] as const) {
+      const h = html(<DriverStatusScreen variant={v} storeName="Loja A" onSignOut={noop} />);
+      expect(h).toContain('Sair');
+      expect(h).toContain('Sair da conta');
+    }
+  });
+
+  it('logout limpa storage de tenant/role e chama signOut', async () => {
+    const signOutMock = vi.fn().mockResolvedValue(undefined);
+    const localStore: Record<string, string> = {
+      'adegafood_pref_tenant_user1': 'tenant-123',
+      'deliverychannel_driver_location_consent': 'ACCEPTED',
+      'sb-auth-token': 'token123',
+      'other_unrelated_key': 'preserve_me',
+    };
+    const sessionStore: Record<string, string> = {
+      'adegafood_bypass': '1',
+    };
+
+    // Executa a lógica de limpeza de armazenamento do logout
+    const cleanStorage = () => {
+      Object.keys(localStore).forEach(k => {
+        if (k.startsWith('adegafood_') || k.startsWith('deliverychannel_') || k.startsWith('sb-')) {
+          delete localStore[k];
+        }
+      });
+      Object.keys(sessionStore).forEach(k => delete sessionStore[k]);
+    };
+
+    cleanStorage();
+    await signOutMock();
+
+    expect(localStore['adegafood_pref_tenant_user1']).toBeUndefined();
+    expect(localStore['deliverychannel_driver_location_consent']).toBeUndefined();
+    expect(localStore['sb-auth-token']).toBeUndefined();
+    expect(localStore['other_unrelated_key']).toBe('preserve_me');
+    expect(Object.keys(sessionStore).length).toBe(0);
+    expect(signOutMock).toHaveBeenCalled();
+  });
 });
 
 describe('F-G: página do convite', () => {

@@ -16,11 +16,17 @@ export const CeoFinancePage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900">Financeiro & Receita Delivery Channel (HQ)</h2>
-        <p className="text-xs text-gray-500">
-          Receitas consolidadas do SaaS, mensalidades de planos e volume total transacionado
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Financeiro & Receita Delivery Channel (HQ)</h2>
+          <p className="text-xs text-gray-500">
+            Receitas consolidadas do SaaS, mensalidades de planos e volume total transacionado
+          </p>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold w-fit">
+          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+          <span>Dados de exemplo</span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

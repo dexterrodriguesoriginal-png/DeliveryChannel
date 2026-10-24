@@ -69,17 +69,28 @@ export const DriverStatusScreen: React.FC<DriverStatusScreenProps> = ({ variant,
           <h2 className="text-lg font-bold text-gray-900">{copy.title}</h2>
           {storeName && <p className="text-sm font-semibold text-gray-700">{isPending ? `Loja ${storeName}` : storeName}</p>}
           <p className="text-xs text-gray-500 leading-relaxed">{copy.message}</p>
-          {canRetry && onRefresh && (
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
+            {canRetry && onRefresh && (
+              <Button
+                size="sm"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                leftIcon={<RefreshCw className={refreshing ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />}
+                className="cursor-pointer w-full sm:w-auto"
+              >
+                {isPending ? 'Atualizar' : 'Tentar novamente'}
+              </Button>
+            )}
             <Button
               size="sm"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              leftIcon={<RefreshCw className={refreshing ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />}
-              className="cursor-pointer"
+              variant="outline"
+              onClick={() => onSignOut()}
+              leftIcon={<LogOut className="w-3.5 h-3.5" />}
+              className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 cursor-pointer w-full sm:w-auto"
             >
-              {isPending ? 'Atualizar' : 'Tentar novamente'}
+              Sair da conta
             </Button>
-          )}
+          </div>
         </Card>
       </div>
     </div>

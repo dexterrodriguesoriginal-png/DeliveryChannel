@@ -1485,6 +1485,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       if (typeof window !== 'undefined') {
         window.sessionStorage.removeItem(PREVIEW_BYPASS_SESSION_KEY);
+        // Limpar caches locais de tenant, role e chaves de sessão
+        const toRemove: string[] = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const k = window.localStorage.key(i);
+          if (k && (k.startsWith('adegafood_') || k.startsWith('deliverychannel_') || k.startsWith('sb-'))) {
+            toRemove.push(k);
+          }
+        }
+        toRemove.forEach(k => window.localStorage.removeItem(k));
+        window.sessionStorage.clear();
       }
     } catch {
       // ignore

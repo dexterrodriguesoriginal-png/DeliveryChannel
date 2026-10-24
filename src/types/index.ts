@@ -4,6 +4,7 @@ export type RoleId =
   | 'OWNER' 
   | 'MANAGER' 
   | 'WAITER'
+  | 'KITCHEN'
   | 'OPERATOR' 
   | 'CASHIER' 
   | 'DELIVERY_MANAGER' 

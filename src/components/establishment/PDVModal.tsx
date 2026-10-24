@@ -8,6 +8,7 @@ import { formatBRL } from '../../lib/pricing/money';
 import { ProductOptionsSelector } from '../client/customer/ProductOptionsSelector';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
 import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
+import { rpcErrorMessage } from '../../lib/rpcErrors';
 
 interface PDVModalProps {
   isOpen: boolean;
@@ -25,6 +26,8 @@ interface PDVModalProps {
     couponCode?: string;
     idempotencyKey: string;
   }) => Promise<void>;
+  initialCustomerName?: string;
+  initialCustomerPhone?: string;
 }
 
 export const PDVModal: React.FC<PDVModalProps> = ({
@@ -34,6 +37,8 @@ export const PDVModal: React.FC<PDVModalProps> = ({
   addonsEnabled,
   onClose,
   onSubmit,
+  initialCustomerName,
+  initialCustomerPhone,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<Array<{ key: string; product: Product; quantity: number; options?: SelectedProductOption[] }>>([]);
@@ -42,8 +47,8 @@ export const PDVModal: React.FC<PDVModalProps> = ({
   const [optionChoices, setOptionChoices] = useState<SelectedProductOption[]>([]);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   // Sem nome/telefone fictícios: em branco, o servidor registra "Cliente Balcão" sem telefone.
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerName, setCustomerName] = useState(initialCustomerName || '');
+  const [customerPhone, setCustomerPhone] = useState(initialCustomerPhone || '');
   const [couponInput, setCouponInput] = useState('');
   const [couponPreview, setCouponPreview] = useState<{ code: string; discount: number } | null>(null);
   const [couponMsg, setCouponMsg] = useState<string | null>(null);
@@ -54,6 +59,15 @@ export const PDVModal: React.FC<PDVModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'PIX'>('PIX');
   const [cashChange, setCashChange] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCustomerName(initialCustomerName || '');
+      setCustomerPhone(initialCustomerPhone || '');
+      setSubmitError(null);
+    }
+  }, [isOpen, initialCustomerName, initialCustomerPhone]);
 
   // A prévia do cupom vale para o carrinho validado; qualquer mudança exige validar de novo.
   // Todos os hooks precisam vir antes do early return (React #310).
@@ -185,8 +199,12 @@ export const PDVModal: React.FC<PDVModalProps> = ({
       setCouponPreview(null);
       setCouponInput('');
       setCouponMsg(null);
+      setSubmitError(null);
       saleKey.current = newIdempotencyKey();
       onClose();
+    } catch (err: any) {
+      const msg = rpcErrorMessage(err) || err?.message || 'Falha ao registrar venda de balcão.';
+      setSubmitError(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -335,6 +353,29 @@ export const PDVModal: React.FC<PDVModalProps> = ({
                 </div>
               )}
 
+              {/* Cliente (Opcional) */}
+              <div className="space-y-1.5 pt-2 border-t border-gray-200">
+                <label className="text-[10px] font-mono text-gray-500 uppercase tracking-wider block font-bold">
+                  Cliente (Opcional)
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nome do cliente (opcional)"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-emerald-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="WhatsApp / Telefone (opcional)"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
               {/* Forma de Pagamento */}
               <div className="space-y-2 pt-2 border-t border-gray-200">
                 <label className="text-[10px] font-mono text-gray-500 uppercase tracking-wider block font-bold">
@@ -408,6 +449,12 @@ export const PDVModal: React.FC<PDVModalProps> = ({
                   {formatBRL(totalAmount)}
                 </span>
               </div>
+
+              {submitError && (
+                <div role="alert" className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-medium">
+                  {submitError}
+                </div>
+              )}
 
               <button
                 disabled={cart.length === 0 || isSubmitting}

@@ -156,9 +156,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ? [{ id: 'est-modules', label: 'Módulos', icon: <SlidersHorizontal className="w-4 h-4 shrink-0" /> }]
           : []),
         { id: 'est-team', label: 'Equipe & Permissões', icon: <UserPlus className="w-4 h-4 shrink-0" /> },
-        { id: 'est-kitchen', label: 'Tela da Cozinha', icon: <ChefHat className="w-4 h-4 shrink-0" /> },
+        ...(modulesAvailable && isModuleEnabled('kds')
+          ? [{ id: 'est-kitchen', label: 'Tela da Cozinha', icon: <ChefHat className="w-4 h-4 shrink-0" /> }]
+          : []),
         { id: 'est-settings', label: 'Configurações da Loja', icon: <Settings className="w-4 h-4 shrink-0" /> },
-        ...(isSecurityLabEnabled ? [{ id: 'security-lab', label: 'Laboratório de Isolamento', icon: <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" /> }] : []),
       ],
     },
   ];

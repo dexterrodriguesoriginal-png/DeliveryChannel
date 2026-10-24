@@ -34,11 +34,17 @@ export const CeoSupportPage: React.FC<{ onNavigateToStore: (tenant: Tenant) => v
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900">Central de Suporte a Estabelecimentos</h2>
-        <p className="text-xs text-gray-500">
-          Atendimento a chamados de donos de loja com acesso instantâneo via Modo Suporte CEO
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Central de Suporte a Estabelecimentos</h2>
+          <p className="text-xs text-gray-500">
+            Atendimento a chamados de donos de loja com acesso instantâneo via Modo Suporte CEO
+          </p>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold w-fit">
+          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+          <span>Dados de exemplo</span>
+        </div>
       </div>
 
       <div className="space-y-4">

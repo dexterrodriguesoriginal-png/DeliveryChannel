@@ -31,7 +31,6 @@ import { EstablishmentDashboard } from './pages/establishment/EstablishmentDashb
 import { OrdersPage } from './pages/establishment/OrdersPage';
 import { ProductsPage } from './pages/establishment/ProductsPage';
 import { CategoriesPage } from './pages/establishment/CategoriesPage';
-import { OffersPage } from './pages/establishment/OffersPage';
 import { PromotionsPage } from './pages/establishment/PromotionsPage';
 import { CustomersPage } from './pages/establishment/CustomersPage';
 import { MarketingPage } from './pages/establishment/MarketingPage';
@@ -61,7 +60,7 @@ import { inviteTokenFromPath } from './utils/inviteUrl';
 import { ShieldAlert, Store, LogIn, Lock, RefreshCw, AlertTriangle, ShoppingBag } from 'lucide-react';
 import { Button } from './components/ui/Button';
 import { cn } from './utils/cn';
-import { canAccessEstTab } from './lib/navPermissions';
+import { canAccessEstTab, getDefaultAllowedTab } from './lib/navPermissions';
 import { isOwnerPanelTab } from './components/layout/ownerPanel';
 import { isPanelPathname, panelRouteHash, readPanelRoute } from './lib/panelRoute';
 import { isMarketingTab } from './lib/marketingTabs';
@@ -593,13 +592,17 @@ function AppContent() {
       );
     }
     if (!isCeoRole && activeTab.startsWith('est-') && activeTab !== 'est-modules' && !canAccessEstTab(activeRole, activeTab)) {
+      const fallback = getDefaultAllowedTab(activeRole);
+      if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
     switch (activeTab) {
-      // Security Lab (área estritamente técnica/CEO)
+      // Security Lab (área estritamente técnica/CEO — nunca visível para dono em produção)
       case 'security-lab': {
-        const isLabAllowed = (activeRole === 'CEO' || activeRole === 'SUPER_ADMIN') || import.meta.env.VITE_ENABLE_SECURITY_LAB === 'true';
+        const isLabAllowed = activeRole === 'CEO' || activeRole === 'SUPER_ADMIN';
         if (!isLabAllowed) {
+          const fallback = getDefaultAllowedTab(activeRole);
+          if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
           return <EstablishmentDashboard onNavigate={setActiveTab} />;
         }
         return (
@@ -670,6 +673,11 @@ function AppContent() {
       case 'est-modules':
         return <ModulesPage />;
       case 'est-kitchen':
+        if (!isModuleEnabled('kds')) {
+          const fallback = getDefaultAllowedTab(activeRole);
+          if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
+          return <EstablishmentDashboard onNavigate={setActiveTab} />;
+        }
         return <KitchenSettingsPage />;
 
       default:
