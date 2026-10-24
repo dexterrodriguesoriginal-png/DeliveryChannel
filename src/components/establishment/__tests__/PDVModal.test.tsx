@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+vi.mock('../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: false, ensureValidSession: async () => true }));
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PDVModal } from '../PDVModal';
