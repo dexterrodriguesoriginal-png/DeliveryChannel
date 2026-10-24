@@ -11,24 +11,20 @@ export const feedbackRepository = {
       throw new Error(
         'Confira a mensagem (10–1000 caracteres) e os campos selecionados.',
       );
-    const { data, error } = await supabase.auth.getSession();
-    if (error) throw new Error('Não foi possível verificar sua sessão.');
-    const token = data.session?.access_token;
-    const response = await fetch(
-      `/api/store-feedback/${encodeURIComponent(slug)}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(input),
-      },
-    );
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.message || 'Não foi possível enviar seu relato.');
-    }
+    // supabase-js supplies the current JWT (or the public key for visitors).
+    // Identity, tenant resolution, hashing and quota belong exclusively to the RPC.
+    const { error } = await Promise.resolve(supabase.rpc('submit_store_feedback_v2', {
+      p_tenant_slug_or_id: slug,
+      p_type: input.type,
+      p_area: input.area ?? null,
+      p_rating: input.rating ?? null,
+      p_message: input.message.trim(),
+    })).catch(() => ({ error: { code: 'NETWORK' } }));
+    if (error?.code === 'P0001')
+      throw new Error('Limite diário de 5 envios por loja atingido.');
+    if (error?.code === '22023')
+      throw new Error('Confira os campos e se a loja está disponível.');
+    if (error) throw new Error('Não foi possível enviar seu relato. Tente novamente.');
   },
   async list(
     slug: string,
