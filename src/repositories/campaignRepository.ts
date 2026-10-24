@@ -1,3 +1,4 @@
+import { analyticsAllowed } from '../lib/legal/cookies';
 /**
  * Campanhas e cards (N5) — somente OWNER/MANAGER (RLS; F2: sem CEO/SUPER_ADMIN).
  * Métricas por get_campaign_metrics: receita SEMPRE de orders válidos (nunca do navegador);
@@ -242,7 +243,7 @@ export const campaignRepository = {
     offerId?: string;
     metadata?: Record<string, unknown>;
   }): Promise<boolean> {
-    if (!isN1N6Backend()) return false;
+    if (!isN1N6Backend() || !analyticsAllowed()) return false;
     try {
       const { error } = await supabase.rpc('track_campaign_event', {
         p_store_slug: input.storeSlug,

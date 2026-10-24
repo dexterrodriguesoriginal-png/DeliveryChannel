@@ -1,3 +1,4 @@
+import { LegalDocumentPage } from '../../legal/LegalUI';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, ChevronDown, Heart, MessageCircle, ThumbsDown, ThumbsUp, Ticket, Copy, AlertTriangle, Package, ShieldCheck } from 'lucide-react';
 import type { ProfileScreenProps } from './ProfileScreen';
@@ -8,7 +9,7 @@ import { formatBRL } from '../../../lib/pricing/money';
 import { couponCountdownLabel } from '../../../lib/customer/couponCountdown';
 import { cpfDigits, formatCPF, isValidCPF } from '../../../lib/customer/cpf';
 import { formatBRPhone, normalizeBRPhone } from '../../../lib/phone/brPhone';
-import { FAQ_SECTIONS, LEGAL_REVIEW_NOTE, PRIVACY_POLICY, TERMS_OF_USE } from '../../../lib/customer/helpContent';
+import { FAQ_SECTIONS } from '../../../lib/customer/helpContent';
 import { defaultKV, loadNotificationPrefs, NotificationPrefs, saveNotificationPrefs } from '../../../lib/customer/localStore';
 import { StoreCoupon } from '../../../repositories/customerAppRepository';
 import { useToast } from '../../../context/ToastContext';
@@ -458,18 +459,7 @@ export const HelpPage: React.FC<P> = ({ onBack, storeName, onWhatsApp, helpOrder
 
 // ------------------------------------------------------------------------------------------- Termos / Privacidade
 export const LegalPage: React.FC<{ kind: 'terms' | 'privacy'; onBack: () => void }> = ({ kind, onBack }) => {
-  const doc = kind === 'terms' ? TERMS_OF_USE : PRIVACY_POLICY;
-  return (
-    <div className="max-w-lg mx-auto bg-white min-h-[70vh] pb-28 dc-screen-in" data-testid={`legal-${kind}`}>
-      <ScreenHeader title={kind === 'terms' ? 'Termos de uso' : 'Política de privacidade'} onBack={onBack} />
-      <div className="p-4 space-y-4">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 inline-block">{LEGAL_REVIEW_NOTE}</p>
-        {doc.map(s => (
-          <section key={s.h}><h3 className="text-sm font-extrabold text-gray-900">{s.h}</h3><p className="text-sm text-gray-600 leading-relaxed mt-1">{s.p}</p></section>
-        ))}
-      </div>
-    </div>
-  );
+  return <div data-testid={`legal-${kind}`}><ScreenHeader title={kind === 'terms' ? 'Termos de uso' : 'Política de privacidade'} onBack={onBack} /><LegalDocumentPage kind={kind === 'terms' ? 'terms-customer' : 'privacy'} /></div>;
 };
 
 // ------------------------------------------------------------------------------------------- Excluir conta (LGPD)

@@ -128,6 +128,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       groupTitle: 'CLIENTES',
       items: [
+        { id: 'est-feedback', label: 'Voz do cliente', icon: <Headphones className="w-4 h-4 shrink-0" /> },
         { id: 'est-customers', label: 'Clientes', icon: <Users className="w-4 h-4 shrink-0" /> },
         { id: 'est-promotions', label: 'Promoções & Cupons', icon: <Tag className="w-4 h-4 shrink-0" /> },
       ],

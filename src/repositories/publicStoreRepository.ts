@@ -1,3 +1,4 @@
+import { analyticsAllowed } from '../lib/legal/cookies';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 /**
@@ -140,6 +141,7 @@ export const publicStoreRepository = {
    * Rastreia eventos públicos através da RPC `track_public_event`
    */
   async trackPublicEvent(slug: string, eventName: string, metadata: Record<string, any> = {}): Promise<void> {
+    if (!analyticsAllowed()) return;
     if (isSupabaseConfigured) {
       try {
         await supabase.rpc('track_public_event', {

@@ -1,3 +1,4 @@
+import { LEGAL_VERSION } from '../lib/legal/documents';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { isEmailRateLimitError, EMAIL_RATE_LIMIT_MSG, isEmailNotConfirmedError, isInvalidCredentialsError, INVALID_CREDENTIALS_MSG, isMembershipLoadFailure } from '../lib/auth/authErrors';
 import { currentEmailRedirectUrl, DEFAULT_APP_ORIGIN } from '../lib/auth/authRedirect';
@@ -1281,6 +1282,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<{ success: boolean; requiresEmailConfirmation?: boolean; error?: string }> => {
     setAuthError(null);
     try {
+      if (metadata?.legal_accepted !== true || metadata?.legal_version !== LEGAL_VERSION || !['owner','customer'].includes(metadata?.legal_audience)) {
+        return { success: false, error: 'Aceite os Termos de Uso e a Política de Privacidade atuais para criar sua conta.' };
+      }
       const cleanEmail = email.trim();
       const cleanPhone = phone ? phone.trim() : undefined;
       // Volta para a loja de origem (/app/<slug>) quando o cadastro foi feito na vitrine.

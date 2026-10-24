@@ -1,3 +1,5 @@
+import { LegalBoundary, CookieBanner } from './components/legal/LegalUI';
+import { FeedbackPage } from './pages/establishment/FeedbackPage';
 import { CallScreen } from './components/pickup/CallScreen';
 import { ChegadaPage } from './components/pickup/ChegadaPage';
 import { KitchenPage, KitchenPairPage } from './components/kitchen/KitchenPages';
@@ -646,6 +648,8 @@ function AppContent() {
       case 'est-promotions':
       case 'est-offers':
         return <PromotionsPage />;
+      case 'est-feedback':
+        return <FeedbackPage key={activeTenant?.id} />;
       case 'est-customers':
         return <CustomersPage />;
       case 'est-marketing':
@@ -732,7 +736,8 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <AppContent />
+        <LegalBoundary><AppContent /></LegalBoundary>
+        <CookieBanner />
       </ToastProvider>
     </AuthProvider>
   );

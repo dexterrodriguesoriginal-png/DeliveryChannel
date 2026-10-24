@@ -1,3 +1,7 @@
+import { FeedbackForm } from '../../feedback/FeedbackForm';
+import { MyDataPage } from '../../legal/MyDataPage';
+import { LegalDocumentPage } from '../../legal/LegalUI';
+import { openCookiePreferences } from '../../../lib/legal/cookies';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Bell, Ticket, User, MapPin, IdCard, Heart, Settings, BellRing, Eraser, LogOut, HelpCircle, FileText, ShieldCheck, Trash2, LogIn, ChevronRight, Store,
@@ -9,7 +13,7 @@ import { AccountDataPage, ContactConsentPage, CouponsPage, DeleteAccountSheet, F
 import type { MyStoreContactConsent, StoreCoupon } from '../../../repositories/customerAppRepository';
 
 export type ProfilePage =
-  | 'menu' | 'notifications' | 'coupons' | 'account-data' | 'favorites' | 'notif-settings' | 'contact-consent' | 'help' | 'terms' | 'privacy';
+  | 'feedback' | 'my-data' | 'cookies' | 'menu' | 'notifications' | 'coupons' | 'account-data' | 'favorites' | 'notif-settings' | 'contact-consent' | 'help' | 'terms' | 'privacy';
 
 export const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || '1.2.0';
 
@@ -68,6 +72,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = (props) => {
   const setSection = (k: 'account' | 'settings') => (v: boolean) => setOpenSections(s => ({ ...s, [k]: v }));
   const back = () => onNavigate('menu');
 
+  if (page === 'feedback') return <div className="max-w-lg mx-auto pb-28"><button className="p-4" onClick={back}>Voltar ao perfil</button><FeedbackForm key={props.storeSlug} slug={props.storeSlug} /></div>;
+  if (page === 'my-data') return <MyDataPage userId={user?.id} onBack={back} onRequestDeletion={props.onRequestDeletion} />;
+  if (page === 'cookies') return <div><button onClick={back}>Voltar ao perfil</button><LegalDocumentPage kind="cookies" /></div>;
   if (page === 'notifications') return <NotificationsPage {...props} onBack={back} />;
   if (page === 'coupons') return <CouponsPage {...props} onBack={back} />;
   if (page === 'account-data') return <AccountDataPage {...props} onBack={back} />;
@@ -118,9 +125,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = (props) => {
           <MenuRow testId="menu-clear-search" icon={<Eraser className="w-4 h-4" />} title="Limpar histórico de busca" onClick={props.onClearSearchHistory} right={<span />} />
           <MenuRow testId="menu-terms" icon={<FileText className="w-4 h-4" />} title="Termos de uso" onClick={() => onNavigate('terms')} />
           <MenuRow testId="menu-privacy" icon={<ShieldCheck className="w-4 h-4" />} title="Política de privacidade" onClick={() => onNavigate('privacy')} />
+          <MenuRow icon={<ShieldCheck className="w-4 h-4" />} title="Política de Cookies" onClick={() => onNavigate('cookies')} />
+          <MenuRow icon={<Settings className="w-4 h-4" />} title="Preferências de cookies" onClick={openCookiePreferences} />
           {user && <MenuRow testId="menu-delete" icon={<Trash2 className="w-4 h-4" />} title="Excluir minha conta" danger onClick={() => setDeleteOpen(true)} />}
           {user && <MenuRow testId="menu-signout" icon={<LogOut className="w-4 h-4" />} title="Sair da conta" danger onClick={() => props.onSignOut()} right={<span />} />}
         </Accordion>
+        <MenuRow testId="menu-feedback" icon={<HelpCircle className="w-5 h-5" />} title="Enviar sugestão, elogio ou reclamação" onClick={() => onNavigate('feedback')} />
+        <MenuRow testId="menu-my-data" icon={<ShieldCheck className="w-5 h-5" />} title="Meus dados" subtitle="Baixar dados ou solicitar exclusão" onClick={() => user ? onNavigate('my-data') : props.onLogin()} />
         <MenuRow testId="menu-help" icon={<HelpCircle className="w-5 h-5" />} title="Ajuda" subtitle="Dúvidas frequentes e falar com a loja" onClick={() => onNavigate('help')} />
         <MenuRow testId="menu-about-store" icon={<Store className="w-5 h-5" />} title={`Sobre ${props.storeName}`} subtitle="Telefone, endereço e horário" onClick={props.onAboutStore} />
       </div>
