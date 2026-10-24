@@ -179,7 +179,7 @@ export const productRepository = {
   ): Promise<Product> {
     if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(productId)) {
       try {
-        const dbUpdates: any = { updated_at: new Date().toISOString() };
+        const dbUpdates: any = { updated_at: new Date().toISOString(), is_demo: false };
         if (updates.name !== undefined) dbUpdates.name = updates.name.trim();
         if (updates.description !== undefined) dbUpdates.description = updates.description.trim();
         if (updates.categoryId !== undefined) {
@@ -224,16 +224,16 @@ export const productRepository = {
 
         if (error) {
           console.warn('[productRepository] Erro ao atualizar produto no Supabase, usando dataStore:', error.message);
-          return localOnly('produtos', () => dataStore.updateProduct(context, tenantId, productId, updates));
+          return localOnly('produtos', () => dataStore.updateProduct(context, tenantId, productId, { ...updates, isDemo: false }));
         }
 
         return mapRowToProduct(updated);
       } catch (err) {
         console.warn('[productRepository] Falha ao atualizar produto no Supabase:', err);
-        return localOnly('produtos', () => dataStore.updateProduct(context, tenantId, productId, updates));
+        return localOnly('produtos', () => dataStore.updateProduct(context, tenantId, productId, { ...updates, isDemo: false }));
       }
     }
-    return localOnly('produtos', () => dataStore.updateProduct(context, tenantId, productId, updates));
+    return localOnly('produtos', () => dataStore.updateProduct(context, tenantId, productId, { ...updates, isDemo: false }));
   },
 
   /**

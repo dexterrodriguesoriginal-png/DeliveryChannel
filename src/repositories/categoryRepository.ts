@@ -117,7 +117,7 @@ export const categoryRepository = {
   ): Promise<Category> {
     if (isSupabaseConfigured && isValidUuid(tenantId) && isValidUuid(categoryId)) {
       try {
-        const dbUpdates: any = { updated_at: new Date().toISOString() };
+        const dbUpdates: any = { updated_at: new Date().toISOString(), is_demo: false };
         if (updates.name !== undefined) dbUpdates.name = updates.name.trim();
         if (updates.description !== undefined) dbUpdates.description = updates.description.trim();
         if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
@@ -135,16 +135,16 @@ export const categoryRepository = {
 
         if (error) {
           console.warn('[categoryRepository] Erro ao atualizar categoria no Supabase:', error.message);
-          return localOnly('categorias', () => dataStore.updateCategory(context, tenantId, categoryId, updates));
+          return localOnly('categorias', () => dataStore.updateCategory(context, tenantId, categoryId, { ...updates, isDemo: false }));
         }
 
         return mapRowToCategory(updated);
       } catch (err) {
         console.warn('[categoryRepository] Falha ao atualizar categoria no Supabase:', err);
-        return localOnly('categorias', () => dataStore.updateCategory(context, tenantId, categoryId, updates));
+        return localOnly('categorias', () => dataStore.updateCategory(context, tenantId, categoryId, { ...updates, isDemo: false }));
       }
     }
-    return localOnly('categorias', () => dataStore.updateCategory(context, tenantId, categoryId, updates));
+    return localOnly('categorias', () => dataStore.updateCategory(context, tenantId, categoryId, { ...updates, isDemo: false }));
   },
 
   /**

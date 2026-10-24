@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { productRepository } from '../../repositories/productRepository';
 import { categoryRepository } from '../../repositories/categoryRepository';
-import { tenantRepository } from '../../repositories/tenantRepository';
+import { DemoBadge } from '../../components/common/DemoBadge';
 import { ImageUploader } from '../../components/common/ImageUploader';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -52,8 +52,6 @@ export const ProductsPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [isRemoveDemoModalOpen, setIsRemoveDemoModalOpen] = useState(false);
-  const [isRemovingDemo, setIsRemovingDemo] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -179,7 +177,7 @@ export const ProductsPage: React.FC = () => {
       };
 
       if (editingProduct) {
-        const updated = await productRepository.update(securityContext, activeTenant.id, editingProduct.id, payload);
+        const updated = await productRepository.update(securityContext, activeTenant.id, editingProduct.id, { ...payload, isDemo: false });
         setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
         showToast({
           type: 'success',
@@ -289,53 +287,8 @@ export const ProductsPage: React.FC = () => {
     return (b.createdAt || '').localeCompare(a.createdAt || '');
   });
 
-  const handleRemoveDemo = async () => {
-    if (!activeTenant?.id) return;
-    setIsRemovingDemo(true);
-    try {
-      const res = await tenantRepository.removeDemoCatalog(activeTenant.id);
-      showToast({
-        type: 'success',
-        title: 'Catálogo de Demonstração Removido',
-        message: `${res.deletedProducts} produtos, ${res.deletedCategories} categorias e ${res.deletedOffers} ofertas de demonstração foram excluídos com sucesso.`,
-      });
-      setIsRemoveDemoModalOpen(false);
-      await loadData();
-    } catch (err: any) {
-      showToast({
-        type: 'error',
-        title: 'Erro ao Remover Demo',
-        message: err.message || 'Falha ao excluir itens de demonstração.',
-      });
-    } finally {
-      setIsRemovingDemo(false);
-    }
-  };
-
-  const hasDemoItems = products.some(p => p.isDemo);
-
   return (
     <div className="space-y-6">
-      {hasDemoItems && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-2.5">
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300 shrink-0">
-              DEMONSTRAÇÃO
-            </span>
-            <span className="text-xs text-amber-900 font-medium">
-              Este estabelecimento contém itens de exemplo para ajudar na visualização inicial do catálogo.
-            </span>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setIsRemoveDemoModalOpen(true)}
-            className="text-xs border-amber-300 text-amber-900 hover:bg-amber-100 shrink-0 cursor-pointer"
-          >
-            Remover conteúdo de demonstração
-          </Button>
-        </div>
-      )}
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -489,11 +442,7 @@ export const ProductsPage: React.FC = () => {
                               {p.isFeatured && (
                                 <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
                               )}
-                              {p.isDemo && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
-                                  EXEMPLO
-                                </span>
-                              )}
+                              <DemoBadge isDemo={p.isDemo} />
                             </div>
                             <div className="flex items-center gap-2 text-[11px] text-gray-400">
                               {p.sku && <span>SKU: {p.sku}</span>}
@@ -823,40 +772,6 @@ export const ProductsPage: React.FC = () => {
             </Button>
           </div>
         </form>
-      </Modal>
-
-      {/* Modal de Confirmação para Remover Conteúdo Demo */}
-      <Modal
-        isOpen={isRemoveDemoModalOpen}
-        onClose={() => !isRemovingDemo && setIsRemoveDemoModalOpen(false)}
-        title="Remover Conteúdo de Demonstração"
-        size="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-xs text-gray-600 leading-relaxed">
-            Isso removerá somente os produtos, categorias e ofertas de demonstração deste estabelecimento. Seus cadastros reais não serão afetados.
-          </p>
-
-          <div className="flex justify-end gap-2.5 pt-3 border-t border-gray-100">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsRemoveDemoModalOpen(false)}
-              disabled={isRemovingDemo}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              onClick={handleRemoveDemo}
-              disabled={isRemovingDemo}
-              leftIcon={isRemovingDemo ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
-            >
-              {isRemovingDemo ? 'Removendo...' : 'Remover demonstração'}
-            </Button>
-          </div>
-        </div>
       </Modal>
     </div>
   );
