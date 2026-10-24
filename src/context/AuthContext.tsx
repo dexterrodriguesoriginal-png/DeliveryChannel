@@ -1979,7 +1979,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         isDemoModeEnabled: IS_DEMO_MODE,
         loginAsPersona,
-        enterPreviewWithoutLogin,
+        enterPreviewWithoutLogin: isLocalDemoAllowed ? enterPreviewWithoutLogin : undefined,
 
       }}
     >

@@ -16,3 +16,4 @@ supabase/.env.*
 supabase/functions/.env
 *.pem
 *.key
+.aistudio/

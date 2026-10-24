@@ -22,6 +22,9 @@ export const PREVIEW_BYPASS_SESSION_KEY = 'adegafood_dev_preview_bypass';
 
 /** Verifica se o modo rápido de edição sem login no preview está ativo na sessão atual. */
 export function isPreviewBypassActive(): boolean {
+  // Segurança: o modo edição sem login só existe no demo local (DEV sem Supabase).
+  // Nunca em produção nem com Supabase real, independentemente de ?preview=true ou sessionStorage.
+  if (!isLocalDemoAllowed) return false;
   try {
     if (typeof window === 'undefined') return false;
     const search = window.location?.search || '';

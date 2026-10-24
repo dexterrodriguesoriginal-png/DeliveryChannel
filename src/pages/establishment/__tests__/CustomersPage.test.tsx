@@ -1,5 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+vi.mock('../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: false, ensureValidSession: async () => true }));
 import { renderToStaticMarkup } from 'react-dom/server';
 
 let mockRole = 'OWNER';

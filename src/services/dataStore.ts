@@ -2677,110 +2677,8 @@ export class DataStore {
   // --- INVENTORY MANAGEMENT (FASE 3 - CONTROLE REAL & HISTÓRICO) ---
   public getInventoryMovements(context: SecurityContext, tenantId: string): InventoryMovement[] {
     validateTenantAccess(context, tenantId, 'GET_INVENTORY_MOVEMENTS', this.addAuditViolation.bind(this));
-    validatePermission(context, 'manage_inventory');
+    validatePermission(context, 'manage_products');
     return this.inventoryMovements.filter(m => m.tenantId === tenantId);
-  }
-
-  public recordInventoryMovement(
-    context: SecurityContext,
-    tenantId: string,
-    input: {
-      productId: string;
-      delta: number;
-      type: InventoryMovement['type'];
-      reason: string;
-      referenceId?: string;
-      unit?: string;
-      locationId?: string;
-      locationName?: string;
-      lotId?: string;
-      lotCode?: string;
-      supplierReference?: string;
-      orderId?: string;
-      purchaseOrderId?: string;
-      inventoryCountId?: string;
-      unitCost?: number;
-      approvedByName?: string;
-      updateCostWeighted?: boolean;
-    }
-  ): { product: Product; movement: InventoryMovement } {
-    validateTenantAccess(context, tenantId, 'RECORD_INVENTORY_MOVEMENT', this.addAuditViolation.bind(this));
-    validatePermission(context, 'manage_inventory');
-
-    if (!input.reason || !input.reason.trim()) {
-      throw new Error('Justificativa / motivo é obrigatório para registrar movimentação de estoque.');
-    }
-
-    const prod = this.products.find(p => p.id === input.productId && p.tenantId === tenantId);
-    if (!prod) throw new Error('Produto não encontrado neste estabelecimento.');
-
-    const prev = Math.round((Number(prod.stockQuantity || 0) + Number.EPSILON) * 1000) / 1000;
-    const delta = Math.round((Number(input.delta) + Number.EPSILON) * 1000) / 1000;
-    const next = Math.round((prev + delta + Number.EPSILON) * 1000) / 1000;
-
-    if (next < 0) {
-      throw new Error(`Estoque não pode ficar negativo. Saldo atual: ${prev}, movimentação: ${delta}.`);
-    }
-
-    if (input.updateCostWeighted && delta > 0 && input.unitCost !== undefined && input.unitCost >= 0) {
-      const currentCost = Number(prod.cost || 0);
-      if (prev <= 0 || currentCost <= 0) {
-        prod.cost = Math.round((input.unitCost + Number.EPSILON) * 100) / 100;
-      } else {
-        prod.cost = Math.round((((prev * currentCost + delta * input.unitCost) / (prev + delta)) + Number.EPSILON) * 100) / 100;
-      }
-    }
-
-    prod.stockQuantity = next;
-    prod.isAvailable = prod.isActive !== false && next > 0;
-    prod.updatedAt = new Date().toISOString();
-
-    const movement: InventoryMovement = {
-      id: `mov-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-      tenantId,
-      productId: prod.id,
-      productName: prod.name,
-      quantity: delta,
-      type: input.type,
-      referenceId: input.referenceId,
-      reason: input.reason.trim(),
-      previousStock: prev,
-      newStock: next,
-      timestamp: new Date().toISOString(),
-      createdByName: context.userName,
-      approvedByName: input.approvedByName,
-      unit: input.unit || prod.stockUnit || prod.unit || 'un',
-      locationId: input.locationId,
-      locationName: input.locationName,
-      actorUserId: context.userId,
-      lotId: input.lotId,
-      lotCode: input.lotCode,
-      supplierReference: input.supplierReference,
-      orderId: input.orderId,
-      purchaseOrderId: input.purchaseOrderId,
-      inventoryCountId: input.inventoryCountId,
-      unitCost: input.unitCost,
-    };
-
-    this.inventoryMovements.unshift(movement);
-
-    this.addAuditLog({
-      userId: context.userId,
-      userName: context.userName,
-      userRole: context.userRole,
-      tenantId,
-      action: `STOCK_${input.type}`,
-      resource: 'PRODUCT',
-      resourceId: input.productId,
-      details: `Movimentação (${input.type}) em "${prod.name}": ${delta > 0 ? '+' : ''}${delta} ${movement.unit}. Saldo: ${prev} → ${next}. Motivo: ${input.reason.trim()}`,
-      previousValue: `stock: ${prev}`,
-      newValue: `stock: ${next}`,
-      ipAddress: '189.45.12.90',
-      isCeoSupport: !!context.isCeoSupportMode,
-    });
-
-    this.persist();
-    return { product: prod, movement };
   }
 
   public adjustProductStock(
@@ -2788,19 +2686,53 @@ export class DataStore {
     tenantId: string, 
     productId: string, 
     delta: number, 
-    reason: string,
-    type?: InventoryMovement['type'],
-    referenceId?: string
+    reason: string
   ): Product {
-    const resolvedType = type || (delta > 0 ? 'ENTRADA' : 'SAIDA');
-    const { product } = this.recordInventoryMovement(context, tenantId, {
-      productId,
-      delta,
-      type: resolvedType,
-      reason: reason || 'Ajuste operacional auditado',
-      referenceId,
+    validateTenantAccess(context, tenantId, 'ADJUST_STOCK', this.addAuditViolation.bind(this));
+    validatePermission(context, 'manage_products');
+
+    const prod = this.products.find(p => p.id === productId && p.tenantId === tenantId);
+    if (!prod) throw new Error('Produto não encontrado.');
+
+    if (prod.stockQuantity + delta < 0) {
+      throw new Error(`Estoque não pode ficar negativo. Saldo atual: ${prod.stockQuantity}, ajuste: ${delta}.`);
+    }
+
+    const prev = prod.stockQuantity;
+    prod.stockQuantity += delta;
+    prod.updatedAt = new Date().toISOString();
+
+    this.inventoryMovements.unshift({
+      id: `mov-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      tenantId,
+      productId: prod.id,
+      productName: prod.name,
+      quantity: delta,
+      type: delta > 0 ? 'ENTRADA' : 'SAIDA',
+      reason,
+      previousStock: prev,
+      newStock: prod.stockQuantity,
+      timestamp: new Date().toISOString(),
+      createdByName: context.userName,
     });
-    return product;
+
+    this.addAuditLog({
+      userId: context.userId,
+      userName: context.userName,
+      userRole: context.userRole,
+      tenantId,
+      action: 'STOCK_ADJUSTMENT',
+      resource: 'PRODUCT',
+      resourceId: productId,
+      details: `Estoque de "${prod.name}" ajustado em ${delta > 0 ? '+' : ''}${delta}. Novo saldo: ${prod.stockQuantity}. Motivo: ${reason}`,
+      previousValue: `stock: ${prev}`,
+      newValue: `stock: ${prod.stockQuantity}`,
+      ipAddress: '189.45.12.90',
+      isCeoSupport: !!context.isCeoSupportMode,
+    });
+
+    this.persist();
+    return prod;
   }
 
   // --- INTERNAL NOTIFICATIONS ---

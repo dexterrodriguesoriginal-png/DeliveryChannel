@@ -119,9 +119,10 @@ export type CustomerOrigin =
   | 'outros';
 
 /**
- * Origem gravada em orders.origin pelo servidor, alinhada com as origens de cliente.
+ * Origem gravada em orders.origin pelo servidor: além das origens de cliente,
+ * 'storefront' (checkout v2 N2), 'storefront_promo' (checkout promocional N6) e 'pos' (PDV N2).
  */
-export type OrderOrigin = CustomerOrigin;
+export type OrderOrigin = CustomerOrigin | 'storefront' | 'storefront_promo' | 'pos';
 
 export interface Customer {
   id: string;
@@ -152,48 +153,6 @@ export interface Category {
   station?: 'KITCHEN' | 'BAR' | null;
 }
 
-export type StockUnit = 'un' | 'kg' | 'g' | 'l' | 'ml' | 'm' | 'cm' | 'm2' | 'cm2' | 'pack' | 'cx' | 'fd';
-
-export type StockControlMode =
-  | 'UNIT'
-  | 'PACKAGE'
-  | 'WEIGHT'
-  | 'VOLUME'
-  | 'LENGTH'
-  | 'AREA'
-  | 'VARIANT'
-  | 'SERIAL'
-  | 'LOT_EXPIRY'
-  | 'KIT'
-  | 'NONE';
-
-export interface ProductStockVariant {
-  id: string;
-  sku?: string;
-  color?: string;
-  size?: string;
-  model?: string;
-  physicalQuantity: number;
-  reservedQuantity: number;
-  blockedQuantity: number;
-  minStock?: number;
-}
-
-export interface ProductSerialItem {
-  serialNumber: string;
-  status: 'AVAILABLE' | 'RESERVED' | 'SOLD' | 'BLOCKED' | 'DEFECTIVE';
-  lotCode?: string;
-  notes?: string;
-  updatedAt: string;
-}
-
-export interface ProductKitComponent {
-  componentProductId: string;
-  componentProductName?: string;
-  quantity: number;
-  unit: StockUnit;
-}
-
 export interface Product {
   id: string;
   tenantId: string;
@@ -210,19 +169,11 @@ export interface Product {
   isFeatured?: boolean;
   stockQuantity: number;
   minStock?: number;
-  unit: string; // 'un', 'kg', 'lata', 'garrafa', 'porção', etc.
-  stockUnit?: StockUnit;
-  stockControlMode?: StockControlMode;
-  packageQuantity?: number; // Ex: 1 fardo/caixa = 12 un
-  leadTimeDays?: number; // Prazo habitual de reposição em dias
-  minOrderQty?: number; // Quantidade mínima de compra com fornecedor
+  unit: string; // 'un', 'kg', 'lata', 'garrafa', 'porção'
+  stockUnit?: 'un' | 'kg' | 'g' | 'l' | 'ml';
   safetyStock?: number;
   trackLots?: boolean;
-  trackSerials?: boolean;
   stockIsResale?: boolean;
-  variants?: ProductStockVariant[];
-  serialNumbers?: ProductSerialItem[];
-  kitComponents?: ProductKitComponent[];
   createdAt?: string;
   updatedAt?: string;
   isDemo?: boolean;
