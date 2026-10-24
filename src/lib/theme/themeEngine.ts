@@ -206,10 +206,22 @@ export function validateWcagContrast(fgHex: string, bgHex: string): ContrastResu
 // FORMATAÇÃO DE FUNDOS (CSS) & SUPERFÍCIES ISOLADAS
 // ============================================================================
 
+/** Only #hex / rgb(a) / hsl(a) colors are allowed into CSS values (no url(), var(), etc.). */
+export function isSafeCssColor(v: unknown): v is string {
+  return typeof v === 'string' && v.length <= 64 &&
+    /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\(\s*[0-9.,%\s]+\))$/i.test(v.trim());
+}
+
+function clampNum(v: unknown, min: number, max: number, def: number): number {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : def;
+}
+
 export function resolveGradientColors(bg: BackgroundStyleConfig): string[] {
-  const raw = bg.gradientColors && bg.gradientColors.length >= 2
-    ? bg.gradientColors
-    : [bg.color || '#15803d', '#166534'];
+  const safe = (bg.gradientColors || []).filter(isSafeCssColor);
+  const raw = safe.length >= 2
+    ? safe
+    : [isSafeCssColor(bg.color) ? bg.color : '#15803d', '#166534'];
 
   const count = bg.gradientStops ?? raw.length;
   if (raw.length <= count) {
@@ -280,12 +292,11 @@ export function getSurfaceBackgroundStyle(
         backgroundImage: 'none',
       };
     }
-    const posX = bg.positionX ?? 50;
-    const posY =
-      bg.positionY ??
-      (bg.position === 'top' ? 0 : bg.position === 'bottom' ? 100 : 50);
-    const zoom = bg.zoom ?? 100;
-    const bgSize = zoom !== 100 ? `${zoom}%` : (bg.size || 'cover');
+    const posX = clampNum(bg.positionX, 0, 100, 50);
+    const posY = clampNum(
+      bg.positionY ?? (bg.position === 'top' ? 0 : bg.position === 'bottom' ? 100 : 50), 0, 100, 50);
+    const zoom = clampNum(bg.zoom, 50, 400, 100);
+    const bgSize = zoom !== 100 ? `${zoom}%` : (bg.size === 'contain' ? 'contain' : 'cover');
 
     return {
       backgroundColor: bg.color || fallbackSolidColor,
@@ -310,7 +321,7 @@ export function resolveFontFamilyCss(fontFamily?: string): string {
   const fontObj = SAFE_FONT_FAMILIES.find(
     f => f.name.toLowerCase() === target || f.id.toLowerCase() === target
   );
-  return fontObj ? fontObj.cssFamily : (fontFamily || "'Inter', sans-serif");
+  return fontObj ? fontObj.cssFamily : "'Inter', sans-serif"; // never pass arbitrary strings into CSS
 }
 
 export interface ComputedTypographyStyles {

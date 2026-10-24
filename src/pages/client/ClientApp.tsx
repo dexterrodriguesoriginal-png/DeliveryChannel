@@ -40,7 +40,7 @@ import { Card } from '../../components/ui/Card';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
-import { themeToTokens, generateCssVariables } from '../../lib/theme/themeEngine';
+import { SAFE_FONT_FAMILIES, themeToTokens, generateCssVariables } from '../../lib/theme/themeEngine';
 import { cartStorageKey } from '../../lib/pwa/storeManifest';
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
@@ -705,9 +705,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // Carregamento dinâmico de Google Fonts homologadas
   useEffect(() => {
     const fontName = activeTokens.typography.fontFamily || theme.fontFamily || 'Inter';
-    if (!fontName || fontName.toLowerCase() === 'system-ui') return;
+    const allowed = SAFE_FONT_FAMILIES.find(f => f.name === fontName || f.id === fontName);
+    if (!allowed || !/^[A-Za-z ]+$/.test(allowed.name)) return; // allow-list only (no arbitrary owner strings in URL)
 
-    const fontSlug = fontName.replace(/\s+/g, '+');
+    const fontSlug = allowed.name.replace(/\s+/g, '+');
     const linkId = 'dc-dynamic-google-font';
     let link = document.getElementById(linkId) as HTMLLinkElement | null;
     if (!link) {
