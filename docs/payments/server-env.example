@@ -1,0 +1,16 @@
+# Somente Express/runtime. Nunca usar prefixo VITE_ nas credenciais abaixo.
+SUPABASE_URL=https://projeto.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=
+PAYMENTS_PUBLIC_URL=https://sua-plataforma.com.br
+# AES-256-GCM: 32 bytes aleatórios codificados em 64 caracteres hexadecimais.
+PAYMENTS_ENCRYPTION_KEY=
+# Segredo aleatório de pelo menos 32 caracteres, diferente da chave de criptografia.
+PAYMENTS_STATE_SECRET=
+MP_CLIENT_ID=
+MP_CLIENT_SECRET=
+MP_WEBHOOK_SECRET=
+MP_TEST_TOKEN=false
+PAGBANK_CLIENT_ID=
+PAGBANK_CLIENT_SECRET=
+PAGBANK_PLATFORM_TOKEN=
+PAGBANK_SANDBOX=false

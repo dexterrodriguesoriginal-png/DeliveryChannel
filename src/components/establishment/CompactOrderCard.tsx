@@ -1,3 +1,4 @@
+import { OnlinePaymentBadge } from './OnlinePaymentBadge';
 import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, 
@@ -141,6 +142,7 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
       />
 
       <div className="space-y-0.5">
+        <OnlinePaymentBadge order={order} />
         {isPickup && !isDelivered && !isCancelled && (() => {
           const pay = paymentBadge(order);
           const wait = pickupWaitingMinutes(order, Date.now());

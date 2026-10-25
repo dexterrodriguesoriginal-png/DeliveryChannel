@@ -1,3 +1,4 @@
+import { OnlinePaymentBadge } from './OnlinePaymentBadge';
 import React, { useState, useEffect } from 'react';
 import { 
   Clock, 
@@ -129,6 +130,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
       />
 
       <div className="pl-0.5 space-y-0.5">
+        <OnlinePaymentBadge order={order} />
         {isPickup && !isDelivered && !isCancelled && (() => {
           const pay = paymentBadge(order);
           const wait = pickupWaitingMinutes(order, Date.now());

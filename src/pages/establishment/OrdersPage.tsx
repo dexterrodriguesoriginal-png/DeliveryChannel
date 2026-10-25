@@ -1,3 +1,5 @@
+import { OnlineOrderPaymentPanel } from '../../components/client/OnlineOrderPaymentPanel';
+import { OnlinePaymentBadge } from '../../components/establishment/OnlinePaymentBadge';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { KanbanColumnHeader } from '../../components/establishment/KanbanColumnHeader';
 import { ArrivalQueuePanel } from '../../components/pickup/ArrivalQueuePanel';
@@ -925,6 +927,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                   <span className="truncate">Forma: {formatPaymentMethod(selectedOrder.paymentMethod)}</span>
                 </div>
                 <OrderTotalsLines order={selectedOrder} />
+                <OnlinePaymentBadge order={selectedOrder} />
+                {selectedOrder.onlinePayment && <OnlineOrderPaymentPanel key={selectedOrder.id} orderId={selectedOrder.id} staff onConfirmed={() => { void fetchOrders(true); }} />}
               </div>
             </>
           )}
@@ -1016,7 +1020,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 </button>
                 )}
 
-                {isN1N6Backend() && canChangePayment && selectedOrder.status !== 'CANCELLED' && selectedOrder.paymentStatus !== 'PAID' && selectedOrder.paymentStatus !== 'REFUNDED' && (
+                {isN1N6Backend() && !selectedOrder.onlinePayment && canChangePayment && selectedOrder.status !== 'CANCELLED' && selectedOrder.paymentStatus !== 'PAID' && selectedOrder.paymentStatus !== 'REFUNDED' && (
                   <button
                     type="button"
                     data-testid="mark-paid"
@@ -1027,7 +1031,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                     <ChevronRight className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
                   </button>
                 )}
-                {isN1N6Backend() && (activeRole === 'OWNER' || activeRole === 'MANAGER') && selectedOrder.paymentStatus === 'PAID' && (
+                {isN1N6Backend() && !selectedOrder.onlinePayment && (activeRole === 'OWNER' || activeRole === 'MANAGER') && selectedOrder.paymentStatus === 'PAID' && (
                   <button
                     type="button"
                     data-testid="mark-refunded"

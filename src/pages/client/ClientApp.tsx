@@ -26,6 +26,9 @@ import { orderRepository } from '../../repositories/orderRepository';
 import { customerRepository } from '../../repositories/customerRepository';
 import { orderService } from '../../services/orderService';
 import { OrderPixPanel } from '../../components/client/OrderPixPanel';
+import { OnlinePaymentOptions } from '../../components/client/OnlinePaymentOptions';
+import { OnlineOrderPaymentPanel } from '../../components/client/OnlineOrderPaymentPanel';
+import type { OnlineChoice } from '../../repositories/paymentRepository';
 import { OrderTrackingTimeline } from '../../components/client/OrderTrackingTimeline';
 import { customerOrdersTitle, storeDisplayName, CUSTOMER_ORDERS_SCOPE_HINT } from '../../lib/customer/orderStore';
 import { LiveDriverTracking } from '../../components/client/customer/LiveDriverTracking';
@@ -303,6 +306,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
   // Submissão do Pedido
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [onlineChoice, setOnlineChoice] = useState<OnlineChoice | null>(null);
+  useEffect(() => { setOnlineChoice(null); }, [storeData?.tenant.id]);
+  const [completedOnlineChoice, setCompletedOnlineChoice] = useState<OnlineChoice | null>(null);
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
 
   // Momentos-chave do convite de instalação (produto aberto, item na sacola, pedido concluído).
@@ -1368,6 +1374,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       setCompletedCouponRedemption(null);
 
       // Limpar carrinho e exibir confirmação
+      setCompletedOnlineChoice(onlineChoice);
       setCompletedOrder(order);
       checkoutIdempotencyKeyRef.current = newIdempotencyKey();
       setCart([]);
@@ -1555,6 +1562,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           <StoreLogo logoUrl={theme.logoUrl} name={orderStoreName} color={primaryColor} className="w-6 h-6 text-[10px] shrink-0" />
           <span className="text-xs font-bold text-gray-700 truncate">{orderStoreName}</span>
         </div>
+        {isN1N6Backend() && !order.isDemo && <OnlineOrderPaymentPanel orderId={order.id} />}
         <DeliveryCodeCard orderId={order.id} status={order.status} />
         <PickupArrivalCard orderId={order.id} status={order.status} fulfillmentType={order.fulfillmentType} />
         {/* TOPO: NÚMERO DO PEDIDO + DATA + TOTAL EM DESTAQUE */}
@@ -2843,8 +2851,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                 </div>
               )}
 
+              <OnlinePaymentOptions slug={storeData.tenant.slug} value={onlineChoice} onChange={choice => { setOnlineChoice(choice); if (choice) setPaymentMethod(choice.method === 'pix' ? 'PIX' : 'CREDIT_CARD'); }} />
               {/* Forma de Pagamento */}
-              <div className="space-y-2 pt-2 border-t border-gray-100">
+              <div hidden={!!onlineChoice} className="space-y-2 pt-2 border-t border-gray-100">
                 <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
                   Forma de Pagamento
                 </h4>
@@ -3101,8 +3110,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           )}
 
           {/* PIX: n1n6 = BR Code gerado pelo servidor para este pedido; legacy-020 = chave publicada pela loja. */}
-          {completedOrder?.paymentMethod === 'PIX' && completedOrder.id && isN1N6Backend() && <OrderPixPanel orderId={completedOrder.id} />}
-          {completedOrder?.paymentMethod === 'PIX' && !isN1N6Backend() && (
+          {completedOrder?.id && completedOnlineChoice && <OnlineOrderPaymentPanel orderId={completedOrder.id} choice={completedOnlineChoice} />}
+          {!completedOnlineChoice && completedOrder?.paymentMethod === 'PIX' && completedOrder.id && isN1N6Backend() && <OrderPixPanel orderId={completedOrder.id} />}
+          {!completedOnlineChoice && completedOrder?.paymentMethod === 'PIX' && !isN1N6Backend() && (
             <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-2xl space-y-2 text-left">
               <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950">
                 <QrCode className="w-4 h-4 text-emerald-700" />
@@ -3544,6 +3554,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           offer={selectedPromoOffer}
           storeData={storeData}
           onOrderCompleted={(order, celebrationMessage) => {
+            setCompletedOnlineChoice(null);
             setCompletedOrder(order);
             setCustomerOrders(prev => {
               const exists = prev.some(o => o.id === order.id);

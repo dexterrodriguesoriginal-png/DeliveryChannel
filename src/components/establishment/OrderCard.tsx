@@ -1,3 +1,4 @@
+import { OnlinePaymentBadge } from './OnlinePaymentBadge';
 import React, { useState, useEffect } from 'react';
 import { 
   Clock, 
@@ -111,6 +112,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           </div>
         </div>
 
+        <OnlinePaymentBadge order={order} />
         {/* TAGS DE PAGAMENTO, ATENDIMENTO & STATUS */}
         <div className="flex items-center gap-1.5 flex-wrap pt-1 pb-3">
           <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-mono font-bold text-[10px] uppercase border border-emerald-200">

@@ -6,6 +6,7 @@
  */
 import 'dotenv/config';
 import express from 'express';
+import { createPaymentsRouter } from './server/payments/routes';
 import path from 'node:path';
 import { createPwaRouter } from './server/pwa/routes';
 import fs from 'node:fs/promises';
@@ -24,6 +25,7 @@ function pickResolver(): { resolver: StoreResolver; mode: string } {
 async function start() {
   const app = express();
   app.disable('x-powered-by');
+  app.use('/api/payments', createPaymentsRouter());
   const port = Number(process.env.PORT) || 3000;
   const distDir = path.resolve(process.cwd(), 'dist');
   const { resolver, mode } = pickResolver();
