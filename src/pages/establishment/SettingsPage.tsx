@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MoneyInput } from '../../components/common/MoneyInput';
 import { useAuth } from '../../context/AuthContext';
 import { tenantRepository } from '../../repositories/tenantRepository';
-import { PixPaymentSettingsCard } from '../../components/establishment/PixPaymentSettingsCard';
+import { OnlinePaymentSettings } from '../../components/establishment/OnlinePaymentSettings';
 import { isN1N6Backend } from '../../lib/backendSchema';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -463,7 +463,7 @@ export const SettingsPage: React.FC = () => {
       </form>
 
       {/* PIX: tabela tenant_payment_settings (N1), salva por RPC auditada — fora do formulário acima. */}
-      {isN1N6Backend() && <PixPaymentSettingsCard tenantId={activeTenant.id} canEdit={canEditPayment} />}
+      {isN1N6Backend() && <OnlinePaymentSettings key={activeTenant.id} tenantId={activeTenant.id} canEdit={canEditPayment} />}
     </div>
   );
 };

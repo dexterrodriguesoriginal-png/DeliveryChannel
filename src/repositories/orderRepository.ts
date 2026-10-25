@@ -182,6 +182,17 @@ function unavailableMsg(summary: CheckoutSummary): string {
   );
 }
 
+/** Optional enrichment keeps pre-migration databases working. RLS still scopes every row. */
+async function withOnlinePayments(orders: Order[], tenantId: string): Promise<Order[]> {
+  if (!orders.length) return orders;
+  try {
+    const { data, error } = await supabase.from('order_payments').select('order_id,provider,status').eq('tenant_id', tenantId).in('order_id', orders.map(o => o.id));
+    if (error) return orders;
+    const byOrder = new Map((data || []).map(p => [p.order_id, p]));
+    return orders.map(o => { const p = byOrder.get(o.id); return p ? { ...o, onlinePayment: { provider: p.provider, status: p.status } } : o; });
+  } catch { return orders; }
+}
+
 export const orderRepository = {
   async getOrders(context: SecurityContext, tenantId: string): Promise<Order[]> {
     if (isSupabaseConfigured) {
@@ -192,7 +203,7 @@ export const orderRepository = {
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
       if (error) throw toBackendError(error, 'Falha ao carregar pedidos.');
-      return (data || []).map((row: any) => mapStaffOrderRow(row, row.order_items || [], row.order_status_history || []));
+      return withOnlinePayments((data || []).map((row: any) => mapStaffOrderRow(row, row.order_items || [], row.order_status_history || [])), tenantId);
     }
     requireBackendOrLocalDemo('pedidos');
     return dataStore.getOrders(context, tenantId);
@@ -208,7 +219,7 @@ export const orderRepository = {
         .eq('id', orderId)
         .maybeSingle();
       if (error) throw toBackendError(error, 'Falha ao carregar o pedido.');
-      return data ? mapStaffOrderRow(data, (data as any).order_items || [], (data as any).order_status_history || []) : undefined;
+      return data ? (await withOnlinePayments([mapStaffOrderRow(data, (data as any).order_items || [], (data as any).order_status_history || [])], tenantId))[0] : undefined;
     }
     requireBackendOrLocalDemo('pedidos');
     return dataStore.getOrderById(context, tenantId, orderId);

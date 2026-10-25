@@ -6,6 +6,9 @@
  */
 import 'dotenv/config';
 import express from 'express';
+import { isRuntimeArtifactPath } from './server/payments/privacy';
+import { startPaymentRetention } from './server/payments/retention';
+import { createPaymentsRouter } from './server/payments/routes';
 import path from 'node:path';
 import { createPwaRouter } from './server/pwa/routes';
 import fs from 'node:fs/promises';
@@ -24,6 +27,7 @@ function pickResolver(): { resolver: StoreResolver; mode: string } {
 async function start() {
   const app = express();
   app.disable('x-powered-by');
+  app.use('/api/payments', createPaymentsRouter());
   const port = Number(process.env.PORT) || 3000;
   const distDir = path.resolve(process.cwd(), 'dist');
   const { resolver, mode } = pickResolver();
@@ -57,7 +61,7 @@ async function start() {
   } else {
     let indexHtml: Promise<string> | undefined;
     // Nunca servir o bundle do servidor como arquivo estático.
-    app.use((req, res, next) => (/^\/server\.cjs(\.map)?$/i.test(req.path) ? res.status(404).end() : next()));
+    app.use((req, res, next) => (isRuntimeArtifactPath(req.path) ? res.status(404).end() : next()));
     app.use(express.static(distDir, { index: false, maxAge: '1h', setHeaders: (res, file) => {
       if (file.endsWith('.html') || file.endsWith('manifest.json')) res.setHeader('Cache-Control', 'no-cache');
     } }));
@@ -71,9 +75,11 @@ async function start() {
     });
   }
 
-  app.listen(port, '0.0.0.0', () => {
+  const listener = app.listen(port, '0.0.0.0', () => {
+    const stopRetention = startPaymentRetention();
+    listener.once('close', stopRetention);
     console.log(`[server] ouvindo em 0.0.0.0:${port} (${isProd ? 'produção' : 'desenvolvimento'}; lojas PWA: ${mode})`);
   });
 }
 
-start().catch((e) => { console.error(e); process.exit(1); });
+start().catch(() => { console.error('[server] falha ao iniciar'); process.exit(1); });
