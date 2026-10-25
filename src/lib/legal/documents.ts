@@ -1,4 +1,4 @@
-export const LEGAL_VERSION = '2026-10-24.1';
+export const LEGAL_VERSION = '2026-10-24.2';
 export const LEGAL_DATE = '24/10/2026';
 export type LegalAudience = 'owner' | 'customer';
 export type LegalDocument =
@@ -24,6 +24,14 @@ export const legalDocuments: Record<
       {
         h: 'Dados e comunicação',
         p: 'Use os dados dos clientes somente para as finalidades informadas, com acesso restrito. Marketing exige autorização separada e revogável; o aceite destes termos não autoriza publicidade. Não tente identificar autores dos relatos de Voz do cliente.',
+      },
+      {
+        h: 'Pagamentos online e proteção de dados',
+        p: 'Ao conectar Mercado Pago, PagBank ou InfinitePay, a loja recebe diretamente em sua própria conta. Esses prestadores processam pagamentos como operadores quando agem sob instruções e como controladores independentes nas atividades que determinam, como prevenção a fraude e obrigações regulatórias, conforme seus contratos e avisos de privacidade. A finalidade é cobrar e confirmar a compra; a base legal é a execução de contrato (LGPD, art. 7º, V). Enviamos somente os dados necessários: nome e e-mail quando exigidos, e CPF/CNPJ apenas se o provedor exigir para PIX. Cartões são informados exclusivamente no checkout hospedado do provedor; a plataforma não guarda número, CVV ou validade.',
+      },
+      {
+        h: 'Retenção financeira e desconexão',
+        p: 'Registros mínimos de pagamento são conservados por 5 anos para cumprimento de obrigações fiscais (LGPD, art. 7º, II), contados da confirmação do pagamento ou da criação quando não confirmado; depois o vínculo identificável é removido. Na exclusão efetiva da conta do cliente, o vínculo pessoal é anonimizado, preservando valor e data. Tokens OAuth, de renovação, autorizações pendentes e credenciais de webhook são apagados imediatamente na transação de desconexão ou exclusão da loja. A desconexão interrompe a confirmação automática de cobranças pendentes; confira-as no provedor. Os prestadores têm seus próprios prazos e canais para direitos do titular.',
       },
       {
         h: 'Planos e encerramento',
@@ -70,6 +78,14 @@ export const legalDocuments: Record<
       {
         h: 'Responsáveis e compartilhamento',
         p: 'A plataforma trata os dados necessários à operação e segurança do serviço. Cada loja responde pelo tratamento ligado às suas vendas e atendimento. Compartilhamos com a loja, entregadores e fornecedores de infraestrutura apenas o necessário às respectivas funções. O contato da loja está disponível em Sobre a loja; questões da plataforma podem ser encaminhadas ao suporte no painel.',
+      },
+      {
+        h: 'Pagamentos e prestadores',
+        p: 'Mercado Pago, PagBank e InfinitePay recebem apenas os dados necessários à cobrança e confirmação da compra, com base na execução de contrato (LGPD, art. 7º, V). Nome e e-mail são enviados somente quando necessários; CPF/CNPJ é encaminhado apenas se exigido para PIX. Eles atuam como operadores quando seguem instruções e como controladores independentes para tratamentos próprios, incluindo segurança, prevenção a fraude e obrigações regulatórias, segundo seus avisos de privacidade. Os dados do cartão são preenchidos somente no checkout hospedado pelo provedor: a plataforma nunca armazena número, CVV ou validade. Não persistimos o payload bruto de webhooks; apenas identificadores técnicos, status, valor e método necessários à conciliação. Os logs do fluxo de pagamentos não contêm dados pessoais, documentos, tokens ou corpos de requisição.',
+      },
+      {
+        h: 'Retenção de pagamentos e exclusão',
+        p: 'Conservamos registros financeiros mínimos por 5 anos para obrigação fiscal, com base no cumprimento de obrigação legal (LGPD, art. 7º, II). O prazo conta da confirmação do pagamento ou da criação se não confirmado. Após esse prazo, removemos os vínculos com pedido, loja e provedor e os dados de acesso ao pagamento, mantendo registros financeiros anonimizados. A exclusão efetiva da conta do cliente anonimiza antes disso seu vínculo pessoal em pagamentos, mantendo valor e data. Tokens OAuth e de renovação são eliminados imediatamente ao desconectar a conta de pagamentos ou excluir a loja. Pedidos de exclusão não eliminam a obrigação de manter os registros financeiros; os prestadores respondem pelos dados sob seu próprio controle.',
       },
       {
         h: 'Feedback e anonimato',

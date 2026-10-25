@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { PaymentService } from './service';
 import { createPaymentStore } from './store';
 import { PaymentError, PROVIDERS, providerName } from './types';
+import { hasCardDetails } from './privacy';
 import { RateLimiter } from './security';
 
 const uuid = (v: unknown) => typeof v === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(v);
@@ -34,8 +35,8 @@ export function createPaymentsRouter(env = process.env, service?: PaymentService
   // Raw body must be captured before any JSON middleware: PagBank authenticates the original bytes.
   router.post('/webhooks/:provider/:id', express.raw({ type: 'application/json', limit: '64kb' }), asyncRoute(async (req, res) => {
     if (!uuid(req.params.id) || !Buffer.isBuffer(req.body)) throw new PaymentError('INVALID_WEBHOOK', 401);
-    await requirePayments().webhook(providerName(req.params.provider), req.params.id, { rawBody: req.body, query: req.query,
-      headers: { 'x-signature': req.get('x-signature'), 'x-request-id': req.get('x-request-id'), 'x-authenticity-token': req.get('x-authenticity-token') } });
+    try { await requirePayments().webhook(providerName(req.params.provider), req.params.id, { rawBody: req.body, query: req.query,
+      headers: { 'x-signature': req.get('x-signature'), 'x-request-id': req.get('x-request-id'), 'x-authenticity-token': req.get('x-authenticity-token') } }); } finally { if (Buffer.isBuffer(req.body)) req.body.fill(0); req.body = undefined; }
     res.json({ ok: true });
   }));
   router.use(express.json({ limit: '8kb' }));
@@ -80,6 +81,7 @@ export function createPaymentsRouter(env = process.env, service?: PaymentService
   router.post('/orders/:id', asyncRoute(async (req, res) => {
     const user = await authenticate(req);
     if (!mutations.allow(user.id)) throw new PaymentError('RATE_LIMITED', 429);
+    if (hasCardDetails(req.body)) throw new PaymentError('CARD_DETAILS_FORBIDDEN',400,'Informe os dados do cartão somente no checkout do provedor.');
     if (!uuid(req.params.id) || !['pix','card'].includes(req.body?.method)) throw new PaymentError('INVALID_PAYMENT');
     const payment = await requirePayments().create(user.id, user.email || '', req.params.id, providerName(req.body.provider), req.body.method,
       typeof req.body.taxId === 'string' ? req.body.taxId.replace(/\D/g,'') : undefined);

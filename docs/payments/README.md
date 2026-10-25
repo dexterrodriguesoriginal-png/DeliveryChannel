@@ -54,7 +54,7 @@ A assinatura do webhook é validada antes de consultar o status. IDs autenticado
 
 Há limites de tamanho, limites de solicitações na entrada e por usuário, cache/single-flight de consultas e limitação de memória. A entrada usa o endereço do socket, sem confiar em `X-Forwarded-For` do cliente; em múltiplas réplicas, configurar também limites no ingress de produção. Tokens, códigos OAuth e respostas brutas dos provedores não são registrados nem refletidos nas respostas. Links de checkout usam allowlist de domínio HTTPS.
 
-RLS protege todas as cinco tabelas novas. Contas só são legíveis por owner/manager da loja; pagamentos por owner/manager/cashier. Clientes usam o endpoint autenticado com validação de posse do pedido, sem leitura direta da tabela. Nenhum papel da API, inclusive service_role, tem acesso direto às tabelas privadas; apenas a função SECURITY DEFINER com grant exclusivo para service_role manipula ciphertext. Todas as funções novas têm `SET search_path = ''`.
+RLS protege as cinco tabelas da migration 039 e a tabela privada de bloqueio de religação da migration 040. Contas só são legíveis por owner/manager da loja; pagamentos por owner/manager/cashier. Clientes usam o endpoint autenticado com validação de posse do pedido, sem leitura direta da tabela. Nenhum papel da API, inclusive service_role, tem acesso direto às tabelas privadas; apenas a função SECURITY DEFINER com grant exclusivo para service_role manipula ciphertext. Todas as funções novas têm `SET search_path = ''`.
 
 O trigger de pedidos bloqueia também os caminhos antigos de alteração de pagamento via browser/RPC quando existe `order_payments`. Não há bypass de login, novo módulo pago ou alteração de `tabRequiredModule`.
 
@@ -64,7 +64,29 @@ Os testes Vitest usam mocks dos provedores, exercitam as rotas Express por HTTP,
 
 A migration e o rollback são propostas e não foram aplicados. Por isso os testes SQL de RLS e o ciclo real de provedores não foram executados nesta entrega. A homologação precisa de um banco descartável já preparado, credenciais das aplicações e autorizações dos vendedores. Nenhuma transação real foi enviada.
 
-A desconexão é recusada enquanto houver cobrança automática pendente ou em criação, preservando a capacidade de conciliar o recebimento. Códigos expirados não são recriados silenciosamente; a UI orienta falar com a loja. Reembolsos/chargebacks, troca de provedor em pedido com cobrança criada, jobs de conciliação e split ficam fora deste fluxo. Os endpoints nunca transformam um pedido cancelado ou estornado em pago.
+A desconexão apaga imediatamente as credenciais e invalida autorizações pendentes, mesmo com cobranças em aberto. A confirmação automática dessas cobranças é interrompida; o lojista deve conciliá-las no provedor. A revogação remota é tentada depois da exclusão local, sem impedir esta exclusão caso o provedor esteja indisponível. Códigos expirados não são recriados silenciosamente; a UI orienta falar com a loja. Reembolsos/chargebacks, troca de provedor em pedido com cobrança criada, jobs de conciliação e split ficam fora deste fluxo. Os endpoints nunca transformam um pedido cancelado ou estornado em pago.
+
+## LGPD: minimização, retenção e exclusão
+
+A migration adicional `20261024004000_payment_privacy_retention.sql`, com rollback separado, estende a 039; nenhuma das duas foi aplicada nesta entrega. A versão dos termos/política passa a `2026-10-24.2` tanto na UI como no banco, sem apagar o histórico de aceites. O deploy deve acompanhar a revisão e aplicação das migrations pelo responsável pelo banco.
+
+Cartão só é preenchido no checkout hospedado: a API recusa campos de cartão, PAN, CVV/CVC e validade, inclusive aninhados. Os adapters de cartão e InfinitePay não recebem dados pessoais do pagador. Apenas PIX recebe o e-mail exigido pelo Mercado Pago ou nome/e-mail/documento exigidos pelo PagBank. CPF/CNPJ não é enviado para cartão, InfinitePay ou PIX manual. A leitura de nome/e-mail do pedido é restrita à criação PIX que os necessita; consulta de status e webhook não leem esses campos.
+
+A persistência usa projeções explícitas de cobrança/confirmação. Respostas extras do provedor, dados de cartão/pagador e o corpo do webhook são descartados. O corpo original fica temporariamente na memória para verificar a assinatura e é sobrescrito ao terminar a requisição. `raw_status` aceita somente códigos conhecidos; texto livre é substituído por `unknown`. Códigos PIX e links são removidos após a confirmação/expiração, sem guardar o payload da notificação. O token original de assinatura PagBank pode ser usado para retries autenticados por até sete dias após pagamento, sendo sempre apagado imediatamente na desconexão, exclusão da loja ou anonimização do pagamento.
+
+O prazo fiscal configurado é de cinco anos civis desde `paid_at` ou, para cobrança não confirmada, desde `created_at`. A rotina `anonymize_expired_payments` usa o relógio do banco e lotes com `SKIP LOCKED`. Depois do prazo remove vínculos com pedido/loja/provedor, instruções de cobrança e tokens associados; preserva valor, método, status e datas financeiras. Não exclui o registro financeiro. A tabela privada `payment_erased_orders` guarda apenas pedidos impedidos de receber novo vínculo, sem associação a cliente ou registro de pagamento.
+
+No processamento de uma solicitação de exclusão (`PROCESSED`), na exclusão física em `auth.users` ou ao excluir/desvincular o cadastro do cliente, triggers removem o vínculo pessoal em `order_payments` e os dados de acesso à cobrança, preservando valor e data. A solicitação `PENDING` continua usando a fila de processamento existente; não declara uma exclusão concluída. A loja ainda pode consultar os dados financeiros mínimos até o prazo fiscal. Na exclusão física ou lógica (`INACTIVE`) da loja, as credenciais e autorizações são apagadas na mesma transação, e o livro financeiro é desvinculado sem ser apagado.
+
+A exclusão local de tokens acontece antes de qualquer tentativa de revogação remota. O versionamento da conexão impede que um callback OAuth em andamento recrie credenciais após desconectar. A renovação usa comparação do ciphertext anterior para não sobrescrever uma conexão nova ou ressuscitar um token removido.
+
+O Express executa a manutenção ao iniciar e a cada 24 horas, com no máximo dez lotes por execução, sem sobreposição. `npm run build` também gera o worker privado `dist/payment-retention.cjs`; `npm run payments:retention` permite configurá-lo como tarefa diária da infraestrutura, inclusive em hospedagens que desligam o servidor por inatividade. A infraestrutura deve agendar essa tarefa diária para garantir a periodicidade independentemente de tráfego; nenhum agendamento externo foi provisionado nesta sessão. Os dois bundles do servidor são bloqueados no servidor estático, inclusive com nomes codificados na URL.
+
+Logs próprios de pagamentos têm somente escopo, código fixo de evento e contagem numérica. Não registram exceções, identidades, CPF, e-mail, tokens, headers, cookies ou payloads. Configurar também ingress/APM para não capturar corpo, credenciais ou query strings de `/api/payments`, especialmente do callback OAuth.
+
+Os testes novos exercitam minimização, rejeição de cartão, projeção de persistência, descarte do webhook, logs, renovação/OAuth concorrentes com desconexão, worker e textos legais. `supabase/tests/payments/privacy.sql` verifica no banco a fronteira de cinco anos, exclusão de cliente/loja, preservação de valor/data e restrição das RPCs. Esse roteiro foi preparado e validado sintaticamente, sem execução/aplicação de migrations.
+
+Bases legais e responsabilidades foram descritas segundo a execução de contrato (LGPD, art. 7º, V) e obrigação legal para a retenção fiscal (art. 7º, II). Os prestadores são operadores quando seguem instruções e controladores independentes nos tratamentos próprios, conforme seus contratos e avisos; a plataforma não controla a retenção realizada por eles.
 
 ## Documentação oficial consultada
 
@@ -83,3 +105,8 @@ A desconexão é recusada enquanto houver cobrança automática pendente ou em c
 - Consultar checkout: https://developer.pagbank.com.br/reference/consultar-checkout
 - Autenticidade de notificações: https://developer.pagbank.com.br/reference/confirmar-autenticidade-da-notificacao
 - InfinitePay Checkout: https://www.infinitepay.io/checkout-documentacao
+
+- LGPD (arts. 7º e 16): https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709compilado.htm
+- Privacidade Mercado Pago: https://www.mercadopago.com.br/privacidade
+- Direitos de anonimização PagBank: https://faq.pagbank.com.br/duvida/lgpd-como-solicitar-a-anonimizacao-dos-dados/1727
+- Privacidade InfinitePay: https://www.infinitepay.io/legal/aviso-de-privacidade

@@ -18,7 +18,7 @@ const service = {
   available: vi.fn(() => true), configure: vi.fn(async () => {}), create: vi.fn(async () => ({ status:'pending' })),
   status: vi.fn(async () => ({ status:'paid' })), manualConfirm: vi.fn(async () => {}),
   startConnect: vi.fn(async () => 'https://auth.mercadopago.com.br/authorization?state=signed'),
-  finishConnect: vi.fn(async () => {}), webhook: vi.fn(async () => {}),
+  finishConnect: vi.fn(async () => {}), webhook: vi.fn(async (_provider:string,_id:string,_input:any) => {}),
 };
 let server: Server; let base: string;
 beforeAll(async () => {
@@ -49,6 +49,12 @@ describe('payment HTTP authorization and contracts', () => {
     const r = await req(`/orders/${orderId}`,{ provider:'mercadopago',method:'pix',tenant_id:'attacker',amount:0.01,status:'paid',access_token:'attacker-token' },auth);
     expect(r.status).toBe(200); expect(service.create).toHaveBeenCalledWith('user','cliente@example.com',orderId,'mercadopago','pix',undefined);
   });
+  it.each([{ card:{ number:'4111111111111111',cvv:'123' } },{ cardNumber:'4111111111111111' },{ extra:{ cvc:'123' } }])('rejects card details before invoking an adapter: %o', async forbidden => {
+    const before = service.create.mock.calls.length;
+    const r = await req(`/orders/${orderId}`,{ provider:'mercadopago',method:'card',...forbidden },auth);
+    expect(r.status).toBe(400); expect((await r.json()).code).toBe('CARD_DETAILS_FORBIDDEN');
+    expect(service.create.mock.calls).toHaveLength(before);
+  });
   it('rejects cross-origin mutations', async () => {
     const before = service.create.mock.calls.length;
     expect((await req(`/orders/${orderId}`,{ provider:'mercadopago',method:'pix' },{ ...auth, Origin:'https://evil.example' })).status).toBe(403);
@@ -66,9 +72,10 @@ describe('payment HTTP authorization and contracts', () => {
   });
   it('passes the original webhook bytes, without authentication cookies', async () => {
     const raw = '{ "status" : "PAID", "amount": 0.01 }';
+    service.webhook.mockImplementationOnce(async (provider,id,input) => { expect(provider).toBe('pagbank'); expect(id).toBe(orderId); expect(input.rawBody).toEqual(Buffer.from(raw)); expect(input.headers['x-authenticity-token']).toBe('signature'); });
     const r = await fetch(`${base}/api/payments/webhooks/pagbank/${orderId}`, { method:'POST',headers:{ 'Content-Type':'application/json','X-Authenticity-Token':'signature' },body:raw });
     expect(r.status).toBe(200);
-    expect(service.webhook).toHaveBeenCalledWith('pagbank',orderId,expect.objectContaining({ rawBody:Buffer.from(raw),headers:expect.objectContaining({ 'x-authenticity-token':'signature' }) }));
+    expect(service.webhook).toHaveBeenCalledWith('pagbank',orderId,expect.objectContaining({ rawBody:Buffer.alloc(Buffer.byteLength(raw)),headers:expect.objectContaining({ 'x-authenticity-token':'signature' }) }));
   });
   it('rejects an unrecognized provider and malformed order', async () => {
     expect((await req('/orders/not-a-uuid',{ provider:'mercadopago',method:'pix' },auth)).status).toBe(400);

@@ -1,8 +1,9 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { chargeRecord, confirmationRecord } from './privacy';
 import { Charge, Confirmation, PaymentError, Provider, Method } from './types';
 
 export interface PaymentRow {
-  id: string; order_id: string; tenant_id: string; provider: Provider; provider_payment_id?: string;
+  id: string; order_id: string | null; tenant_id: string | null; anonymized_at?: string | null; provider: Provider; provider_payment_id?: string;
   method: Method; amount: number; status: string; raw_status?: string; paid_at?: string;
   brcode?: string; checkout_url?: string; expires_at?: string;
 }
@@ -26,8 +27,9 @@ export class PaymentStore {
     if (error || !data) throw new PaymentError('FORBIDDEN', 403, 'Somente o proprietário ou gerente pode configurar os pagamentos.');
     return data;
   }
-  async order(userId: string, id: string) {
-    const { data: order, error } = await this.db.from('orders').select('id,tenant_id,customer_id,total_amount,payment_method,payment_status,status,customer_name,customer_email,tenants!inner(slug,status)').eq('id', id).eq('tenants.status', 'ACTIVE').maybeSingle();
+  async order(userId: string, id: string, includePayer = false) {
+    const { data: row, error } = await this.db.from('orders').select('id,tenant_id,customer_id,total_amount,payment_method,payment_status,status,tenants!inner(slug,status)' + (includePayer ? ',customer_name,customer_email' : '')).eq('id', id).eq('tenants.status', 'ACTIVE').maybeSingle();
+    const order = row as unknown as { id:string; tenant_id:string; customer_id:string; status:string; payment_status:string; total_amount:number; customer_name?:string; customer_email?:string; tenants:{slug:string;status:string} } | null;
     if (error || !order) throw new PaymentError('ORDER_NOT_FOUND', 404, 'Pedido indisponível.');
     const [customer, staff] = await Promise.all([
       this.db.from('customers').select('id').eq('id', order.customer_id).eq('tenant_id', order.tenant_id).eq('user_id', userId).maybeSingle(),
@@ -37,7 +39,7 @@ export class PaymentStore {
     return { ...order, staffRole: staff.data?.role_id as string | undefined };
   }
   async accounts(tenantId: string) {
-    const { data, error } = await this.db.from('store_payment_accounts').select('provider,status,account_label,is_primary,accepts_pix,accepts_card,connected_at').eq('tenant_id', tenantId);
+    const { data, error } = await this.db.from('store_payment_accounts').select('provider,status,account_label,is_primary,accepts_pix,accepts_card,connected_at,connection_version').eq('tenant_id', tenantId);
     if (error) throw new PaymentError('PAYMENTS_UNAVAILABLE', 503, 'Pagamentos online em breve.');
     return data || [];
   }
@@ -60,9 +62,12 @@ export class PaymentStore {
   reserve(orderId: string, userId: string, provider: Provider, method: Method) {
     return this.rpc<{ payment: PaymentRow; claimed: boolean }>('reserve_order_payment', { p_order: orderId, p_user: userId, p_provider: provider, p_method: method });
   }
-  saveCharge(id: string, charge: Charge) { return this.rpc('save_order_charge', { p_id: id, p_charge: charge }); }
+  saveCharge(id: string, charge: Charge) { return this.rpc('save_order_charge', { p_id: id, p_charge: chargeRecord(charge) }); }
   confirm(id: string, confirmation: Confirmation | null, userId?: string) {
-    return this.rpc('confirm_order_payment', { p_id: id, p_confirmation: confirmation || {}, p_manual_user: userId || null });
+    return this.rpc('confirm_order_payment', { p_id: id, p_confirmation: confirmation ? confirmationRecord(confirmation) : {}, p_manual_user: userId || null });
+  }
+  completeConnection(userId: string, membership: string, provider: Provider, ciphertext: string | null, version: number) {
+    return this.rpc('complete_store_payment_connection', { p_user:userId, p_membership:membership, p_provider:provider, p_ciphertext:ciphertext, p_version:version });
   }
   async manualBrcode(orderId: string) { return this.rpc<string>('manual_order_payment_brcode', { p_order: orderId }); }
 }

@@ -11,18 +11,20 @@ function fixture(provider: Provider = 'mercadopago') {
   const secrets = new Map<string, string>();
   const account = seal({ accessToken: 'private-token', refreshToken: 'private-refresh', accountId: 'seller', expiresAt: Date.now() + 3600_000 }, encryptionKey(env.PAYMENTS_ENCRYPTION_KEY), `store-1:${provider}`);
   secrets.set(`store-1:${provider}`, account);
-  let current: PaymentRow | null = row(provider); let claimed = false;
+  let current: PaymentRow | null = row(provider); let claimed = false; let version = 0; const stateKeys = new Set<string>();
   const order = { id: 'order-1', tenant_id: 'store-1', total_amount: 12.99, customer_name: 'Ana Silva', customer_email: 'ana@example.com', tenants: { slug: 'minha-loja' }, staffRole: undefined };
   const query = (table: string) => { const q: any = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: table === 'orders' ? order : current, error: null }) }; return q; };
   const store = {
     db: { from: vi.fn(query) },
     membership: vi.fn(async (user: string, membership: string) => { if (user !== 'owner' || membership !== 'membership-1') throw new PaymentError('FORBIDDEN', 403); return { tenant_id: 'store-1' }; }),
     order: vi.fn(async (user: string) => { if (!['customer','owner'].includes(user)) throw new PaymentError('ORDER_NOT_FOUND', 404); return { ...order, staffRole: user === 'owner' ? 'OWNER' : undefined }; }),
-    configure: vi.fn(async () => {}), accounts: vi.fn(async () => []),
+    configure: vi.fn(async (_user:string,_membership:string,p:Provider,changes:any) => { if (changes.status === 'disconnected') { version++; secrets.delete(`store-1:${p}`); for (const key of stateKeys) secrets.delete(key); stateKeys.clear(); } }),
+    accounts: vi.fn(async () => [{ provider,connection_version:version }]),
+    completeConnection: vi.fn(async (_user:string,_member:string,p:Provider,cipher:string,expected:number) => { if (version!==expected) throw new PaymentError('STATE_ALREADY_USED',403); secrets.set(`store-1:${p}`,cipher); }),
     secret: vi.fn(async (op: string, tenant?: string, p?: string, key?: string, cipher?: string) => {
       const k = op.startsWith('state') ? key! : op.startsWith('webhook') ? `webhook:${key}` : `${tenant}:${p}`;
       if (op === 'get' || op === 'refresh_claim' || op === 'webhook_get') return secrets.get(k) || null;
-      if (op === 'set' || op === 'state_put' || op === 'webhook_set') { secrets.set(k, cipher!); return null; }
+      if (op === 'set' || op === 'state_put' || op === 'webhook_set') { if (op === 'set' && secrets.get(k)!==key) throw new PaymentError('RECONNECT_REQUIRED',409); if (op === 'state_put') stateKeys.add(k); secrets.set(k, cipher!); return null; }
       if (op === 'delete') { secrets.delete(k); return null; }
       if (op === 'state_take') { const result = secrets.get(k); secrets.delete(k); return result || null; }
       return null;
@@ -123,7 +125,7 @@ describe('OAuth state and encryption', () => {
     const state = url.searchParams.get('state')!;
     await service.finishConnect('mercadopago', state, 'auth-code', 'browser-cookie');
     expect(connect).toHaveBeenCalledWith(expect.objectContaining({ code: 'auth-code', verifier: expect.any(String) }));
-    expect(store.configure).toHaveBeenLastCalledWith('owner', 'membership-1', 'mercadopago', expect.objectContaining({ status: 'connected' }));
+    expect(store.completeConnection).toHaveBeenCalledWith('owner','membership-1','mercadopago',expect.any(String),1);
     await expect(service.finishConnect('mercadopago', state, 'auth-code', 'browser-cookie')).rejects.toMatchObject({ code: 'STATE_ALREADY_USED' });
   });
   it.each(['cookie','provider','membership'])('rejects OAuth with wrong %s', async kind => {
@@ -144,12 +146,44 @@ describe('OAuth state and encryption', () => {
   });
   it('erases local credentials on disconnect even if provider revocation is unavailable', async () => {
     const { service, store, secrets } = fixture();
-    const query: any = { select: () => query, eq: () => query, in: () => query, limit: async () => ({ data:[],error:null }) };
-    store.db.from.mockReturnValue(query);
-    vi.spyOn(service.adapters.mercadopago,'disconnect').mockRejectedValue(new PaymentError('PROVIDER_UNAVAILABLE',502));
-    await expect(service.configure('owner','membership-1','mercadopago',{ action:'disconnect' })).rejects.toMatchObject({ code:'PROVIDER_UNAVAILABLE' });
+    const log = vi.spyOn(console,'info').mockImplementation(() => {});
+    vi.spyOn(service.adapters.mercadopago,'disconnect').mockImplementation(async () => { expect(secrets.has('store-1:mercadopago')).toBe(false); throw new Error('PERSONAL_DATA secret-token'); });
+    await expect(service.configure('owner','membership-1','mercadopago',{ action:'disconnect' })).resolves.toBeUndefined();
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/PERSONAL_DATA|secret-token/); log.mockRestore();
     expect(secrets.has('store-1:mercadopago')).toBe(false);
     expect(store.configure).toHaveBeenCalledWith('owner','membership-1','mercadopago',{ status:'disconnected' });
+  });
+  it('does not resurrect credentials when disconnect happens during an OAuth exchange', async () => {
+    const { service,store,secrets } = fixture();
+    let resolveExchange!: (c:any) => void;
+    vi.spyOn(service.adapters.mercadopago,'connect').mockReturnValue(new Promise(resolve => { resolveExchange=resolve; }));
+    const url = new URL(await service.startConnect('owner','membership-1','mercadopago','cookie'));
+    const completing = service.finishConnect('mercadopago',url.searchParams.get('state')!,'code','cookie');
+    await vi.waitFor(() => expect(service.adapters.mercadopago.connect).toHaveBeenCalled());
+    await service.configure('owner','membership-1','mercadopago',{ action:'disconnect' });
+    resolveExchange({ accessToken:'stale', refreshToken:'stale-refresh' });
+    await expect(completing).rejects.toMatchObject({ code:'STATE_ALREADY_USED' });
+    expect(secrets.has('store-1:mercadopago')).toBe(false);
+  });
+  it('does not resurrect credentials when disconnect happens during a token refresh', async () => {
+    const { service,secrets } = fixture();
+    secrets.set('store-1:mercadopago',seal({ accessToken:'old',refreshToken:'r',expiresAt:1 },encryptionKey(env.PAYMENTS_ENCRYPTION_KEY),'store-1:mercadopago'));
+    let resolveRefresh!: (c:any) => void;
+    vi.spyOn(service.adapters.mercadopago as any,'refresh').mockReturnValue(new Promise(resolve => { resolveRefresh=resolve; }));
+    const pending = service.credentials('store-1','mercadopago');
+    await vi.waitFor(() => expect((service.adapters.mercadopago as any).refresh).toHaveBeenCalled());
+    vi.spyOn(service.adapters.mercadopago,'disconnect').mockResolvedValue();
+    await service.configure('owner','membership-1','mercadopago',{ action:'disconnect' });
+    resolveRefresh({ accessToken:'stale-new',refreshToken:'stale-new-r',expiresAt:Date.now()+1000000 });
+    await expect(pending).rejects.toMatchObject({ code:'RECONNECT_REQUIRED' });
+    expect(secrets.has('store-1:mercadopago')).toBe(false);
+  });
+  it.each(['mercadopago','pagbank','infinitepay'] as const)('does not pass payer data or tax IDs to card checkout for %s', async provider => {
+    const { service,store,setPayment } = fixture(provider); setPayment({ ...row(provider),method:'card' });
+    const create = vi.spyOn(service.adapters[provider],'createCardCheckout').mockResolvedValue({ providerPaymentId:'id',checkoutUrl:'https://provider.example',manualConfirmation:provider==='infinitepay' });
+    await service.create('customer','personal@example.com','order-1',provider,'card','12345678909');
+    expect(store.order).toHaveBeenCalledWith('customer','order-1',false);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ name:'',email:'',taxId:undefined }),expect.anything());
   });
   it('shows unavailable when platform credentials are absent', () => {
     const { store } = fixture(); const s = new PaymentService(store as unknown as PaymentStore, { PAYMENTS_PUBLIC_URL: 'https://loja.example' });

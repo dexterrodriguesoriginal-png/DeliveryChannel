@@ -92,7 +92,7 @@ describe('feedback and legal security contracts (offline; no migrations are appl
       expect(ceo).not.toContain(sensitive);
   });
   it('uses server time and append-only acceptance, checks signup and rejects outdated versions', () => {
-    expect(legal).toContain(`SELECT '${LEGAL_VERSION}'::text`);
+    expect(readFileSync('supabase/migrations/20261024004000_payment_privacy_retention.sql','utf8')).toContain(`SELECT '${LEGAL_VERSION}'::text`);
     expect(legal).toContain('accepted_at timestamptz NOT NULL DEFAULT now()');
     expect(legal).toContain(
       'REVOKE ALL ON public.legal_acceptances FROM PUBLIC, anon, authenticated',
