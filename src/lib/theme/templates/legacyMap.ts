@@ -5,7 +5,7 @@
  */
 
 import { StoreTemplate, ThemeTokens } from '../../../types/theme';
-import { TEMPLATES } from './catalog';
+import { TEMPLATES, getTemplateById } from './catalog';
 import { hexToRgb } from './palettes';
 
 /**
@@ -95,7 +95,7 @@ export function findClosestTemplate(
   // 1. Caso haja templateId direto ou no metadados
   const targetTemplateId = input.templateId || input.meta?.templateId;
   if (targetTemplateId) {
-    const directMatch = TEMPLATES.find((t) => t.id === targetTemplateId);
+    const directMatch = getTemplateById(targetTemplateId);
     if (directMatch) return directMatch;
   }
 

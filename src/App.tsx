@@ -740,7 +740,7 @@ function AppContent() {
           className={cn(
           "flex-1 min-w-0 h-full flex flex-col",
           isOwnerPanelTab(activeTab) ? "bg-slate-100" : "bg-slate-50/70",
-          activeTab === 'est-orders' 
+          (activeTab === 'est-orders' || activeTab === 'est-theme')
             ? "p-0 overflow-hidden" 
             : "p-1.5 sm:p-2 overflow-y-auto"
         )}>

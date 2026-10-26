@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { getSurfaceBackgroundStyle } from '../../lib/theme/themeEngine';
 import { ThemeTokens } from '../../types/theme';
 import { Clock, Store } from 'lucide-react';
 
@@ -46,20 +47,19 @@ export const ThemedStoreHeader: React.FC<ThemedStoreHeaderProps> = ({
   const headerStyle = layout.headerStyle || 'classic';
 
   const containerStyle: React.CSSProperties = {
-    backgroundColor: 'var(--dc-bg-header-color, #ffffff)',
-    backgroundImage: 'var(--dc-bg-header, none)',
-    borderColor: 'var(--dc-border, #e2e8f0)',
+    ...getSurfaceBackgroundStyle(tokens.backgrounds.header, p.bgHeader),
+    borderColor: p.border,
   };
 
   const storeTitleStyle: React.CSSProperties = {
-    color: 'var(--dc-text-title, #0f172a)',
+    color: p.textTitle,
     fontFamily: 'var(--dc-heading-font-family, var(--dc-font-family, sans-serif))',
     fontWeight: 'var(--dc-title-weight, 700)',
     letterSpacing: 'var(--dc-letter-spacing, normal)',
   };
 
   const secondaryTextStyle: React.CSSProperties = {
-    color: 'var(--dc-text-secondary, #64748b)',
+    color: p.textSecondary,
     fontFamily: 'var(--dc-font-family, sans-serif)',
   };
 
@@ -115,7 +115,7 @@ export const ThemedStoreHeader: React.FC<ThemedStoreHeaderProps> = ({
             <Clock
               data-testid="preview-icon-clock"
               className="w-3 h-3"
-              style={{ color: 'var(--dc-icon-color, #64748b)' }}
+              style={{ color: p.iconColor }}
             />
             <span>{statusText}</span>
           </p>
@@ -278,7 +278,7 @@ export const ThemedStoreHeader: React.FC<ThemedStoreHeaderProps> = ({
             <Clock
               data-testid="preview-icon-clock"
               className="w-3 h-3"
-              style={{ color: 'var(--dc-icon-color, #64748b)' }}
+              style={{ color: p.iconColor }}
             />
             <span>{statusText}</span>
           </p>

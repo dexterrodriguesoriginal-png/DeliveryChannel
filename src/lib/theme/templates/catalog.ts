@@ -140,11 +140,12 @@ export const CANONICAL_FAMILY_BASES: Record<ColorFamily, { primary: string; seco
 export function createRecoloredTemplate(
   segmentId: string,
   colorFamily: ColorFamily,
-  mode: 'light' | 'dark' = 'light'
+  mode: 'light' | 'dark' = 'light',
+  style?: string
 ): StoreTemplate {
   const segmentLabel = SEGMENT_LABEL_MAP[segmentId] || segmentId;
   const canonical = CANONICAL_FAMILY_BASES[colorFamily] || CANONICAL_FAMILY_BASES.azul;
-  const id = `${segmentId}-recolor-${colorFamily}-${mode}`;
+  const id = `${segmentId}-recolor-${colorFamily}-${mode}${style ? `-style-${style}` : ''}`;
 
   const syntheticPalette: NamedPalette = {
     id,
@@ -152,7 +153,7 @@ export function createRecoloredTemplate(
     segmentId,
     colorFamily,
     shade: `${colorFamily}-personalizado`,
-    style: ['personalizado', mode === 'dark' ? 'escuro' : 'claro', 'harmonioso'],
+    style: [style || 'personalizado', mode === 'dark' ? 'escuro' : 'claro', 'harmonioso'],
     mode,
     base: {
       primary: canonical.primary,
@@ -162,6 +163,14 @@ export function createRecoloredTemplate(
   };
 
   const tokens = assembleTemplateTokens(syntheticPalette, 0);
+  // A recolored result must honor the style filter as well as segment and color.
+  const reference = style && (TEMPLATES.find(t => t.segmentId === segmentId && t.mode === mode && t.style.includes(style))
+    || TEMPLATES.find(t => t.mode === mode && t.style.includes(style)));
+  if (reference) {
+    tokens.layout = { ...reference.tokens.layout! };
+    tokens.typography = { ...reference.tokens.typography };
+    tokens.components = { ...reference.tokens.components };
+  }
 
   return {
     id,
@@ -256,8 +265,8 @@ export function filterTemplates(options: TemplateFilterOptions = {}): StoreTempl
       (s) => s.id.toLowerCase() === normalizedSegment || s.label.toLowerCase() === normalizedSegment
     );
     if (validSegment) {
-      const lightVariant = createRecoloredTemplate(validSegment.id, normalizedColorFamily, 'light');
-      const darkVariant = createRecoloredTemplate(validSegment.id, normalizedColorFamily, 'dark');
+      const lightVariant = createRecoloredTemplate(validSegment.id, normalizedColorFamily, 'light', normalizedStyle);
+      const darkVariant = createRecoloredTemplate(validSegment.id, normalizedColorFamily, 'dark', normalizedStyle);
 
       if (!mode) {
         results = [lightVariant, darkVariant];
@@ -276,5 +285,9 @@ export function filterTemplates(options: TemplateFilterOptions = {}): StoreTempl
  * Obtém um modelo de vitrine pelo seu ID único
  */
 export function getTemplateById(id: string): StoreTemplate | undefined {
-  return TEMPLATES.find((t) => t.id === id);
+  const native = TEMPLATES.find((t) => t.id === id);
+  if (native) return native;
+  const match = /^([a-z]+)-recolor-([a-z]+)-(light|dark)(?:-style-([a-z]+))?$/.exec(id);
+  if (!match || !SEGMENT_LABEL_MAP[match[1]] || !Object.hasOwn(CANONICAL_FAMILY_BASES, match[2])) return undefined;
+  return createRecoloredTemplate(match[1], match[2] as ColorFamily, match[3] as 'light' | 'dark', match[4]);
 }
