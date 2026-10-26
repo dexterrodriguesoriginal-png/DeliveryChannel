@@ -1,6 +1,6 @@
 # Oferta de corrida com aceite do entregador
 
-Base: `main` em `5ffe88e`. Branch: `feat/driver-ride-offer`.
+Base inicial: `main` em `5ffe88e`. Branch: `feat/driver-ride-offer`. A atualização de `main` para `587b165` foi integrada para preservar Kanban/Lista do PR #13, publicado durante a implementação.
 
 A loja chama o entregador para um pedido de entrega pronto. A oferta não muda o pedido nem a disponibilidade do entregador. O aceite do próprio entregador atribui a corrida, muda o pedido para `WAITING_FOR_DRIVER`, ocupa o entregador e rotaciona o código de retirada. Recusa ou expiração mantém o pedido pronto e sem entregador; a fila automática tenta o próximo sem repetir quem recusou ou expirou.
 
@@ -8,7 +8,7 @@ O prazo padrão é 60 segundos, configurável entre 20 e 300 por proprietário/g
 
 ## Validação
 
-- `npm test`: 147 arquivos / 1.201 testes; `npm run lint` e `npm run build` passaram.
+- `npm test`: 148 arquivos / 1.219 testes; `npm run lint` e `npm run build` passaram.
 - PostgreSQL 17 local descartável: `sh supabase/tests/driver_ride_offers/run_regressions.sh`, com cliente PostgreSQL e `PGUSER` configurados. O harness recusa host remoto e cria um banco sintético próprio; não o remove automaticamente.
 - Repetir com argumento `legacy` para defaults amplos de permissões. O harness aplica toda a base, verifica uma corrida criada antes da migração, executa os fluxos em transação com `ROLLBACK`, reverte com uma oferta pendente e compara pedidos/códigos/histórico e todas as definições/permissões das funções. Depois reaplica e repete os testes. Também exercita duas sessões chamando o mesmo entregador por lojas diferentes: a chamada concorrente segue para o próximo da fila.
 - `security_and_flows.sql` usa usuários, lojas e pedidos sintéticos exclusivos dentro de `BEGIN`/`ROLLBACK`, sem depender das fixtures locais. Nunca aplicar os stubs de `n1n6/harness` em staging ou produção.

@@ -7,6 +7,7 @@ import {
   Bike, 
   Building2, 
   ShoppingBag,
+  UtensilsCrossed,
   Check, 
   CheckCircle2, 
   Truck, 
@@ -87,6 +88,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
 
   const totalItemsCount = order.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || order.items?.length || 0;
   const isPickup = order.fulfillmentType === 'PICKUP';
+  const isDineIn = order.fulfillmentType === 'DINE_IN';
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('text/plain', order.id);
@@ -101,7 +103,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
       onUpdateStatus(order.id, 'PREPARING');
     } else if (isPreparing) {
       onUpdateStatus(order.id, 'READY');
-    } else if (isReady && isPickup) {
+    } else if (isReady && (isPickup || isDineIn)) {
       // Retirada: cliente buscou no balcão (mesma transição da faixa de alertas).
       onUpdateStatus(order.id, 'DELIVERED');
     } else if (isReady && order.status === 'READY' && !live && !order.driverId) {
@@ -193,7 +195,12 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
           </div>
 
           <div className="flex items-center gap-0.5 font-semibold text-slate-700">
-            {isPickup ? (
+            {isDineIn ? (
+              <>
+                <UtensilsCrossed className="w-2 h-2 text-slate-400" />
+                <span>Salão</span>
+              </>
+            ) : isPickup ? (
               <>
                 <Building2 className="w-2 h-2 text-slate-400" />
                 <span>Retirada</span>
@@ -230,17 +237,17 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
         {!live && <button
           type="button"
           onClick={handleActionClick}
-            data-testid={order.status === 'READY' && !live ? 'card-call-driver' : undefined}
+          data-testid={order.status === 'READY' && order.fulfillmentType === 'DELIVERY' && !live ? 'card-call-driver' : undefined}
           style={orderActionButtonStyle(theme, order)}
           className="flex-1 py-0.5 px-1 rounded font-bold text-[8.5px] flex items-center justify-center gap-0.5 shadow-2xs hover:opacity-90 transition-all cursor-pointer active:scale-98 truncate"
         >
           {isPending && <Check className="w-2 h-2 stroke-[3]" />}
           {isConfirmed && <CheckCircle2 className="w-2 h-2" />}
           {isPreparing && <Check className="w-2 h-2 stroke-[3]" />}
-          {isReady && (isPickup ? <CheckCircle2 className="w-2 h-2" /> : <Truck className="w-2 h-2" />)}
+          {isReady && (isPickup || isDineIn ? <CheckCircle2 className="w-2 h-2" /> : <Truck className="w-2 h-2" />)}
           {isDelivery && <CheckCircle2 className="w-2 h-2" />}
           {(isDelivered || isCancelled) && <Eye className="w-2 h-2" />}
-          <span className="truncate">{order.status === 'WAITING_FOR_DRIVER' ? 'Ver detalhes' : (isPickup && pickupActionLabel(order.status)) || (retry && isReady ? 'Chamar outro' : theme.buttonLabel)}</span>
+          <span className="truncate">{order.status === 'WAITING_FOR_DRIVER' ? 'Ver detalhes' : isDineIn && isReady ? 'Servir' : (isPickup && pickupActionLabel(order.status)) || (retry && isReady ? 'Chamar outro' : theme.buttonLabel)}</span>
         </button>}
       </div>
     </div>

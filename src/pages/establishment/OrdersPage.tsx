@@ -29,7 +29,6 @@ import { Order, OrderStatus, PaymentStatus, Driver, Product } from '../../types'
 import { playNewOrderSound } from '../../utils/audio';
 import { ThermalReceiptModal } from '../../components/establishment/ThermalReceiptModal';
 import { PDVModal } from '../../components/establishment/PDVModal';
-import { CompactOrderCard, CardDensity } from '../../components/establishment/CompactOrderCard';
 import { KanbanOrderCard } from '../../components/establishment/KanbanOrderCard';
 import { OrderStatusChip, StatusIconByKey } from '../../components/establishment/StatusIcon';
 import { SlaTimerChip } from '../../components/establishment/SlaTimerChip';
@@ -59,7 +58,6 @@ import {
   DollarSign, 
   MessageSquare, 
   Layers, 
-  LayoutGrid, 
   List, 
   Volume2, 
   VolumeX, 
@@ -132,8 +130,19 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  // Modo de visualização: CARDS, KANBAN ou TABELA
-  const [viewMode, setViewMode] = useState<'cards' | 'kanban' | 'table'>('cards');
+  // Preferências antigas (cards) ou inválidas passam a usar Kanban.
+  const [viewMode, setViewMode] = useState<'kanban' | 'table'>(() => {
+    try {
+      return localStorage.getItem('adegafood_orders_view_mode') === 'table' ? 'table' : 'kanban';
+    } catch {
+      return 'kanban';
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('adegafood_orders_view_mode', viewMode);
+    } catch {}
+  }, [viewMode]);
 
   // Tamanho dos cards em porcentagem com botões (-) e (+) (50% a 150%)
   const [cardScale, setCardScale] = useState<number>(() => {
@@ -163,9 +172,6 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       localStorage.setItem('adegafood_card_scale', '100');
     } catch {}
   };
-
-  // Mantém density sincronizada para compatibilidade
-  const density: CardDensity = cardScale <= 80 ? 'compact' : cardScale <= 110 ? 'normal' : 'comfortable';
 
   // Som de alerta e Auto-aceitar
   const soundEnabled = !['OWNER','MANAGER'].includes(activeRole || '');
@@ -609,8 +615,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const allOrders = visibleStaffOrders(remoteOrders || []);
   const unarchivedOrders = allOrders.filter(order => !order.archivedAt);
   const cancelledOrderIds = unarchivedOrders.filter(order => order.status === 'CANCELLED').map(order => order.id);
-  // O Kanban só representa etapas ativas; abas de encerrados usam os mesmos cards da lista.
-  const effectiveViewMode = viewMode === 'kanban' && ['CANCELLED', 'DELIVERED', 'ARCHIVED'].includes(activeTab) ? 'cards' : viewMode;
+  // O Kanban só representa etapas ativas; pedidos encerrados usam a Lista.
+  const effectiveViewMode = ['CANCELLED', 'DELIVERED', 'ARCHIVED'].includes(activeTab) ? 'table' : viewMode;
   const visibleFulfillmentTabs = visibleFulfillmentTabsFor(isModuleEnabled, allOrders);
   const visibleTabsKey = visibleFulfillmentTabs.join(',');
   useEffect(() => {
@@ -759,19 +765,6 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       </div>
     );
   }
-
-  // Classes do Grid Responsivo de acordo com a Densidade selecionada e presença do Drawer lateral (COMANDO 124)
-  const cardsGridClass = selectedOrder
-    ? density === 'compact'
-      ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3'
-      : density === 'comfortable'
-      ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'
-      : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5'
-    : density === 'compact'
-      ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3'
-      : density === 'comfortable'
-      ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4'
-      : 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5';
 
   const isSelectedDelayed = selectedOrder ? checkIsPreparingDelayed(selectedOrder.createdAt, selectedOrder.status, prepMinutes) : false;
   const selectedOrderTheme = selectedOrder 
@@ -1245,7 +1238,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     <DriverOffersContext.Provider value={ownerOffers}>
     <div className="flex-1 min-w-0 h-full flex flex-row overflow-hidden relative font-sans">
       {/* ========================================================================= */}
-      {/* REGIÃO 2: CONTEÚDO OPERACIONAL (TOPO + CARDS / KANBAN / TABELA)           */}
+      {/* REGIÃO 2: CONTEÚDO OPERACIONAL (TOPO + KANBAN / LISTA)                   */}
       {/* ========================================================================= */}
       <div className="flex-1 min-w-0 h-full overflow-y-auto flex flex-col scrollbar-thin">
         {/* TOPO: Cabeçalho, KPIs, Busca, Modos, Densidade, Legenda (COMANDO 125) */}
@@ -1531,26 +1524,14 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                     </select>
                   </div>
 
-                  {/* Alternador de Modos: Cards, Kanban, Tabela (+15%) */}
+                  {/* Alternador de Modos: Kanban e Lista */}
                   <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/80 h-9 shrink-0">
                     <button
                       type="button"
-                      onClick={() => setViewMode('cards')}
-                      className={`py-1.5 px-3 rounded-md text-xs sm:text-[12px] font-bold flex items-center gap-1.5 transition-all cursor-pointer h-8 ${
-                        viewMode === 'cards'
-                          ? 'bg-emerald-700 text-white shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                      title="Cards: Visualização rápida de muitos pedidos"
-                    >
-                      <LayoutGrid className="w-3.5 h-3.5" />
-                      <span>Cards</span>
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setViewMode('kanban')}
+                      aria-pressed={effectiveViewMode === 'kanban'}
                       className={`py-1.5 px-3 rounded-md text-xs sm:text-[12px] font-bold flex items-center gap-1.5 transition-all cursor-pointer h-8 ${
-                        viewMode === 'kanban'
+                        effectiveViewMode === 'kanban'
                           ? 'bg-emerald-700 text-white shadow-2xs'
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
@@ -1562,15 +1543,16 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                     <button
                       type="button"
                       onClick={() => setViewMode('table')}
+                      aria-pressed={effectiveViewMode === 'table'}
                       className={`py-1.5 px-3 rounded-md text-xs sm:text-[12px] font-bold flex items-center gap-1.5 transition-all cursor-pointer h-8 ${
-                        viewMode === 'table'
+                        effectiveViewMode === 'table'
                           ? 'bg-emerald-700 text-white shadow-2xs'
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
-                      title="Tabela: Controle detalhado, conferência e histórico"
+                      title="Lista: Controle detalhado, conferência e histórico"
                     >
                       <List className="w-3.5 h-3.5" />
-                      <span>Tabela</span>
+                      <span>Lista</span>
                     </button>
                   </div>
                 </div>
@@ -1796,36 +1778,6 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           ) : (
             <>
               {/* ========================================================================= */}
-              {/* MODO CARDS (SCREENSHOT 1)                                                 */}
-              {/* ========================================================================= */}
-              {effectiveViewMode === 'cards' && (
-                <div className={cardsGridClass} style={{ zoom: `${cardScale}%` }}>
-                  {filteredOrders.map(order => (
-                    <CompactOrderCard
-                      prepMinutes={prepMinutes}
-                      key={order.id}
-                      order={orderForCard(order)}
-                      density={density}
-                      archiveBusy={archiveBusy}
-                      onArchiveClick={canManageArchive ? order => void handleArchive([order.id], !order.archivedAt) : undefined}
-                      isSelected={selectedOrder?.id === order.id}
-                      onSelectOrder={(ord) => setSelectedOrder(ord)}
-                      onUpdateStatus={handleUpdateStatus}
-                      onAssignDriverClick={(ord) => {
-                        setAssigningOrder(ord);
-                        const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
-                        setSelectedDriverUserId(firstAvail);
-                      }}
-                      onCancelClick={(ord) => {
-                        setCancellingOrder(ord);
-                        setCancellationReason('Cliente solicitou cancelamento');
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* ========================================================================= */}
               {/* MODO KANBAN (FLUXO OPERACIONAL - 4 COLUNAS CONFORTÁVEIS COM DRAWER)       */}
               {/* ========================================================================= */}
               {effectiveViewMode === 'kanban' && (
@@ -1985,7 +1937,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               )}
 
               {/* ========================================================================= */}
-              {/* MODO TABELA VISUAL POR STATUS (SCREENSHOT 3 - COMANDO 125 COMPACTADO)    */}
+              {/* MODO LISTA POR STATUS    */}
               {/* ========================================================================= */}
               {effectiveViewMode === 'table' && (
                 <div className="bg-white border border-slate-200/90 rounded-lg shadow-xs overflow-hidden" style={{ zoom: `${cardScale}%` }}>

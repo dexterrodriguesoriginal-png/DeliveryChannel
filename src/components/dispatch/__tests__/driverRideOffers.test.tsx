@@ -6,7 +6,6 @@ vi.mock('../../../lib/supabase', () => ({ supabase: {} }));
 import { DriverOfferStatus, DriverOffersContext, OfferCountdown, remainingOfferSeconds } from '../DriverOfferStatus';
 import { DriverRideOffer } from '../../driver/DriverRideOffer';
 import { KanbanOrderCard } from '../../establishment/KanbanOrderCard';
-import { CompactOrderCard } from '../../establishment/CompactOrderCard';
 import { DriverOffer, MyDriverOffer } from '../../../repositories/driverOfferRepository';
 import { Order } from '../../../types';
 const NOW = Date.parse('2026-10-26T19:00:00Z');
@@ -30,15 +29,15 @@ describe('oferta de corrida na loja e no app do entregador', () => {
     await act(async () => vi.advanceTimersByTime(60000)); expect(host.textContent).toBe('0s');
     expect(remainingOfferSeconds(offer.expires_at, NOW + 120000)).toBe(0);
   });
-  it.each([KanbanOrderCard, CompactOrderCard])('card tem uma única ação Chamar entregador que abre a escolha', async Card => {
+  it.each([KanbanOrderCard])('card tem uma única ação Chamar entregador que abre a escolha', async Card => {
     const call = vi.fn(), update = vi.fn();
-    await render(<Card order={order} density="normal" onSelectOrder={vi.fn()} onUpdateStatus={update} onAssignDriverClick={call} />);
+    await render(<Card order={order} onSelectOrder={vi.fn()} onUpdateStatus={update} onAssignDriverClick={call} />);
     expect([...host.querySelectorAll('button')].filter(b => b.textContent?.includes('Chamar entregador'))).toHaveLength(1);
     await click('Chamar entregador'); expect(call).toHaveBeenCalledWith(order); expect(update).not.toHaveBeenCalled();
   });
-  it.each([KanbanOrderCard, CompactOrderCard])('card com oferta viva mostra selo, timer e cancelamento', async Card => {
+  it.each([KanbanOrderCard])('card com oferta viva mostra selo, timer e cancelamento', async Card => {
     const cancel = vi.fn().mockResolvedValue(undefined);
-    await render(<DriverOffersContext.Provider value={{ offers: [offer], cancel }}><Card order={order} density="normal" onSelectOrder={vi.fn()} onUpdateStatus={vi.fn()} onAssignDriverClick={vi.fn()} /></DriverOffersContext.Provider>);
+    await render(<DriverOffersContext.Provider value={{ offers: [offer], cancel }}><Card order={order} onSelectOrder={vi.fn()} onUpdateStatus={vi.fn()} onAssignDriverClick={vi.fn()} /></DriverOffersContext.Provider>);
     expect(host.textContent).toContain('Aguardando aceite do entregador'); expect(host.querySelector('[role="timer"]')?.textContent).toBe('60s');
     expect(host.textContent).not.toContain('Chamar entregador'); await click('Cancelar chamada'); expect(cancel).toHaveBeenCalledWith('of');
   });
