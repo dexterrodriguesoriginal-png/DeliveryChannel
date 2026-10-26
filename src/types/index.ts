@@ -610,6 +610,8 @@ export interface Order {
   prepTimeMinutes?: number;
   status: OrderStatus;
   statusHistory: OrderStatusHistoryItem[];
+  archivedAt?: string;
+  archivedBy?: string;
   createdAt: string;
   updatedAt: string;
   driverId?: string;

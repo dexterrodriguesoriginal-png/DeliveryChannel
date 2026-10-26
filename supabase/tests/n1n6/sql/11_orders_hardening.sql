@@ -76,17 +76,9 @@ SELECT t.throws(format($$SELECT public.update_order_status(%L,'CONFIRMED')$$, cu
 SELECT t.login('c0000000-0000-0000-0000-000000000001');
 SELECT t.throws(format($$SELECT public.update_order_status(%L,'READY')$$, current_setting('t.o4')), 'ORDER_NOT_FOUND', 'CEO: sem poder operacional escopado');
 
--- F7: DELETE só OWNER + CANCELLED + auditoria
+-- Exclusão de pedidos foi substituída por arquivamento reversível.
 SELECT t.login('a0000000-0000-0000-0000-000000000001');
-SELECT t.throws(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.o4')), 'ORDER_DELETE_NOT_CANCELLED', 'F7: OWNER não apaga pedido não cancelado');
-SELECT t.login('a0000000-0000-0000-0000-000000000002');
-SELECT t.lives(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.o1')), 'MANAGER: DELETE não apaga (RLS filtra)');
-SELECT t.is(t.order_status(current_setting('t.o1')::uuid), 'CANCELLED', 'F7: MANAGER não conseguiu apagar');
-SELECT t.login('c0000000-0000-0000-0000-000000000001');
-SELECT t.throws(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.o1')), 'ORDER_DELETE_FORBIDDEN', 'F7: CEO não apaga pedido');
-SELECT t.login('a0000000-0000-0000-0000-000000000001');
-SELECT t.lives(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.o1')), 'F7: OWNER apaga pedido CANCELLED');
-SELECT t.is(t.order_status(current_setting('t.o1')::uuid), NULL::text, 'F7: pedido removido');
+SELECT t.throws(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.o1')), 'permission denied', 'OWNER: exclusão de cancelado negada');
+SELECT t.is(t.order_status(current_setting('t.o1')::uuid), 'CANCELLED', 'pedido cancelado preservado');
 RESET ROLE;
-SELECT t.ok(EXISTS (SELECT 1 FROM public.audit_logs WHERE action = 'ORDER_DELETED' AND resource_id = current_setting('t.o1')
-    AND new_value IS NULL AND previous_value NOT LIKE '%Cliente Teste%'), 'F7: auditoria ORDER_DELETED com snapshot sem PII');
+SELECT t.throws(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.o1')), 'ORDER_DELETE_FORBIDDEN', 'trigger: nem operação de sistema exclui pedido');
