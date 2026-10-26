@@ -1,0 +1,36 @@
+.orders-kanban-layout { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
+.orders-kanban-board { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; flex: 1; min-height: 0; overflow: hidden; }
+.orders-kanban-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: 16px; overflow: hidden; }
+.orders-kanban-header { position: sticky; top: 0; z-index: 1; flex-shrink: 0; margin: 10px 10px 0; border-radius: 14px; padding: 12px 6px; color: white; }
+.orders-kanban-scroll { display: flex; flex-direction: column; gap: 10px; padding: 10px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: #9ca3af transparent; overscroll-behavior-y: contain; }
+.orders-kanban-scroll::-webkit-scrollbar { width: 6px; }
+.orders-kanban-scroll::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 999px; }
+.orders-kanban-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 32px 4px; color: #9ca3af; text-align: center; }
+.orders-kanban-empty p { font-size: 11px; font-weight: 600; letter-spacing: .06em; }
+.orders-kanban-empty span { font-size: 12px; }
+.orders-kanban-card { flex-shrink: 0; animation: orders-card-in 200ms ease-out both; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.05); transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; cursor: pointer; min-width: 0; }
+.orders-kanban-card:hover { transform: translateY(-2px); box-shadow: 0 3px 6px rgba(0,0,0,.07), 0 8px 18px rgba(0,0,0,.08); }
+.orders-kanban-card:focus-visible { outline: 2px solid #dc2626; outline-offset: 2px; }
+.orders-kanban-card[data-selected="true"] { border-color: #dc2626; }
+.orders-card-strip { margin: -14px -14px 12px; padding: 9px 14px; border-radius: 14px 14px 0 0; background: #fee2e2; color: #dc2626; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.orders-card-strip[data-offer="true"] { background: #fef3c7; color: #b45309; }
+.orders-card-strip[data-offer="true"] > div { background: transparent; border: 0; border-radius: 0; padding: 0; color: inherit; font-size: 11px; }
+.orders-card-action { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 34px; border-radius: 10px; padding: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #fff; transition: filter 180ms ease; cursor: pointer; }
+.orders-card-action:hover { filter: brightness(.94); }
+.orders-card-icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: #fee2e2; color: #dc2626; position: relative; cursor: pointer; }
+.orders-kanban-tabs { display: none; }
+.orders-kanban-skeleton { flex-shrink: 0; height: 170px; border-radius: 14px; padding: 14px; background: white; animation: orders-pulse 1.5s ease-in-out infinite; }
+.orders-kanban-skeleton div { height: 14px; border-radius: 6px; background: #e5e7eb; margin-bottom: 18px; }
+.orders-kanban-skeleton div:nth-child(2) { width: 70%; }
+@keyframes orders-pulse { 50% { opacity: .5; } }
+/* Ao mudar de status o card remonta na nova coluna e entra com fade + deslize suave. */
+@keyframes orders-card-in { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+@media (max-width: 1023px) {
+  .orders-kanban-board { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
+  .orders-kanban-column { flex: 0 0 280px; scroll-snap-align: start; }
+  .orders-kanban-tabs { display: flex; gap: 6px; overflow-x: auto; flex-shrink: 0; padding-bottom: 10px; }
+  .orders-kanban-tabs button { white-space: nowrap; border-radius: 999px; background: #f1f5f9; color: #64748b; padding: 8px 12px; font-size: 11px; font-weight: 700; }
+  .orders-kanban-tabs span { margin-left: 4px; }
+}
+@media (max-width: 639px) { .orders-kanban-column { flex-basis: max(280px, calc(100% - 24px)); } }
+@media (prefers-reduced-motion: reduce) { .orders-kanban-card, .orders-card-action { transition: none; animation: none; } .orders-kanban-card:hover { transform: none; } .orders-kanban-skeleton { animation: none; } }

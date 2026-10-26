@@ -111,6 +111,7 @@ describe('visões de Pedidos', () => {
     const archived = tab === 'ARCHIVED';
     mocks.getOrders.mockResolvedValue([order(tab === 'CANCELLED' ? 'CANCELLED' : 'DELIVERED', archived ? { archivedAt: new Date().toISOString() } : {})]);
     await render(tab);
+    if (!archived) await click(button('Lista'));
     expect(button('Lista').getAttribute('aria-pressed')).toBe('true');
     expect(container.querySelector('tbody')?.textContent).toContain('Cliente Teste');
     await click(container.querySelector('tbody tr')!);
@@ -118,13 +119,14 @@ describe('visões de Pedidos', () => {
     expect(button(action)).toBeDefined(); await click(button(action));
     expect(mocks.archiveOrders).toHaveBeenCalledWith(['order-1'], !archived);
     await render('ALL');
+    await click(button('Kanban'));
     expect(button('Kanban').getAttribute('aria-pressed')).toBe('true');
     expect(localStorage.getItem(VIEW_KEY)).toBe('kanban');
   });
 
   it('restringe o arquivamento no painel ao dono/gerente e a pedidos encerrados', async () => {
     mocks.auth.activeRole = 'CASHIER';
-    mocks.getOrders.mockResolvedValue([order('CANCELLED')]); await render('CANCELLED');
+    mocks.getOrders.mockResolvedValue([order('CANCELLED')]); await render('CANCELLED'); await click(button('Lista'));
     await click(container.querySelector('tbody tr')!);
     expect(button('Arquivar')).toBeUndefined();
     expect(button('Desarquivar')).toBeUndefined();
@@ -203,5 +205,141 @@ describe('chamadas de entregador na tela de Pedidos', () => {
     mocks.offerRows = [{ ...offered(), status }]; await act(async () => mocks.offersChanged());
     expect(mocks.showToast).toHaveBeenCalledWith(expect.objectContaining({ title: status === 'DECLINED' ? 'Entregador recusou' : 'Entregador não respondeu' }));
     expect(container.textContent).toContain('Chamar outro');
+  });
+});
+
+describe('novo visual do Kanban', () => {
+  const input = async (element: HTMLInputElement, value: string) => {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(element, value);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const cards = () => Array.from(container.querySelectorAll('.orders-kanban-card'));
+
+  it('mantém as cinco colunas vazias com as cores e tints solicitados', async () => {
+    mocks.getOrders.mockResolvedValue([]); await render();
+    const themes = [['waiting', '#ef4444', '#fdecec'], ['production', '#f97316', '#fef1e7'], ['ready', '#a855f7', '#f6eefe'], ['delivered', '#16a34a', '#e8f6ed'], ['cancelled', '#6b7280', '#f0f1f2']];
+    for (const [column, color, tint] of themes) {
+      const lane = container.querySelector<HTMLElement>(`[data-column="${column}"]`)!;
+      const swatch = document.createElement('span'); swatch.style.backgroundColor = tint;
+      expect(lane.style.backgroundColor).toBe(swatch.style.backgroundColor);
+      swatch.style.backgroundColor = color;
+      expect(lane.querySelector<HTMLElement>('header')!.style.backgroundColor).toBe(swatch.style.backgroundColor);
+      expect(lane.textContent).toContain('Qtd: 0 · Total: R$');
+      expect(lane.textContent).toContain('NENHUM PEDIDO');
+    }
+    expect(container.querySelectorAll('[data-column]')).toHaveLength(5);
+  });
+
+  it('conta e totaliza somente pedidos visíveis, incluindo cancelados e sem expor pagamento online pendente', async () => {
+    mocks.getOrders.mockResolvedValue([
+      order('PENDING', { id: 'a', totalAmount: 10.1 }), order('CONFIRMED', { id: 'b', totalAmount: 20.2 }),
+      order('READY', { id: 'c', totalAmount: 45.9 }), order('OUT_FOR_DELIVERY', { id: 'd', totalAmount: 12.3 }),
+      order('CANCELLED', { id: 'e' }), order('DELIVERED', { id: 'f' }),
+      order('PENDING', { id: 'hidden', totalAmount: 999, awaitingOnlinePayment: true }),
+      order('DELIVERED', { id: 'archived', archivedAt: new Date().toISOString() }),
+    ]);
+    await render();
+    expect(cards()).toHaveLength(6);
+    expect(container.querySelector('[data-column="waiting"] header')?.textContent).toContain('Qtd: 2 · Total: R$ 30,30');
+    expect(container.querySelector('[data-column="ready"] header')?.textContent).toContain('Qtd: 2 · Total: R$ 58,20');
+    expect(container.querySelector('[data-testid="order-card-hidden"]')).toBeNull();
+    expect(container.querySelector('[data-testid="order-card-archived"]')).toBeNull();
+    await click(container.querySelector('[data-column="cancelled"] [aria-label="Arquivar pedido"]')!);
+    expect(mocks.archiveOrders).toHaveBeenCalledWith(['e'], true);
+  });
+
+  it('busca por número, nome e telefone sem aceitar nomes inexistentes', async () => {
+    mocks.getOrders.mockResolvedValue([
+      order('PREPARING', { id: 'ana', customerName: 'Ana', orderNumber: 42, customerPhone: '(11) 91234-5678' }),
+      order('READY', { id: 'bia', customerName: 'Bia', orderNumber: 99, customerPhone: '(21) 98888-7777' }),
+    ]);
+    await render(); const search = container.querySelector<HTMLInputElement>('[aria-label="Buscar pedidos"]')!;
+    for (const [query, expected] of [['Ana', 'ana'], ['#99', 'bia'], ['2198888', 'bia']]) {
+      await input(search, query); expect(cards()).toHaveLength(1); expect(cards()[0].getAttribute('data-testid')).toBe(`order-card-${expected}`);
+    }
+    await input(search, 'Inexistente'); expect(cards()).toHaveLength(0);
+    expect(container.querySelectorAll('[data-column]')).toHaveLength(5);
+    await click(container.querySelector('[aria-label="Limpar busca"]')!); expect(cards()).toHaveLength(2);
+  });
+
+  it('filtra Hoje, Ontem, 7 dias e o seletor existente em Mais', async () => {
+    const today = new Date(); today.setHours(12, 0, 0, 0);
+    const ago = (days: number) => { const date = new Date(today); date.setDate(date.getDate() - days); return date.toISOString(); };
+    mocks.getOrders.mockResolvedValue([0, 1, 6, 8].map(days => order('PREPARING', { id: `day-${days}`, createdAt: ago(days) })));
+    await render(); expect(cards()).toHaveLength(1);
+    await click(button('Ontem')); expect(cards()).toHaveLength(1); expect(cards()[0].getAttribute('data-testid')).toBe('order-card-day-1');
+    await click(button('7 dias')); expect(cards()).toHaveLength(3);
+    const period = container.querySelector<HTMLSelectElement>('[aria-label="Selecionar período"]')!;
+    await act(async () => { period.value = 'ALL'; period.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(cards()).toHaveLength(4);
+  });
+
+  it('mantém o badge de aceite na coluna saiu/pronto e permite cancelar a chamada', async () => {
+    mocks.getOrders.mockResolvedValue([order('READY')]);
+    mocks.offerRows = [{ id: 'offer-1', order_id: 'order-1', status: 'OFFERED', expires_at: new Date(Date.now() + 60000).toISOString() }];
+    await render();
+    const lane = container.querySelector('[data-column="ready"]')!;
+    expect(lane.querySelector('[data-testid="driver-offer-strip"]')?.textContent).toContain('Aguardando aceite do entregador');
+    expect(lane.querySelector('[role="timer"]')).not.toBeNull();
+    expect(lane.querySelector('[data-testid="card-call-driver"]')).toBeNull();
+    await click(button('Cancelar chamada'));
+    expect(mocks.cancelOffer).toHaveBeenCalledWith('offer-1');
+  });
+
+  it('entregador que aceitou abre os detalhes e a validação do código sem criar nova oferta', async () => {
+    mocks.getOrders.mockResolvedValue([order('WAITING_FOR_DRIVER', { driverId: 'driver-1', driverAcceptedAt: new Date().toISOString() })]);
+    await render();
+    const card = container.querySelector('.orders-kanban-card')!;
+    expect(card.textContent).toContain('Entregador a caminho da loja');
+    await click(card.querySelector('.orders-card-action')!);
+    expect(container.querySelector('[data-testid="pickup-code"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="handoff-pickup"]')).not.toBeNull();
+    expect(mocks.offer).not.toHaveBeenCalled(); expect(mocks.updateStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe('atalhos visuais no card', () => {
+  it('preserva impressão, chat com ponto de não lido e arquivamento como ações separadas', async () => {
+    const ready = order('WAITING_FOR_DRIVER', { driverId: 'driver-1', driverAcceptedAt: new Date().toISOString() });
+    const onPrint = vi.fn(), onOpenChat = vi.fn(), onSelectOrder = vi.fn(), onArchive = vi.fn();
+    const props = { onPrint, onOpenChat, onSelectOrder, onArchive, onUpdateStatus: vi.fn(), onAssignDriverClick: vi.fn() };
+    await act(async () => { root.render(<KanbanOrderCard order={ready} unreadChat {...props} />); });
+    expect(container.querySelector('[data-testid="unread-chat-dot"]')).not.toBeNull();
+    await click(container.querySelector('[aria-label="Abrir chat com o entregador"]')!);
+    expect(onOpenChat).toHaveBeenCalledWith(ready); expect(onSelectOrder).not.toHaveBeenCalled();
+    await click(container.querySelector('[aria-label="Imprimir pedido"]')!);
+    expect(onPrint).toHaveBeenCalledWith(ready); expect(onSelectOrder).not.toHaveBeenCalled();
+    const cancelled = order('CANCELLED');
+    await act(async () => { root.render(<KanbanOrderCard order={cancelled} {...props} />); });
+    await click(container.querySelector('[aria-label="Arquivar pedido"]')!);
+    expect(onArchive).toHaveBeenCalledWith(cancelled);
+  });
+});
+
+describe('arrastar no Kanban', () => {
+  const drop = async (column: string, id: string) => {
+    const lane = container.querySelector(`[data-column="${column}"]`)!;
+    const event = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', { value: { getData: () => id } });
+    await act(async () => { lane.dispatchEvent(event); });
+  };
+
+  it('não volta etapas nem conclui delivery sem passar pelo entregador', async () => {
+    mocks.getOrders.mockResolvedValue([order('PREPARING', { id: 'prep' }), order('READY', { id: 'ready', fulfillmentType: 'DELIVERY' })]);
+    await render();
+    await drop('waiting', 'prep');
+    await drop('delivered', 'ready');
+    expect(mocks.updateStatus).not.toHaveBeenCalled();
+    expect(mocks.showToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Movimento não permitido' }));
+    expect(mocks.showToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Despacho pendente' }));
+  });
+
+  it('continua avançando etapas pelo arraste', async () => {
+    mocks.getOrders.mockResolvedValue([order('PREPARING', { id: 'prep' })]);
+    await render();
+    await drop('ready', 'prep');
+    expect(mocks.updateStatus).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'prep', 'READY', undefined, 'PREPARING');
   });
 });

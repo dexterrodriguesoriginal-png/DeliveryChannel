@@ -1,21 +1,16 @@
 import React from 'react';
-import type { OrderStatus } from '../../types';
-import { ORDER_STATUS_THEME } from '../../utils/orderStatusTheme';
-import { statusChip } from '../../lib/orders/statusChip';
-import { StatusIconByKey } from './StatusIcon';
+import { formatBRL } from '../../lib/pricing/money';
+import { KANBAN_COLUMN_THEME, type KanbanColumn } from './ordersKanban';
 
-/** 19/10: cabeçalho da coluna do kanban no mesmo padrão KDS dos cards (ícone, título, contador e borda). */
-export const KanbanColumnHeader: React.FC<{ status: OrderStatus; label: string; count: number }> = ({ status, label, count }) => {
-  const t = ORDER_STATUS_THEME[status];
+export const KanbanColumnHeader: React.FC<{ column: KanbanColumn; count: number; total: number }> = ({ column, count, total }) => {
+  const theme = KANBAN_COLUMN_THEME[column];
   return (
-    <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b-2" style={{ borderColor: t.border }} data-testid={`kanban-col-${status}`}>
-      <div className="flex items-center gap-1.5">
-        <span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: t.badgeBg, color: t.accent }}>
-          <StatusIconByKey icon={statusChip(status).icon} className="w-3 h-3" />
-        </span>
-        <h3 className="font-extrabold text-[11px] uppercase" style={{ color: t.text }}>{label}</h3>
-        <span className="text-[11px] font-black px-1.5 rounded-full tabular-nums border" style={{ backgroundColor: t.badgeBg, color: t.badgeText, borderColor: t.badgeBorder }}>{count}</span>
+    <header className="orders-kanban-header" style={{ backgroundColor: theme.color }} data-testid={`kanban-col-${column}`}>
+      <div className="flex items-center justify-center gap-2">
+        <h3 className="text-[13px] font-bold tracking-wide">{theme.label}</h3>
+        <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold tabular-nums" aria-label={`${count} pedidos`}>{count}</span>
       </div>
-    </div>
+      <p className="mt-1 text-center text-[11px] font-normal text-white/90 tabular-nums">Qtd: {count} · Total: {formatBRL(total)}</p>
+    </header>
   );
 };

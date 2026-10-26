@@ -5,9 +5,10 @@ import { visibleStaffOrders } from '../../lib/orders/onlinePaymentGate';
 import { OnlineOrderPaymentPanel } from '../../components/client/OnlineOrderPaymentPanel';
 import { OnlinePaymentBadge } from '../../components/establishment/OnlinePaymentBadge';
 import { OrderChat } from '../../components/chat/OrderChat';
-import { dispatchChatRepository, QueueDriver, DispatchMode } from '../../repositories/dispatchChatRepository';
+import { dispatchChatRepository, QueueDriver, DispatchMode, type OwnerNotification } from '../../repositories/dispatchChatRepository';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { KanbanColumnHeader } from '../../components/establishment/KanbanColumnHeader';
+import { OrdersKanban } from '../../components/establishment/OrdersKanban';
+import { isDateInOrdersPeriod, matchesOrderSearch, KANBAN_COLUMNS, kanbanColumnForStatus, type OrdersPeriod } from '../../components/establishment/ordersKanban';
 import { ArrivalQueuePanel } from '../../components/pickup/ArrivalQueuePanel';
 import { PickupHandoverModal } from '../../components/pickup/PickupHandoverModal';
 import { arrivalRepository } from '../../repositories/arrivalRepository';
@@ -21,7 +22,6 @@ import { isN1N6Backend, N1N6_ONLY_MESSAGE } from '../../lib/backendSchema';
 import { rpcErrorMessage } from '../../lib/rpcErrors';
 import { driverInviteRepository } from '../../repositories/driverRepository';
 import { productRepository } from '../../repositories/productRepository';
-import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -30,50 +30,11 @@ import { playNewOrderSound } from '../../utils/audio';
 import { ThermalReceiptModal } from '../../components/establishment/ThermalReceiptModal';
 import { PDVModal } from '../../components/establishment/PDVModal';
 import { KanbanOrderCard } from '../../components/establishment/KanbanOrderCard';
-import { OrderStatusChip, StatusIconByKey } from '../../components/establishment/StatusIcon';
+import { OrderStatusChip } from '../../components/establishment/StatusIcon';
 import { SlaTimerChip } from '../../components/establishment/SlaTimerChip';
 import { useNewOrderAlarm } from '../../lib/orders/newOrderAlarm';
 import { ORDER_STATUS_THEME, DELAYED_PREPARING_THEME, checkIsPreparingDelayed, orderActionButtonStyle } from '../../utils/orderStatusTheme';
-import { 
-  ShoppingBag, 
-  Bike, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle, 
-  Phone, 
-  MapPin, 
-  FileText, 
-  User, 
-  RefreshCw, 
-  Search, 
-  X, 
-  ChevronRight, 
-  ChevronUp,
-  ChevronDown,
-  AlertTriangle, 
-  Printer, 
-  Plus, 
-  Bell, 
-  Truck, 
-  DollarSign, 
-  MessageSquare, 
-  Layers, 
-  List, 
-  Volume2, 
-  VolumeX, 
-  Flame, 
-  Building2,
-  Calendar,
-  Check,
-  UtensilsCrossed,
-  Package,
-  XCircle,
-  ClipboardCheck,
-  CheckCheck,
-  MoreVertical,
-  SlidersHorizontal,
-  FileSpreadsheet
-} from 'lucide-react';
+import { ShoppingBag, Bike, Clock, Phone, FileText, User, RefreshCw, Search, X, ChevronRight, ChevronDown, AlertTriangle, Printer, Plus, DollarSign, MessageSquare, Layers, List, Volume2, VolumeX, Building2, Check, UtensilsCrossed, MoreVertical, SlidersHorizontal } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { assignableDrivers, canAssignDrivers } from '../../lib/driverAdmin';
 import { useModules } from '../../hooks/useModules';
@@ -178,7 +139,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   // Tempo de Preparo da loja (min) para o semáforo/atraso; padrão 25 (lib/orders/sla)
   const prepMinutes = activeTenant?.settings?.defaultPrepTimeMinutes;
 
-  // Filtros (Padrão: 'ALL' como no print, onde o pill "Todos 12" fica verde)
+  // Filtros de apresentação, sem alterar o gate de pagamento.
   const [internalActiveTab, setInternalActiveTab] = useState<string>('ALL');
   const activeTab = requestedTab === undefined
     ? internalActiveTab
@@ -191,14 +152,14 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     onTabChange?.(tab);
   };
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [filterFulfillment, setFilterFulfillment] = useState<'ALL' | FulfillmentTab>('DELIVERY');
+  const [filterFulfillment, setFilterFulfillment] = useState<'ALL' | FulfillmentTab>('ALL');
   const [filterDriver, setFilterDriver] = useState<'ALL' | 'WITH_DRIVER' | 'WITHOUT_DRIVER'>('ALL');
-  const [filterPeriod, setFilterPeriod] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | '7D' | '30D'>('ALL');
+  const [filterPeriod, setFilterPeriod] = useState<OrdersPeriod>('TODAY');
 
   // COMANDO 135: Painel de controles recolhível (Busca, filtros, abas, modos, legenda)
   const [isControlsCollapsed, setIsControlsCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('adegafood_orders_controls_collapsed') === 'true';
+      return localStorage.getItem('adegafood_orders_controls_collapsed') !== 'false';
     } catch {
       return false;
     }
@@ -217,6 +178,37 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   // Pedido selecionado para Drawer lateral acoplado (como no print)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [drawerTab, setDrawerTab] = useState<'detalhes' | 'historico' | 'acoes'>('detalhes');
+
+  const [unreadMessages, setUnreadMessages] = useState<OwnerNotification[]>([]);
+  useEffect(() => {
+    setUnreadMessages([]);
+    if (!activeTenant?.id || !supabaseUser?.id || !['OWNER', 'MANAGER'].includes(activeRole || '')) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const rows = await dispatchChatRepository.notifications(activeTenant.id);
+        if (alive) setUnreadMessages(rows.filter(n => n.kind === 'ORDER_MESSAGE' && !n.read_at));
+      } catch { /* O sino existente continua responsável pelos erros das notificações. */ }
+    };
+    const channel = supabase.channel(`orders-chat-indicators:${activeTenant.id}:${supabaseUser.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'owner_notifications', filter: `tenant_id=eq.${activeTenant.id}` }, () => { void load(); })
+      .subscribe(() => { void load(); });
+    void load();
+    const timer = window.setInterval(load, 15000);
+    return () => { alive = false; window.clearInterval(timer); void supabase.removeChannel(channel); };
+  }, [activeTenant?.id, supabaseUser?.id, activeRole]);
+  const openOrderChat = (order: Order) => {
+    if (!activeTenant) return;
+    sessionStorage.setItem(`dc:focus-chat:${activeTenant.id}`, order.id);
+    setSelectedOrder(order);
+    setDrawerTab('detalhes');
+    window.dispatchEvent(new CustomEvent('dc:open-chat', { detail: order.id }));
+    for (const notification of unreadMessages.filter(n => n.ref_id === order.id)) {
+      void dispatchChatRepository.read(activeTenant.id, notification.id).then(() => {
+        setUnreadMessages(rows => rows.filter(n => n.id !== notification.id));
+      }).catch(() => { /* Não retirar o ponto até confirmar a leitura. */ });
+    }
+  };
 
   // Impressão Térmica 80mm & Frente de Caixa PDV
   const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
@@ -324,12 +316,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       }
       setSelectedOrder(prev => {
         if (focused) return focused;
-        if (!prev) {
-          // 19/10: no celular o detalhe cobre a tela inteira; só abre sozinho em telas largas.
-          const wide = typeof window === 'undefined' || typeof window.matchMedia !== 'function'
-            || window.matchMedia('(min-width: 1024px)').matches;
-          return wide ? (ordersWithTableLabels.find(o => matchesOrderStatusTab(o, activeTabRef.current)) || null) : null;
-        }
+        // O quadro abre completo; detalhes aparecem ao selecionar um pedido ou aviso.
+        if (!prev) return null;
         const updated = ordersWithTableLabels.find(o => o.id === prev.id);
         if (updated && !matchesOrderStatusTab(updated, activeTabRef.current)) return null;
         return updated || null;
@@ -475,6 +463,17 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       setCancellingOrder(targetOrder);
       return;
     }
+    // Kanban: arrastar só avança etapas; voltar exige a ação explícita no detalhe.
+    const columnRank = KANBAN_COLUMNS.indexOf(kanbanColumnForStatus(targetStatus));
+    if (columnRank < KANBAN_COLUMNS.indexOf(kanbanColumnForStatus(targetOrder.status))) {
+      showToast({ type: 'warning', title: 'Movimento não permitido', message: 'Arraste o pedido apenas para a próxima etapa.' });
+      return;
+    }
+    // Delivery só é entregue depois de sair com o entregador (aceite + código de retirada).
+    if (targetStatus === 'DELIVERED' && targetOrder.fulfillmentType === 'DELIVERY' && targetOrder.status !== 'OUT_FOR_DELIVERY') {
+      showToast({ type: 'warning', title: 'Despacho pendente', message: 'Chame um entregador e confira o código de retirada antes de concluir a entrega.' });
+      return;
+    }
 
     if (targetStatus === 'OUT_FOR_DELIVERY' && !targetOrder.driverId && targetOrder.fulfillmentType !== 'PICKUP') {
       setAssigningOrder(targetOrder);
@@ -615,8 +614,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const allOrders = visibleStaffOrders(remoteOrders || []);
   const unarchivedOrders = allOrders.filter(order => !order.archivedAt);
   const cancelledOrderIds = unarchivedOrders.filter(order => order.status === 'CANCELLED').map(order => order.id);
-  // O Kanban só representa etapas ativas; pedidos encerrados usam a Lista.
-  const effectiveViewMode = ['CANCELLED', 'DELIVERED', 'ARCHIVED'].includes(activeTab) ? 'table' : viewMode;
+  // As cinco colunas incluem encerrados; o histórico arquivado mantém sua Lista.
+  const effectiveViewMode = activeTab === 'ARCHIVED' ? 'table' : viewMode;
   const visibleFulfillmentTabs = visibleFulfillmentTabsFor(isModuleEnabled, allOrders);
   const visibleTabsKey = visibleFulfillmentTabs.join(',');
   useEffect(() => {
@@ -627,34 +626,6 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   }, [visibleTabsKey, filterFulfillment]);
   // 19/10: bipe a cada ~5 s enquanto houver pedido em "Novo" (mesma preferência do Dashboard)
   const newOrderAlarm = useNewOrderAlarm(['OWNER','MANAGER'].includes(activeRole || '') ? 0 : allOrders.filter(o => o.status === 'PENDING').length, { tenant: activeTenant?.id || '', user: supabaseUser?.id || '' });
-
-  // Helper de filtro de período
-  const isDateInPeriod = (dateStr: string, period: string) => {
-    if (period === 'ALL') return true;
-    const date = new Date(dateStr);
-    const now = new Date();
-    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    if (period === 'TODAY') {
-      return date >= todayMidnight;
-    }
-    if (period === 'YESTERDAY') {
-      const yesterdayMidnight = new Date(todayMidnight);
-      yesterdayMidnight.setDate(yesterdayMidnight.getDate() - 1);
-      return date >= yesterdayMidnight && date < todayMidnight;
-    }
-    if (period === '7D') {
-      const sevenDaysAgo = new Date(todayMidnight);
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      return date >= sevenDaysAgo;
-    }
-    if (period === '30D') {
-      const thirtyDaysAgo = new Date(todayMidnight);
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      return date >= thirtyDaysAgo;
-    }
-    return true;
-  };
 
   // Filtragem composta em memória
   const scopedOrders = useMemo(() => {
@@ -674,26 +645,17 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       }
 
       // 4. Filtro de Período
-      if (!isDateInPeriod(order.createdAt, filterPeriod)) {
+      if (!isDateInOrdersPeriod(order.createdAt, filterPeriod)) {
         return false;
       }
 
-      // 5. Busca por número, cliente ou telefone
-      if (searchQuery.trim()) {
-        const query = searchQuery.trim().toLowerCase();
-        const numMatch = order.orderNumber.toString().includes(query) || `#${order.orderNumber}`.includes(query);
-        const nameMatch = (order.customerName || '').toLowerCase().includes(query);
-        const phoneMatch = (order.customerPhone || '').replace(/\D/g, '').includes(query.replace(/\D/g, ''));
-        if (!numMatch && !nameMatch && !phoneMatch) {
-          return false;
-        }
-      }
+      if (!matchesOrderSearch(order, searchQuery)) return false;
 
       return true;
     });
   }, [allOrders, filterFulfillment, filterDriver, filterPeriod, searchQuery]);
 
-  // Contagens exatas dos 7 status + Faturamento hoje (idêntico ao screenshot)
+  // Contadores dos filtros de status.
   const fulfillmentOrders = scopedOrders.filter(order => !order.archivedAt);
   const countNovos = fulfillmentOrders.filter(o => o.status === 'PENDING').length;
   const countConfirmados = fulfillmentOrders.filter(o => o.status === 'CONFIRMED').length;
@@ -703,13 +665,9 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const countEntregues = fulfillmentOrders.filter(o => o.status === 'DELIVERED').length;
   const countCancelados = fulfillmentOrders.filter(o => o.status === 'CANCELLED').length;
 
-  const faturamentoHoje = allOrders
-    .filter(o => o.status === 'DELIVERED')
-    .reduce((acc, cur) => acc + (cur.totalAmount || 0), 0);
-
   // Status pills com contadores
   const statusPills = [
-    { id: 'ALL', label: 'Todos', count: fulfillmentOrders.filter(o => matchesOrderStatusTab(o, 'ALL')).length },
+    { id: 'ALL', label: 'Todos', count: fulfillmentOrders.length },
     { id: 'PENDING', label: 'Novos', count: countNovos },
     { id: 'CONFIRMED', label: 'Confirmados', count: countConfirmados },
     { id: 'PREPARING', label: 'Em preparo', count: countEmPreparo },
@@ -720,7 +678,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     { id: 'ARCHIVED', label: 'Arquivados', count: scopedOrders.filter(o => o.archivedAt).length },
   ];
 
-  const filteredOrders = scopedOrders.filter(order => matchesOrderStatusTab(order, activeTab));
+  const filteredOrders = scopedOrders.filter(order => activeTab === 'ALL' ? !order.archivedAt : matchesOrderStatusTab(order, activeTab));
 
   const staleActiveCount = countStaleActiveOrders(allOrders, lastSyncTime.getTime());
 
@@ -1240,472 +1198,68 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       {/* ========================================================================= */}
       {/* REGIÃO 2: CONTEÚDO OPERACIONAL (TOPO + KANBAN / LISTA)                   */}
       {/* ========================================================================= */}
-      <div className="flex-1 min-w-0 h-full overflow-y-auto flex flex-col scrollbar-thin">
-        {/* TOPO: Cabeçalho, KPIs, Busca, Modos, Densidade, Legenda (COMANDO 125) */}
-        <div className="p-2 sm:p-2.5 pb-1 space-y-1.5 shrink-0">
-          {/* 1. TOPO DA PÁGINA: TÍTULO, SUBTÍTULO, ATUALIZAR E PDV */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
-                  Pedidos
-                </h1>
-                <span className="text-xs sm:text-sm px-3 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200 tabular-nums">
-                  {unarchivedOrders.filter(o => o.status !== 'CANCELLED').length} pedidos ativos
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1 font-normal">
-                Gerencie e acompanhe todos os pedidos do seu estabelecimento.
-              </p>
-            </div>
-
+      <div className="flex-1 min-w-0 h-full min-h-0 overflow-hidden flex flex-col">
+        <header className="shrink-0 border-b border-slate-200/80 bg-white px-3 py-3">
+          <h1 className="sr-only">Pedidos</h1>
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={newOrderAlarm.toggle}
-                data-testid="orders-sound"
-                aria-pressed={newOrderAlarm.enabled && newOrderAlarm.unlocked}
-                title={newOrderAlarm.enabled && newOrderAlarm.unlocked ? 'Som ligado para notificações desta loja. Clique para desligar.' : 'Ativar som das notificações'}
-                className={`h-9 py-2 px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
-                  newOrderAlarm.enabled && newOrderAlarm.unlocked ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-amber-50 border-amber-400 text-amber-900 hover:bg-amber-100'}`}
-              >
-                {newOrderAlarm.enabled && newOrderAlarm.unlocked ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                <span>{newOrderAlarm.enabled && newOrderAlarm.unlocked ? 'Som ligado' : 'Ativar som'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => fetchOrders()}
-                disabled={isRefreshing}
-                className="h-9 py-2 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs sm:text-[13px] font-bold flex items-center gap-2 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-emerald-700' : 'text-slate-500'}`} />
-                <span>Atualizar</span>
-              </button>
-
-              {isModuleEnabled('pos') && (
-                <button
-                  type="button"
-                  onClick={() => setIsPDVOpen(true)}
-                  disabled={!isN1N6Backend()}
-                  title={isN1N6Backend() ? undefined : N1N6_ONLY_MESSAGE}
-                  data-testid="open-pdv"
-                  className="disabled:opacity-50 disabled:cursor-not-allowed h-9 py-2 px-4 rounded-xl bg-[#15803d] hover:bg-[#166534] text-white text-xs sm:text-[13px] font-bold flex items-center gap-2 transition-colors shadow-2xs cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Nova Venda Balcão (PDV)</span>
-                </button>
-              )}
+              <span className="text-[10px] font-semibold tracking-wider text-slate-400">PERÍODO</span>
+              <div className="flex items-center gap-1 rounded-xl bg-[#f1f5f9] p-1" aria-label="Período dos pedidos">
+                {([['TODAY', 'Hoje'], ['YESTERDAY', 'Ontem'], ['7D', '7 dias']] as const).map(([id, label]) => <button key={id} type="button"
+                  aria-pressed={filterPeriod === id} onClick={() => setFilterPeriod(id)}
+                  className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors duration-150 ${filterPeriod === id ? 'bg-[#dc2626] text-white' : 'text-slate-500 hover:bg-white'}`}>{label}</button>)}
+                <details className="relative">
+                  <summary className={`flex cursor-pointer list-none items-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold ${filterPeriod === 'ALL' || filterPeriod === '30D' ? 'bg-[#dc2626] text-white' : 'text-slate-500'}`}>Mais <ChevronDown size={12} /></summary>
+                  <div className="absolute left-0 top-full z-30 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                    <label className="text-xs font-medium text-slate-500">Período
+                      <select aria-label="Selecionar período" value={filterPeriod} onChange={e => setFilterPeriod(e.target.value as OrdersPeriod)} className="mt-2 w-full rounded-lg border border-slate-200 p-2 text-xs text-slate-700">
+                        <option value="ALL">Todos os períodos</option><option value="TODAY">Hoje</option><option value="YESTERDAY">Ontem</option><option value="7D">Últimos 7 dias</option><option value="30D">Últimos 30 dias</option>
+                      </select>
+                    </label>
+                  </div>
+                </details>
+              </div>
+            </div>
+            <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+              <div className="relative min-w-[200px] flex-1 lg:max-w-[290px]">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input aria-label="Buscar pedidos" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Número, nome ou telefone"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-8 text-xs outline-none focus:border-red-400" />
+                {searchQuery && <button type="button" aria-label="Limpar busca" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"><X size={14} /></button>}
+              </div>
+              {([['kanban', 'Kanban', Layers], ['table', 'Lista', List]] as const).map(([id, label, Icon]) => <button key={id} type="button" aria-pressed={effectiveViewMode === id}
+                onClick={() => { setViewMode(id); if (activeTab === 'ARCHIVED' && id === 'kanban') changeActiveTab('ALL'); }}
+                className={`flex h-10 items-center gap-1.5 rounded-xl border bg-white px-3 text-xs font-semibold ${effectiveViewMode === id ? 'border-red-300 text-red-600' : 'border-slate-200 text-slate-600'}`}><Icon size={15} />{label}</button>)}
+              <button type="button" aria-label="Filtros e controles" aria-expanded={!isControlsCollapsed} onClick={toggleControlsCollapsed} className="flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600"><SlidersHorizontal size={15} />Filtros</button>
+              {isModuleEnabled('pos') && <button type="button" data-testid="open-pdv" onClick={() => setIsPDVOpen(true)} disabled={!isN1N6Backend()} title={isN1N6Backend() ? undefined : N1N6_ONLY_MESSAGE}
+                className="flex h-10 items-center gap-1.5 rounded-xl bg-[#dc2626] px-4 text-xs font-bold text-white transition-colors hover:bg-red-700 disabled:opacity-50"><Plus size={16} />NOVO PEDIDO</button>}
             </div>
           </div>
-
-          {/* ========================================================================= */}
-          {/* 2. LINHA DE 8 CARDS DE STATUS / KPIS (ESCALA VISUAL +15% CONFORME COMANDO 127) */}
-          {/* ========================================================================= */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5">
-            {/* 1. Novos */}
-            <button
-              type="button"
-              onClick={() => changeActiveTab(activeTab === 'PENDING' ? 'ALL' : 'PENDING')}
-              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'PENDING' ? 'border-amber-400 ring-1 ring-amber-300' : 'border-slate-200/90 hover:border-slate-300'
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
-                  <Bell className="w-3 h-3" />
-                </div>
-                <span className="text-xs sm:text-[12px] font-bold text-amber-700 truncate">Novos</span>
-              </div>
-              <div className="pt-1.5">
-                <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countNovos}</div>
-                <div className="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 truncate">Aguardando</div>
-              </div>
-            </button>
-
-            {/* 2. Confirmados */}
-            <button
-              type="button"
-              onClick={() => changeActiveTab(activeTab === 'CONFIRMED' ? 'ALL' : 'CONFIRMED')}
-              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'CONFIRMED' ? 'border-amber-400 ring-1 ring-amber-300' : 'border-slate-200/90 hover:border-slate-300'
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                  <ClipboardCheck className="w-3 h-3" />
-                </div>
-                <span className="text-xs sm:text-[12px] font-bold text-amber-600 truncate">Confirmados</span>
-              </div>
-              <div className="pt-1.5">
-                <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countConfirmados}</div>
-                <div className="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 truncate">Aceitos</div>
-              </div>
-            </button>
-
-            {/* 3. Em preparo (AZUL — padrão KDS) */}
-            <button
-              type="button"
-              onClick={() => changeActiveTab(activeTab === 'PREPARING' ? 'ALL' : 'PREPARING')}
-              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'PREPARING' ? 'border-blue-500 ring-1 ring-blue-300' : 'border-slate-200/90 hover:border-slate-300'
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
-                  <Flame className="w-3 h-3" />
-                </div>
-                <span className="text-xs sm:text-[12px] font-bold text-blue-700 truncate">Em preparo</span>
-              </div>
-              <div className="pt-1.5">
-                <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countEmPreparo}</div>
-                <div className="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 truncate">Preparando</div>
-              </div>
-            </button>
-
-            {/* 4. Prontos (VERDE — padrão KDS) */}
-            <button
-              type="button"
-              onClick={() => changeActiveTab(activeTab === 'READY' ? 'ALL' : 'READY')}
-              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'READY' ? 'border-green-400 ring-1 ring-green-300' : 'border-slate-200/90 hover:border-slate-300'
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-green-50 text-green-700 flex items-center justify-center shrink-0">
-                  <ShoppingBag className="w-3 h-3" />
-                </div>
-                <span className="text-xs sm:text-[12px] font-bold text-green-700 truncate">Prontos</span>
-              </div>
-              <div className="pt-1.5">
-                <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countProntos}</div>
-                <div className="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 truncate">Aguard. rota</div>
-              </div>
-            </button>
-
-            {/* 5. Em rota (CIANO — padrão KDS) */}
-            <button
-              type="button"
-              onClick={() => changeActiveTab(activeTab === 'OUT_FOR_DELIVERY' ? 'ALL' : 'OUT_FOR_DELIVERY')}
-              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'OUT_FOR_DELIVERY' ? 'border-cyan-400 ring-1 ring-cyan-300' : 'border-slate-200/90 hover:border-slate-300'
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-cyan-50 text-cyan-700 flex items-center justify-center shrink-0">
-                  <Bike className="w-3 h-3" />
-                </div>
-                <span className="text-xs sm:text-[12px] font-bold text-cyan-700 truncate">Em rota</span>
-              </div>
-              <div className="pt-1.5">
-                <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countEmRota}</div>
-                <div className="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 truncate">Na rua</div>
-              </div>
-            </button>
-
-            {/* 6. Entregues */}
-            <button
-              type="button"
-              onClick={() => changeActiveTab(activeTab === 'DELIVERED' ? 'ALL' : 'DELIVERED')}
-              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'DELIVERED' ? 'border-slate-400 ring-1 ring-slate-300' : 'border-slate-200/90 hover:border-slate-300'
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-slate-50 text-slate-600 flex items-center justify-center shrink-0">
-                  <CheckCheck className="w-3 h-3" />
-                </div>
-                <span className="text-xs sm:text-[12px] font-bold text-slate-700 truncate">Entregues</span>
-              </div>
-              <div className="pt-1.5">
-                <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countEntregues}</div>
-                <div className="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 truncate">Hoje</div>
-              </div>
-            </button>
-
-            {/* 7. Cancelados */}
-            <button
-              type="button"
-              onClick={() => changeActiveTab(activeTab === 'CANCELLED' ? 'ALL' : 'CANCELLED')}
-              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-white ${
-                activeTab === 'CANCELLED' ? 'border-red-400 ring-1 ring-red-300' : 'border-slate-200/90 hover:border-slate-300'
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-                  <XCircle className="w-3 h-3" />
-                </div>
-                <span className="text-xs sm:text-[12px] font-bold text-red-600 truncate">Cancelados</span>
-              </div>
-              <div className="pt-1.5">
-                <div className="text-base sm:text-lg font-black text-slate-900 font-mono leading-none">{countCancelados}</div>
-                <div className="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 truncate">Hoje</div>
-              </div>
-            </button>
-
-            {/* 8. Faturamento hoje */}
-            <div className="p-2.5 rounded-xl border border-slate-200/90 bg-white text-left flex flex-col justify-between">
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                  <DollarSign className="w-3 h-3" />
-                </div>
-                <span className="text-xs sm:text-[12px] font-medium text-slate-500 truncate">Faturamento</span>
-              </div>
-              <div className="pt-1.5">
-                <div className="text-sm sm:text-base font-black text-emerald-700 font-mono leading-none truncate">
-                  {formatBRL(faturamentoHoje)}
-                </div>
-                <div className="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 truncate">Hoje</div>
-              </div>
+          {!isControlsCollapsed && <div className="mt-3 max-h-[35vh] space-y-3 overflow-y-auto border-t border-slate-100 pt-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <select aria-label="Tipo de atendimento" value={filterFulfillment} onChange={e => setFilterFulfillment(e.target.value as 'ALL' | FulfillmentTab)} className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600">
+                <option value="ALL">Todos os atendimentos</option>{visibleFulfillmentTabs.map(id => <option key={id} value={id}>{id === 'DELIVERY' ? 'Delivery' : id === 'PICKUP' ? 'Retirada' : 'Salão'}</option>)}
+              </select>
+              <select aria-label="Filtrar entregador" value={filterDriver} onChange={e => setFilterDriver(e.target.value as typeof filterDriver)} className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600"><option value="ALL">Todos os entregadores</option><option value="WITH_DRIVER">Com entregador</option><option value="WITHOUT_DRIVER">Sem entregador</option></select>
+              <button type="button" data-testid="orders-sound" onClick={newOrderAlarm.toggle} aria-pressed={newOrderAlarm.enabled && newOrderAlarm.unlocked} className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">{newOrderAlarm.enabled && newOrderAlarm.unlocked ? <Volume2 size={14} /> : <VolumeX size={14} />}{newOrderAlarm.enabled && newOrderAlarm.unlocked ? 'Som ligado' : 'Ativar som'}</button>
+              <button type="button" onClick={() => fetchOrders()} disabled={isRefreshing} className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600"><RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />Atualizar</button>
+              <div className="flex items-center gap-2 text-xs text-slate-500"><span>Tamanho:</span><button type="button" aria-label="Diminuir tamanho" disabled={cardScale <= 50} onClick={() => handleStepCardScale(-5)}>−</button><button type="button" title="Redefinir tamanho" onClick={handleResetCardScale}>{cardScale}%</button><button type="button" aria-label="Aumentar tamanho" disabled={cardScale >= 150} onClick={() => handleStepCardScale(5)}>+</button></div>
+              <button type="button" onClick={handleClearFilters} className="ml-auto text-xs font-semibold text-red-600">Limpar filtros</button>
             </div>
-          </div>
-
-          {/* ========================================================================= */}
-          {/* 3. PAINEL DE CONTROLES RECOLHÍVEL (COMANDO 135)                           */}
-          {/* ========================================================================= */}
-          {!isControlsCollapsed ? (
-            <div className="space-y-1.5 transition-all duration-200">
-              <div className="bg-white border border-slate-200/90 rounded-xl p-3 shadow-2xs space-y-2.5">
-                {/* Linha 1: Campo de Busca Full Width (+15%) */}
-                <div className="relative w-full">
-                  <Search className="w-4.5 h-4.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Buscar pedido, cliente ou telefone..."
-                    className="w-full pl-10.5 pr-9 py-2 rounded-xl border border-slate-200 bg-slate-50/40 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-emerald-700 focus:bg-white transition-all h-10 font-normal"
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-full cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Linha 2: Filtros Dropdown à esquerda e Alternador de Modos à direita (+15%) */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  {/* Dropdowns */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <select
-                      value={filterFulfillment}
-                      onChange={(e) => setFilterFulfillment(e.target.value as any)}
-                      className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs sm:text-[12px] font-semibold text-slate-700 outline-none focus:border-emerald-700 h-9 cursor-pointer"
-                    >
-                      <option value="ALL">Tipo: Todos</option>
-                      <option value="DELIVERY">Delivery</option>
-                      <option value="PICKUP">Retirada</option>
-                      <option value="DINE_IN">Salão</option>
-                    </select>
-
-                    <select
-                      value={filterDriver}
-                      onChange={(e) => setFilterDriver(e.target.value as any)}
-                      className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs sm:text-[12px] font-semibold text-slate-700 outline-none focus:border-emerald-700 h-9 cursor-pointer"
-                    >
-                      <option value="ALL">Motorista: Todos</option>
-                      <option value="WITH_DRIVER">Com motorista</option>
-                      <option value="WITHOUT_DRIVER">Sem motorista</option>
-                    </select>
-
-                    <select
-                      value={filterPeriod}
-                      onChange={(e) => setFilterPeriod(e.target.value as any)}
-                      className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs sm:text-[12px] font-semibold text-slate-700 outline-none focus:border-emerald-700 h-9 cursor-pointer"
-                    >
-                      <option value="ALL">Período: Todos</option>
-                      <option value="TODAY">Hoje</option>
-                      <option value="YESTERDAY">Ontem</option>
-                      <option value="7D">Últimos 7 dias</option>
-                      <option value="30D">Últimos 30 dias</option>
-                    </select>
-                  </div>
-
-                  {/* Alternador de Modos: Kanban e Lista */}
-                  <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/80 h-9 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('kanban')}
-                      aria-pressed={effectiveViewMode === 'kanban'}
-                      className={`py-1.5 px-3 rounded-md text-xs sm:text-[12px] font-bold flex items-center gap-1.5 transition-all cursor-pointer h-8 ${
-                        effectiveViewMode === 'kanban'
-                          ? 'bg-emerald-700 text-white shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                      title="Kanban: Fluxo operacional por colunas"
-                    >
-                      <Layers className="w-3.5 h-3.5" />
-                      <span>Kanban</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('table')}
-                      aria-pressed={effectiveViewMode === 'table'}
-                      className={`py-1.5 px-3 rounded-md text-xs sm:text-[12px] font-bold flex items-center gap-1.5 transition-all cursor-pointer h-8 ${
-                        effectiveViewMode === 'table'
-                          ? 'bg-emerald-700 text-white shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                      title="Lista: Controle detalhado, conferência e histórico"
-                    >
-                      <List className="w-3.5 h-3.5" />
-                      <span>Lista</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Abas Entrega | Retirada | Salão, cada qual com contador de pedidos acionáveis. */}
-                <div className="flex items-stretch gap-1.5 pt-2 border-t border-slate-100" role="tablist" data-testid="fulfillment-tabs">
-                  {([['DELIVERY', 'Entrega', Bike], ['PICKUP', 'Retirada', ShoppingBag], ['DINE_IN', 'Salão', UtensilsCrossed]] as const).filter(([id]) => visibleFulfillmentTabs.includes(id)).map(([id, label, Icon]) => {
-                    const c = tabCounts(allOrders, id as FulfillmentTab, prepMinutes);
-                    const tone = tabTone(c);
-                    const toneCls: Record<string, string> = {
-                      red: 'bg-red-600 text-white', amber: 'bg-amber-400 text-amber-950', green: 'bg-green-700 text-white',
-                      blue: 'bg-blue-600 text-white', cyan: 'bg-cyan-600 text-white', neutral: 'bg-slate-200 text-slate-600',
-                    };
-                    const toneText: Record<string, string> = { red: 'atrasado', amber: 'novo', green: 'pronto', blue: 'em preparo', cyan: 'em rota', neutral: 'sem pedidos' };
-                    const isActive = filterFulfillment === id;
-                    return (
-                      <button key={id} type="button" role="tab" aria-selected={isActive} data-testid={`ftab-${id}`} data-tone={tone} data-count={c.acionaveis}
-                        onClick={() => setFilterFulfillment(isActive ? 'ALL' : (id as FulfillmentTab))}
-                        className={`flex-1 sm:flex-none flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 text-[13px] font-black transition-all cursor-pointer ${isActive ? 'bg-white border-emerald-600 shadow-sm text-slate-900' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white'}`}>
-                        <Icon className="w-4 h-4" />
-                        <span>{label}</span>
-                        <span className={`min-w-[1.5rem] text-center text-[11px] px-1.5 py-0.5 rounded-full tabular-nums ${toneCls[tone]}`} title={toneText[tone]}>{c.acionaveis}</span>
-                        {c.atrasado > 0 && <span className="text-[10px] font-bold text-red-700">⚠ {c.atrasado} atrasado{c.atrasado > 1 ? 's' : ''}</span>}
-                        {c.atrasado === 0 && c.novo > 0 && <span className="text-[10px] font-bold text-amber-700">🔔 {c.novo} novo{c.novo > 1 ? 's' : ''}</span>}
-                        {c.atrasado === 0 && c.novo === 0 && c.pronto > 0 && <span className="text-[10px] font-bold text-green-700">✓ {c.pronto} pronto{c.pronto > 1 ? 's' : ''}</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Linha 3: Abas de Status e Tamanho dos Cards (COMANDO 129/130: Todos até Cancelados totalmente visíveis) */}
-                <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100 min-w-0">
-                  {/* Status Pills */}
-                  <div className="flex items-center gap-[3.5px] min-w-0 overflow-x-auto scrollbar-none py-0.5">
-                    {statusPills.map(tab => {
-                      const isActive = activeTab === tab.id;
-                      return (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          onClick={() => changeActiveTab(tab.id)}
-                          className={`flex items-center gap-1 px-[7px] py-0.5 rounded-full text-[10.5px] font-bold whitespace-nowrap transition-all cursor-pointer h-6 shrink-0 ${
-                            isActive
-                              ? 'bg-emerald-700 text-white shadow-2xs'
-                              : 'bg-white border border-slate-200/90 text-slate-700 hover:bg-slate-50'
-                          }`}
-                        >
-                          <span className="whitespace-nowrap">{tab.label}</span>
-                          <span
-                            className={`text-[8.5px] px-1 py-0.1 rounded-full tabular-nums font-bold ${
-                              isActive ? 'bg-white/20 text-white font-black' : 'bg-slate-100 text-slate-500 font-bold'
-                            }`}
-                          >
-                            {tab.count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => changeActiveTab('ALL')}
-                      className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-50 shrink-0 cursor-pointer text-[10px] font-bold"
-                      title="Mais filtros"
-                    >
-                      +
-                    </button>
-                  </div>
-
-                  {/* Recurso Funcional: Tamanho dos cards com (-) e (+) e Porcentagem */}
-                  <div className="flex items-center gap-1.5 shrink-0 bg-slate-50 border border-slate-200/90 px-2 py-0.5 rounded-lg shadow-2xs h-6 whitespace-nowrap ml-auto">
-                    <span className="text-[10px] font-bold text-slate-700 select-none whitespace-nowrap">
-                      Tamanho:
-                    </span>
-                    <div className="flex items-center gap-0.5 whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => handleStepCardScale(-5)}
-                        disabled={cardScale <= 50}
-                        className="w-4.5 h-4.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 text-slate-700 flex items-center justify-center font-black text-xs cursor-pointer shadow-2xs active:scale-95 transition-all"
-                        title="Diminuir tamanho dos cards (-5%)"
-                      >
-                        −
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleResetCardScale}
-                        className="px-1 py-0.2 rounded-md bg-white border border-slate-200 text-slate-800 font-mono font-black text-[10px] hover:border-emerald-500 hover:text-emerald-700 transition-colors shadow-2xs cursor-pointer tabular-nums"
-                        title="Clique para redefinir para 100%"
-                      >
-                        {cardScale}%
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleStepCardScale(5)}
-                        disabled={cardScale >= 150}
-                        className="w-4.5 h-4.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 text-slate-700 flex items-center justify-center font-black text-xs cursor-pointer shadow-2xs active:scale-95 transition-all"
-                        title="Aumentar tamanho dos cards (+5%)"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Legenda Oficial Ultra Discreta: COR = STATUS (+15%) */}
-              <div className="flex items-center gap-3.5 pt-2 text-xs sm:text-[12px] text-slate-600 font-semibold overflow-x-auto scrollbar-none border-t border-slate-100">
-                <span className="text-[11px] uppercase font-bold text-slate-400 tracking-wider shrink-0">Legenda:</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#F59E0B]"></span><StatusIconByKey icon="bell" className="w-3 h-3 text-slate-500" />Novo</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#FCD34D]"></span><StatusIconByKey icon="confirmed" className="w-3 h-3 text-slate-500" />Confirmado</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#2563EB]"></span><StatusIconByKey icon="flame" className="w-3 h-3 text-slate-500" />Preparo</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#15803D]"></span><StatusIconByKey icon="ready" className="w-3 h-3 text-slate-500" />Pronto</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#0891B2]"></span><StatusIconByKey icon="bike" className="w-3 h-3 text-slate-500" />Rota</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#64748B]"></span><StatusIconByKey icon="delivered" className="w-3 h-3 text-slate-500" />Entregue</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#F87171]"></span><StatusIconByKey icon="cancelled" className="w-3 h-3 text-slate-500" />Cancelado</span>
-                <span className="inline-flex items-center gap-1.5 shrink-0"><span className="w-3 h-3 rounded-full bg-[#DC2626]"></span><StatusIconByKey icon="late" className="w-3 h-3 text-slate-500" />Atrasado</span>
-              </div>
-
-              {/* Botão de Recolher Painel (Centralizado na base do painel) */}
-              <div className="flex justify-center pt-0.5">
-                <button
-                  type="button"
-                  onClick={toggleControlsCollapsed}
-                  className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 border border-slate-200/90 text-slate-600 hover:text-slate-900 transition-all cursor-pointer shadow-2xs group"
-                  title="Recolher filtros"
-                  aria-label="Recolher filtros"
-                >
-                  <ChevronUp className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-700 transition-transform group-hover:-translate-y-0.5" />
-                  <span className="text-[10px] font-bold">Recolher filtros</span>
-                </button>
-              </div>
+            <div className="flex flex-wrap items-center gap-1.5" data-testid="fulfillment-tabs" role="tablist" aria-label="Atendimento">
+              {([['DELIVERY', 'Entrega', Bike], ['PICKUP', 'Retirada', ShoppingBag], ['DINE_IN', 'Salão', UtensilsCrossed]] as const).filter(([id]) => visibleFulfillmentTabs.includes(id)).map(([id, label, Icon]) => {
+                const counts = tabCounts(allOrders, id, prepMinutes);
+                return <button type="button" key={id} role="tab" data-testid={`ftab-${id}`} data-tone={tabTone(counts)} data-count={counts.acionaveis} aria-selected={filterFulfillment === id} onClick={() => setFilterFulfillment(filterFulfillment === id ? 'ALL' : id)} className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs ${filterFulfillment === id ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-600'}`}><Icon size={14} />{label} <span>{counts.acionaveis}</span>{counts.atrasado > 0 && <span className="text-red-600">· {counts.atrasado} atrasado(s)</span>}</button>;
+              })}
             </div>
-          ) : (
-            /* Faixa Fina quando Recolhido (24px a 30px) */
-            <div className="pt-0.5 transition-all duration-200">
-              <button
-                type="button"
-                onClick={toggleControlsCollapsed}
-                className="w-full h-7 py-1 px-3 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-lg shadow-2xs flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 transition-all cursor-pointer group"
-                title="Mostrar filtros e controles"
-                aria-label="Mostrar filtros e controles"
-              >
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-700 transition-transform group-hover:translate-y-0.5" />
-                <span className="text-[11px] font-bold tracking-tight">Mostrar filtros e controles</span>
-              </button>
+            <div className="flex flex-wrap items-center gap-1.5" aria-label="Etapas dos pedidos">
+              {statusPills.map(tab => <button type="button" key={tab.id} onClick={() => changeActiveTab(tab.id)} aria-pressed={activeTab === tab.id} className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs ${activeTab === tab.id ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500'}`}>{tab.label} <span>{tab.count}</span></button>)}
             </div>
-          )}
-        </div>
+          </div>}
+        </header>
 
-        {/* ÁREA OPERACIONAL DE PEDIDOS: CARDS / KANBAN / TABELA */}
-        <div className="flex-1 min-w-0 p-2.5 sm:p-3 pt-0.5 space-y-3">
+        {/* ÁREA OPERACIONAL DE PEDIDOS: KANBAN / LISTA */}
+        <div className={`flex flex-1 min-h-0 min-w-0 flex-col gap-3 p-3 ${effectiveViewMode === 'table' ? 'overflow-y-auto' : 'overflow-hidden'}`}>
           {staleActiveCount > 0 && (
             <div data-testid="stale-orders-banner" className="flex items-start gap-2 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-3 py-2 text-[11px]">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
@@ -1750,13 +1304,13 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 Tentar Novamente
               </Button>
             </div>
-          ) : loading ? (
+          ) : loading && effectiveViewMode === 'table' ? (
             <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-3">
               <Skeleton className="h-6 w-1/4 rounded-lg" />
               <Skeleton className="h-10 w-full rounded-xl" />
               <Skeleton className="h-10 w-full rounded-xl" />
             </div>
-          ) : filteredOrders.length === 0 ? (
+          ) : filteredOrders.length === 0 && effectiveViewMode === 'table' ? (
             <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto">
                 <ShoppingBag className="w-6 h-6" />
@@ -1778,163 +1332,17 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           ) : (
             <>
               {/* ========================================================================= */}
-              {/* MODO KANBAN (FLUXO OPERACIONAL - 4 COLUNAS CONFORTÁVEIS COM DRAWER)       */}
+              {/* KANBAN: cinco colunas com rolagem independente. */}
               {/* ========================================================================= */}
-              {effectiveViewMode === 'kanban' && (
-                <div className="w-full overflow-x-auto scrollbar-thin pb-4" style={{ zoom: `${cardScale}%` }}>
-                  <div className="flex items-start gap-2.5 min-w-max">
-                    {/* 1. NOVOS (AMARELO SUAVE) */}
-                    <div 
-                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                      onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); handleKanbanDrop(id, 'PENDING'); }}
-                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0    rounded-xl p-2 flex flex-col min-h-[400px] border-2" style={{ backgroundColor: ORDER_STATUS_THEME.PENDING.drawerBg, borderColor: ORDER_STATUS_THEME.PENDING.border }}
-                    >
-                      <KanbanColumnHeader status="PENDING" label="Novos" count={countNovos} />
-                      <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {filteredOrders.filter(o => o.status === 'PENDING').map(order => (
-                          <KanbanOrderCard
-                            prepMinutes={prepMinutes}
-                            key={order.id}
-                            order={orderForCard(order)}
-                            isSelected={selectedOrder?.id === order.id}
-                            onSelectOrder={(ord) => setSelectedOrder(ord)}
-                            onUpdateStatus={handleUpdateStatus}
-                            onAssignDriverClick={(ord) => {
-                              setAssigningOrder(ord);
-                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
-                              setSelectedDriverUserId(firstAvail);
-                            }}
-                            onCancelClick={(ord) => {
-                              setCancellingOrder(ord);
-                              setCancellationReason('Cliente solicitou cancelamento');
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 2. CONFIRMADOS (AZUL SUAVE) */}
-                    <div 
-                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                      onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); handleKanbanDrop(id, 'CONFIRMED'); }}
-                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0    rounded-xl p-2 flex flex-col min-h-[400px] border-2" style={{ backgroundColor: ORDER_STATUS_THEME.CONFIRMED.drawerBg, borderColor: ORDER_STATUS_THEME.CONFIRMED.border }}
-                    >
-                      <KanbanColumnHeader status="CONFIRMED" label="Confirmados" count={countConfirmados} />
-                      <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {filteredOrders.filter(o => o.status === 'CONFIRMED').map(order => (
-                          <KanbanOrderCard
-                            prepMinutes={prepMinutes}
-                            key={order.id}
-                            order={orderForCard(order)}
-                            isSelected={selectedOrder?.id === order.id}
-                            onSelectOrder={(ord) => setSelectedOrder(ord)}
-                            onUpdateStatus={handleUpdateStatus}
-                            onAssignDriverClick={(ord) => {
-                              setAssigningOrder(ord);
-                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
-                              setSelectedDriverUserId(firstAvail);
-                            }}
-                            onCancelClick={(ord) => {
-                              setCancellingOrder(ord);
-                              setCancellationReason('Cliente solicitou cancelamento');
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 3. EM PREPARO (VERDE SUAVE OFICIAL - COZINHA TRABALHANDO) */}
-                    <div 
-                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                      onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); handleKanbanDrop(id, 'PREPARING'); }}
-                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0    rounded-xl p-2 flex flex-col min-h-[400px] border-2" style={{ backgroundColor: ORDER_STATUS_THEME.PREPARING.drawerBg, borderColor: ORDER_STATUS_THEME.PREPARING.border }}
-                    >
-                      <KanbanColumnHeader status="PREPARING" label="Em preparo" count={countEmPreparo} />
-                      <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {filteredOrders.filter(o => o.status === 'PREPARING').map(order => (
-                          <KanbanOrderCard
-                            prepMinutes={prepMinutes}
-                            key={order.id}
-                            order={orderForCard(order)}
-                            isSelected={selectedOrder?.id === order.id}
-                            onSelectOrder={(ord) => setSelectedOrder(ord)}
-                            onUpdateStatus={handleUpdateStatus}
-                            onAssignDriverClick={(ord) => {
-                              setAssigningOrder(ord);
-                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
-                              setSelectedDriverUserId(firstAvail);
-                            }}
-                            onCancelClick={(ord) => {
-                              setCancellingOrder(ord);
-                              setCancellationReason('Cliente solicitou cancelamento');
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 4. PRONTOS (ROXO SUAVE OFICIAL - COZINHA FINALIZOU) */}
-                    <div 
-                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                      onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); handleKanbanDrop(id, 'READY'); }}
-                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0    rounded-xl p-2 flex flex-col min-h-[400px] border-2" style={{ backgroundColor: ORDER_STATUS_THEME.READY.drawerBg, borderColor: ORDER_STATUS_THEME.READY.border }}
-                    >
-                      <KanbanColumnHeader status="READY" label="Prontos" count={countProntos} />
-                      <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {filteredOrders.filter(o => o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER').map(order => (
-                          <KanbanOrderCard
-                            prepMinutes={prepMinutes}
-                            key={order.id}
-                            order={orderForCard(order)}
-                            isSelected={selectedOrder?.id === order.id}
-                            onSelectOrder={(ord) => setSelectedOrder(ord)}
-                            onUpdateStatus={handleUpdateStatus}
-                            onAssignDriverClick={(ord) => {
-                              setAssigningOrder(ord);
-                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
-                              setSelectedDriverUserId(firstAvail);
-                            }}
-                            onCancelClick={(ord) => {
-                              setCancellingOrder(ord);
-                              setCancellationReason('Cliente solicitou cancelamento');
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 5. EM ROTA (AZUL SUAVE OFICIAL - TRAJETO / ENTREGA) */}
-                    <div 
-                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                      onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); handleKanbanDrop(id, 'OUT_FOR_DELIVERY'); }}
-                      className="w-[195px] sm:w-[205px] xl:w-[215px] shrink-0    rounded-xl p-2 flex flex-col min-h-[400px] border-2" style={{ backgroundColor: ORDER_STATUS_THEME.OUT_FOR_DELIVERY.drawerBg, borderColor: ORDER_STATUS_THEME.OUT_FOR_DELIVERY.border }}
-                    >
-                      <KanbanColumnHeader status="OUT_FOR_DELIVERY" label="Em rota" count={countEmRota} />
-                      <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {filteredOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').map(order => (
-                          <KanbanOrderCard
-                            prepMinutes={prepMinutes}
-                            key={order.id}
-                            order={orderForCard(order)}
-                            isSelected={selectedOrder?.id === order.id}
-                            onSelectOrder={(ord) => setSelectedOrder(ord)}
-                            onUpdateStatus={handleUpdateStatus}
-                            onAssignDriverClick={(ord) => {
-                              setAssigningOrder(ord);
-                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
-                              setSelectedDriverUserId(firstAvail);
-                            }}
-                            onCancelClick={(ord) => {
-                              setCancellingOrder(ord);
-                              setCancellationReason('Cliente solicitou cancelamento');
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {effectiveViewMode === 'kanban' && <OrdersKanban orders={filteredOrders} loading={loading} onDrop={handleKanbanDrop}
+                renderOrder={order => <div key={order.id} style={{ zoom: `${cardScale}%` }}><KanbanOrderCard
+                  order={orderForCard(order)} isSelected={selectedOrder?.id === order.id} prepMinutes={prepMinutes}
+                  onSelectOrder={setSelectedOrder} onUpdateStatus={handleUpdateStatus}
+                  onPrint={setOrderToPrint} onOpenChat={openOrderChat} unreadChat={unreadMessages.some(n => n.ref_id === order.id)}
+                  onArchive={canManageArchive && canArchiveOrder(order) ? ord => { void handleArchive([ord.id], true); } : undefined} archiveBusy={archiveBusy}
+                  onAssignDriverClick={ord => { setAssigningOrder(ord); setSelectedDriverUserId(drivers.find(d => d.status === 'AVAILABLE')?.userId || ''); }}
+                  onCancelClick={ord => { setCancellingOrder(ord); setCancellationReason('Cliente solicitou cancelamento'); }}
+                /></div>} />}
 
               {/* ========================================================================= */}
               {/* MODO LISTA POR STATUS    */}
