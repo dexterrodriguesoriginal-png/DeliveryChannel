@@ -56,6 +56,7 @@ export interface ThemePalette {
 
 export interface TypographyConfig {
   fontFamily: string;
+  headingFontFamily?: string;
   titleWeight: 'normal' | 'medium' | 'semibold' | 'bold' | 'extrabold';
   bodyWeight: 'normal' | 'medium' | 'semibold';
   scale: 'compact' | 'standard' | 'spacious';
@@ -64,6 +65,21 @@ export interface TypographyConfig {
   titleItalic?: boolean;
   letterSpacing?: 'tight' | 'normal' | 'wide';
   lineHeight?: 'tight' | 'normal' | 'relaxed';
+}
+
+export interface LayoutConfig {
+  productLayout: 'grid-2' | 'grid-3' | 'list' | 'list-large-photo' | 'featured-first';
+  photoSize: 'small' | 'medium' | 'large';
+  photoRatio: 'square' | 'landscape' | 'portrait';
+  headerStyle: 'classic' | 'centered-logo' | 'banner-overlay' | 'compact';
+  categoryStyle: 'pill' | 'chip-outline' | 'tabs-underline' | 'icon-cards';
+  density: 'compact' | 'standard' | 'airy';
+}
+
+export interface ThemeMeta {
+  templateId?: string;
+  legacyPresetId?: string;
+  storeDefault?: Omit<ThemeTokens, 'meta'>;
 }
 
 export interface ComponentStyles {
@@ -94,6 +110,8 @@ export interface ThemeTokens {
   };
   typography: TypographyConfig;
   components: ComponentStyles;
+  layout?: LayoutConfig;
+  meta?: ThemeMeta;
 }
 
 export interface PresetTheme {
@@ -101,6 +119,18 @@ export interface PresetTheme {
   name: string;
   category: string;
   description: string;
+  tokens: ThemeTokens;
+}
+
+export interface StoreTemplate {
+  id: string;
+  name: string;
+  segmentId: string;
+  segmentLabel: string;
+  style: string[];
+  mode: 'light' | 'dark';
+  colorFamily: string;
+  shade: string;
   tokens: ThemeTokens;
 }
 

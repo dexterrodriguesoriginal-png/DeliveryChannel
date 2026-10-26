@@ -1,0 +1,280 @@
+/**
+ * Catálogo Oficial dos 150 Modelos de Vitrine DeliveryChannel
+ * Composto deterministicamente através dos 4 eixos do Sistema de Design:
+ * Paleta (150 paletas homologadas) × Layout (10 variações) × Tipografia (8 pares) × Estilo de Componentes (6 acabamentos).
+ *
+ * 100% dos modelos possuem conformidade estrita com WCAG AA, tokens version: 1
+ * e tamanho serializado estritamente inferior a 16 KB.
+ */
+
+import { StoreTemplate, ThemeTokens } from '../../../types/theme';
+import { SEGMENTS } from './segments';
+import {
+  SEGMENT_PALETTES,
+  buildPalette,
+  ColorFamily,
+  NamedPalette,
+} from './palettes';
+import { STORE_LAYOUTS } from './layouts';
+import { TYPE_PAIRS } from './typePairs';
+import { COMPONENT_STYLES } from './componentStyles';
+
+// ============================================================================
+// MAPA DE SEGMENTOS E COORDENAÇÃO DOS EIXOS
+// ============================================================================
+
+const SEGMENT_LABEL_MAP: Record<string, string> = Object.fromEntries(
+  SEGMENTS.map((s) => [s.id, s.label])
+);
+
+/**
+ * Monta os tokens completos de um modelo a partir dos 4 eixos
+ */
+export function assembleTemplateTokens(
+  palette: NamedPalette,
+  variantIndex: number
+): ThemeTokens {
+  const p = buildPalette(palette.base, palette.mode);
+
+  // Seleciona o layout baseado no segmento e no índice do modelo (0 a 5)
+  // Garante diversidade visual rica em cada segmento
+  const layoutIdx = (variantIndex * 2 + (palette.mode === 'dark' ? 1 : 0)) % STORE_LAYOUTS.length;
+  const layout = STORE_LAYOUTS[layoutIdx].config;
+
+  // Seleciona o par tipográfico apropriado
+  const typeIdx = (variantIndex + (palette.segmentId.charCodeAt(0) % 3)) % TYPE_PAIRS.length;
+  const typo = TYPE_PAIRS[typeIdx].config;
+
+  // Seleciona o estilo de componentes (raio de borda e sombra)
+  const compIdx = variantIndex % COMPONENT_STYLES.length;
+  const comp = COMPONENT_STYLES[compIdx].config;
+
+  return {
+    version: 1,
+    palette: p,
+    backgrounds: {
+      general: {
+        type: 'solid',
+        color: p.bgGeneral,
+        gradientStops: 2,
+        positionX: 50,
+        positionY: 50,
+        zoom: 100,
+      },
+      header: {
+        type: 'solid',
+        color: p.bgHeader,
+        gradientStops: 2,
+        positionX: 50,
+        positionY: 50,
+        zoom: 100,
+      },
+      card: {
+        type: 'solid',
+        color: p.bgCard,
+        gradientStops: 2,
+        positionX: 50,
+        positionY: 50,
+        zoom: 100,
+      },
+    },
+    typography: typo,
+    components: comp,
+    layout,
+    meta: {
+      templateId: palette.id,
+    },
+  };
+}
+
+/**
+ * Constrói os 150 modelos oficiais deterministicamente
+ */
+export function buildTemplateCatalog(): StoreTemplate[] {
+  // Acompanhamento do índice por segmento para distribuir eixos uniformemente
+  const segmentCounters: Record<string, number> = {};
+
+  return SEGMENT_PALETTES.map((pal) => {
+    const sId = pal.segmentId;
+    const vIdx = segmentCounters[sId] || 0;
+    segmentCounters[sId] = vIdx + 1;
+
+    const tokens = assembleTemplateTokens(pal, vIdx);
+
+    return {
+      id: pal.id,
+      name: pal.name,
+      segmentId: pal.segmentId,
+      segmentLabel: SEGMENT_LABEL_MAP[pal.segmentId] || pal.segmentId,
+      style: pal.style,
+      mode: pal.mode,
+      colorFamily: pal.colorFamily,
+      shade: pal.shade,
+      tokens,
+    };
+  });
+}
+
+// Catálogo exportado pronto para consumo
+export const TEMPLATES: StoreTemplate[] = buildTemplateCatalog();
+
+// ============================================================================
+// CORES CANÔNICAS PARA VARIANTES RECOLORIDAS
+// ============================================================================
+
+export const CANONICAL_FAMILY_BASES: Record<ColorFamily, { primary: string; secondary: string; accent: string }> = {
+  azul: { primary: '#0369a1', secondary: '#0284c7', accent: '#ea580c' },
+  verde: { primary: '#15803d', secondary: '#166534', accent: '#ca8a04' },
+  amarelo: { primary: '#ca8a04', secondary: '#a16207', accent: '#dc2626' },
+  vermelho: { primary: '#dc2626', secondary: '#b91c1c', accent: '#f59e0b' },
+  roxo: { primary: '#7c3aed', secondary: '#6d28d9', accent: '#ca8a04' },
+  rosa: { primary: '#db2777', secondary: '#be185d', accent: '#ca8a04' },
+  laranja: { primary: '#ea580c', secondary: '#c2410c', accent: '#eab308' },
+  marrom: { primary: '#6b482b', secondary: '#5c3e25', accent: '#ca8a04' },
+  neutros: { primary: '#27272a', secondary: '#3f3f46', accent: '#0284c7' },
+};
+
+/**
+ * Cria uma variante recolorida deterministicamente para combinações não existentes
+ */
+export function createRecoloredTemplate(
+  segmentId: string,
+  colorFamily: ColorFamily,
+  mode: 'light' | 'dark' = 'light'
+): StoreTemplate {
+  const segmentLabel = SEGMENT_LABEL_MAP[segmentId] || segmentId;
+  const canonical = CANONICAL_FAMILY_BASES[colorFamily] || CANONICAL_FAMILY_BASES.azul;
+  const id = `${segmentId}-recolor-${colorFamily}-${mode}`;
+
+  const syntheticPalette: NamedPalette = {
+    id,
+    name: `${segmentLabel} (${colorFamily.charAt(0).toUpperCase() + colorFamily.slice(1)})`,
+    segmentId,
+    colorFamily,
+    shade: `${colorFamily}-personalizado`,
+    style: ['personalizado', mode === 'dark' ? 'escuro' : 'claro', 'harmonioso'],
+    mode,
+    base: {
+      primary: canonical.primary,
+      secondary: canonical.secondary,
+      accent: canonical.accent,
+    },
+  };
+
+  const tokens = assembleTemplateTokens(syntheticPalette, 0);
+
+  return {
+    id,
+    name: syntheticPalette.name,
+    segmentId,
+    segmentLabel,
+    style: syntheticPalette.style,
+    mode,
+    colorFamily,
+    shade: syntheticPalette.shade,
+    tokens,
+  };
+}
+
+// ============================================================================
+// MOTOR DE FILTRAGEM COM VARIANTES INTELIGENTES
+// ============================================================================
+
+export interface TemplateFilterOptions {
+  segment?: string;
+  colorFamily?: string;
+  style?: string;
+  mode?: 'light' | 'dark';
+  q?: string;
+  search?: string;
+}
+
+/**
+ * Filtra templates por múltiplos critérios com geração automática de variante recolorida
+ * para qualquer combinação segmento × colorFamily que não exista nativamente.
+ */
+export function filterTemplates(options: TemplateFilterOptions = {}): StoreTemplate[] {
+  const { segment, colorFamily, style, mode, q, search } = options;
+
+  const normalizedSegment =
+    segment && segment !== 'all' && segment !== 'Todos'
+      ? segment.toLowerCase().trim()
+      : undefined;
+
+  const normalizedColorFamily =
+    colorFamily && colorFamily !== 'all' && colorFamily !== 'Todas'
+      ? (colorFamily.toLowerCase().trim() as ColorFamily)
+      : undefined;
+
+  const normalizedStyle = style ? style.toLowerCase().trim() : undefined;
+  const rawQ = q || search;
+  const normalizedQ = rawQ ? rawQ.toLowerCase().trim() : undefined;
+
+  // Filtragem inicial dos 150 modelos nativos
+  let results = TEMPLATES.filter((tpl) => {
+    // 1. Segmento
+    if (normalizedSegment) {
+      const matchSegment =
+        tpl.segmentId.toLowerCase() === normalizedSegment ||
+        tpl.segmentLabel.toLowerCase() === normalizedSegment;
+      if (!matchSegment) return false;
+    }
+
+    // 2. Família de cor
+    if (normalizedColorFamily) {
+      if (tpl.colorFamily.toLowerCase() !== normalizedColorFamily) return false;
+    }
+
+    // 3. Modo claro/escuro
+    if (mode && tpl.mode !== mode) {
+      return false;
+    }
+
+    // 4. Estilo
+    if (normalizedStyle) {
+      const hasStyle = tpl.style.some((s) => s.toLowerCase().includes(normalizedStyle));
+      if (!hasStyle) return false;
+    }
+
+    // 5. Busca textual livre
+    if (normalizedQ) {
+      const match =
+        tpl.name.toLowerCase().includes(normalizedQ) ||
+        tpl.segmentLabel.toLowerCase().includes(normalizedQ) ||
+        tpl.shade.toLowerCase().includes(normalizedQ) ||
+        tpl.style.some((s) => s.toLowerCase().includes(normalizedQ));
+      if (!match) return false;
+    }
+
+    return true;
+  });
+
+  // Requisito especial: Se houver filtro conjunto por segmento e colorFamily
+  // e nenhuma combinação nativa existir, gera a variante recolorida determinística.
+  if (results.length === 0 && normalizedSegment && normalizedColorFamily) {
+    const validSegment = SEGMENTS.find(
+      (s) => s.id.toLowerCase() === normalizedSegment || s.label.toLowerCase() === normalizedSegment
+    );
+    if (validSegment) {
+      const lightVariant = createRecoloredTemplate(validSegment.id, normalizedColorFamily, 'light');
+      const darkVariant = createRecoloredTemplate(validSegment.id, normalizedColorFamily, 'dark');
+
+      if (!mode) {
+        results = [lightVariant, darkVariant];
+      } else if (mode === 'light') {
+        results = [lightVariant];
+      } else {
+        results = [darkVariant];
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Obtém um modelo de vitrine pelo seu ID único
+ */
+export function getTemplateById(id: string): StoreTemplate | undefined {
+  return TEMPLATES.find((t) => t.id === id);
+}

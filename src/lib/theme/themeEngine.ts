@@ -34,6 +34,7 @@ import {
   BackgroundStyleConfig,
   ComponentStyles,
   ContrastResult,
+  LayoutConfig,
   ThemePalette,
   ThemeTokens,
   TypographyConfig,
@@ -326,6 +327,7 @@ export function resolveFontFamilyCss(fontFamily?: string): string {
 
 export interface ComputedTypographyStyles {
   cssFont: string;
+  headingCssFont: string;
   titleWeight: number;
   bodyWeight: number;
   scaleFactor: number;
@@ -338,6 +340,7 @@ export interface ComputedTypographyStyles {
 
 export function computeTypographyStyles(t?: TypographyConfig): ComputedTypographyStyles {
   const cssFont = resolveFontFamilyCss(t?.fontFamily);
+  const headingCssFont = resolveFontFamilyCss(t?.headingFontFamily || t?.fontFamily);
 
   const titleWeightMap: Record<string, number> = {
     normal: 400,
@@ -380,6 +383,7 @@ export function computeTypographyStyles(t?: TypographyConfig): ComputedTypograph
 
   return {
     cssFont,
+    headingCssFont,
     titleWeight,
     bodyWeight,
     scaleFactor,
@@ -507,6 +511,48 @@ export const DEFAULT_PALETTE: ThemePalette = {
 // CONVERSORES BI-DIRECIONAIS: THEME <-> TOKENS
 // ============================================================================
 
+export const DEFAULT_LAYOUT: LayoutConfig = {
+  productLayout: 'grid-2',
+  photoSize: 'medium',
+  photoRatio: 'square',
+  headerStyle: 'classic',
+  categoryStyle: 'pill',
+  density: 'standard',
+};
+
+export const VALID_PRODUCT_LAYOUTS = new Set(['grid-2', 'grid-3', 'list', 'list-large-photo', 'featured-first']);
+export const VALID_PHOTO_SIZES = new Set(['small', 'medium', 'large']);
+export const VALID_PHOTO_RATIOS = new Set(['square', 'landscape', 'portrait']);
+export const VALID_HEADER_STYLES = new Set(['classic', 'centered-logo', 'banner-overlay', 'compact']);
+export const VALID_CATEGORY_STYLES = new Set(['pill', 'chip-outline', 'tabs-underline', 'icon-cards']);
+export const VALID_DENSITIES = new Set(['compact', 'standard', 'airy']);
+
+export function sanitizeLayoutConfig(raw?: Partial<LayoutConfig> | null): LayoutConfig {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_LAYOUT };
+  }
+  return {
+    productLayout: VALID_PRODUCT_LAYOUTS.has(raw.productLayout as string)
+      ? (raw.productLayout as LayoutConfig['productLayout'])
+      : DEFAULT_LAYOUT.productLayout,
+    photoSize: VALID_PHOTO_SIZES.has(raw.photoSize as string)
+      ? (raw.photoSize as LayoutConfig['photoSize'])
+      : DEFAULT_LAYOUT.photoSize,
+    photoRatio: VALID_PHOTO_RATIOS.has(raw.photoRatio as string)
+      ? (raw.photoRatio as LayoutConfig['photoRatio'])
+      : DEFAULT_LAYOUT.photoRatio,
+    headerStyle: VALID_HEADER_STYLES.has(raw.headerStyle as string)
+      ? (raw.headerStyle as LayoutConfig['headerStyle'])
+      : DEFAULT_LAYOUT.headerStyle,
+    categoryStyle: VALID_CATEGORY_STYLES.has(raw.categoryStyle as string)
+      ? (raw.categoryStyle as LayoutConfig['categoryStyle'])
+      : DEFAULT_LAYOUT.categoryStyle,
+    density: VALID_DENSITIES.has(raw.density as string)
+      ? (raw.density as LayoutConfig['density'])
+      : DEFAULT_LAYOUT.density,
+  };
+}
+
 export function createDefaultThemeTokens(base?: Partial<TenantTheme>): ThemeTokens {
   const primary = base?.primaryColor || DEFAULT_DELIVERY_CHANNEL_THEME.primaryColor;
   const secondary = base?.secondaryColor || DEFAULT_DELIVERY_CHANNEL_THEME.secondaryColor;
@@ -545,6 +591,7 @@ export function createDefaultThemeTokens(base?: Partial<TenantTheme>): ThemeToke
     },
     typography: {
       fontFamily,
+      headingFontFamily: fontFamily,
       titleWeight: 'bold',
       bodyWeight: 'normal',
       scale: 'standard',
@@ -570,6 +617,7 @@ export function createDefaultThemeTokens(base?: Partial<TenantTheme>): ThemeToke
       headerStyle: 'solid',
       categoryStyle: 'solid',
     },
+    layout: { ...DEFAULT_LAYOUT },
   };
 }
 
@@ -623,6 +671,8 @@ export function themeToTokens(theme?: Partial<TenantTheme> | null): ThemeTokens 
 
     const rawTypo = theme.tokens.typography;
     const rawComp = theme.tokens.components;
+    const fontFamily = rawTypo?.fontFamily || 'Inter';
+    const headingFontFamily = rawTypo?.headingFontFamily || fontFamily;
 
     return {
       ...theme.tokens,
@@ -634,7 +684,8 @@ export function themeToTokens(theme?: Partial<TenantTheme> | null): ThemeTokens 
       },
       typography: {
         ...rawTypo,
-        fontFamily: rawTypo?.fontFamily || 'Inter',
+        fontFamily,
+        headingFontFamily,
         titleWeight: rawTypo?.titleWeight || 'bold',
         bodyWeight: rawTypo?.bodyWeight || 'normal',
         scale: rawTypo?.scale || 'standard',
@@ -655,6 +706,8 @@ export function themeToTokens(theme?: Partial<TenantTheme> | null): ThemeTokens 
         headerStyle: rawComp?.headerStyle || 'solid',
         categoryStyle: rawComp?.categoryStyle || 'solid',
       },
+      layout: sanitizeLayoutConfig(theme.tokens.layout),
+      meta: theme.tokens.meta,
     };
   }
   return createDefaultThemeTokens(theme || undefined);
@@ -717,6 +770,13 @@ export function generateCssVariables(tokens: ThemeTokens): Record<string, string
   const cardBorderWidth = resolveCardBorderWidth(c);
   const cardBoxShadow = computeCardBoxShadow(c);
 
+  const headingTypo = computeTypographyStyles({
+    ...tokens.typography,
+    fontFamily: tokens.typography.headingFontFamily || tokens.typography.fontFamily || 'Inter',
+  });
+
+  const layout = tokens.layout || DEFAULT_LAYOUT;
+
   return {
     '--dc-primary': p.primary,
     '--dc-secondary': p.secondary,
@@ -744,6 +804,7 @@ export function generateCssVariables(tokens: ThemeTokens): Record<string, string
     '--dc-card-border-width': `${cardBorderWidth}px`,
     '--dc-card-shadow': cardBoxShadow,
     '--dc-font-family': typo.cssFont,
+    '--dc-heading-font-family': headingTypo.cssFont,
     '--dc-title-weight': String(typo.titleWeight),
     '--dc-body-weight': String(typo.bodyWeight),
     '--dc-font-scale': String(typo.scaleFactor),
@@ -751,5 +812,11 @@ export function generateCssVariables(tokens: ThemeTokens): Record<string, string
     '--dc-title-style': typo.titleFontStyle,
     '--dc-letter-spacing': typo.letterSpacing,
     '--dc-line-height': typo.lineHeight,
+    '--dc-layout-density': layout.density,
+    '--dc-layout-product': layout.productLayout,
+    '--dc-layout-photo-ratio': layout.photoRatio,
+    '--dc-layout-photo-size': layout.photoSize,
+    '--dc-layout-header-style': layout.headerStyle,
+    '--dc-layout-category-style': layout.categoryStyle,
   };
 }

@@ -50,6 +50,7 @@ import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
 import { SAFE_FONT_FAMILIES, themeToTokens, generateCssVariables } from '../../lib/theme/themeEngine';
+import { ThemedProductList } from '../../components/storefront/ThemedProductList';
 import { cartStorageKey } from '../../lib/pwa/storeManifest';
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
@@ -725,23 +726,28 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const activeTokens = useMemo(() => themeToTokens(theme), [theme]);
   const activeCssVars = useMemo(() => generateCssVariables(activeTokens) as React.CSSProperties, [activeTokens]);
 
-  // Carregamento dinâmico de Google Fonts homologadas
+  // Carregamento dinâmico de Google Fonts homologadas (texto corrido e títulos)
   useEffect(() => {
     const fontName = activeTokens.typography.fontFamily || theme.fontFamily || 'Inter';
-    const allowed = SAFE_FONT_FAMILIES.find(f => f.name === fontName || f.id === fontName);
-    if (!allowed || !/^[A-Za-z ]+$/.test(allowed.name)) return; // allow-list only (no arbitrary owner strings in URL)
+    const headingFontName = activeTokens.typography.headingFontFamily || fontName;
+    const fontsToLoad = Array.from(new Set([fontName, headingFontName]));
 
-    const fontSlug = allowed.name.replace(/\s+/g, '+');
-    const linkId = 'dc-dynamic-google-font';
-    let link = document.getElementById(linkId) as HTMLLinkElement | null;
-    if (!link) {
-      link = document.createElement('link');
-      link.id = linkId;
-      link.rel = 'stylesheet';
-      document.head.appendChild(link);
-    }
-    link.href = `https://fonts.googleapis.com/css2?family=${fontSlug}:wght@400;500;600;700;800&display=swap`;
-  }, [activeTokens.typography.fontFamily, theme.fontFamily]);
+    fontsToLoad.forEach((fName, idx) => {
+      const allowed = SAFE_FONT_FAMILIES.find((f) => f.name === fName || f.id === fName);
+      if (!allowed || !/^[A-Za-z ]+$/.test(allowed.name)) return; // allow-list only
+
+      const fontSlug = allowed.name.replace(/\s+/g, '+');
+      const linkId = `dc-dynamic-google-font-${idx}`;
+      let link = document.getElementById(linkId) as HTMLLinkElement | null;
+      if (!link) {
+        link = document.createElement('link');
+        link.id = linkId;
+        link.rel = 'stylesheet';
+        document.head.appendChild(link);
+      }
+      link.href = `https://fonts.googleapis.com/css2?family=${fontSlug}:wght@400;500;600;700;800&display=swap`;
+    });
+  }, [activeTokens.typography.fontFamily, activeTokens.typography.headingFontFamily, theme.fontFamily]);
 
   // --------------------------------------------------------------------------
   // CÁLCULOS DO CARRINHO
@@ -2277,173 +2283,82 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
           {/* Filtro Horizontal de Categorias */}
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            <button
-              onClick={() => setActiveCategory('ALL')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 cursor-pointer transition-all ${
-                activeCategory === 'ALL'
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-              }`}
-              style={{
-                backgroundColor: activeCategory === 'ALL' ? primaryColor : undefined,
-                borderRadius
-              }}
-            >
-              Todos ({storeData.products.length})
-            </button>
-            {storeData.categories.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setActiveCategory(c.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 cursor-pointer transition-all ${
-                  activeCategory === c.id
-                    ? 'bg-emerald-700 text-white shadow-xs'
-                    : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                }`}
-                style={{
-                  backgroundColor: activeCategory === c.id ? primaryColor : undefined,
-                  borderRadius
-                }}
-              >
-                {c.name}
-              </button>
-            ))}
+            {(() => {
+              const catStyle = activeTokens.layout?.categoryStyle || 'pill';
+              const getCatButtonClass = (isSelected: boolean) => {
+                let base = 'px-3 py-1.5 text-xs font-semibold shrink-0 cursor-pointer transition-all border ';
+                if (catStyle === 'pill') {
+                  base += 'rounded-full ';
+                } else if (catStyle === 'chip-outline') {
+                  base += 'rounded-lg ';
+                } else if (catStyle === 'tabs-underline') {
+                  base += 'rounded-none border-t-0 border-x-0 border-b-2 ';
+                } else {
+                  base += 'rounded-xl ';
+                }
+
+                if (isSelected) {
+                  base += 'bg-emerald-700 text-white shadow-xs ';
+                } else {
+                  base += 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 ';
+                }
+                return base;
+              };
+
+              return (
+                <>
+                  <button
+                    onClick={() => setActiveCategory('ALL')}
+                    className={getCatButtonClass(activeCategory === 'ALL')}
+                    style={{
+                      backgroundColor: activeCategory === 'ALL' ? primaryColor : undefined,
+                      borderRadius: catStyle === 'tabs-underline' ? '0' : borderRadius,
+                    }}
+                  >
+                    Todos ({storeData.products.length})
+                  </button>
+                  {storeData.categories.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => setActiveCategory(c.id)}
+                      className={getCatButtonClass(activeCategory === c.id)}
+                      style={{
+                        backgroundColor: activeCategory === c.id ? primaryColor : undefined,
+                        borderRadius: catStyle === 'tabs-underline' ? '0' : borderRadius,
+                      }}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </>
+              );
+            })()}
           </div>
 
           {/* Listagem de Produtos Reais com UUIDs do Banco */}
           <div className="space-y-3 pt-1">
-            {filteredProducts.length === 0 ? (
-              <div className="p-8 text-center bg-white rounded-2xl border border-gray-200 text-gray-400 space-y-1">
-                <p className="font-bold text-gray-600">Nenhum produto encontrado</p>
-                <p className="text-xs">Tente selecionar outra categoria ou buscar por outro termo.</p>
-              </div>
-            ) : (
-              filteredProducts.map((p) => {
-                const inCart = cart.find(i => i.key === cartLineKey(p.id, CATALOG_ORIGIN));
-                const isOutOfStock = p.isAvailable !== undefined ? !p.isAvailable : p.stockQuantity <= 0;
-
-                return (
-                  <div
-                    key={p.id}
-                    id={`product-${p.id}`}
-                    onClick={() => handleSelectProduct(p.id)}
-                    className={`p-3.5 border flex items-center justify-between gap-3 transition-all cursor-pointer ${
-                      highlightedProductId === p.id 
-                        ? 'ring-2 ring-emerald-500 bg-emerald-50/50 shadow-md border-emerald-400' 
-                        : 'border-gray-200/80'
-                    } ${
-                      isOutOfStock ? 'opacity-70' : ''
-                    }`}
-                    style={{
-                      backgroundColor: 'var(--dc-bg-card-color, #ffffff)',
-                      backgroundImage: 'var(--dc-bg-card, none)',
-                      borderRadius: 'var(--dc-card-radius, 1rem)',
-                      boxShadow: 'var(--dc-card-shadow, 0 1px 2px 0 rgba(0, 0, 0, 0.05))',
-                      borderColor: 'var(--dc-border, #e2e8f0)',
-                    }}
-                  >
-                    <div className="space-y-1 min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3
-                          className="font-bold text-sm leading-snug truncate"
-                          style={{ color: 'var(--dc-text-title, #0f172a)' }}
-                        >
-                          {p.name}
-                        </h3>
-                        {isOutOfStock ? (
-                          <Badge variant="danger" size="sm">Esgotado</Badge>
-                        ) : null}
-                      </div>
-
-                      <p
-                        className="text-xs line-clamp-2 leading-relaxed"
-                        style={{ color: 'var(--dc-text-main, #334155)' }}
-                      >
-                        {p.description}
-                      </p>
-
-                      <div className="flex items-baseline gap-2 pt-1">
-                        {p.promotionalPrice && p.promotionalPrice > 0 ? (
-                          <>
-                            <span
-                              className="font-extrabold text-sm font-mono"
-                              style={{ color: 'var(--dc-promo-price, #b91c1c)' }}
-                            >
-                              {formatBRL(p.promotionalPrice)}
-                            </span>
-                            <span className="text-xs text-gray-400 line-through font-mono">
-                              {formatBRL(p.price)}
-                            </span>
-                          </>
-                        ) : (
-                          <span
-                            className="font-extrabold text-sm font-mono"
-                            style={{ color: 'var(--dc-price, var(--dc-primary, #15803d))' }}
-                          >
-                            {formatBRL(p.price)}
-                          </span>
-                        )}
-                        <span className="text-[10px] text-gray-400 font-mono uppercase">/{p.unit || 'un'}</span>
-                      </div>
-                    </div>
-
-                    <div className="relative shrink-0 flex flex-col items-center gap-2">
-                      {p.imageUrl ? (
-                        <img
-                          src={p.imageUrl}
-                          alt={p.name}
-                          className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover border border-gray-100"
-                        />
-                      ) : (
-                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-gray-100 flex items-center justify-center text-gray-300">
-                          <ShoppingBag className="w-8 h-8" />
-                        </div>
-                      )}
-
-                      {isOutOfStock ? (
-                        <span className="text-[10px] font-bold text-gray-400 uppercase py-1">
-                          Indisponível
-                        </span>
-                      ) : inCart ? (
-                        <div className="flex items-center gap-1.5 bg-gray-100 rounded-xl p-1 shadow-2xs">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleRemoveFromCart(cartLineKey(p.id, CATALOG_ORIGIN)); }}
-                            className="w-6 h-6 rounded-lg bg-white flex items-center justify-center text-gray-700 hover:bg-gray-200 cursor-pointer shadow-xs"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="text-xs font-black font-mono px-1">{inCart.quantity}</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleAddToCart(p); }}
-                            className="w-6 h-6 rounded-lg text-white flex items-center justify-center cursor-pointer shadow-xs"
-                            style={{
-                              backgroundColor: 'var(--dc-button-bg, #15803d)',
-                              color: 'var(--dc-button-text, #ffffff)',
-                            }}
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          onClick={(e) => { e.stopPropagation(); handleAddToCart(p); }}
-                          className="text-xs py-1 h-7 rounded-xl px-3 cursor-pointer"
-                          style={{
-                            backgroundColor: 'var(--dc-button-bg, #15803d)',
-                            color: 'var(--dc-button-text, #ffffff)',
-                            borderRadius: 'var(--dc-button-radius, var(--dc-card-radius, 0.75rem))',
-                          }}
-                        >
-                          Adicionar
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
+            <ThemedProductList
+              products={filteredProducts.map((p) => ({
+                id: p.id,
+                name: p.name,
+                description: p.description,
+                price: p.price,
+                promotionalPrice: p.promotionalPrice,
+                imageUrl: p.imageUrl,
+                unit: p.unit,
+                isAvailable: p.isAvailable,
+                stockQuantity: p.stockQuantity,
+              }))}
+              tokens={activeTokens}
+              cartQtyOf={(id) => cart.find((i) => i.key === cartLineKey(id, CATALOG_ORIGIN))?.quantity || 0}
+              onSelectProduct={(item) => handleSelectProduct(item.id)}
+              onAddToCart={(item) => {
+                const prod = storeData.products.find((p) => p.id === item.id);
+                if (prod) handleAddToCart(prod);
+              }}
+              onRemoveFromCart={(item) => removeProductLine(item.id, CATALOG_ORIGIN)}
+              highlightedProductId={highlightedProductId}
+            />
           </div>
         </div>
       )}
