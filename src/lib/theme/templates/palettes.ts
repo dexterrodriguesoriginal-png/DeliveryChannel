@@ -572,7 +572,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
   },
   {
     id: 'acai-violeta-rosa',
-    name: 'Violeta & Frutas Vermelhas',
+    name: 'Frutas Vermelhas & Violeta',
     segmentId: 'acai',
     colorFamily: 'rosa',
     shade: 'magenta-fruta',
@@ -758,7 +758,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
   },
   {
     id: 'peixaria-marinho-coral',
-    name: 'Marinho Oceano & Coral Vivo',
+    name: 'Coral Vivo & Azul Oceano',
     segmentId: 'peixaria',
     colorFamily: 'laranja',
     shade: 'coral',
@@ -934,7 +934,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
   },
   {
     id: 'churrascaria-rubi-madeira',
-    name: 'Rubi Assado & Madeira Nobre',
+    name: 'Madeira Nobre & Rubi Assado',
     segmentId: 'churrascaria',
     colorFamily: 'marrom',
     shade: 'madeira',
@@ -1068,7 +1068,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
   },
   {
     id: 'sorveteria-lavanda-limao',
-    name: 'Lavanda & Limão Siciliano',
+    name: 'Limão Siciliano & Lavanda',
     segmentId: 'sorveteria',
     colorFamily: 'amarelo',
     shade: 'limão-siciliano',
@@ -1192,7 +1192,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
   },
   {
     id: 'saudavel-matcha-terracota',
-    name: 'Verde Matcha & Terracota Leve',
+    name: 'Terracota Leve & Verde Matcha',
     segmentId: 'saudavel',
     colorFamily: 'laranja',
     shade: 'argila-leve',
@@ -1440,7 +1440,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
   },
   {
     id: 'farmacia-azul-menta',
-    name: 'Azul Profundo & Verde Menta',
+    name: 'Verde Menta & Azul Profundo',
     segmentId: 'farmacia',
     colorFamily: 'verde',
     shade: 'menta-suave',

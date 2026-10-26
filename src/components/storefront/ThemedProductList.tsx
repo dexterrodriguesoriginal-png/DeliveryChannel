@@ -11,6 +11,7 @@
  */
 
 import React from 'react';
+import { computeTypographyStyles, getSurfaceBackgroundStyle, resolveCardBorderRadius, resolveCardBorderWidth, computeCardBoxShadow } from '../../lib/theme/themeEngine';
 import { ThemeTokens } from '../../types/theme';
 import { ShoppingBag, Plus, Minus, Star, Flame } from 'lucide-react';
 
@@ -59,6 +60,7 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
   isEmulatorPreview = false,
 }) => {
   const p = tokens.palette;
+  const typo = computeTypographyStyles(tokens.typography);
   const c = tokens.components;
   const layout = tokens.layout || {
     productLayout: 'grid-2',
@@ -94,30 +96,19 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
 
   // Estilo Base do Cartão derivado dos tokens
   const cardStyle: React.CSSProperties = {
-    backgroundColor: 'var(--dc-bg-card-color, #ffffff)',
-    backgroundImage: 'var(--dc-bg-card, none)',
-    borderRadius: 'var(--dc-card-radius, 1rem)',
-    boxShadow: 'var(--dc-card-shadow, 0 1px 2px 0 rgba(0, 0, 0, 0.05))',
-    borderWidth: 'var(--dc-card-border-width, 1px)',
-    borderStyle: 'solid',
-    borderColor: 'var(--dc-border, #e2e8f0)',
+    ...getSurfaceBackgroundStyle(tokens.backgrounds.card, p.bgCard),
+    borderRadius: resolveCardBorderRadius(c), boxShadow: computeCardBoxShadow(c),
+    borderWidth: resolveCardBorderWidth(c), borderStyle: 'solid', borderColor: p.border,
   };
-
   const titleStyle: React.CSSProperties = {
-    color: 'var(--dc-text-title, #0f172a)',
-    fontFamily: 'var(--dc-heading-font-family, var(--dc-font-family, sans-serif))',
-    fontWeight: 'var(--dc-title-weight, 700)',
-    textTransform: (tokens.typography.titleUppercase ? 'uppercase' : 'none') as React.CSSProperties['textTransform'],
-    fontStyle: tokens.typography.titleItalic ? 'italic' : 'normal',
-    letterSpacing: 'var(--dc-letter-spacing, normal)',
-    lineHeight: 'var(--dc-line-height, 1.25)',
+    color: p.textTitle, fontFamily: 'var(--dc-heading-font-family, sans-serif)', fontWeight: typo.titleWeight,
+    textTransform: typo.titleTextTransform, fontStyle: typo.titleFontStyle,
+    letterSpacing: typo.letterSpacing, lineHeight: typo.lineHeight,
   };
-
   const bodyStyle: React.CSSProperties = {
-    color: 'var(--dc-text-main, #334155)',
-    fontFamily: 'var(--dc-font-family, sans-serif)',
-    fontWeight: 'var(--dc-body-weight, 400)',
-    lineHeight: 'var(--dc-line-height, 1.4)',
+    color: p.textMain, fontFamily: typo.cssFont, fontWeight: typo.bodyWeight,
+    textTransform: 'none', fontStyle: 'normal', lineHeight: typo.lineHeight,
+    ...(isEmulatorPreview ? { fontSize: `${Math.round(10 * typo.scaleFactor)}px` } : {}),
   };
 
   // Renderiza um card individual
@@ -140,7 +131,7 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
       return (
         <div
           key={prod.id}
-          id={`product-${prod.id}`}
+          id={isEmulatorPreview ? undefined : `product-${prod.id}`}
           data-testid="preview-product-card"
           data-product-id={prod.id}
           onClick={() => onSelectProduct?.(prod)}
@@ -203,14 +194,14 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
           </div>
 
           {/* Preços e Ações */}
-          <div className="flex items-center justify-between pt-2 mt-auto gap-2">
+          <div className={`flex items-center justify-between pt-2 mt-auto gap-2 ${isEmulatorPreview ? 'flex-wrap' : ''}`}>
             <div className="flex items-baseline gap-1.5 flex-wrap">
               {hasPromo ? (
                 <>
                   <span
                     data-testid="preview-promo-price"
                     className={`font-black font-mono ${densityStyles.priceSize}`}
-                    style={{ color: 'var(--dc-promo-price, #b91c1c)' }}
+                    style={{ color: p.promoPrice }}
                   >
                     {formatDisplayPrice(prod.promotionalPrice!)}
                   </span>
@@ -225,7 +216,7 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
                 <span
                   data-testid="preview-normal-price"
                   className={`font-black font-mono ${densityStyles.priceSize}`}
-                  style={{ color: 'var(--dc-price, var(--dc-primary, #15803d))' }}
+                  style={{ color: p.price }}
                 >
                   {formatDisplayPrice(prod.price)}
                 </span>
@@ -253,13 +244,13 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
                 <span className="text-xs font-black font-mono px-1">{qty}</span>
                 <button
                   type="button"
-                  data-testid="preview-button-add"
+                  data-testid="preview-action-button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onAddToCart?.(prod);
                   }}
                   className="w-6 h-6 rounded-lg text-white flex items-center justify-center cursor-pointer shadow-xs"
-                  style={{ backgroundColor: 'var(--dc-button-bg, #15803d)' }}
+                  style={{ backgroundColor: p.buttonBg, color: p.buttonText }}
                 >
                   <Plus className="w-3 h-3" />
                 </button>
@@ -267,18 +258,18 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
             ) : (
               <button
                 type="button"
-                data-testid="preview-button-add"
+                data-testid="preview-action-button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onAddToCart?.(prod);
                 }}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white cursor-pointer shadow-xs active:scale-95 transition-transform"
+                className={`${isEmulatorPreview ? 'px-2 h-7 gap-1 text-[10px] font-bold' : 'w-7 h-7 sm:w-8 sm:h-8'} rounded-full flex items-center justify-center text-white cursor-pointer shadow-xs active:scale-95 transition-transform`}
                 style={{
-                  backgroundColor: 'var(--dc-button-bg, #15803d)',
+                  backgroundColor: p.buttonBg, color: p.buttonText,
                   borderRadius: c.buttonRadius || 'var(--dc-card-radius, 1rem)',
                 }}
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4" />{isEmulatorPreview ? <span>Adicionar</span> : <span className="sr-only">Adicionar {prod.name}</span>}
               </button>
             )}
           </div>
@@ -299,7 +290,7 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
     return (
       <div
         key={prod.id}
-        id={`product-${prod.id}`}
+        id={isEmulatorPreview ? undefined : `product-${prod.id}`}
         data-testid="preview-product-card"
         data-product-id={prod.id}
         onClick={() => onSelectProduct?.(prod)}
@@ -344,7 +335,7 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
                 <span
                   data-testid="preview-promo-price"
                   className={`font-black font-mono ${densityStyles.priceSize}`}
-                  style={{ color: 'var(--dc-promo-price, #b91c1c)' }}
+                  style={{ color: p.promoPrice }}
                 >
                   {formatDisplayPrice(prod.promotionalPrice!)}
                 </span>
@@ -359,7 +350,7 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
               <span
                 data-testid="preview-normal-price"
                 className={`font-black font-mono ${densityStyles.priceSize}`}
-                style={{ color: 'var(--dc-price, var(--dc-primary, #15803d))' }}
+                style={{ color: p.price }}
               >
                 {formatDisplayPrice(prod.price)}
               </span>
@@ -401,13 +392,13 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
               <span className="text-xs font-black font-mono px-1">{qty}</span>
               <button
                 type="button"
-                data-testid="preview-button-add"
+                data-testid="preview-action-button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onAddToCart?.(prod);
                 }}
                 className="w-6 h-6 rounded-lg text-white flex items-center justify-center cursor-pointer shadow-xs"
-                style={{ backgroundColor: 'var(--dc-button-bg, #15803d)' }}
+                style={{ backgroundColor: p.buttonBg, color: p.buttonText }}
               >
                 <Plus className="w-3 h-3" />
               </button>
@@ -415,14 +406,14 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
           ) : (
             <button
               type="button"
-              data-testid="preview-button-add"
+              data-testid="preview-action-button"
               onClick={(e) => {
                 e.stopPropagation();
                 onAddToCart?.(prod);
               }}
               className="px-2.5 py-1 text-xs font-bold text-white rounded-lg flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-transform"
               style={{
-                backgroundColor: 'var(--dc-button-bg, #15803d)',
+                backgroundColor: p.buttonBg, color: p.buttonText,
                 borderRadius: c.buttonRadius || 'var(--dc-card-radius, 1rem)',
               }}
             >

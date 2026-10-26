@@ -33,10 +33,9 @@ export const themeService = {
       ? { ...current, ...theme }
       : (theme as TenantTheme);
 
-    themesCache.set(tenantId, updated);
-
     // Persiste no Supabase através do tenantRepository
     await tenantRepository.updateTheme(context, tenantId, theme);
+    themesCache.set(tenantId, updated);
     return updated;
   },
 
