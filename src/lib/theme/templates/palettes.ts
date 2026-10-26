@@ -305,7 +305,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'bordô',
     style: ['clássico', 'elegante', 'gastronômico'],
     mode: 'light',
-    base: { primary: '#6d1a2a', secondary: '#991b1b', accent: '#b45309', bg: '#fdfbf7', surface: '#ffffff', text: '#3f0d16' },
+    base: { primary: '#6d1a2a', secondary: '#991b1b', accent: '#b45309', bg: '#faf7f8', surface: '#ffffff', text: '#3f0d16' },
   },
   // 2. Verde-garrafa + Dourado (#1f3d2b / #c9a54a)
   {
@@ -316,7 +316,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'verde-garrafa',
     style: ['sofisticado', 'tradicional', 'nobre'],
     mode: 'light',
-    base: { primary: '#1f3d2b', secondary: '#2e5a3f', accent: '#c9a54a', bg: '#f9fafb', surface: '#ffffff' },
+    base: { primary: '#1f3d2b', secondary: '#2e5a3f', accent: '#c9a54a', bg: '#f1f8f4', surface: '#ffffff' },
   },
   // 3. Grafite + Cobre (#2b2b2e / #b8733f)
   {
@@ -327,7 +327,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'grafite',
     style: ['moderno', 'premium', 'industrial'],
     mode: 'light',
-    base: { primary: '#2b2b2e', secondary: '#404044', accent: '#b8733f', bg: '#f8fafc', surface: '#ffffff' },
+    base: { primary: '#2b2b2e', secondary: '#404044', accent: '#b8733f', bg: '#efeff3', surface: '#ffffff' },
   },
   // 4. Dark Bordô Veludo
   {
@@ -338,7 +338,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'bordô-escuro',
     style: ['escuro', 'noturno', 'luxo'],
     mode: 'dark',
-    base: { primary: '#881324', secondary: '#4c0519', accent: '#d97706', bg: '#0b0c10', surface: '#161821' },
+    base: { primary: '#cb1c36', secondary: '#940a31', accent: '#d97706', bg: '#1f080b', surface: '#161821' },
   },
   // 5. Dark Carvalho Barrica
   {
@@ -349,7 +349,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'carvalho',
     style: ['escuro', 'rústico', 'artesanal'],
     mode: 'dark',
-    base: { primary: '#5c3e25', secondary: '#7a5332', accent: '#f59e0b', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#805734', secondary: '#9e6c41', accent: '#f59e0b', bg: '#130c06', surface: '#1c1917' },
   },
   // 6. Dark Safra Real
   {
@@ -360,7 +360,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'ônix',
     style: ['escuro', 'minimalista', 'premium'],
     mode: 'dark',
-    base: { primary: '#18181b', secondary: '#27272a', accent: '#eab308', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#60606c', secondary: '#717179', accent: '#eab308', bg: '#0b0b0e', surface: '#18181b' },
   },
 
   // --- PADARIA (pães, doces de balcão, café da manhã) ---
@@ -372,7 +372,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'trigo',
     style: ['acolhedor', 'artesanal', 'tradicional'],
     mode: 'light',
-    base: { primary: '#b88708', secondary: '#ca8a04', accent: '#f59e0b', bg: '#fffbeb', surface: '#ffffff' },
+    base: { primary: '#b88708', secondary: '#ca8a04', accent: '#f59e0b', bg: '#faf9f7', surface: '#ffffff' },
   },
   {
     id: 'padaria-caramelo-cafe',
@@ -382,7 +382,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'caramelo',
     style: ['aconchegante', 'artesanal'],
     mode: 'light',
-    base: { primary: '#6b482b', secondary: '#5c3e25', accent: '#ca8a04', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#6b482b', secondary: '#5c3e25', accent: '#ca8a04', bg: '#f8f4f1', surface: '#ffffff' },
   },
   {
     id: 'padaria-azul-bege',
@@ -392,7 +392,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-pastel',
     style: ['francês', 'delicado', 'retrô'],
     mode: 'light',
-    base: { primary: '#0369a1', secondary: '#0284c7', accent: '#d97706', bg: '#f8fafc', surface: '#ffffff' },
+    base: { primary: '#0369a1', secondary: '#0284c7', accent: '#d97706', bg: '#e9f3f9', surface: '#ffffff' },
   },
   {
     id: 'padaria-dark-forno',
@@ -402,7 +402,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'âmbar-escuro',
     style: ['escuro', 'rústico', 'aconchegante'],
     mode: 'dark',
-    base: { primary: '#c2410c', secondary: '#9a3412', accent: '#fbbf24', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#c2410c', secondary: '#9a3412', accent: '#fbbf24', bg: '#1f0e08', surface: '#1c1917' },
   },
   {
     id: 'padaria-dark-confeitaria',
@@ -412,7 +412,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'cacau',
     style: ['escuro', 'sofisticado', 'doce'],
     mode: 'dark',
-    base: { primary: '#5c3e25', secondary: '#7a5332', accent: '#fde047', bg: '#0c0a09', surface: '#1e1b18' },
+    base: { primary: '#936c3b', secondary: '#b08248', accent: '#fde047', bg: '#342109', surface: '#1e1b18' },
   },
   {
     id: 'padaria-dark-espresso',
@@ -422,7 +422,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'café-torrado',
     style: ['escuro', 'urbano', 'moderno'],
     mode: 'dark',
-    base: { primary: '#27272a', secondary: '#3f3f46', accent: '#ea580c', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#64646c', secondary: '#7c7c89', accent: '#ea580c', bg: '#161610', surface: '#18181b' },
   },
 
   // --- HAMBURGUERIA ---
@@ -434,7 +434,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'mostarda',
     style: ['urbano', 'artesanal', 'street'],
     mode: 'light',
-    base: { primary: '#ca8a04', secondary: '#a16207', accent: '#dc2626', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#b18a04', secondary: '#896006', accent: '#dc2626', bg: '#f6f9e9', surface: '#ffffff' },
   },
   {
     id: 'hamburgueria-vermelho-creme',
@@ -444,7 +444,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'vermelho-tomate',
     style: ['vibrante', 'diner', 'apetite'],
     mode: 'light',
-    base: { primary: '#dc2626', secondary: '#b91c1c', accent: '#f59e0b', bg: '#fef2f2', surface: '#ffffff' },
+    base: { primary: '#dc2626', secondary: '#b91c1c', accent: '#f59e0b', bg: '#f8f1f1', surface: '#ffffff' },
   },
   {
     id: 'hamburgueria-laranja-grafite',
@@ -454,7 +454,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'laranja-vibrante',
     style: ['moderno', 'jovem', 'dinâmico'],
     mode: 'light',
-    base: { primary: '#ea580c', secondary: '#c2410c', accent: '#facc15', bg: '#fff7ed', surface: '#ffffff' },
+    base: { primary: '#ea580c', secondary: '#c2410c', accent: '#facc15', bg: '#f9efe9', surface: '#ffffff' },
   },
   {
     id: 'hamburgueria-dark-smash',
@@ -464,7 +464,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'dourado-queijo',
     style: ['escuro', 'industrial', 'street'],
     mode: 'dark',
-    base: { primary: '#eab308', secondary: '#ca8a04', accent: '#ef4444', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#eab308', secondary: '#ca8a04', accent: '#ef4444', bg: '#1f1908', surface: '#18181b' },
   },
   {
     id: 'hamburgueria-dark-bbq',
@@ -474,7 +474,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'brasa-viva',
     style: ['escuro', 'fumê', 'potente'],
     mode: 'dark',
-    base: { primary: '#ef4444', secondary: '#b91c1c', accent: '#f97316', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#f37373', secondary: '#df2929', accent: '#f97316', bg: '#201818', surface: '#1c1917' },
   },
   {
     id: 'hamburgueria-dark-chapa',
@@ -484,7 +484,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'laranja-fogo',
     style: ['escuro', 'street food', 'alta conversão'],
     mode: 'dark',
-    base: { primary: '#f97316', secondary: '#c2410c', accent: '#eab308', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#fa9148', secondary: '#f05211', accent: '#eab308', bg: '#130c06', surface: '#161e2e' },
   },
 
   // --- PIZZARIA ---
@@ -496,7 +496,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'vermelho-tomate',
     style: ['italiana', 'artesanal', 'tradicional'],
     mode: 'light',
-    base: { primary: '#b91c1c', secondary: '#991b1b', accent: '#15803d', bg: '#fef2f2', surface: '#ffffff' },
+    base: { primary: '#b91c1c', secondary: '#991b1b', accent: '#15803d', bg: '#fcebf2', surface: '#ffffff' },
   },
   {
     id: 'pizzaria-terracota-creme',
@@ -506,7 +506,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'terracota',
     style: ['rústico', 'acolhedor', 'napoletano'],
     mode: 'light',
-    base: { primary: '#c2410c', secondary: '#9a3412', accent: '#b45309', bg: '#fff7ed', surface: '#ffffff' },
+    base: { primary: '#f05211', secondary: '#c84317', accent: '#b45309', bg: '#f7f8f1', surface: '#ffffff' },
   },
   {
     id: 'pizzaria-vinho-marfim',
@@ -516,7 +516,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'vinho',
     style: ['clássico', 'sofisticado', 'cantina'],
     mode: 'light',
-    base: { primary: '#881324', secondary: '#4c0519', accent: '#ca8a04', bg: '#fdfbf7', surface: '#ffffff' },
+    base: { primary: '#72101e', secondary: '#340311', accent: '#ca8a04', bg: '#f9e9eb', surface: '#ffffff' },
   },
   {
     id: 'pizzaria-dark-lenha',
@@ -526,7 +526,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'rubi-escuro',
     style: ['escuro', 'gourmet', 'quente'],
     mode: 'dark',
-    base: { primary: '#dc2626', secondary: '#991b1b', accent: '#fbbf24', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#e35252', secondary: '#c42323', accent: '#fbbf24', bg: '#340909', surface: '#1c1917' },
   },
   {
     id: 'pizzaria-dark-napoletana',
@@ -536,7 +536,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'verde-oliva',
     style: ['escuro', 'autêntico', 'italiano'],
     mode: 'dark',
-    base: { primary: '#15803d', secondary: '#166534', accent: '#ef4444', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#15803d', secondary: '#166534', accent: '#ef4444', bg: '#18201b', surface: '#18181b' },
   },
   {
     id: 'pizzaria-dark-crosta',
@@ -546,7 +546,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'dourado',
     style: ['escuro', 'apetitoso', 'moderno'],
     mode: 'dark',
-    base: { primary: '#eab308', secondary: '#ca8a04', accent: '#f97316', bg: '#0b0f17', surface: '#1e293b' },
+    base: { primary: '#eab308', secondary: '#ca8a04', accent: '#f97316', bg: '#342a09', surface: '#1e293b' },
   },
 
   // --- AÇAÍ ---
@@ -558,7 +558,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'açaí-intenso',
     style: ['tropical', 'vibrante', 'saudável'],
     mode: 'light',
-    base: { primary: '#6b21a8', secondary: '#581c87', accent: '#e11d48', bg: '#faf5ff', surface: '#ffffff' },
+    base: { primary: '#6b21a8', secondary: '#581c87', accent: '#e11d48', bg: '#f9f7fa', surface: '#ffffff' },
   },
   {
     id: 'acai-ameixa-lima',
@@ -568,7 +568,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'ameixa',
     style: ['refrescante', 'energético', 'tropical'],
     mode: 'light',
-    base: { primary: '#7e22ce', secondary: '#6b21a8', accent: '#84cc16', bg: '#fbf7ff', surface: '#ffffff' },
+    base: { primary: '#9653d0', secondary: '#843cc0', accent: '#84cc16', bg: '#f5f1f8', surface: '#ffffff' },
   },
   {
     id: 'acai-violeta-rosa',
@@ -578,7 +578,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'magenta-fruta',
     style: ['divertido', 'jovem', 'doce'],
     mode: 'light',
-    base: { primary: '#be185d', secondary: '#9d174d', accent: '#8b5cf6', bg: '#fdf2f8', surface: '#ffffff' },
+    base: { primary: '#be185d', secondary: '#9d174d', accent: '#8b5cf6', bg: '#f9e9f0', surface: '#ffffff' },
   },
   {
     id: 'acai-dark-selva',
@@ -588,7 +588,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'roxo-profundo',
     style: ['escuro', 'premium', 'tropical'],
     mode: 'dark',
-    base: { primary: '#9333ea', secondary: '#7e22ce', accent: '#a3e635', bg: '#0b0712', surface: '#191124' },
+    base: { primary: '#c48ff4', secondary: '#af6fe7', accent: '#a3e635', bg: '#14081f', surface: '#191124' },
   },
   {
     id: 'acai-dark-energia',
@@ -598,7 +598,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'framboesa-neon',
     style: ['escuro', 'vibrante', 'fitness'],
     mode: 'dark',
-    base: { primary: '#ec4899', secondary: '#db2777', accent: '#38bdf8', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#ec4899', secondary: '#db2777', accent: '#38bdf8', bg: '#20181c', surface: '#161e2e' },
   },
   {
     id: 'acai-dark-guarana',
@@ -608,7 +608,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'guaraná-verde',
     style: ['escuro', 'artesanal', 'amazônico'],
     mode: 'dark',
-    base: { primary: '#22c55e', secondary: '#16a34a', accent: '#c084fc', bg: '#090c0a', surface: '#141d17' },
+    base: { primary: '#22c55e', secondary: '#16a34a', accent: '#c084fc', bg: '#06130b', surface: '#141d17' },
   },
 
   // --- MERCADO & HORTIFRÚTI ---
@@ -620,7 +620,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'verde-folha',
     style: ['fresco', 'saudável', 'confiável'],
     mode: 'light',
-    base: { primary: '#15803d', secondary: '#166534', accent: '#f59e0b', bg: '#f0fdf4', surface: '#ffffff' },
+    base: { primary: '#15803d', secondary: '#166534', accent: '#f59e0b', bg: '#f7faf8', surface: '#ffffff' },
   },
   {
     id: 'mercado-verde-amarelo',
@@ -630,7 +630,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'ouro-solar',
     style: ['alegre', 'farto', 'popular'],
     mode: 'light',
-    base: { primary: '#ca8a04', secondary: '#a16207', accent: '#15803d', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#b18a04', secondary: '#896006', accent: '#15803d', bg: '#ebfafc', surface: '#ffffff' },
   },
   {
     id: 'mercado-azul-laranja',
@@ -640,7 +640,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-royal',
     style: ['varejo', 'ofertas', 'dinâmico'],
     mode: 'light',
-    base: { primary: '#1d4ed8', secondary: '#1e40af', accent: '#ea580c', bg: '#eff6ff', surface: '#ffffff' },
+    base: { primary: '#1d4ed8', secondary: '#1e40af', accent: '#ea580c', bg: '#e9edf9', surface: '#ffffff' },
   },
   {
     id: 'mercado-dark-organico',
@@ -650,7 +650,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'verde-floresta',
     style: ['escuro', 'sustentável', 'gourmet'],
     mode: 'dark',
-    base: { primary: '#22c55e', secondary: '#16a34a', accent: '#f59e0b', bg: '#080d09', surface: '#131e15' },
+    base: { primary: '#22c55e', secondary: '#16a34a', accent: '#f59e0b', bg: '#081f10', surface: '#131e15' },
   },
   {
     id: 'mercado-dark-clube',
@@ -660,7 +660,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-petróleo',
     style: ['escuro', 'corporativo', 'atacado'],
     mode: 'dark',
-    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#f97316', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#f97316', bg: '#181e20', surface: '#161e2e' },
   },
   {
     id: 'mercado-dark-prateleira',
@@ -670,7 +670,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'laranja-segurança',
     style: ['escuro', 'ágil', 'prático'],
     mode: 'dark',
-    base: { primary: '#f97316', secondary: '#ea580c', accent: '#4ade80', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#f97316', secondary: '#ea580c', accent: '#4ade80', bg: '#341b09', surface: '#18181b' },
   },
 
   // --- DOCERIA ---
@@ -682,7 +682,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'rosa-pastel',
     style: ['delicado', 'fofo', 'artesanal'],
     mode: 'light',
-    base: { primary: '#db2777', secondary: '#be185d', accent: '#fbbf24', bg: '#fdf2f8', surface: '#ffffff' },
+    base: { primary: '#db2777', secondary: '#be185d', accent: '#fbbf24', bg: '#faf7f8', surface: '#ffffff' },
   },
   {
     id: 'doceria-framboesa-creme',
@@ -692,7 +692,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'framboesa',
     style: ['doce', 'confeitaria', 'sofisticado'],
     mode: 'light',
-    base: { primary: '#e11d48', secondary: '#be123c', accent: '#f43f5e', bg: '#fff1f2', surface: '#ffffff' },
+    base: { primary: '#ca1a2f', secondary: '#a71026', accent: '#f43f5e', bg: '#f9f4e9', surface: '#ffffff' },
   },
   {
     id: 'doceria-pistache-chocolate',
@@ -702,7 +702,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'pistache',
     style: ['patisserie', 'gourmet', 'elegante'],
     mode: 'light',
-    base: { primary: '#15803d', secondary: '#166534', accent: '#b45309', bg: '#f0fdf4', surface: '#ffffff' },
+    base: { primary: '#15803d', secondary: '#166534', accent: '#b45309', bg: '#e9f9ef', surface: '#ffffff' },
   },
   {
     id: 'doceria-dark-cacau',
@@ -712,7 +712,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'cacau-nobre',
     style: ['escuro', 'luxo', 'artesanal'],
     mode: 'dark',
-    base: { primary: '#5c3e25', secondary: '#7a5332', accent: '#f472b6', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#805734', secondary: '#9e6c41', accent: '#f472b6', bg: '#1f0908', surface: '#1c1917' },
   },
   {
     id: 'doceria-dark-velvet',
@@ -722,7 +722,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'cereja-negra',
     style: ['escuro', 'aveludado', 'festa'],
     mode: 'dark',
-    base: { primary: '#e0247d', secondary: '#db2777', accent: '#fde047', bg: '#0b0709', surface: '#191114' },
+    base: { primary: '#ed7db2', secondary: '#ea7eae', accent: '#fde047', bg: '#34091d', surface: '#191114' },
   },
   {
     id: 'doceria-dark-caramelo',
@@ -732,7 +732,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'caramelo-dourado',
     style: ['escuro', 'cremoso', 'boutique'],
     mode: 'dark',
-    base: { primary: '#facc15', secondary: '#eab308', accent: '#fb7185', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#facc15', secondary: '#eab308', accent: '#fb7185', bg: '#13160c', surface: '#18181b' },
   },
 
   // --- PEIXARIA & FRUTOS DO MAR ---
@@ -744,7 +744,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-marinho',
     style: ['oceânico', 'fresco', 'tradicional'],
     mode: 'light',
-    base: { primary: '#0369a1', secondary: '#0284c7', accent: '#d97706', bg: '#f0f9ff', surface: '#ffffff' },
+    base: { primary: '#0369a1', secondary: '#0284c7', accent: '#d97706', bg: '#f3f1f8', surface: '#ffffff' },
   },
   {
     id: 'peixaria-ciano-branco',
@@ -754,7 +754,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'ciano',
     style: ['fresco', 'límpido', 'moderno'],
     mode: 'light',
-    base: { primary: '#0e7490', secondary: '#155e75', accent: '#0284c7', bg: '#ecfeff', surface: '#ffffff' },
+    base: { primary: '#1399be', secondary: '#1d81a0', accent: '#0284c7', bg: '#f1f7f8', surface: '#ffffff' },
   },
   {
     id: 'peixaria-marinho-coral',
@@ -764,7 +764,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'coral',
     style: ['marítimo', 'vibrante', 'gourmet'],
     mode: 'light',
-    base: { primary: '#ea580c', secondary: '#c2410c', accent: '#0284c7', bg: '#fff7ed', surface: '#ffffff' },
+    base: { primary: '#ea580c', secondary: '#c2410c', accent: '#0284c7', bg: '#e9f3f9', surface: '#ffffff' },
   },
   {
     id: 'peixaria-dark-abismo',
@@ -774,7 +774,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'marinho-noite',
     style: ['escuro', 'fresco', 'premium'],
     mode: 'dark',
-    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#fb923c', bg: '#060e17', surface: '#0f1d2e' },
+    base: { primary: '#51c5f9', secondary: '#0295e0', accent: '#fb923c', bg: '#092734', surface: '#0f1d2e' },
   },
   {
     id: 'peixaria-dark-nordica',
@@ -784,7 +784,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'gelo-polar',
     style: ['escuro', 'limpo', 'frio'],
     mode: 'dark',
-    base: { primary: '#27272a', secondary: '#3f3f46', accent: '#38bdf8', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#717179', secondary: '#898995', accent: '#38bdf8', bg: '#191924', surface: '#18181b' },
   },
   {
     id: 'peixaria-dark-coral',
@@ -794,7 +794,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'coral-escuro',
     style: ['escuro', 'alta gastronomia', 'costeiro'],
     mode: 'dark',
-    base: { primary: '#f87171', secondary: '#ef4444', accent: '#38bdf8', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#f87171', secondary: '#ef4444', accent: '#38bdf8', bg: '#2d1616', surface: '#161e2e' },
   },
 
   // --- JAPONESA ---
@@ -806,7 +806,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'vermelho-oriente',
     style: ['oriental', 'tradicional', 'forte'],
     mode: 'light',
-    base: { primary: '#dc2626', secondary: '#b91c1c', accent: '#18181b', bg: '#fef2f2', surface: '#ffffff' },
+    base: { primary: '#dc2626', secondary: '#b91c1c', accent: '#18181b', bg: '#f1f8f8', surface: '#ffffff' },
   },
   {
     id: 'japonesa-grafite-bambu',
@@ -816,7 +816,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'bambu',
     style: ['zen', 'minimalista', 'elegante'],
     mode: 'light',
-    base: { primary: '#15803d', secondary: '#166534', accent: '#71717a', bg: '#f0fdf4', surface: '#ffffff' },
+    base: { primary: '#15803d', secondary: '#166534', accent: '#71717a', bg: '#f8f1f6', surface: '#ffffff' },
   },
   {
     id: 'japonesa-offwhite-indigo',
@@ -826,7 +826,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'índigo',
     style: ['artesanal', 'autêntico', 'limpo'],
     mode: 'light',
-    base: { primary: '#1d4ed8', secondary: '#1e40af', accent: '#dc2626', bg: '#eff6ff', surface: '#ffffff' },
+    base: { primary: '#1d4ed8', secondary: '#1e40af', accent: '#dc2626', bg: '#fbfbfc', surface: '#ffffff' },
   },
   {
     id: 'japonesa-dark-tokyo',
@@ -836,7 +836,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'vermelho-neon',
     style: ['escuro', 'moderno', 'lounge'],
     mode: 'dark',
-    base: { primary: '#ef4444', secondary: '#dc2626', accent: '#f59e0b', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#f37373', secondary: '#e35252', accent: '#f59e0b', bg: '#0e0b09', surface: '#18181b' },
   },
   {
     id: 'japonesa-dark-omakase',
@@ -846,7 +846,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'sumi-e',
     style: ['escuro', 'sofisticado', 'sushi bar'],
     mode: 'dark',
-    base: { primary: '#71717a', secondary: '#52525b', accent: '#f43f5e', bg: '#0b0b0d', surface: '#18181c' },
+    base: { primary: '#71717a', secondary: '#52525b', accent: '#f43f5e', bg: '#191e24', surface: '#18181c' },
   },
   {
     id: 'japonesa-dark-matcha',
@@ -856,7 +856,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'matcha',
     style: ['escuro', 'zen', 'harmonioso'],
     mode: 'dark',
-    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#f87171', bg: '#0a0d0a', surface: '#141d14' },
+    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#f87171', bg: '#093419', surface: '#141d14' },
   },
 
   // --- CAFETERIA ---
@@ -868,7 +868,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'café',
     style: ['acolhedor', 'aromático', 'especial'],
     mode: 'light',
-    base: { primary: '#6b482b', secondary: '#5c3e25', accent: '#ca8a04', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#6b482b', secondary: '#5c3e25', accent: '#ca8a04', bg: '#f9f7e9', surface: '#ffffff' },
   },
   {
     id: 'cafeteria-espresso-caramelo',
@@ -878,7 +878,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'caramelo',
     style: ['energia', 'clássico', 'urbano'],
     mode: 'light',
-    base: { primary: '#b88708', secondary: '#ca8a04', accent: '#d97706', bg: '#fffbeb', surface: '#ffffff' },
+    base: { primary: '#876306', secondary: '#986803', accent: '#d97706', bg: '#f8f6f1', surface: '#ffffff' },
   },
   {
     id: 'cafeteria-mocha-salvia',
@@ -888,7 +888,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'sálvia',
     style: ['botânico', 'tranquilo', 'bistrô'],
     mode: 'light',
-    base: { primary: '#15803d', secondary: '#166534', accent: '#854d0e', bg: '#f0fdf4', surface: '#ffffff' },
+    base: { primary: '#15803d', secondary: '#166534', accent: '#854d0e', bg: '#ebedfc', surface: '#ffffff' },
   },
   {
     id: 'cafeteria-dark-bourbon',
@@ -898,7 +898,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'torra-escura',
     style: ['escuro', 'especialista', 'aconchegante'],
     mode: 'dark',
-    base: { primary: '#5c3e25', secondary: '#7a5332', accent: '#f59e0b', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#a2612c', secondary: '#c37636', accent: '#f59e0b', bg: '#1f1208', surface: '#1c1917' },
   },
   {
     id: 'cafeteria-dark-barista',
@@ -908,7 +908,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'crema-ouro',
     style: ['escuro', 'artesanal', 'industrial'],
     mode: 'dark',
-    base: { primary: '#fbbf24', secondary: '#d97706', accent: '#fb923c', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#fbbf24', secondary: '#d97706', accent: '#fb923c', bg: '#1e210d', surface: '#18181b' },
   },
   {
     id: 'cafeteria-dark-coldbrew',
@@ -918,7 +918,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'grafite-ambar',
     style: ['escuro', 'moderno', 'hip'],
     mode: 'dark',
-    base: { primary: '#3f3f46', secondary: '#52525b', accent: '#f97316', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#6f6f7c', secondary: '#838390', accent: '#f97316', bg: '#24191f', surface: '#161e2e' },
   },
 
   // --- CHURRASCARIA & ESPETARIA ---
@@ -930,7 +930,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'brasa',
     style: ['fogo', 'rústico', 'carnes nobres'],
     mode: 'light',
-    base: { primary: '#b91c1c', secondary: '#991b1b', accent: '#ea580c', bg: '#fef2f2', surface: '#ffffff' },
+    base: { primary: '#b91c1c', secondary: '#991b1b', accent: '#ea580c', bg: '#f1f9e9', surface: '#ffffff' },
   },
   {
     id: 'churrascaria-rubi-madeira',
@@ -940,7 +940,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'madeira',
     style: ['tradicional', 'gaúcho', 'potente'],
     mode: 'light',
-    base: { primary: '#6b482b', secondary: '#5c3e25', accent: '#dc2626', bg: '#fffbeb', surface: '#ffffff' },
+    base: { primary: '#6b482b', secondary: '#5c3e25', accent: '#dc2626', bg: '#fceceb', surface: '#ffffff' },
   },
   {
     id: 'churrascaria-terracota-preto',
@@ -950,7 +950,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'terracota-fogo',
     style: ['artesanal', 'boteco de carne', 'quente'],
     mode: 'light',
-    base: { primary: '#c2410c', secondary: '#9a3412', accent: '#b45309', bg: '#fff7ed', surface: '#ffffff' },
+    base: { primary: '#f05211', secondary: '#c84317', accent: '#b45309', bg: '#f9e9f2', surface: '#ffffff' },
   },
   {
     id: 'churrascaria-dark-pitmaster',
@@ -960,7 +960,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'fogo-noturno',
     style: ['escuro', 'defumado', 'bbq'],
     mode: 'dark',
-    base: { primary: '#ef4444', secondary: '#dc2626', accent: '#f59e0b', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#f15b5b', secondary: '#e03c3c', accent: '#f59e0b', bg: '#341b09', surface: '#1c1917' },
   },
   {
     id: 'churrascaria-dark-costela',
@@ -970,7 +970,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'brasa-ouro',
     style: ['escuro', 'rústico raiz', 'fogão de lenha'],
     mode: 'dark',
-    base: { primary: '#f97316', secondary: '#ea580c', accent: '#fde047', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#fa9148', secondary: '#f57634', accent: '#fde047', bg: '#2d1f16', surface: '#18181b' },
   },
   {
     id: 'churrascaria-dark-picanha',
@@ -980,7 +980,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'ferro-fundido',
     style: ['escuro', 'luxo', 'boutique de carnes'],
     mode: 'dark',
-    base: { primary: '#27272a', secondary: '#3f3f46', accent: '#ef4444', bg: '#0b0c10', surface: '#161922' },
+    base: { primary: '#717179', secondary: '#898995', accent: '#ef4444', bg: '#19241f', surface: '#161922' },
   },
 
   // --- LANCHONETE & HOT DOG ---
@@ -992,7 +992,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'mostarda-diner',
     style: ['alegre', 'retrô', 'apetite'],
     mode: 'light',
-    base: { primary: '#ca8a04', secondary: '#a16207', accent: '#dc2626', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#a38311', secondary: '#7e5c11', accent: '#dc2626', bg: '#e9edf9', surface: '#ffffff' },
   },
   {
     id: 'lanchonete-azul-creme',
@@ -1002,7 +1002,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-retro',
     style: ['diner americano', 'nostálgico', 'divertido'],
     mode: 'light',
-    base: { primary: '#0284c7', secondary: '#0369a1', accent: '#ea580c', bg: '#f0f9ff', surface: '#ffffff' },
+    base: { primary: '#0295e0', secondary: '#0379ba', accent: '#ea580c', bg: '#fef5f0', surface: '#ffffff' },
   },
   {
     id: 'lanchonete-laranja-branco',
@@ -1012,7 +1012,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'laranja-lanche',
     style: ['rápido', 'sucos', 'balcão'],
     mode: 'light',
-    base: { primary: '#ea580c', secondary: '#c2410c', accent: '#eab308', bg: '#fff7ed', surface: '#ffffff' },
+    base: { primary: '#ea580c', secondary: '#c2410c', accent: '#eab308', bg: '#ecf9e9', surface: '#ffffff' },
   },
   {
     id: 'lanchonete-dark-trailer',
@@ -1022,7 +1022,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'mostarda-neon',
     style: ['escuro', 'madrugada', 'street food'],
     mode: 'dark',
-    base: { primary: '#facc15', secondary: '#eab308', accent: '#ef4444', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#facc15', secondary: '#eab308', accent: '#ef4444', bg: '#2b3409', surface: '#18181b' },
   },
   {
     id: 'lanchonete-dark-chapa',
@@ -1032,7 +1032,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'vermelho-diner',
     style: ['escuro', 'pop', 'movimentado'],
     mode: 'dark',
-    base: { primary: '#ef4444', secondary: '#dc2626', accent: '#38bdf8', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#ef4444', secondary: '#dc2626', accent: '#38bdf8', bg: '#2d1f16', surface: '#1c1917' },
   },
   {
     id: 'lanchonete-dark-batata',
@@ -1042,7 +1042,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'crocante-dourado',
     style: ['escuro', 'delivery ágil', 'jovem'],
     mode: 'dark',
-    base: { primary: '#fb923c', secondary: '#f97316', accent: '#4ade80', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#fb923c', secondary: '#f97316', accent: '#4ade80', bg: '#211f0d', surface: '#161e2e' },
   },
 
   // --- SORVETERIA ARTESANAL ---
@@ -1054,7 +1054,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'verde-menta',
     style: ['refrescante', 'cremoso', 'artesanal'],
     mode: 'light',
-    base: { primary: '#059669', secondary: '#047857', accent: '#0284c7', bg: '#ecfdf5', surface: '#ffffff' },
+    base: { primary: '#059669', secondary: '#047857', accent: '#0284c7', bg: '#f9fceb', surface: '#ffffff' },
   },
   {
     id: 'sorveteria-morango-azul',
@@ -1064,7 +1064,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'morango-creme',
     style: ['infantil', 'divertido', 'alegre'],
     mode: 'light',
-    base: { primary: '#db2777', secondary: '#be185d', accent: '#0284c7', bg: '#fdf2f8', surface: '#ffffff' },
+    base: { primary: '#db2777', secondary: '#be185d', accent: '#0284c7', bg: '#f1f8f5', surface: '#ffffff' },
   },
   {
     id: 'sorveteria-lavanda-limao',
@@ -1074,7 +1074,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'limão-siciliano',
     style: ['gelateria italiana', 'refinado', 'verão'],
     mode: 'light',
-    base: { primary: '#ca8a04', secondary: '#a16207', accent: '#7c3aed', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#a38311', secondary: '#7e5c11', accent: '#7c3aed', bg: '#f9e9ea', surface: '#ffffff' },
   },
   {
     id: 'sorveteria-dark-gelato',
@@ -1084,7 +1084,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'pistache-italiano',
     style: ['escuro', 'luxo', 'italiano'],
     mode: 'dark',
-    base: { primary: '#34d399', secondary: '#10b981', accent: '#f472b6', bg: '#080d0b', surface: '#131e18' },
+    base: { primary: '#34d399', secondary: '#10b981', accent: '#f472b6', bg: '#0d2021', surface: '#131e18' },
   },
   {
     id: 'sorveteria-dark-amarena',
@@ -1094,7 +1094,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'amarena',
     style: ['escuro', 'aveludado', 'doce'],
     mode: 'dark',
-    base: { primary: '#e0247d', secondary: '#db2777', accent: '#38bdf8', bg: '#0b0709', surface: '#191114' },
+    base: { primary: '#ed7db2', secondary: '#ea7eae', accent: '#38bdf8', bg: '#2d1621', surface: '#191114' },
   },
   {
     id: 'sorveteria-dark-tutti',
@@ -1104,7 +1104,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-picolé',
     style: ['escuro', 'vibrante', 'festivo'],
     mode: 'dark',
-    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#f43f5e', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#f43f5e', bg: '#0c0e16', surface: '#161e2e' },
   },
 
   // --- MARMITARIA & COMIDA CASEIRA ---
@@ -1116,7 +1116,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'verde-horta',
     style: ['caseiro', 'tempero de mãe', 'nutritivo'],
     mode: 'light',
-    base: { primary: '#15803d', secondary: '#166534', accent: '#ea580c', bg: '#f0fdf4', surface: '#ffffff' },
+    base: { primary: '#15803d', secondary: '#166534', accent: '#ea580c', bg: '#f7ebfc', surface: '#ffffff' },
   },
   {
     id: 'marmitaria-amarelo-marrom',
@@ -1126,7 +1126,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'milho-caseiro',
     style: ['almoço executivo', 'farto', 'popular'],
     mode: 'light',
-    base: { primary: '#b88708', secondary: '#ca8a04', accent: '#15803d', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#876306', secondary: '#986803', accent: '#15803d', bg: '#f7f9e9', surface: '#ffffff' },
   },
   {
     id: 'marmitaria-vermelho-bege',
@@ -1136,7 +1136,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'molho-caseiro',
     style: ['afetivo', 'quentinha', 'tradicional'],
     mode: 'light',
-    base: { primary: '#b91c1c', secondary: '#991b1b', accent: '#b45309', bg: '#fef2f2', surface: '#ffffff' },
+    base: { primary: '#a31919', secondary: '#831717', accent: '#b45309', bg: '#faf7f8', surface: '#ffffff' },
   },
   {
     id: 'marmitaria-dark-panela',
@@ -1146,7 +1146,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'barro-cozido',
     style: ['escuro', 'tradição', 'raiz'],
     mode: 'dark',
-    base: { primary: '#6b482b', secondary: '#5c3e25', accent: '#22c55e', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#806249', secondary: '#735841', accent: '#22c55e', bg: '#1f1c08', surface: '#1c1917' },
   },
   {
     id: 'marmitaria-dark-almoço',
@@ -1156,7 +1156,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'tempero-verde',
     style: ['escuro', 'prático', 'econômico'],
     mode: 'dark',
-    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#fb923c', bg: '#080d09', surface: '#131e15' },
+    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#fb923c', bg: '#09342b', surface: '#131e15' },
   },
   {
     id: 'marmitaria-dark-tempero',
@@ -1166,7 +1166,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'abóbora-assada',
     style: ['escuro', 'conforto', 'saboroso'],
     mode: 'dark',
-    base: { primary: '#fb923c', secondary: '#f97316', accent: '#fde047', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#fb923c', secondary: '#f97316', accent: '#fde047', bg: '#342e09', surface: '#18181b' },
   },
 
   // --- SAUDÁVEL & FIT ---
@@ -1178,7 +1178,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'verde-folha',
     style: ['orgânico', 'leve', 'vital'],
     mode: 'light',
-    base: { primary: '#15803d', secondary: '#166534', accent: '#0284c7', bg: '#f0fdf4', surface: '#ffffff' },
+    base: { primary: '#116a33', secondary: '#115029', accent: '#0284c7', bg: '#fcfaeb', surface: '#ffffff' },
   },
   {
     id: 'saudavel-oliva-areia',
@@ -1188,7 +1188,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'oliva',
     style: ['mediterrâneo', 'natural', 'equilibrado'],
     mode: 'light',
-    base: { primary: '#4d7c0f', secondary: '#3f6212', accent: '#ca8a04', bg: '#f7fee7', surface: '#ffffff' },
+    base: { primary: '#5b9312', secondary: '#4d7816', accent: '#ca8a04', bg: '#f5f8f1', surface: '#ffffff' },
   },
   {
     id: 'saudavel-matcha-terracota',
@@ -1198,7 +1198,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'argila-leve',
     style: ['zen', 'bem-estar', 'holístico'],
     mode: 'light',
-    base: { primary: '#c2410c', secondary: '#9a3412', accent: '#4d7c0f', bg: '#fff7ed', surface: '#ffffff' },
+    base: { primary: '#aa390b', secondary: '#832c0f', accent: '#4d7c0f', bg: '#f9f4e9', surface: '#ffffff' },
   },
   {
     id: 'saudavel-dark-fit',
@@ -1208,7 +1208,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'verde-neon-fit',
     style: ['escuro', 'treino', 'energia'],
     mode: 'dark',
-    base: { primary: '#22c55e', secondary: '#16a34a', accent: '#38bdf8', bg: '#080d09', surface: '#131e15' },
+    base: { primary: '#22c55e', secondary: '#16a34a', accent: '#38bdf8', bg: '#0c1416', surface: '#131e15' },
   },
   {
     id: 'saudavel-dark-poke',
@@ -1218,7 +1218,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-havaiano',
     style: ['escuro', 'marítimo', 'fresco'],
     mode: 'dark',
-    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#4ade80', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#4ade80', bg: '#091534', surface: '#161e2e' },
   },
   {
     id: 'saudavel-dark-detox',
@@ -1228,7 +1228,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'gengibre-solar',
     style: ['escuro', 'nutrição', 'vitalidade'],
     mode: 'dark',
-    base: { primary: '#facc15', secondary: '#eab308', accent: '#4ade80', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#facc15', secondary: '#eab308', accent: '#4ade80', bg: '#160f0c', surface: '#18181b' },
   },
 
   // --- MEXICANA ---
@@ -1240,7 +1240,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'terracota',
     style: ['caliente', 'festivo', 'artesanal'],
     mode: 'light',
-    base: { primary: '#c2410c', secondary: '#9a3412', accent: '#ca8a04', bg: '#fff7ed', surface: '#ffffff' },
+    base: { primary: '#aa390b', secondary: '#832c0f', accent: '#ca8a04', bg: '#e9f4f9', surface: '#ffffff' },
   },
   {
     id: 'mexicana-cacto-pimenta',
@@ -1250,7 +1250,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'cacto',
     style: ['autêntico', 'picante', 'vibrante'],
     mode: 'light',
-    base: { primary: '#15803d', secondary: '#166534', accent: '#dc2626', bg: '#f0fdf4', surface: '#ffffff' },
+    base: { primary: '#0e5428', secondary: '#0d3b1e', accent: '#dc2626', bg: '#eaf9e9', surface: '#ffffff' },
   },
   {
     id: 'mexicana-turquesa-laranja',
@@ -1260,7 +1260,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'turquesa',
     style: ['praia', 'mariachi', 'colorido'],
     mode: 'light',
-    base: { primary: '#0284c7', secondary: '#0369a1', accent: '#ea580c', bg: '#f0f9ff', surface: '#ffffff' },
+    base: { primary: '#0295e0', secondary: '#0379ba', accent: '#ea580c', bg: '#e9f9f1', surface: '#ffffff' },
   },
   {
     id: 'mexicana-dark-lucha',
@@ -1270,7 +1270,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'habanero-fogo',
     style: ['escuro', 'festa', 'tacos'],
     mode: 'dark',
-    base: { primary: '#ef4444', secondary: '#dc2626', accent: '#facc15', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#ef4444', secondary: '#dc2626', accent: '#facc15', bg: '#34091b', surface: '#1c1917' },
   },
   {
     id: 'mexicana-dark-agave',
@@ -1280,7 +1280,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'agave-azul',
     style: ['escuro', 'taqueria', 'lounge'],
     mode: 'dark',
-    base: { primary: '#34d399', secondary: '#10b981', accent: '#fb923c', bg: '#080d0b', surface: '#131e18' },
+    base: { primary: '#34d399', secondary: '#10b981', accent: '#fb923c', bg: '#093234', surface: '#131e18' },
   },
   {
     id: 'mexicana-dark-sombrero',
@@ -1290,7 +1290,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'dourado-milho',
     style: ['escuro', 'animado', 'nachos'],
     mode: 'dark',
-    base: { primary: '#facc15', secondary: '#eab308', accent: '#f87171', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#facc15', secondary: '#eab308', accent: '#f87171', bg: '#341a09', surface: '#18181b' },
   },
 
   // --- CONVENIÊNCIA ---
@@ -1302,7 +1302,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-elétrico',
     style: ['24h', 'visível', 'rápido'],
     mode: 'light',
-    base: { primary: '#1d4ed8', secondary: '#1e40af', accent: '#ca8a04', bg: '#eff6ff', surface: '#ffffff' },
+    base: { primary: '#1d4ed8', secondary: '#1e40af', accent: '#ca8a04', bg: '#f2e9f9', surface: '#ffffff' },
   },
   {
     id: 'conveniencia-vermelho-branco',
@@ -1312,7 +1312,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'vermelho-energia',
     style: ['posto', 'urgência', 'dinâmico'],
     mode: 'light',
-    base: { primary: '#dc2626', secondary: '#b91c1c', accent: '#2563eb', bg: '#fef2f2', surface: '#ffffff' },
+    base: { primary: '#e35252', secondary: '#df2929', accent: '#2563eb', bg: '#fcebf2', surface: '#ffffff' },
   },
   {
     id: 'conveniencia-ciano-cinza',
@@ -1322,7 +1322,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'ciano-frio',
     style: ['loja express', 'prático', 'tecnológico'],
     mode: 'light',
-    base: { primary: '#0284c7', secondary: '#0369a1', accent: '#ea580c', bg: '#f0f9ff', surface: '#ffffff' },
+    base: { primary: '#0273ae', secondary: '#035988', accent: '#ea580c', bg: '#f9efe9', surface: '#ffffff' },
   },
   {
     id: 'conveniencia-dark-neon24h',
@@ -1332,7 +1332,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-neon',
     style: ['escuro', 'madrugada', 'express'],
     mode: 'dark',
-    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#facc15', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#facc15', bg: '#161c2d', surface: '#161e2e' },
   },
   {
     id: 'conveniencia-dark-pitstop',
@@ -1342,7 +1342,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'amarelo-alerta',
     style: ['escuro', 'alto contraste', 'combustível'],
     mode: 'dark',
-    base: { primary: '#facc15', secondary: '#eab308', accent: '#ef4444', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#facc15', secondary: '#eab308', accent: '#ef4444', bg: '#2d1e16', surface: '#18181b' },
   },
   {
     id: 'conveniencia-dark-gelada',
@@ -1352,7 +1352,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'laranja-gelada',
     style: ['escuro', 'bebidas', 'festa'],
     mode: 'dark',
-    base: { primary: '#fb923c', secondary: '#f97316', accent: '#38bdf8', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#fb923c', secondary: '#f97316', accent: '#38bdf8', bg: '#210d0d', surface: '#1c1917' },
   },
 
   // --- DISTRIBUIDORA (Água, Gás e Bebidas) ---
@@ -1364,7 +1364,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'petróleo',
     style: ['logística', 'confiança', 'ágil'],
     mode: 'light',
-    base: { primary: '#0369a1', secondary: '#075985', accent: '#ea580c', bg: '#f0f9ff', surface: '#ffffff' },
+    base: { primary: '#0369a1', secondary: '#075985', accent: '#ea580c', bg: '#e9f9f1', surface: '#ffffff' },
   },
   {
     id: 'distribuidora-grafite-ouro',
@@ -1374,7 +1374,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'amarelo-industrial',
     style: ['operacional', 'direto', 'robusto'],
     mode: 'light',
-    base: { primary: '#ca8a04', secondary: '#a16207', accent: '#18181b', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#7f6303', secondary: '#583e04', accent: '#18181b', bg: '#e9edf9', surface: '#ffffff' },
   },
   {
     id: 'distribuidora-royal-gelo',
@@ -1384,7 +1384,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-água',
     style: ['água mineral', 'puro', 'límpido'],
     mode: 'light',
-    base: { primary: '#1d4ed8', secondary: '#1e40af', accent: '#0284c7', bg: '#eff6ff', surface: '#ffffff' },
+    base: { primary: '#1d4ed8', secondary: '#1e40af', accent: '#0284c7', bg: '#f9f5e9', surface: '#ffffff' },
   },
   {
     id: 'distribuidora-dark-gas',
@@ -1394,7 +1394,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'chama-azul',
     style: ['escuro', 'força', 'segurança'],
     mode: 'dark',
-    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#fb923c', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#fb923c', bg: '#0d211f', surface: '#161e2e' },
   },
   {
     id: 'distribuidora-dark-fardo',
@@ -1404,7 +1404,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'laranja-fardo',
     style: ['escuro', 'atacado', 'volume'],
     mode: 'dark',
-    base: { primary: '#fb923c', secondary: '#f97316', accent: '#fde047', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#fb923c', secondary: '#f97316', accent: '#fde047', bg: '#340b09', surface: '#1c1917' },
   },
   {
     id: 'distribuidora-dark-caminhao',
@@ -1414,7 +1414,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'ouro-segurança',
     style: ['escuro', 'entrega rápida', 'confiável'],
     mode: 'dark',
-    base: { primary: '#facc15', secondary: '#eab308', accent: '#38bdf8', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#facc15', secondary: '#eab308', accent: '#38bdf8', bg: '#101f08', surface: '#18181b' },
   },
 
   // --- FARMÁCIA & DROGARIA ---
@@ -1426,7 +1426,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-hospitalar',
     style: ['cuidado', 'médico', 'confiabilidade'],
     mode: 'light',
-    base: { primary: '#0284c7', secondary: '#0369a1', accent: '#14b8a6', bg: '#f0f9ff', surface: '#ffffff' },
+    base: { primary: '#0273ae', secondary: '#035988', accent: '#14b8a6', bg: '#f6e9f9', surface: '#ffffff' },
   },
   {
     id: 'farmacia-verde-branco',
@@ -1436,7 +1436,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'verde-cruz',
     style: ['saúde', 'bem-estar', 'higiene'],
     mode: 'light',
-    base: { primary: '#15803d', secondary: '#166534', accent: '#0284c7', bg: '#f0fdf4', surface: '#ffffff' },
+    base: { primary: '#0e5428', secondary: '#0d3b1e', accent: '#0284c7', bg: '#faf7f9', surface: '#ffffff' },
   },
   {
     id: 'farmacia-azul-menta',
@@ -1446,7 +1446,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'menta-suave',
     style: ['dermatologia', 'cosmético', 'fresco'],
     mode: 'light',
-    base: { primary: '#059669', secondary: '#047857', accent: '#1d4ed8', bg: '#ecfdf5', surface: '#ffffff' },
+    base: { primary: '#13a175', secondary: '#108564', accent: '#1d4ed8', bg: '#e9f9f4', surface: '#ffffff' },
   },
   {
     id: 'farmacia-dark-plantao',
@@ -1456,7 +1456,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'verde-cura',
     style: ['escuro', 'plantão', 'sereno'],
     mode: 'dark',
-    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#38bdf8', bg: '#080d0a', surface: '#131e17' },
+    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#38bdf8', bg: '#160c12', surface: '#131e17' },
   },
   {
     id: 'farmacia-dark-dermato',
@@ -1466,7 +1466,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-ciano-clean',
     style: ['escuro', 'dermatologia', 'premium'],
     mode: 'dark',
-    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#a7f3d0', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#a7f3d0', bg: '#09342f', surface: '#161e2e' },
   },
   {
     id: 'farmacia-dark-nutri',
@@ -1476,7 +1476,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'laranja-vital',
     style: ['escuro', 'vitalidade', 'esporte'],
     mode: 'dark',
-    base: { primary: '#fb923c', secondary: '#f97316', accent: '#4ade80', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#fb923c', secondary: '#f97316', accent: '#4ade80', bg: '#13160c', surface: '#18181b' },
   },
 
   // --- PET SHOP & AGROPECUÁRIA ---
@@ -1488,7 +1488,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-pet',
     style: ['afetuoso', 'alegre', 'cuidadoso'],
     mode: 'light',
-    base: { primary: '#0284c7', secondary: '#0369a1', accent: '#ea580c', bg: '#f0f9ff', surface: '#ffffff' },
+    base: { primary: '#138fcf', secondary: '#1275ac', accent: '#ea580c', bg: '#e9edf9', surface: '#ffffff' },
   },
   {
     id: 'pet-musgo-caramelo',
@@ -1498,7 +1498,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'musgo',
     style: ['agropecuária', 'natureza', 'campo'],
     mode: 'light',
-    base: { primary: '#15803d', secondary: '#166534', accent: '#b45309', bg: '#f0fdf4', surface: '#ffffff' },
+    base: { primary: '#0e5428', secondary: '#0d3b1e', accent: '#b45309', bg: '#f9e9f3', surface: '#ffffff' },
   },
   {
     id: 'pet-violeta-amarelo',
@@ -1508,7 +1508,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'violeta-amigo',
     style: ['moderno', 'veterinário', 'amigável'],
     mode: 'light',
-    base: { primary: '#7c3aed', secondary: '#6d28d9', accent: '#ca8a04', bg: '#faf5ff', surface: '#ffffff' },
+    base: { primary: '#7c3aed', secondary: '#6d28d9', accent: '#ca8a04', bg: '#f8ebfc', surface: '#ffffff' },
   },
   {
     id: 'pet-dark-banho',
@@ -1518,7 +1518,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-espuma',
     style: ['escuro', 'spa canino', 'cuidado'],
     mode: 'dark',
-    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#fb923c', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#38bdf8', secondary: '#0284c7', accent: '#fb923c', bg: '#0b081f', surface: '#161e2e' },
   },
   {
     id: 'pet-dark-agro',
@@ -1528,7 +1528,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'pasto-escuro',
     style: ['escuro', 'rações', 'campo'],
     mode: 'dark',
-    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#fde047', bg: '#080d09', surface: '#131e15' },
+    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#fde047', bg: '#210d1a', surface: '#131e15' },
   },
   {
     id: 'pet-dark-bichano',
@@ -1538,7 +1538,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'ametista',
     style: ['escuro', 'misterioso', 'delicado'],
     mode: 'dark',
-    base: { primary: '#c084fc', secondary: '#a855f7', accent: '#f472b6', bg: '#0b0712', surface: '#191124' },
+    base: { primary: '#c084fc', secondary: '#a855f7', accent: '#f472b6', bg: '#0d0613', surface: '#191124' },
   },
 
   // --- PERFUMARIA & COSMÉTICOS ---
@@ -1550,7 +1550,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'rosa-pó',
     style: ['luxo', 'feminino', 'delicado'],
     mode: 'light',
-    base: { primary: '#db2777', secondary: '#be185d', accent: '#ca8a04', bg: '#fdf2f8', surface: '#ffffff' },
+    base: { primary: '#db2777', secondary: '#be185d', accent: '#ca8a04', bg: '#f8f9e9', surface: '#ffffff' },
   },
   {
     id: 'perfumaria-nude-preto',
@@ -1560,7 +1560,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'nude-bege',
     style: ['chique', 'maquiagem', 'editorial'],
     mode: 'light',
-    base: { primary: '#7a5332', secondary: '#5c3e25', accent: '#18181b', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#7a5332', secondary: '#5c3e25', accent: '#18181b', bg: '#e9f2f9', surface: '#ffffff' },
   },
   {
     id: 'perfumaria-lavanda-prata',
@@ -1570,7 +1570,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'lavanda',
     style: ['floral', 'fresco', 'sereno'],
     mode: 'light',
-    base: { primary: '#7c3aed', secondary: '#6d28d9', accent: '#0284c7', bg: '#faf5ff', surface: '#ffffff' },
+    base: { primary: '#7c3aed', secondary: '#6d28d9', accent: '#0284c7', bg: '#f6f8f1', surface: '#ffffff' },
   },
   {
     id: 'perfumaria-dark-noir',
@@ -1580,7 +1580,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'magenta-noir',
     style: ['escuro', 'sedutor', 'alta perfumaria'],
     mode: 'dark',
-    base: { primary: '#f472b6', secondary: '#ec4899', accent: '#fbbf24', bg: '#0b0709', surface: '#191114' },
+    base: { primary: '#f472b6', secondary: '#ec4899', accent: '#fbbf24', bg: '#210d0f', surface: '#191114' },
   },
   {
     id: 'perfumaria-dark-dourado',
@@ -1590,7 +1590,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'ouro-líquido',
     style: ['escuro', 'ostentação', 'brilho'],
     mode: 'dark',
-    base: { primary: '#facc15', secondary: '#eab308', accent: '#f472b6', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#facc15', secondary: '#eab308', accent: '#f472b6', bg: '#193409', surface: '#18181b' },
   },
   {
     id: 'perfumaria-dark-acetinado',
@@ -1600,7 +1600,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'orquídea-escura',
     style: ['escuro', 'mágico', 'pele suave'],
     mode: 'dark',
-    base: { primary: '#c084fc', secondary: '#a855f7', accent: '#38bdf8', bg: '#0b0712', surface: '#191124' },
+    base: { primary: '#c084fc', secondary: '#a855f7', accent: '#38bdf8', bg: '#1f0934', surface: '#191124' },
   },
 
   // --- TABACARIA & HEADSHOP ---
@@ -1612,7 +1612,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'tabaco',
     style: ['clássico', 'amadeirado', 'tradicional'],
     mode: 'light',
-    base: { primary: '#6b482b', secondary: '#5c3e25', accent: '#d97706', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#6b482b', secondary: '#5c3e25', accent: '#d97706', bg: '#eaf9e9', surface: '#ffffff' },
   },
   {
     id: 'tabacaria-charuto-ouro',
@@ -1622,7 +1622,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'ouro-envelhecido',
     style: ['nobre', 'cubano', 'elegante'],
     mode: 'light',
-    base: { primary: '#b88708', secondary: '#ca8a04', accent: '#ca8a04', bg: '#fffbeb', surface: '#ffffff' },
+    base: { primary: '#876306', secondary: '#986803', accent: '#ca8a04', bg: '#f9e9eb', surface: '#ffffff' },
   },
   {
     id: 'tabacaria-couro-bronze',
@@ -1632,7 +1632,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'bronze',
     style: ['vintage', 'artesanal', 'exclusivo'],
     mode: 'light',
-    base: { primary: '#c2410c', secondary: '#9a3412', accent: '#78350f', bg: '#fff7ed', surface: '#ffffff' },
+    base: { primary: '#aa490b', secondary: '#83380f', accent: '#78350f', bg: '#faf7f8', surface: '#ffffff' },
   },
   {
     id: 'tabacaria-dark-lounge',
@@ -1642,7 +1642,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'cedro-escuro',
     style: ['escuro', 'privativo', 'conhaque'],
     mode: 'dark',
-    base: { primary: '#5c3e25', secondary: '#7a5332', accent: '#fbbf24', bg: '#0c0a09', surface: '#1c1917' },
+    base: { primary: '#a2852c', secondary: '#c3a136', accent: '#fbbf24', bg: '#1f1908', surface: '#1c1917' },
   },
   {
     id: 'tabacaria-dark-fumace',
@@ -1652,7 +1652,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'folha-seca',
     style: ['escuro', 'alternativo', 'moderno'],
     mode: 'dark',
-    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#fb923c', bg: '#080d09', surface: '#131e15' },
+    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#fb923c', bg: '#340924', surface: '#131e15' },
   },
   {
     id: 'tabacaria-dark-onix',
@@ -1662,7 +1662,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'preto-fosco',
     style: ['escuro', 'minimalista', 'urbano'],
     mode: 'dark',
-    base: { primary: '#27272a', secondary: '#3f3f46', accent: '#f97316', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#717179', secondary: '#898995', accent: '#f97316', bg: '#241d19', surface: '#18181b' },
   },
 
   // --- FLORICULTURA & PLANTAS ---
@@ -1674,7 +1674,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'botânico',
     style: ['jardim', 'romântico', 'delicado'],
     mode: 'light',
-    base: { primary: '#15803d', secondary: '#166534', accent: '#db2777', bg: '#f0fdf4', surface: '#ffffff' },
+    base: { primary: '#0e5428', secondary: '#0d3b1e', accent: '#db2777', bg: '#e9ebf9', surface: '#ffffff' },
   },
   {
     id: 'floricultura-terracota-musgo',
@@ -1684,7 +1684,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'vaso-argila',
     style: ['plantas', 'suculentas', 'terra'],
     mode: 'light',
-    base: { primary: '#c2410c', secondary: '#9a3412', accent: '#15803d', bg: '#fff7ed', surface: '#ffffff' },
+    base: { primary: '#aa490b', secondary: '#83380f', accent: '#15803d', bg: '#f9e9ea', surface: '#ffffff' },
   },
   {
     id: 'floricultura-lilas-linho',
@@ -1694,7 +1694,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'orquídea-clara',
     style: ['flores nobres', 'presentes', 'afeto'],
     mode: 'light',
-    base: { primary: '#7c3aed', secondary: '#6d28d9', accent: '#15803d', bg: '#faf5ff', surface: '#ffffff' },
+    base: { primary: '#7c3aed', secondary: '#6d28d9', accent: '#15803d', bg: '#f5e5e7', surface: '#ffffff' },
   },
   {
     id: 'floricultura-dark-estufa',
@@ -1704,7 +1704,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'verde-selva',
     style: ['escuro', 'botânica exuberante', 'natural'],
     mode: 'dark',
-    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#f472b6', bg: '#080d09', surface: '#131e15' },
+    base: { primary: '#4ade80', secondary: '#22c55e', accent: '#f472b6', bg: '#1d3409', surface: '#131e15' },
   },
   {
     id: 'floricultura-dark-rosa-negra',
@@ -1714,7 +1714,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'rosa-aveludada',
     style: ['escuro', 'mistério', 'exótico'],
     mode: 'dark',
-    base: { primary: '#f472b6', secondary: '#ec4899', accent: '#a3e635', bg: '#0b0709', surface: '#191114' },
+    base: { primary: '#f472b6', secondary: '#ec4899', accent: '#a3e635', bg: '#0e090a', surface: '#191114' },
   },
   {
     id: 'floricultura-dark-orquidario',
@@ -1724,7 +1724,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'violeta-floresta',
     style: ['escuro', 'sofisticado', 'especies raras'],
     mode: 'dark',
-    base: { primary: '#c084fc', secondary: '#a855f7', accent: '#4ade80', bg: '#0b0712', surface: '#191124' },
+    base: { primary: '#c084fc', secondary: '#a855f7', accent: '#4ade80', bg: '#2b162d', surface: '#191124' },
   },
 
   // --- BARBEARIA CLÁSSICA ---
@@ -1736,7 +1736,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'aço-escovado',
     style: ['navalha', 'masculino', 'moderno'],
     mode: 'light',
-    base: { primary: '#18181b', secondary: '#27272a', accent: '#0284c7', bg: '#f8fafc', surface: '#ffffff' },
+    base: { primary: '#54545f', secondary: '#64646c', accent: '#0284c7', bg: '#f8f8f9', surface: '#ffffff' },
   },
   {
     id: 'barbearia-mogno-dourado',
@@ -1746,7 +1746,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'mogno',
     style: ['barbearia raiz', 'vintage', 'tradicional'],
     mode: 'light',
-    base: { primary: '#6b482b', secondary: '#5c3e25', accent: '#ca8a04', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#6b482b', secondary: '#5c3e25', accent: '#ca8a04', bg: '#f8e9f9', surface: '#ffffff' },
   },
   {
     id: 'barbearia-marinho-conhaque',
@@ -1756,7 +1756,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'azul-marinho-barber',
     style: ['cavalheiros', 'sofisticado', 'barba'],
     mode: 'light',
-    base: { primary: '#0369a1', secondary: '#075985', accent: '#b45309', bg: '#f0f9ff', surface: '#ffffff' },
+    base: { primary: '#02486f', secondary: '#043955', accent: '#b45309', bg: '#e9f3f9', surface: '#ffffff' },
   },
   {
     id: 'barbearia-dark-gentleman',
@@ -1766,7 +1766,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'conhaque-ouro',
     style: ['escuro', 'whisky', 'exclusivo'],
     mode: 'dark',
-    base: { primary: '#facc15', secondary: '#eab308', accent: '#f97316', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#facc15', secondary: '#eab308', accent: '#f97316', bg: '#0c0e16', surface: '#18181b' },
   },
   {
     id: 'barbearia-dark-poste',
@@ -1776,7 +1776,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'vermelho-barber',
     style: ['escuro', 'tradição mundial', 'estilo'],
     mode: 'dark',
-    base: { primary: '#ef4444', secondary: '#dc2626', accent: '#38bdf8', bg: '#0b0f17', surface: '#161e2e' },
+    base: { primary: '#ef4444', secondary: '#dc2626', accent: '#38bdf8', bg: '#211e0d', surface: '#161e2e' },
   },
   {
     id: 'barbearia-dark-navalha',
@@ -1786,7 +1786,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'grafite-navalha',
     style: ['escuro', 'corte perfeito', 'preciso'],
     mode: 'dark',
-    base: { primary: '#3f3f46', secondary: '#52525b', accent: '#eab308', bg: '#0b0c10', surface: '#161821' },
+    base: { primary: '#898995', secondary: '#9e9ea8', accent: '#eab308', bg: '#0b0b0e', surface: '#161821' },
   },
 
   // --- SALÃO DE BELEZA & ESTÉTICA ---
@@ -1798,7 +1798,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'champanhe',
     style: ['alta estética', 'glamour', 'luxo'],
     mode: 'light',
-    base: { primary: '#b88708', secondary: '#ca8a04', accent: '#18181b', bg: '#fefce8', surface: '#ffffff' },
+    base: { primary: '#876306', secondary: '#986803', accent: '#18181b', bg: '#e9f9ed', surface: '#ffffff' },
   },
   {
     id: 'salao-blush-cobre',
@@ -1808,7 +1808,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'rosa-blush',
     style: ['spa', 'bem-estar', 'suavidade'],
     mode: 'light',
-    base: { primary: '#db2777', secondary: '#be185d', accent: '#ea580c', bg: '#fdf2f8', surface: '#ffffff' },
+    base: { primary: '#db2777', secondary: '#be185d', accent: '#ea580c', bg: '#eae9f9', surface: '#ffffff' },
   },
   {
     id: 'salao-esmeralda-ouro',
@@ -1818,7 +1818,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'esmeralda',
     style: ['sofisticado', 'cabelos nobres', 'beleza'],
     mode: 'light',
-    base: { primary: '#059669', secondary: '#047857', accent: '#ca8a04', bg: '#ecfdf5', surface: '#ffffff' },
+    base: { primary: '#036546', secondary: '#024733', accent: '#ca8a04', bg: '#eaf3f0', surface: '#ffffff' },
   },
   {
     id: 'salao-dark-coiffeur',
@@ -1828,7 +1828,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'ouro-rosê-dark',
     style: ['escuro', 'celebridades', 'elegância'],
     mode: 'dark',
-    base: { primary: '#f472b6', secondary: '#ec4899', accent: '#fde047', bg: '#0b0709', surface: '#191114' },
+    base: { primary: '#f472b6', secondary: '#ec4899', accent: '#fde047', bg: '#34090e', surface: '#191114' },
   },
   {
     id: 'salao-dark-esmeralda',
@@ -1838,7 +1838,7 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'esmeralda-profunda',
     style: ['escuro', 'alta classe', 'brilho'],
     mode: 'dark',
-    base: { primary: '#34d399', secondary: '#10b981', accent: '#fbbf24', bg: '#080d0a', surface: '#131e17' },
+    base: { primary: '#34d399', secondary: '#10b981', accent: '#fbbf24', bg: '#08141f', surface: '#131e17' },
   },
   {
     id: 'salao-dark-espelho',
@@ -1848,6 +1848,6 @@ export const SEGMENT_PALETTES: NamedPalette[] = [
     shade: 'luz-camarim',
     style: ['escuro', 'produção de moda', 'impecável'],
     mode: 'dark',
-    base: { primary: '#facc15', secondary: '#eab308', accent: '#f472b6', bg: '#09090b', surface: '#18181b' },
+    base: { primary: '#facc15', secondary: '#eab308', accent: '#f472b6', bg: '#080c1f', surface: '#18181b' },
   },
 ];

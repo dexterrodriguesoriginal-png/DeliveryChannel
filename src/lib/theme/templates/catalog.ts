@@ -7,13 +7,17 @@
  * e tamanho serializado estritamente inferior a 16 KB.
  */
 
-import { StoreTemplate, ThemeTokens } from '../../../types/theme';
+import { BackgroundStyleConfig, StoreTemplate, ThemeTokens } from '../../../types/theme';
 import { SEGMENTS } from './segments';
 import {
   SEGMENT_PALETTES,
   buildPalette,
   ColorFamily,
   NamedPalette,
+  hexToRgb,
+  rgbToHsl,
+  hslToHex,
+  getLuminance,
 } from './palettes';
 import { STORE_LAYOUTS } from './layouts';
 import { TYPE_PAIRS } from './typePairs';
@@ -26,6 +30,27 @@ import { COMPONENT_STYLES } from './componentStyles';
 const SEGMENT_LABEL_MAP: Record<string, string> = Object.fromEntries(
   SEGMENTS.map((s) => [s.id, s.label])
 );
+
+const GRADIENT_ANGLES = [160, 135, 180, 120, 200, 145];
+
+/**
+ * Fundo geral: modelos de índice 2 e 5 de cada segmento usam gradiente linear suave
+ * (mesma família do fundo, contraste preservado); os demais, cor sólida.
+ */
+export function generalBackground(bg: string, mode: 'light' | 'dark', variantIndex: number): BackgroundStyleConfig {
+  const base: BackgroundStyleConfig = { type: 'solid', color: bg, gradientStops: 2, positionX: 50, positionY: 50, zoom: 100 };
+  if (variantIndex % 3 !== 2) return base;
+  const { r, g, b } = hexToRgb(bg);
+  const { h, s, l } = rgbToHsl(r, g, b);
+  let end = bg;
+  for (const d of [0.04, 0.03, 0.02, 0.012]) {
+    const c = hslToHex(h + 18, Math.min(1, s + 0.1), mode === 'dark' ? l + d : l - d);
+    const lum = getLuminance(c);
+    if (mode === 'dark' ? lum < 0.12 : lum > 0.78) { end = c; break; }
+  }
+  if (end === bg) return base;
+  return { ...base, type: 'gradient-linear', gradientColors: [bg, end], angle: GRADIENT_ANGLES[(variantIndex + bg.charCodeAt(2)) % GRADIENT_ANGLES.length] };
+}
 
 /**
  * Monta os tokens completos de um modelo a partir dos 4 eixos
@@ -53,14 +78,7 @@ export function assembleTemplateTokens(
     version: 1,
     palette: p,
     backgrounds: {
-      general: {
-        type: 'solid',
-        color: p.bgGeneral,
-        gradientStops: 2,
-        positionX: 50,
-        positionY: 50,
-        zoom: 100,
-      },
+      general: generalBackground(p.bgGeneral, palette.mode, variantIndex),
       header: {
         type: 'solid',
         color: p.bgHeader,

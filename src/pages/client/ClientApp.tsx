@@ -47,6 +47,7 @@ import { MobileNavigation } from '../../components/layout/MobileNavigation';
 import { AddressAutocompleteInput, ParsedAddress } from '../../components/onboarding/AddressAutocompleteInput';
 import { Card } from '../../components/ui/Card';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
+import { isEmbeddedPreview, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
 import { shouldRefreshTheme, subscribeThemeRefresh } from '../../lib/theme/silentThemeRefresh';
@@ -209,6 +210,18 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     }
     return '';
   }, [forcedSlug]);
+
+  // Prévia do Design do App (iframe no painel): tema em rascunho por postMessage, sem pedidos,
+  // sem carrinho persistente, sem analytics, sem notificações/som e sem mexer no PWA.
+  const previewMode = useMemo(() => typeof window !== 'undefined' && isEmbeddedPreview(window), []);
+  const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
+  useEffect(() => {
+    if (!previewMode) return;
+    const onMsg = (ev: MessageEvent) => { const t = parsePreviewThemeMessage(ev, window); if (t) setPreviewTheme(t); };
+    window.addEventListener('message', onMsg);
+    try { window.parent.postMessage({ type: PREVIEW_READY_MSG }, window.location.origin); } catch { /* sem pai */ }
+    return () => window.removeEventListener('message', onMsg);
+  }, [previewMode]);
 
   // 2. Estados de Carregamento e Dados do Catálogo Real
   const [storeData, setStoreData] = useState<PublicStoreData | null>(null);
@@ -398,7 +411,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         setStoreData(storeWithModules);
         // Carrega carrinho específico deste estabelecimento
         try {
-          const savedCart = localStorage.getItem(cartStorageKey(data.tenant.id));
+          const savedCart = previewMode ? null : localStorage.getItem(cartStorageKey(data.tenant.id));
           if (savedCart) setCart(hydrateOriginCart<Product>(JSON.parse(savedCart)) as CartItem[]);
           else setCart([]);
         } catch {
@@ -415,14 +428,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     } finally {
       setIsLoadingStore(false);
     }
-  }, [slug]);
+  }, [slug, previewMode]);
 
   // Tema atualizado pelo dono enquanto o app do cliente ficou aberto: atualiza só o tema, em silêncio
   // (sem spinner, sem mexer em carrinho/produtos), ao voltar ao app após 30 s.
   const themeLoadedAtRef = useRef(Date.now());
   useEffect(() => { if (storeData) themeLoadedAtRef.current = Date.now(); }, [storeData?.tenant.id]);
   useEffect(() => {
-    if (!slug) return;
+    if (!slug || previewMode) return;
     return subscribeThemeRefresh(window, document, () => {
       if (!shouldRefreshTheme(themeLoadedAtRef.current, Date.now(), document.visibilityState === 'visible')) return;
       themeLoadedAtRef.current = Date.now();
@@ -431,7 +444,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         setStoreData(prev => (prev && prev.tenant.id === result.data.tenant.id ? { ...prev, theme: result.data.theme } : prev));
       }).catch(() => {});
     });
-  }, [slug]);
+  }, [slug, previewMode]);
 
   // Relógio da vitrine (relógio do SERVIDOR corrigido pelo offset recebido no get_public_store).
   // Atualiza a cada 15 s para que cards que expiram com a página aberta saiam da vitrine.
@@ -464,28 +477,28 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
   // Última loja visitada: a raiz ("Conta de Cliente Conectada") oferece voltar para ela após confirmar o e-mail.
   useEffect(() => {
-    if (slug) rememberLastStoreSlug(typeof window !== 'undefined' ? window.localStorage : null, slug);
-  }, [slug]);
+    if (slug && !previewMode) rememberLastStoreSlug(typeof window !== 'undefined' ? window.localStorage : null, slug);
+  }, [slug, previewMode]);
 
   // PWA white-label: manifesto/ícone/nome/cores da loja ativa (somente rotas /app/<slug>)
   useEffect(() => {
     const t = storeData?.tenant;
-    if (!t) return;
+    if (!t || previewMode) return;
     applyStoreIdentity({ id: t.id, slug: t.slug, name: t.name, theme: storeData?.theme }).catch(err => {
       console.warn('[ClientApp] Falha ao aplicar identidade PWA da loja:', err);
     });
-  }, [storeData?.tenant, storeData?.theme]);
+  }, [storeData?.tenant, storeData?.theme, previewMode]);
 
   // Persistir carrinho no localStorage sob o ID oficial do tenant
   useEffect(() => {
-    if (storeData?.tenant.id) {
+    if (storeData?.tenant.id && !previewMode) {
       try {
         localStorage.setItem(cartStorageKey(storeData.tenant.id), JSON.stringify(cart));
       } catch {
         // ignore
       }
     }
-  }, [cart, storeData?.tenant.id]);
+  }, [cart, storeData?.tenant.id, previewMode]);
 
   // Rastreia o usuário e tenant anteriormente sincronizados para evitar limpar pedidos indevidamente
   const prevSyncUserTenantRef = useRef<string | null>(null);
@@ -668,7 +681,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     const prev = lastStatusRef.current;
     const next = new Map(customerOrders.map(o => [o.id, o.status as string]));
     lastStatusRef.current = next;
-    if (!prev || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    if (previewMode || !prev || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     if (!loadNotificationPrefs(kv, userKey).orderStatus) return;
     for (const o of customerOrders) {
       const before = prev.get(o.id);
@@ -697,7 +710,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
   // Convite suave para ativar notificações: na aba Pedidos (logado), nunca durante o checkout. Respeita 7 dias.
   useEffect(() => {
-    if (navTab !== 'orders' || !supabaseUser || isCheckoutOpen || completedOrder) return;
+    if (previewMode || navTab !== 'orders' || !supabaseUser || isCheckoutOpen || completedOrder) return;
     const perm = typeof Notification !== 'undefined' ? Notification.permission : null;
     if (!shouldShowPushPrompt(kv, perm)) return;
     const t = setTimeout(() => setPushPromptOpen(true), 1500);
@@ -724,7 +737,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   }, [navTab, focusOrderId, customerOrders]);
 
   // Tema visual dinâmico do estabelecimento
-  const theme: Partial<TenantTheme> = storeData?.theme || {
+  const theme: Partial<TenantTheme> = (previewMode && previewTheme) || storeData?.theme || {
     primaryColor: '#15803d',
     secondaryColor: '#166534',
     backgroundColor: '#f8fafc',
@@ -1099,7 +1112,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     }
 
     // N5 (somente n1n6): clique no card como evento de funil (estimativa; best-effort).
-    if (storeData?.tenant.slug && analyticsAllowed()) {
+    if (storeData?.tenant.slug && !previewMode && analyticsAllowed()) {
       void campaignRepository.trackEvent({
         storeSlug: storeData.tenant.slug,
         eventType: 'CARD_CLICK',
@@ -1276,6 +1289,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     e.preventDefault();
     if (!storeData) return;
     if (isSubmittingOrder) return; // Proteção estrita contra múltiplos envios simultâneos
+    if (previewMode) {
+      showToast({ type: 'info', title: 'Modo prévia', message: 'Na prévia do Design do App nenhum pedido é criado.' });
+      return;
+    }
 
     // REGRA FUNDAMENTAL: NÃO EXISTE CHECKOUT ANÔNIMO
     if (!supabaseUser) {
@@ -1753,7 +1770,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         fontFamily: 'var(--dc-font-family, Inter, sans-serif)',
       }}
     >
-      <InstallStoreAppHint
+      {!previewMode && <InstallStoreAppHint
         tenantId={storeData.tenant.id}
         storeName={theme.storeName || storeData.tenant.name}
         color={theme.primaryColor || '#334155'}
@@ -1761,9 +1778,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         hidden={isCheckoutOpen || isPromoCheckoutOpen || addressFlow.open || navTab === 'cart'}
         busy={pushPromptOpen}
         bottomOffset={installHintBottomOffset({ bottomNav: true, floatingCartBar: cart.length > 0 && !isCheckoutOpen && (navTab === 'home' || navTab === 'search' || navTab === 'offers') })}
-      />
+      />}
       {/* Barra de Retorno ao Painel: só para a equipe autenticada DESTE estabelecimento. */}
-      {isStaffPreview(!!supabaseUser, activeTenant?.id, storeData.tenant.id) && (
+      {!previewMode && isStaffPreview(!!supabaseUser, activeTenant?.id, storeData.tenant.id) && (
       <div data-testid="staff-preview-bar" className="text-xs px-3.5 py-2 flex items-center justify-between border-b border-black/10 z-40 relative" style={{ backgroundColor: 'var(--dc-primary)', color: 'var(--dc-button-text)' }}>
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-2 h-2 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: 'var(--dc-button-text)' }} />

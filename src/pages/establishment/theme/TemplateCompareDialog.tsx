@@ -8,6 +8,7 @@ import { ThemeDialog } from './ThemeDialog';
 
 export interface TemplateCompareDialogProps {
   templates: StoreTemplate[];
+  storeSlug?: string;
   identity: TenantTheme;
   products?: ThemedProductItem[];
   isOpen?: boolean;
@@ -17,6 +18,7 @@ export interface TemplateCompareDialogProps {
 }
 export function TemplateCompareDialog({
   templates,
+  storeSlug,
   identity,
   products,
   isOpen = true,
@@ -41,6 +43,7 @@ export function TemplateCompareDialog({
             </div>
             <LiveStorePreview
               theme={tokensToTheme(template.tokens, identity)}
+              storeSlug={storeSlug}
               products={products}
               segmentId={template.segmentId}
               isOpen={isStoreOpen}

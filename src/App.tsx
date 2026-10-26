@@ -1,5 +1,6 @@
 import { InstallDriverAppHint } from './components/driver/InstallDriverAppHint';
 import { LegalBoundary, CookieBanner } from './components/legal/LegalUI';
+import { isEmbeddedPreview } from './lib/theme/previewBridge';
 import { FeedbackPage } from './pages/establishment/FeedbackPage';
 import { CallScreen } from './components/pickup/CallScreen';
 import { ChegadaPage } from './components/pickup/ChegadaPage';
@@ -756,7 +757,8 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <LegalBoundary><AppContent /></LegalBoundary>
-        <CookieBanner />
+        {/* Prévia do Design do App (iframe no painel): sem banner de cookies sobre a réplica. */}
+        {!isEmbeddedPreview(window) && <CookieBanner />}
         <InstallDriverAppHint />
       </ToastProvider>
     </AuthProvider>

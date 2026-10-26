@@ -10,6 +10,7 @@ import {
 import { ThemeImageUploader } from '../../../../components/establishment/theme/ThemeImageUploader';
 import { RotateCcw, Layout, X, Move, Trash2, ZoomIn, Plus } from 'lucide-react';
 import { useThemeEditorContext } from '../ThemeEditorContext';
+import { GradientAngleControl } from './GradientAngleControl';
 
 export function BackgroundsTab() {
   const {
@@ -223,6 +224,10 @@ export function BackgroundsTab() {
                     }}
                   />
                 </div>
+
+                {currentBg.type === 'gradient-linear' && (
+                  <GradientAngleControl angle={currentBg.angle} onChange={(angle) => updateCurrentBg({ angle })} />
+                )}
 
                 {/* Abas / Botões de Cada Parada de Cor */}
                 <div className="space-y-3">

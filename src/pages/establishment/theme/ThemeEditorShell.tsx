@@ -19,6 +19,7 @@ import { useToast } from '../../../context/ToastContext';
 import { themeService } from '../../../services/themeService';
 import { productRepository } from '../../../repositories/productRepository';
 import { safeImageUrl, validateHexColor } from '../../../lib/theme/themeEngine';
+import { useBottomActionsOffset } from '../../../lib/ui/bottomActionsOffset';
 import { LiveStorePreview } from '../../../components/establishment/theme/LiveStorePreview';
 import { ThemedProductItem } from '../../../components/storefront/ThemedProductList';
 import { useThemeDraft } from './useThemeDraft';
@@ -55,6 +56,8 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
   const [saving, setSaving] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
   const saveInFlight = useRef(false);
+  const actionsRef = useRef<HTMLElement>(null);
+  useBottomActionsOffset(actionsRef);
   const scrollRef = useRef<HTMLElement>(null);
   useEffect(() => {
     let active = true;
@@ -198,6 +201,7 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
   const preview = (
     <LiveStorePreview
       theme={draft.draftTheme}
+      storeSlug={tenant.slug}
       products={products}
       segmentId={resolveSegment(tenant.category)}
       isOpen={tenant.settings?.isOpen}
@@ -237,6 +241,7 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
               <div hidden={tab !== 'models'}>
                 <TemplateGallery
                   tenantId={tenant.id}
+                  storeSlug={tenant.slug}
                   category={tenant.category}
                   savedTheme={tenant.theme}
                   draftTheme={draft.draftTheme}
@@ -291,7 +296,7 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
             </aside>
           )}
         </div>
-        <footer className="theme-editor-actions">
+        <footer ref={actionsRef} className="theme-editor-actions">
           <span
             role="status"
             className={`theme-save-status ${draft.isDirty ? 'text-amber-700' : 'text-slate-500'}`}

@@ -25,6 +25,8 @@ import { ThemeDialog } from './ThemeDialog';
 import { resolveSegment } from '../../../lib/theme/previewProducts';
 
 export interface TemplateGalleryProps {
+  /** Slug da loja: a prévia mostra o app real do cliente. */
+  storeSlug?: string;
   tenantId: string;
   category?: string;
   savedTheme: TenantTheme;
@@ -54,6 +56,7 @@ function readFavorites(key: string): string[] {
   }
 }
 export function TemplateGallery({
+  storeSlug,
   tenantId,
   category,
   savedTheme,
@@ -422,6 +425,7 @@ export function TemplateGallery({
             </div>
             <LiveStorePreview
               theme={tokensToTheme(preview.tokens, draftTheme)}
+              storeSlug={storeSlug}
               products={products}
               segmentId={preview.segmentId}
               isOpen={isStoreOpen}
@@ -435,6 +439,7 @@ export function TemplateGallery({
       )}
       <TemplateCompareDialog
         templates={comparing}
+        storeSlug={storeSlug}
         identity={draftTheme}
         products={products}
         isStoreOpen={isStoreOpen}

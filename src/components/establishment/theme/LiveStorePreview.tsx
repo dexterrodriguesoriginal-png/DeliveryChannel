@@ -9,6 +9,7 @@ import {
 import { ThemedStoreHeader } from '../../storefront/ThemedStoreHeader';
 import { ThemedProductList, ThemedProductItem } from '../../storefront/ThemedProductList';
 import { sampleProducts } from '../../../lib/theme/previewProducts';
+import { StoreReplicaPreview } from './StoreReplicaPreview';
 
 export interface LiveStorePreviewProps {
   theme: TenantTheme;
@@ -178,12 +179,17 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
           </div>
         </div>
       )}
+      {props.storeSlug ? (
+        // Réplica idêntica: o app real do cliente com o tema em rascunho (ADENDO 1).
+        <StoreReplicaPreview theme={props.theme} storeSlug={props.storeSlug} mode={mode} maxHeight={compact ? 640 : 720} />
+      ) : (
       <div className={`theme-phone mx-auto ${mode === 'desktop' ? 'theme-phone-desktop' : ''}`}>
         <div className="theme-phone-camera" aria-hidden="true" />
         <div className="theme-phone-screen">
           <StorefrontPreview {...props} maxProducts={2} />
         </div>
       </div>
+      )}
     </div>
   );
 };

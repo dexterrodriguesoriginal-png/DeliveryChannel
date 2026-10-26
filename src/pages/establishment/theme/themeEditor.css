@@ -490,3 +490,41 @@
 /* Keep product prices and actions visible in the stationary phone frame. */
 .theme-phone-screen [data-testid="preview-product-desc"],
 .theme-phone-screen [data-testid="preview-promo-banner"] > span:last-child { display: none; }
+
+/* Réplica do app do cliente (iframe) — celular realista */
+.replica-phone {
+  position: relative;
+  margin: 0 auto;
+  border-radius: 46px;
+  background: linear-gradient(145deg, #1f2937, #0b1220);
+  box-shadow: 0 0 0 1px #374151, 0 0 0 3px #0b1220, 0 30px 60px -28px #0f172a99, inset 0 0 2px #ffffff30;
+}
+.replica-island {
+  position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+  width: 96px; height: 26px; border-radius: 20px; background: #000; z-index: 3;
+}
+.replica-screen { position: relative; overflow: hidden; border-radius: 36px; background: #fff; }
+.replica-desktop .replica-screen { border-radius: 10px; }
+.replica-desktop {
+  margin: 0 auto; border-radius: 14px; background: #e5e7eb;
+  box-shadow: 0 0 0 1px #cbd5e1, 0 24px 50px -30px #0f172a80;
+}
+.replica-statusbar {
+  display: flex; align-items: center; justify-content: space-between; padding: 4px 30px 0;
+  font: 600 13px/1 -apple-system, 'SF Pro Text', Inter, sans-serif; letter-spacing: .01em;
+}
+.replica-status-icons { display: flex; gap: 5px; align-items: center; }
+.replica-home {
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+  width: 34%; height: 5px; border-radius: 4px; background: #0f172acc; z-index: 3; pointer-events: none;
+}
+.replica-loading {
+  position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; color: #64748b; background: #f8fafc;
+}
+.replica-loading span {
+  width: 28px; height: 28px; border-radius: 999px; border: 3px solid #cbd5e1; border-top-color: #047857;
+  animation: replica-spin .8s linear infinite;
+}
+@keyframes replica-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .replica-loading span { animation: none; } }
