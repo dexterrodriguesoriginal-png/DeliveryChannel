@@ -58,20 +58,12 @@ export function getDeferredPrompt() { return deferred; }
 export function wasAppInstalledEvent() { return installedFlag; }
 export function clearDeferredPrompt() { deferred = null; listeners.forEach(l => l()); }
 export function subscribeInstall(l: () => void) { listeners.add(l); return () => { listeners.delete(l); }; }
-/**
- * 1ª ocorrência por sessão/página da loja: NÃO chama preventDefault, para que o Chrome possa mostrar o
- * card nativo (mini-infobar). Ocorrências seguintes na mesma sessão: preventDefault (evita repetir o card nativo).
- * Em ambos os casos o evento é guardado e prompt() funciona após clique real (web.dev/articles/customize-install).
- */
-export const nativeOfferedKey = (path: string) => `deliverychannel_pwa_native_offered_${path.replace(/\/+$/, '') || '/'}`;
-/** Nunca suprime o card nativo do Chrome: ele decide quando mostrar; o evento é guardado para o botão. */
-export function shouldSuppressNativeInfobar(_alreadyOfferedThisSession: boolean) { return false; }
+/** Suporte à API não significa que o evento já chegou (ou que o app ainda possa ser instalado). */
+export function supportsNativeInstall(w: Window): boolean { return 'onbeforeinstallprompt' in w; }
+/** Retém o evento para prompt() no clique real, sem outro convite nativo consumir o evento antes. */
 export function captureInstallEvents(w: Window) {
   w.addEventListener('beforeinstallprompt', (e) => {
-    const key = nativeOfferedKey(safe(() => w.location.pathname, '/'));
-    const offered = safe(() => w.sessionStorage.getItem(key) === '1', false);
-    if (shouldSuppressNativeInfobar(offered)) e.preventDefault();
-    else safe(() => w.sessionStorage.setItem(key, '1'), undefined);
+    e.preventDefault();
     deferred = e as BeforeInstallPromptEvent; listeners.forEach(l => l());
   });
   w.addEventListener('appinstalled', () => { installedFlag = true; deferred = null; listeners.forEach(l => l()); });

@@ -4,7 +4,7 @@ import { StoreLogo } from './StoreLogo';
 import { consumeOpenAttempt, rememberOpenAttempt, openInstalledApp, detectInstalledApp } from '../../lib/pwa/openInstalledApp';
 import { storeStartUrl } from '../../lib/pwa/storeManifest';
 import {
-  detectPlatform, isStandalone,
+  detectPlatform, isStandalone, supportsNativeInstall,
   isMarkedInstalled, markInstalled, getDeferredPrompt, clearDeferredPrompt, subscribeInstall, wasAppInstalledEvent,
   decideInvite, readInvite, recordInvite, recordAccepted, isEditableFocused, onInviteTrigger, activeKey,
   InviteKind, InviteTrigger, INVITE_ACTIVE_MS, inviteSurface,
@@ -21,7 +21,7 @@ interface Props {
 
 /**
  * Convite de instalação do app da loja. Prioriza a instalação nativa do Chrome (evento beforeinstallprompt);
- * sem ele, card escuro compacto próprio com instruções. Volta nos momentos-chave até instalação real
+ * instruções manuais somente em navegadores sem suporte à API. Volta nos momentos-chave até instalação real
  * (appinstalled / modo standalone). Nunca bloqueia a compra.
  */
 /** URL inicial da loja atual (/app/<slug>/?source=pwa), usada pelo botão "Abrir app". */
@@ -50,6 +50,9 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   const [installed, setInstalled] = useState(() => isMarkedInstalled(localStorage, tenantId));
   const [invite, setInvite] = useState<{ kind: InviteKind; trigger: InviteTrigger } | null>(null);
   const [help, setHelp] = useState(false);
+  const [nativeNotice, setNativeNotice] = useState(false);
+  const prompting = useRef(false);
+  useEffect(() => { if (deferred) { setHelp(false); setNativeNotice(false); } }, [deferred]);
   const barDismissed = false; // barra não é mais dispensável: fica até instalar
   const [acceptedAt] = useState(() => {
     const at = readInvite(localStorage, tenantId).acceptedAt;
@@ -106,7 +109,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     if ((phase !== 'installing' && phase !== 'slow') || installedAt != null || testPhase()) return;
     let alive = true;
     const check = () => {
-      if (isStandalone(window)) { setInstalledAt(a => a ?? Date.now()); return; }
+      if (isStandalone(window)) { markInstalled(localStorage, tenantId); setInstalled(true); setInstalledAt(a => a ?? Date.now()); return; }
       detectInstalledApp().then(v => { if (alive && v) { markInstalled(localStorage, tenantId); setInstalled(true); setInstalledAt(a => a ?? Date.now()); } }).catch(() => {});
     };
     const id = window.setInterval(check, 2000);
@@ -116,7 +119,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     window.addEventListener('focus', check);
     check();
     return () => { alive = false; window.clearInterval(id); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('focus', check); };
-  }, [phase, installedAt]);
+  }, [phase, installedAt, tenantId]);
   // Visitas posteriores no navegador: detecta o app já instalado (Chrome Android, via related_applications).
   useEffect(() => {
     if (standalone) return;
@@ -205,7 +208,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
               <p className="text-[15px] font-semibold leading-tight break-words">{copy.title}</p>
               {copy.subtitle && <p className="text-xs text-neutral-400 leading-tight mt-0.5">{copy.subtitle}</p>}
             </div>
-            {(openReady ? openButton : <button type="button" disabled aria-disabled="true" data-testid="open-installed-app-wait" className="shrink-0 rounded-full bg-white/10 px-4 py-1.5 text-sm font-semibold text-neutral-400 cursor-not-allowed">Abrir app</button>)}
+            {openReady && openButton}
             {phase !== 'installing' && <button type="button" aria-label="Fechar" onClick={() => { setDoneClosed(true); if (!isDone) setPhase('idle'); }} className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>}
           </div>
           {openHint}
@@ -252,11 +255,28 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
 
   const closeModal = () => { setInvite(null); setHelp(false); };
   const install = async () => {
+    if (prompting.current) return;
     const ev = getDeferredPrompt();
-    if (!ev) { setHelp(true); return; }
-    clearDeferredPrompt(); // o evento só pode ser usado uma vez
-    try { await ev.prompt(); } catch { setHelp(true); return; }
-    const choice = await ev.userChoice.catch(() => null);
+    if (!ev) {
+      setHelp(!supportsNativeInstall(window));
+      setNativeNotice(supportsNativeInstall(window));
+      return;
+    }
+    prompting.current = true;
+    setHelp(false);
+    setNativeNotice(false);
+    let choice;
+    try {
+      // Sem await ou tela intermediária antes de prompt(): preserva a ativação do clique.
+      const result = ev.prompt();
+      clearDeferredPrompt(); // o evento só pode ser usado uma vez
+      await result;
+      choice = await ev.userChoice;
+    } catch {
+      clearDeferredPrompt();
+      setNativeNotice(true);
+      return;
+    } finally { prompting.current = false; }
     if (choice?.outcome === 'accepted') {
       const now = Date.now();
       recordAccepted(localStorage, tenantId, now);
@@ -313,6 +333,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
             className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button> : null}
         </div>
         {help && instructions}
+        {nativeNotice && <p role="status" data-testid="install-native-notice" className="mt-2 text-xs text-neutral-300">A instalação ainda não está disponível. Aguarde e tente novamente.</p>}
       </div>
     </div>
   );
