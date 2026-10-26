@@ -80,7 +80,7 @@ export const ORDER_STATUS_THEME: Record<OrderStatus, StatusTheme> = {
     buttonBg: '#15803D',
     buttonHover: '#166534',
     buttonText: '#FFFFFF',
-    buttonLabel: 'Despachar Pedido',
+    buttonLabel: 'Chamar entregador',
   },
   WAITING_FOR_DRIVER: {
     bg: '#F0FDF4',
@@ -95,7 +95,7 @@ export const ORDER_STATUS_THEME: Record<OrderStatus, StatusTheme> = {
     buttonBg: '#15803D',
     buttonHover: '#166534',
     buttonText: '#FFFFFF',
-    buttonLabel: 'Despachar Pedido',
+    buttonLabel: 'Ver detalhes',
   },
   OUT_FOR_DELIVERY: {
     bg: '#ECFEFF',

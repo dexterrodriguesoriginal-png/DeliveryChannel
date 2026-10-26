@@ -63,7 +63,7 @@ describe('buildCustomerTimeline — entrega', () => {
     expect(tl.steps[3]).toMatchObject({ key: 'ready', state: 'current', label: 'Pronto • chamando motoboy' });
     expect(tl.steps[4].state).toBe('pending');
     expect(tl.current?.key).toBe('ready');
-    expect(tl.headline).toBe('Procurando motoboy');
+    expect(tl.headline).toBe('Procurando entregador');
   });
 
   it('fluxo atual: despacho leva direto a OUT_FOR_DELIVERY → a caminho de você', () => {
@@ -134,5 +134,17 @@ describe('buildCustomerTimeline — retirada no balcão', () => {
     expect(tl.current?.key).toBe('ready');
     expect(tl.steps[4].state).toBe('pending');
     expect(tl.headline).toBe('Pronto para retirada');
+  });
+});
+
+// Durante uma oferta o pedido permanece READY, sem aceite implícito no histórico.
+describe('rastreamento durante a oferta', () => {
+  it('mostra Procurando entregador sem concluir o aceite', () => {
+    const tl = buildCustomerTimeline(mk('READY', [h('READY', 1), h('DRIVER_OFFERED', 2)]));
+    expect(tl.headline).toBe('Procurando entregador');
+    expect(tl.steps.find(s => s.key === 'driver_accepted')?.state).toBe('pending');
+  });
+  it.each(['DRIVER_OFFER_CANCELLED', 'DRIVER_QUEUE_EMPTY', 'DRIVER_OFFER_DECLINED', 'DRIVER_OFFER_EXPIRED'])('%s encerra a busca', status => {
+    expect(buildCustomerTimeline(mk('READY', [h('READY', 1), h('DRIVER_OFFERED', 2), h(status, 3)])).headline).toBe('Pedido pronto');
   });
 });

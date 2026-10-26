@@ -35,6 +35,18 @@ export function dispatchErrorMessage(err: unknown): string {
   const code = rawCode(err);
   const m = msg.toLowerCase();
 
+  const offers: Record<string, string> = {
+    OFFER_EXPIRED: 'Esta chamada expirou. Aguarde uma nova oferta.',
+    OFFER_NOT_FOUND: 'Esta chamada não está mais disponível.',
+    OFFER_ALREADY_EXISTS: 'Este pedido já está aguardando aceite do entregador.',
+    DRIVER_BUSY: 'Este entregador está indisponível ou já em outra entrega. Escolha outro.',
+    NO_DRIVER_IN_QUEUE: 'Nenhum entregador aceitou. Não há outro entregador disponível na fila.',
+    ORDER_NOT_READY: 'O pedido precisa estar "Pronto", sem entregador, para receber uma chamada.',
+    DRIVER_REQUIRED: 'Selecione um entregador disponível.',
+    PAYMENT_REQUIRED: 'Aguarde a confirmação do pagamento online.',
+  };
+  const prefix = msg.split(':')[0].trim();
+  if (offers[prefix]) return offers[prefix];
   if (code === 'P0414' || /não aprovado|nao aprovado|not approved/.test(m)) {
     return `Este entregador ainda não foi aprovado na sua loja. Aprove o cadastro dele no ${DRIVERS_MENU_HINT} e tente de novo.`;
   }

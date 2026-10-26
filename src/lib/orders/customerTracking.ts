@@ -6,12 +6,8 @@
  *  - order_status_history.status + created_at (RLS order_status_history_customer_select).
  *    Nunca note/changed_by (nome de funcionário/entregador).
  *
- * Etapas de motoboy:
- *  - Hoje assign_order_to_driver leva o pedido direto de READY/WAITING_FOR_DRIVER para OUT_FOR_DELIVERY,
- *    então "motoboy aceitou" e "indo retirar" ficam concluídas no mesmo instante do despacho.
- *  - Compatível com a proposta /workspace/proposals/tracking_cliente_etapas.md: se o histórico trouxer
- *    DRIVER_ACCEPTED/DRIVER_ASSIGNED (e DRIVER_RELEASED ao desatribuir) com o pedido ainda em WAITING_FOR_DRIVER,
- *    "Motoboy aceitou" conclui e "Motoboy indo retirar" fica em andamento até a retirada (OUT_FOR_DELIVERY).
+ * Ofertas mantêm o pedido READY e publicam apenas eventos sem dados pessoais.
+ * DRIVER_ACCEPTED/DRIVER_ASSIGNED representam aceite novo/legado, até DRIVER_RELEASED.
  */
 import type { Order } from '../../types';
 
@@ -99,6 +95,8 @@ export function buildCustomerTimeline(
   const iReleased = lastIndexOf(history, 'DRIVER_RELEASED');
   const acceptedEvent = iAccepted >= 0 && iAccepted > iReleased && effectiveRank >= RANK.READY;
   const driverAccepted = effectiveRank >= RANK.OUT_FOR_DELIVERY || acceptedEvent;
+  const searchingDriver = !isPickup && !driverAccepted && status === 'READY' &&
+    lastIndexOf(history, 'DRIVER_OFFERED') > Math.max(...['DRIVER_OFFER_CANCELLED','DRIVER_QUEUE_EMPTY','DRIVER_OFFER_DECLINED','DRIVER_OFFER_EXPIRED'].map(s => lastIndexOf(history, s)));
   const driverAcceptedAt = acceptedEvent
     ? history[iAccepted].timestamp
     : firstReached(history, RANK.OUT_FOR_DELIVERY);
@@ -169,7 +167,7 @@ export function buildCustomerTimeline(
   else if (current?.key === 'out_for_delivery') headline = 'Motoboy a caminho de você';
   else if (current?.key === 'driver_accepted') headline = 'Motoboy aceitou';
   else if (current?.key === 'ready') {
-    headline = isPickup ? 'Pronto para retirada' : status === 'WAITING_FOR_DRIVER' ? 'Procurando motoboy' : 'Pedido pronto';
+    headline = isPickup ? 'Pronto para retirada' : status === 'WAITING_FOR_DRIVER' || searchingDriver ? 'Procurando entregador' : 'Pedido pronto';
   }
   else if (current?.key === 'preparing') headline = 'Em preparo';
   else if (current?.key === 'store_accepted') headline = 'Loja aceitou seu pedido';

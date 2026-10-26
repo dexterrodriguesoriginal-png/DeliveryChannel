@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
     securityContext: {}, availableTenants: [], activeRole: 'OWNER',
   },
   getOrders: vi.fn(), archiveOrders: vi.fn(), updateStatus: vi.fn(),
-  showToast: vi.fn(),
+  showToast: vi.fn(), listDrivers: vi.fn(), queue: vi.fn(), offer: vi.fn(), offerRows: [] as any[],
+  cancelOffer: vi.fn(), offersChanged: (() => {}) as () => void,
 }));
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => mocks.auth }));
 vi.mock('../../../context/ToastContext', () => ({ useToast: () => ({ showToast: mocks.showToast }) }));
@@ -21,11 +22,15 @@ vi.mock('../../../repositories/orderRepository', () => ({ orderRepository: {
   subscribeToOrders: () => () => {},
 } }));
 vi.mock('../../../repositories/driverRepository', () => ({
-  driverRepository: {}, driverInviteRepository: { listAssignableDrivers: async () => [] },
+  driverRepository: {}, driverInviteRepository: { listAssignableDrivers: mocks.listDrivers },
 }));
 vi.mock('../../../repositories/productRepository', () => ({ productRepository: { getProducts: async () => [] } }));
 vi.mock('../../../repositories/arrivalRepository', () => ({ arrivalRepository: { listOpen: async () => [], isOn: () => false } }));
-vi.mock('../../../repositories/dispatchChatRepository', () => ({ dispatchChatRepository: { queue: async () => ({ mode: 'OWNER_PICKS', drivers: [] }) } }));
+vi.mock('../../../repositories/dispatchChatRepository', () => ({ dispatchChatRepository: { queue: mocks.queue } }));
+vi.mock('../../../repositories/driverOfferRepository', () => ({ driverOfferRepository: {
+  expire: async () => 0, forOrders: async () => mocks.offerRows, offer: mocks.offer, cancel: mocks.cancelOffer,
+  subscribeTenant: (_tenant: string, changed: () => void) => { mocks.offersChanged = changed; return () => {}; },
+} }));
 vi.mock('../../../lib/orders/newOrderAlarm', () => ({ useNewOrderAlarm: () => ({}) }));
 vi.mock('../../../components/pickup/ArrivalQueuePanel', () => ({ ArrivalQueuePanel: () => null }));
 vi.mock('../../../components/pickup/PickupHandoverModal', () => ({ PickupHandoverModal: () => null }));
@@ -54,6 +59,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear(); sessionStorage.clear();
   mocks.auth.activeRole = 'OWNER';
+  mocks.offerRows = []; mocks.listDrivers.mockResolvedValue([]); mocks.queue.mockResolvedValue({ mode: 'OWNER_PICKS', drivers: [] });
+  mocks.offer.mockResolvedValue({ success: true }); mocks.cancelOffer.mockResolvedValue({ success: true });
   mocks.getOrders.mockResolvedValue([order('PREPARING')]);
   mocks.archiveOrders.mockResolvedValue(undefined);
   mocks.updateStatus.mockResolvedValue(order('READY'));
@@ -149,20 +156,52 @@ describe('ações preservadas no Kanban', () => {
     if (fulfillmentType === 'DINE_IN') expect(container.querySelector('[data-testid="card-call-driver"]')).toBeNull();
   });
 
-  it('mantém despachar, atribuir entregador, recusar e abrir detalhes', async () => {
+  it('chama o entregador uma vez, recusa pedidos e abre detalhes', async () => {
     const onUpdateStatus = vi.fn(async () => {}), onAssignDriverClick = vi.fn(), onCancelClick = vi.fn(), onSelectOrder = vi.fn();
     const ready = order('READY');
     const props = { onUpdateStatus, onAssignDriverClick, onCancelClick, onSelectOrder };
     await act(async () => { root.render(<KanbanOrderCard order={ready} {...props} />); });
     await click(container.querySelector('[data-testid="card-call-driver"]')!);
-    expect(onUpdateStatus).toHaveBeenCalledWith('order-1', 'WAITING_FOR_DRIVER');
-    await click(container.querySelector('button:last-child')!);
-    expect(onAssignDriverClick).toHaveBeenCalledWith(ready);
+    expect(onUpdateStatus).not.toHaveBeenCalled();
+    expect(onAssignDriverClick).toHaveBeenCalledExactlyOnceWith(ready);
     await click(container.firstElementChild as HTMLElement);
     expect(onSelectOrder).toHaveBeenCalledWith(ready);
     const pending = order('PENDING');
     await act(async () => { root.render(<KanbanOrderCard order={pending} {...props} />); });
     await click(button('Recusar'));
     expect(onCancelClick).toHaveBeenCalledWith(pending);
+  });
+});
+
+describe('chamadas de entregador na tela de Pedidos', () => {
+  const available = { id: 'dr1', userId: 'd1', name: 'Ana Teste', approvalStatus: 'APPROVED', status: 'AVAILABLE' };
+  const offered = () => ({ id: 'f', tenant_id: 'tenant-1', order_id: 'order-1', driver_user_id: 'd1', status: 'OFFERED', created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 60000).toISOString() });
+  it.each(['OWNER','DELIVERY_MANAGER'])('%s escolhe apenas disponível, vê quem recusou e envia oferta', async role => {
+    mocks.auth.activeRole = role; mocks.getOrders.mockResolvedValue([order('READY')]);
+    mocks.listDrivers.mockResolvedValue([available, { ...available, id: 'dr2', userId: 'd2', name: 'Ocupado', status: 'ON_DELIVERY' }]);
+    mocks.queue.mockResolvedValue({ mode: 'OWNER_PICKS', drivers: [{ id: 'dr1', user_id: 'd1', name: 'Ana' }] });
+    mocks.offerRows = [{ ...offered(), status: 'DECLINED' }];
+    await render(); await click(container.querySelector('[data-testid="card-call-driver"]')!);
+    const form = container.querySelector('form')!, select = form.querySelector('select')!;
+    expect(select.textContent).toContain('Ana Teste — recusou'); expect(select.textContent).not.toContain('Ocupado');
+    await act(async () => { select.value = 'd1'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(mocks.offer).toHaveBeenCalledWith('order-1', 'd1');
+    expect(mocks.showToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Chamada enviada' }));
+  });
+  it('fila automática mostra o primeiro nome e deixa a escolha com o servidor', async () => {
+    mocks.getOrders.mockResolvedValue([order('READY')]); mocks.listDrivers.mockResolvedValue([available]);
+    mocks.queue.mockResolvedValue({ mode: 'AUTO_QUEUE', drivers: [{ id: 'dr1', user_id: 'd1', name: 'Ana' }] });
+    await render(); await click(container.querySelector('[data-testid="card-call-driver"]')!);
+    const form = container.querySelector('form')!; expect(form.textContent).toContain('Será chamado: Ana'); expect(form.querySelector('select')).toBeNull();
+    await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(mocks.offer).toHaveBeenCalledWith('order-1', null);
+  });
+  it.each(['DECLINED','EXPIRED'])('realtime %s mostra toast e permite chamar outro', async status => {
+    mocks.getOrders.mockResolvedValue([order('READY')]); mocks.offerRows = [offered()];
+    await render(); expect(container.textContent).toContain('Aguardando aceite do entregador');
+    mocks.offerRows = [{ ...offered(), status }]; await act(async () => mocks.offersChanged());
+    expect(mocks.showToast).toHaveBeenCalledWith(expect.objectContaining({ title: status === 'DECLINED' ? 'Entregador recusou' : 'Entregador não respondeu' }));
+    expect(container.textContent).toContain('Chamar outro');
   });
 });

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../payments/store', () => ({ createPaymentStore: () => null }));
-import { startDispatchRetention } from '../retention';
+import { startDispatchRetention, startDriverOfferExpiry } from '../retention';
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe('dispatch maintenance scheduler', () => {
   it('expires every five minutes, retains daily, skips overlap and stops on close', async () => {
@@ -26,5 +26,23 @@ describe('dispatch maintenance scheduler', () => {
     expect(log).toHaveBeenCalledWith('[dispatch-retention] failed');
     expect(JSON.stringify(log.mock.calls)).not.toContain('private');
     await vi.advanceTimersByTimeAsync(5*60_000); expect(rpc).toHaveBeenCalledTimes(2); stop();
+  });
+});
+
+describe('expiração de ofertas sem pg_cron', () => {
+  it('executa a cada 30 segundos, evita sobreposição e para no encerramento', async () => {
+    vi.useFakeTimers();
+    let finish!: (v: unknown) => void;
+    const rpc = vi.fn().mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockResolvedValue(undefined);
+    const stop = startDriverOfferExpiry({ rpc });
+    expect(rpc).toHaveBeenCalledExactlyOnceWith('expire_driver_offers', {});
+    await vi.advanceTimersByTimeAsync(60000); expect(rpc).toHaveBeenCalledTimes(1);
+    finish(undefined); await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(30000); expect(rpc).toHaveBeenCalledTimes(2);
+    stop(); await vi.advanceTimersByTimeAsync(60000); expect(rpc).toHaveBeenCalledTimes(2);
+  });
+  it('sem credenciais configuradas não agenda requisições', () => {
+    vi.useFakeTimers(); const before = vi.getTimerCount();
+    startDriverOfferExpiry(null)(); expect(vi.getTimerCount()).toBe(before);
   });
 });

@@ -10,7 +10,7 @@ async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 export const dispatchChatRepository = {
-  queue: (tenantId: string) => rpc<{ mode: DispatchMode; drivers: QueueDriver[] }>('get_dispatch_queue', { p_tenant_id: tenantId }),
+  queue: (tenantId: string) => rpc<{ mode: DispatchMode; timeoutSeconds?: number; drivers: QueueDriver[] }>('get_dispatch_queue', { p_tenant_id: tenantId }),
   setMode: (tenantId: string, mode: DispatchMode) => rpc<void>('set_dispatch_mode', { p_tenant_id: tenantId, p_mode: mode }),
   async visibleNotifications(tenantId: string, rows: OwnerNotification[]): Promise<OwnerNotification[]> {
     const orderIds = [...new Set(rows.filter(n => n.kind !== 'DRIVER_JOIN_REQUEST').map(n => n.ref_id))];
