@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { paymentRepository, PaymentAccount, OnlineProvider, PROVIDER_LABELS } from '../../repositories/paymentRepository';
 import { PixPaymentSettingsCard } from './PixPaymentSettingsCard';
 import { Button } from '../ui/Button';
+import { PrimaryPaymentAccountChoice } from './PrimaryPaymentAccountChoice';
 import { CreditCard, ShieldCheck } from 'lucide-react';
 
 export function OnlinePaymentSettings({ tenantId, canEdit }: { tenantId: string; canEdit: boolean }) {
@@ -24,6 +25,7 @@ export function OnlinePaymentSettings({ tenantId, canEdit }: { tenantId: string;
       <p className="text-sm text-gray-600">Receba direto na conta da sua loja. Disponível em todos os planos.</p></div>
     {!canEdit ? <p className="text-sm text-gray-500">Somente o proprietário ou gerente pode configurar as contas de pagamento.</p> : <>
       {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
+      <PrimaryPaymentAccountChoice accounts={accounts} busy={busy} onChoose={provider => void act(() => paymentRepository.configure(tenantId, provider, { is_primary: true }))} />
       <div className="grid sm:grid-cols-2 gap-4">
         {(Object.keys(PROVIDER_LABELS) as OnlineProvider[]).map(provider => {
           const account = accounts.find(a => a.provider === provider); const connected = account?.status === 'connected';
@@ -33,7 +35,6 @@ export function OnlinePaymentSettings({ tenantId, canEdit }: { tenantId: string;
             {connected && <p className="text-xs text-gray-600">{account.account_label}</p>}
             {provider === 'infinitepay' && !connected && availability[provider] && <label className="block text-xs font-semibold">Sua InfiniteTag<input value={tag} onChange={e => setTag(e.target.value)} autoComplete="off" placeholder="Seu nome na InfinitePay" className="mt-1 w-full rounded-lg border p-2 text-sm" /></label>}
             {connected && <div className="space-y-2 text-sm">
-              <label className="flex gap-2"><input type="radio" name="primary-payment-account" checked={account.is_primary} disabled={busy} onChange={() => void act(() => paymentRepository.configure(tenantId, provider, { is_primary: true }))} />Conta principal</label>
               <label className="flex gap-2"><input type="checkbox" checked={account.accepts_pix} disabled={busy} onChange={e => void act(() => paymentRepository.configure(tenantId, provider, { accepts_pix: e.target.checked }))} />Aceitar PIX</label>
               {provider !== 'manual_pix' && <label className="flex gap-2"><input type="checkbox" checked={account.accepts_card} disabled={busy} onChange={e => void act(() => paymentRepository.configure(tenantId, provider, { accepts_card: e.target.checked }))} />Aceitar cartão</label>}
             </div>}

@@ -544,7 +544,7 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNavigate }) => {
                 selectedDriver={selectedDriver}
                 onSelectDriver={setSelectedDriver}
                 onOpenEdit={handleOpenEdit}
-                deliveryFee={activeTenant.settings?.deliveryFee || 6.5}
+                deliveryFee={activeTenant.settings?.deliveryFee ?? 6.5}
               />
             </div>
 

@@ -31,8 +31,16 @@ export interface PaymentProvider {
   connect(input: { code?: string; verifier?: string; redirectUri: string; infiniteTag?: string }): Promise<Credentials>;
   disconnect(credentials: Credentials): Promise<void>;
 }
+const messages: Record<string, string> = {
+  ACCOUNT_NOT_CONNECTED: 'Conecte esta conta antes de alterar os meios de pagamento.',
+  INVALID_TAG: 'Informe sua InfiniteTag como aparece na InfinitePay.',
+  INVALID_STATE: 'A conexão expirou. Volte às configurações e conecte novamente.',
+  FORBIDDEN: 'Você não tem permissão para alterar este pagamento.',
+  MEMBERSHIP_REQUIRED: 'Selecione sua loja novamente para configurar os pagamentos.',
+  RATE_LIMITED: 'Muitas tentativas. Aguarde um pouco e tente novamente.',
+};
 export class PaymentError extends Error {
-  constructor(public code: string, public status = 400, message = 'Não foi possível processar o pagamento. Tente novamente.') { super(message); }
+  constructor(public code: string, public status = 400, message = messages[code] ?? 'Não foi possível processar o pagamento. Tente novamente.') { super(message); }
 }
 export function providerName(value: unknown): Provider {
   if (!PROVIDERS.includes(value as Provider)) throw new PaymentError('INVALID_PROVIDER');
