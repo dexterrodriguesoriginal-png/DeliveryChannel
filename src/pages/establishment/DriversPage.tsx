@@ -1,3 +1,4 @@
+import { visibleStaffOrders } from '../../lib/orders/onlinePaymentGate';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -121,7 +122,7 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNavigate }) => {
     if (!activeTenant?.id) return;
     try {
       const data = await orderRepository.getOrders(securityContext, activeTenant.id);
-      setOrders(data);
+      setOrders(visibleStaffOrders(data));
     } catch (err) {
       console.warn('[DriversPage] Erro ao carregar pedidos para histórico de entregas:', err);
     }

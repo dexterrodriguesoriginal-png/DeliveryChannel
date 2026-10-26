@@ -1,3 +1,4 @@
+import { visibleStaffOrders } from '../../lib/orders/onlinePaymentGate';
 import { OnlineOrderPaymentPanel } from '../../components/client/OnlineOrderPaymentPanel';
 import { OnlinePaymentBadge } from '../../components/establishment/OnlinePaymentBadge';
 import { OrderChat } from '../../components/chat/OrderChat';
@@ -260,7 +261,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           : Promise.resolve([] as Driver[]),
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);
-      let ordersWithTableLabels = orderData;
+      let ordersWithTableLabels = visibleStaffOrders(orderData);
       const missingTableLabelOrderIds = [...new Set(orderData
         .filter(order => order.fulfillmentType === 'DINE_IN' && !order.tableLabel)
         .map(order => order.id))];
@@ -275,7 +276,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           const labelsByOrderId = new Map<string, string>(
             (labels as Array<{ order_id: string; table_label: string }>).map(row => [row.order_id, row.table_label])
           );
-          ordersWithTableLabels = resolveDineInTableLabels(orderData, labelsByOrderId);
+          ordersWithTableLabels = resolveDineInTableLabels(ordersWithTableLabels, labelsByOrderId);
         }
       }
       setRemoteOrders(ordersWithTableLabels);
@@ -567,7 +568,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     }
   };
 
-  const allOrders = remoteOrders || [];
+  const allOrders = visibleStaffOrders(remoteOrders || []);
   const visibleFulfillmentTabs = visibleFulfillmentTabsFor(isModuleEnabled, allOrders);
   const visibleTabsKey = visibleFulfillmentTabs.join(',');
   useEffect(() => {

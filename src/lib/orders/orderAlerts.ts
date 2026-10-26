@@ -1,3 +1,4 @@
+import { isOrderVisibleToStaff, visibleStaffOrders } from './onlinePaymentGate';
 /**
  * "Alertas de pedidos" do Dashboard do dono (19/10). Mesmos dados reais da tela Pedidos
  * (orderRepository.getOrders + realtime + polling); aqui só a classificação, pura e testável.
@@ -31,7 +32,7 @@ export function lateThresholdMs(prepMinutes?: number | null): number {
 export function buildOrderAlerts(orders: readonly Order[], opts: { prepMinutes?: number | null; now?: number } = {}): OrderAlerts {
   const now = opts.now ?? Date.now();
   const limit = lateThresholdMs(opts.prepMinutes);
-  const sorted = sortOrdersNewestFirst(orders);
+  const sorted = sortOrdersNewestFirst(visibleStaffOrders(orders));
   const age = (o: Order) => now - new Date(o.createdAt).getTime();
   const novos = sorted.filter(o => o.status === 'PENDING');
   const atrasados = sorted
@@ -78,9 +79,9 @@ export function whatsappLink(phone?: string | null): string | null {
 }
 
 /** IDs de pedidos novos que chegaram desde a última leitura (para som + destaque). Primeira leitura não toca. */
-export function newPendingIds(prevIds: ReadonlySet<string> | null, orders: readonly Pick<Order, 'id' | 'status'>[]): string[] {
+export function newPendingIds(prevIds: ReadonlySet<string> | null, orders: readonly Pick<Order, 'id' | 'status' | 'awaitingOnlinePayment'>[]): string[] {
   if (!prevIds) return [];
-  return orders.filter(o => o.status === 'PENDING' && !prevIds.has(o.id)).map(o => o.id);
+  return orders.filter(o => isOrderVisibleToStaff(o) && o.status === 'PENDING' && !prevIds.has(o.id)).map(o => o.id);
 }
 
 /** Pedido que a tela Pedidos deve abrir selecionado ao vir do Dashboard ("Ver pedido"). */
@@ -100,8 +101,8 @@ export interface NextStep {
  * Aceitar -> Iniciar preparo -> Marcar como pronto -> Chamar entregador (entrega) / Confirmar retirada (retirada).
  * null = nada a fazer pela loja agora (aguardando entregador, em rota, final) ou papel sem permissão.
  */
-export function nextStepFor(order: Pick<Order, 'status' | 'fulfillmentType' | 'driverId'>, role: RoleId | string | null | undefined): NextStep | null {
-  if (!canAcceptOrders(role)) return null;
+export function nextStepFor(order: Pick<Order, 'status' | 'fulfillmentType' | 'driverId' | 'awaitingOnlinePayment'>, role: RoleId | string | null | undefined): NextStep | null {
+  if (!isOrderVisibleToStaff(order) || !canAcceptOrders(role)) return null;
   const pickup = order.fulfillmentType === 'PICKUP';
   switch (order.status) {
     case 'PENDING': return { kind: 'accept', label: 'Aceitar', to: 'CONFIRMED' };
@@ -129,7 +130,7 @@ export function cancelLabel(order: Pick<Order, 'status'>): string {
 }
 
 /** Situação mostrada quando não há botão (ex.: aguardando entregador aceitar). */
-export function waitingLabel(order: Pick<Order, 'status' | 'fulfillmentType' | 'driverId'>): string {
+export function waitingLabel(order: Pick<Order, 'status' | 'fulfillmentType' | 'driverId' | 'awaitingOnlinePayment'>): string {
   if (order.status === 'WAITING_FOR_DRIVER') return order.driverId ? 'Entregador a caminho da loja' : 'Aguardando um entregador aceitar';
   if (order.status === 'READY' && order.driverId) return 'Entregador designado';
   if (order.status === 'OUT_FOR_DELIVERY') return 'Em rota de entrega';

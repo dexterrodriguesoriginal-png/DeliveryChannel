@@ -1,3 +1,4 @@
+import { visibleStaffOrders } from '../lib/orders/onlinePaymentGate';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { kitchenClient } from '../lib/kitchen/kitchenClient';
@@ -35,7 +36,7 @@ export const kitchenRepository = {
   context: (c: SupabaseClient, t?: string | null) => call<KitchenContext>(c, 'kitchen_get_context', { p_tenant_id: t ?? null }),
   unlock: (pin: string) => call<{ unlocked_until: string }>(kitchenClient(), 'kitchen_unlock', { p_pin: pin }),
   lock: () => call<void>(kitchenClient(), 'kitchen_lock'),
-  listOrders: (c: SupabaseClient, t?: string | null) => call<KitchenOrder[]>(c, 'kitchen_list_orders', { p_tenant_id: t ?? null }),
+  listOrders: async (c: SupabaseClient, t?: string | null) => visibleStaffOrders(await call<KitchenOrder[]>(c, 'kitchen_list_orders', { p_tenant_id: t ?? null })),
   setStatus: (c: SupabaseClient, orderId: string, to: 'PREPARING' | 'READY') => call<{ status: string; unchanged: boolean }>(c, 'kitchen_set_order_status', { p_order_id: orderId, p_to: to }),
   subscribe(c: SupabaseClient, tenantId: string, cb: () => void): () => void {
     const ch = c.channel(`kitchen-${tenantId}-${Math.random().toString(36).slice(2, 8)}`)

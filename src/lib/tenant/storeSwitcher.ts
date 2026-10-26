@@ -1,3 +1,4 @@
+import { isOrderVisibleToStaff } from '../orders/onlinePaymentGate';
 /**
  * Seletor de loja do painel (19/10): deixa claro QUAL loja está sendo administrada e mostra, para cada
  * loja do usuário, quantos pedidos novos (PENDING) estão esperando — mesmo vendo outra loja.
@@ -63,9 +64,9 @@ export function otherStoresWithPending(entries: readonly StoreSwitcherEntry[]): 
 }
 
 /** Conta PENDING por loja a partir das linhas { tenant_id } devolvidas pela consulta (RLS de equipe). */
-export function countPendingRows(rows: readonly { tenant_id: string }[], tenantIds: readonly string[]): Record<string, number> {
+export function countPendingRows(rows: readonly { tenant_id: string; awaiting_online_payment?: boolean }[], tenantIds: readonly string[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const id of tenantIds) out[id] = 0;
-  for (const r of rows) if (r && r.tenant_id in out) out[r.tenant_id]++;
+  for (const r of rows) if (r && isOrderVisibleToStaff(r) && r.tenant_id in out) out[r.tenant_id]++;
   return out;
 }

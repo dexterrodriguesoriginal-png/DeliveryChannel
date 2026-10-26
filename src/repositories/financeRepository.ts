@@ -1,3 +1,4 @@
+import { isN1N6Backend } from '../lib/backendSchema';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { SecurityContext } from '../services/securityEngine';
 import { dataStore } from '../services/dataStore';
@@ -81,6 +82,7 @@ export const financeRepository = {
           .from('orders')
           .select('id, total_amount, delivery_fee, discount, payment_method, status, created_at')
           .eq('tenant_id', tenantId)
+          .match(isN1N6Backend() ? { awaiting_online_payment: false } : {})
           .gte('created_at', startDate.toISOString())
           .lt('created_at', endDate.toISOString());
 

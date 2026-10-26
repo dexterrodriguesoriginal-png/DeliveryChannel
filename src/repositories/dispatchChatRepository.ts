@@ -1,3 +1,4 @@
+import { isOrderVisibleToStaff } from '../lib/orders/onlinePaymentGate';
 import { supabase } from '../lib/supabase';
 export type DispatchMode = 'AUTO_QUEUE' | 'OWNER_PICKS';
 export interface QueueDriver { id: string; user_id: string; name: string; last_ride: string | null }
@@ -11,10 +12,18 @@ async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
 export const dispatchChatRepository = {
   queue: (tenantId: string) => rpc<{ mode: DispatchMode; drivers: QueueDriver[] }>('get_dispatch_queue', { p_tenant_id: tenantId }),
   setMode: (tenantId: string, mode: DispatchMode) => rpc<void>('set_dispatch_mode', { p_tenant_id: tenantId, p_mode: mode }),
+  async visibleNotifications(tenantId: string, rows: OwnerNotification[]): Promise<OwnerNotification[]> {
+    const orderIds = [...new Set(rows.filter(n => n.kind !== 'DRIVER_JOIN_REQUEST').map(n => n.ref_id))];
+    if (!orderIds.length) return rows;
+    const { data, error } = await supabase.from('orders').select('id,awaiting_online_payment').eq('tenant_id', tenantId).in('id', orderIds);
+    if (error) throw new Error('Não foi possível conferir as notificações.');
+    const visible = new Set((data || []).filter(isOrderVisibleToStaff).map(o => o.id));
+    return rows.filter(n => n.kind === 'DRIVER_JOIN_REQUEST' || visible.has(n.ref_id));
+  },
   async notifications(tenantId: string): Promise<OwnerNotification[]> {
     const { data, error } = await supabase.from('owner_notifications').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(100);
     if (error) throw new Error('Não foi possível carregar as notificações.');
-    return data || [];
+    return dispatchChatRepository.visibleNotifications(tenantId, data || []);
   },
   async read(tenantId: string, id: string): Promise<void> {
     const { error } = await supabase.from('owner_notifications').update({ read_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', id);

@@ -1,3 +1,4 @@
+import { isN1N6Backend } from '../lib/backendSchema';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { SecurityContext } from '../services/securityEngine';
 import { dataStore } from '../services/dataStore';
@@ -79,6 +80,7 @@ async function fetchSalesByChannel(tenantId: string, startDate: Date, endDate: D
       .from('orders')
       .select('fulfillment_type, total_amount, status')
       .eq('tenant_id', tenantId)
+      .match(isN1N6Backend() ? { awaiting_online_payment: false } : {})
       .gte('created_at', startDate.toISOString())
       .lt('created_at', endDate.toISOString());
     return error || !data ? null : summarizeSalesByChannel(data);
@@ -156,6 +158,7 @@ export const reportsRepository = {
           .from('orders')
           .select('id, total_amount, status, fulfillment_type, created_at, customer_id, order_items(product_id, product_name, quantity, total_price)')
           .eq('tenant_id', tenantId)
+          .match(isN1N6Backend() ? { awaiting_online_payment: false } : {})
           .gte('created_at', startDate.toISOString())
           .lt('created_at', endDate.toISOString());
 
@@ -294,6 +297,7 @@ export const reportsRepository = {
           .from('orders')
           .select('order_number, created_at, customer_name, customer_phone, subtotal, discount, delivery_fee, total_amount, status, payment_method')
           .eq('tenant_id', tenantId)
+          .match(isN1N6Backend() ? { awaiting_online_payment: false } : {})
           .neq('status', 'CANCELLED')
           .gte('created_at', startDate.toISOString())
           .lt('created_at', endDate.toISOString())

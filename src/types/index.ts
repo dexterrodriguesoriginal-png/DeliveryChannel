@@ -595,6 +595,7 @@ export interface Order {
   totalAmount: number;
   paymentMethod: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'CASH';
   paymentStatus: PaymentStatus;
+  awaitingOnlinePayment?: boolean;
   onlinePayment?: { provider: 'mercadopago' | 'pagbank' | 'infinitepay' | 'manual_pix'; status: string };
   fulfillmentType: FulfillmentType;
   /** Identificador da comanda e metadados da rodada do salão (dados staff-only). */

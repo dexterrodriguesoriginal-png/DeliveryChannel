@@ -17,7 +17,7 @@ done
 psql -X -v ON_ERROR_STOP=1 -f supabase/tests/n1n6/sql/01_legacy_data.sql
 for file in supabase/migrations/202610*.sql; do
  name=${file##*/}
- case "$name" in 20261026004200_*) continue ;; esac
+ case "$name" in 20261026004200_*|20261026004301_*) continue ;; esac
  if [ "$name" = '20261014000800_revoke_excess_table_privileges.sql' ]; then
  psql -X -v ON_ERROR_STOP=1 -c 'GRANT ALL ON public.drivers,public.team_invites,public.tenant_users TO postgres'
  fi
@@ -36,3 +36,6 @@ psql -X -v ON_ERROR_STOP=1 -f supabase/rollback/20261026004200_notifications_dis
 psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261026004200_notifications_dispatch_chat.sql
 psql -X -v ON_ERROR_STOP=1 -f supabase/tests/pr_b/security_and_flows.sql
 echo 'PASS: PR B migration, flows, roles, tenant isolation, rollback definitions/grants, reapplication'
+
+# The payment gate depends on PR B; exercise it after PR B rollback/reapplication.
+sh supabase/tests/online_payment_gate/run_regressions.sh
