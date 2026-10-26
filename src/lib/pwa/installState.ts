@@ -112,10 +112,12 @@ export interface InviteContext {
   installed: boolean; standalone: boolean;
   /** checkout, pagamento, checkout promocional ou campo de formulário em foco */
   busy: boolean;
+  audience?: 'customer' | 'driver';
 }
 /** Decide se e como convidar. Persiste até instalar; nunca durante checkout/formulário; respeita intervalo mínimo. */
 export function decideInvite(c: InviteContext): InviteKind | null {
   if (c.installed || c.standalone || c.busy) return null;
+  if (c.audience === 'driver' && c.trigger === 'visit') return 'modal';
   const first = c.record.count === 0;
   if (first) return c.trigger === 'cart' || c.trigger === 'order' ? 'sheet' : 'modal';
   if (acceptedRecently(c)) return null;
@@ -159,16 +161,16 @@ export type InstallPhase = 'idle' | 'installing' | 'slow' | 'finishing' | 'done'
 /** Sem appinstalled após este tempo: só orienta conferir a tela inicial (não marca instalado). */
 export const INSTALL_SLOW_MS = 3 * 60 * 1000;
 export const INSTALL_DONE_HIDE_MS = 8000;
-export function installPhaseCopy(phase: InstallPhase, storeName: string): { title: string; subtitle: string } | null {
-  if (phase === 'installing') return { title: `Instalando o app ${storeName}…`, subtitle: 'Isso pode levar até 2 minutos. Pode continuar comprando.' };
+export function installPhaseCopy(phase: InstallPhase, storeName: string, audience: 'customer' | 'driver' = 'customer'): { title: string; subtitle: string } | null {
+  if (phase === 'installing') return { title: `Instalando o app ${storeName}…`, subtitle: audience === 'driver' ? 'Isso pode levar até 2 minutos. Pode continuar pela web.' : 'Isso pode levar até 2 minutos. Pode continuar comprando.' };
   if (phase === 'slow') return { title: storeName, subtitle: 'Confira sua tela inicial — o ícone deve aparecer em instantes' };
   if (phase === 'done') return { title: `Pronto! O app ${storeName} está na sua tela inicial`, subtitle: '' };
   if (phase === 'finishing') return { title: `Pronto! O app ${storeName} está na sua tela inicial`, subtitle: 'Finalizando no seu celular…' };
   return null;
 }
-/** Próxima fase a partir dos sinais reais: aceite nativo → instalando; appinstalled → pronto; recusa → normal. */
+/** appinstalled confirma instalação, mas o tempo mínimo ainda é conferido pela porcentagem. */
 export function nextInstallPhase(cur: InstallPhase, signal: 'accepted' | 'dismissed' | 'appinstalled' | 'slow-timeout'): InstallPhase {
-  if (signal === 'appinstalled') return 'done';
+  if (signal === 'appinstalled') return cur === 'done' ? 'done' : 'installing';
   if (signal === 'accepted') return 'installing';
   if (signal === 'dismissed') return cur === 'done' ? 'done' : 'idle';
   return cur === 'installing' ? 'slow' : cur;
@@ -178,14 +180,14 @@ export function nextInstallPhase(cur: InstallPhase, signal: 'accepted' | 'dismis
  * Porcentagem exibida enquanto o Chrome instala, em estilo "player": arranque rápido (~40% em 8 s),
  * desacelera, acelera de novo, desacelera e se aproxima de 90% perto dos 75 s. Sem confirmação real
  * (appinstalled / app detectado) nunca passa de 90%.
- * Com confirmação real (appinstalled / standalone / app detectado): acelera até 100% em ~3 s.
+ * Com confirmação real: acelera nos últimos 3 s, respeitando 75 s desde o aceite.
  * `installedAtMs` = tempo decorrido (desde o aceite) em que a confirmação chegou, ou null.
  */
 export const INSTALL_MIN_MS = 75 * 1000;
 /** Duração da aceleração final após a confirmação. */
 export const INSTALL_FINISH_MIN_MS = 3 * 1000;
 /** Mínimo absoluto, desde o aceite, para chegar a 100%. */
-export const INSTALL_DONE_MIN_MS = 3 * 1000;
+export const INSTALL_DONE_MIN_MS = INSTALL_MIN_MS;
 export const INSTALL_EST_MS = INSTALL_MIN_MS;
 const INSTALL_CAP = 90;
 // [tempo ms, %, easing do trecho]: 'out' = rápido→lento, 'in' = lento→rápido.

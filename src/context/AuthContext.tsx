@@ -11,6 +11,7 @@ import { isValidUuid } from '../lib/uuid';
 import { tenantSettingsColumns } from '../lib/dbColumns';
 import { isLocalDemoAllowed, isPreviewBypassActive, PREVIEW_BYPASS_SESSION_KEY } from '../lib/backend';
 import { classifyMemberships, DriverApprovalLookup } from '../lib/membershipResolution';
+import { membershipsForSelection, readInviteStore } from '../lib/driverInviteFlow';
 import { driverInviteRepository } from '../repositories/driverRepository';
 import { BusinessType } from '../lib/modules';
 import { DemoSegment } from '../lib/demoPacks';
@@ -27,7 +28,7 @@ export interface TenantMembership {
 
 export interface GoogleAuthOptions {
   returnTo?: string;
-  intent?: 'owner' | 'customer';
+  intent?: 'owner' | 'customer' | 'driver';
 }
 
 export type MembershipStatus = 
@@ -319,7 +320,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (tErr || !tenantRow) {
-        console.warn('[AuthContext] Erro ao carregar dados do tenant no Supabase:', tErr?.message);
+        console.warn('[AuthContext] Erro ao carregar dados do tenant no Supabase:');
         return null;
       }
 
@@ -338,13 +339,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return mapDbTenant(tenantRow, settingsRow, themeRow);
     } catch (err) {
-      console.warn('[AuthContext] Erro ao carregar dados do tenant no Supabase:', err);
+      console.warn('[AuthContext] Erro ao carregar dados do tenant no Supabase:');
     }
     return null;
   }, []);
 
   // Resolve os vínculos em tenant_users sem qualquer fallback arbitrário para OWNER
-  const resolveSupabaseProfile = useCallback(async (sbUser: SupabaseUser) => {
+  const resolveSupabaseProfile = useCallback(async (sbUser: SupabaseUser, selectedTenantId?: string) => {
     const resolutionId = ++authResolutionIdRef.current;
     const sessionUserId = sbUser.id;
     const sessionEmail = sbUser.email || '';
@@ -370,7 +371,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .maybeSingle();
 
         if (uErr) {
-          console.warn('[AUTH DEBUG] users profile query warning:', uErr.message);
+          console.warn('[AUTH DEBUG] users profile query warning:');
         }
 
         if (userProfile) {
@@ -393,11 +394,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (userProfile.avatar_url) userAvatar = userProfile.avatar_url;
           }
         } catch (e) {
-          console.warn('[AUTH DEBUG] Aviso ao buscar perfil de public.users:', e);
+          console.warn('[AUTH DEBUG] Aviso ao buscar perfil de public.users:');
         }
       }
 
-      if (resolutionId !== authResolutionIdRef.current) return;
+      if (resolutionId !== authResolutionIdRef.current) return false;
 
       // 2. Consulta TODOS os vínculos na tabela public.tenant_users (Zero-Trust)
       let membershipsData: { id?: string; role_id: string; tenant_id: string; status: string }[] = [];
@@ -418,7 +419,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Se houve erro ou retorno vazio imediatamente pós-OAuth, realiza uma segunda tentativa com breve delay
       if (membershipQueryError || membershipsData.length === 0) {
         await new Promise(r => setTimeout(r, 250));
-        if (resolutionId !== authResolutionIdRef.current) return;
+        if (resolutionId !== authResolutionIdRef.current) return false;
         try {
           const retryRes = await supabase
             .from('tenant_users')
@@ -426,61 +427,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .eq('user_id', sessionUserId);
           if (retryRes.error) {
             membershipQueryError = retryRes.error;
-            console.error('[AUTH DEBUG] tenant_users query error (retry):', retryRes.error);
+            console.error('[AUTH DEBUG] tenant_users query error (retry):');
           } else {
             membershipsData = (retryRes.data || []) as any;
             membershipQueryError = null;
           }
         } catch (retryErr) {
-          console.warn('[AUTH DEBUG] Segunda tentativa de leitura de tenant_users:', retryErr);
+          console.warn('[AUTH DEBUG] Segunda tentativa de leitura de tenant_users:');
         }
       }
 
-      if (resolutionId !== authResolutionIdRef.current) return;
+      if (resolutionId !== authResolutionIdRef.current) return false;
 
       // Se a query falhou com erro (CASO B), NUNCA transformar em "usuário sem estabelecimento"
       if (membershipQueryError) {
-        console.error('[AUTH DEBUG] tenant_users query error:', membershipQueryError);
-        console.log('[AUTH DEBUG]', {
-          sessionUserId,
-          sessionEmail,
-          publicUserId,
-          membershipQueryError: membershipQueryError.message || membershipQueryError,
-          membershipRows: 0,
-          activeMemberships: 0,
-          hasTenantMembership: false,
-          activeTenantId: null,
-          activeRole: null,
-          isLoadingAuth: false,
-          isMembershipLoading: false,
-        });
+        console.error('[AUTH DEBUG] tenant_users query error:');
 
         setMembershipStatus('MEMBERSHIP_ERROR');
         setMembershipError(membershipQueryError.message || 'Erro ao carregar permissões do estabelecimento.');
         setHasTenantMembership(false);
-        return;
+        return false;
       }
 
-      const allMemberships = (membershipsData || []) as { id?: string; role_id: string; tenant_id: string; status: string }[];
+      if (selectedTenantId && !membershipsData.some(m => m.tenant_id === selectedTenantId)) {
+        throw new Error('Não foi possível abrir esta loja. Tente novamente.');
+      }
+      const savedTenantId = selectedTenantId || localStorage.getItem(`adegafood_pref_tenant_${sessionUserId}`);
+      // Um convite de outra loja também pode estar pendente: não deixar o ACTIVE antigo vencer.
+      const allMemberships = membershipsForSelection(membershipsData, savedTenantId);
+
       const activeMemberships = allMemberships.filter(m => m.status === 'ACTIVE');
       const suspendedMemberships = allMemberships.filter(m => m.status === 'SUSPENDED');
 
       // CASO A: Query executou com sucesso e retornou vazia
       if (allMemberships.length === 0) {
-        console.log('[AUTH DEBUG]', {
-          sessionUserId,
-          sessionEmail,
-          publicUserId,
-          membershipQueryError: null,
-          membershipRows: 0,
-          activeMemberships: 0,
-          hasTenantMembership: false,
-          activeTenantId: null,
-          activeRole: null,
-          isLoadingAuth: false,
-          isMembershipLoading: false,
-        });
-
         setIsAccountSuspended(false);
         setHasTenantMembership(false);
         setActiveRole(null);
@@ -496,7 +476,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           avatar: userAvatar,
         });
         currentResolvedUserIdRef.current = sessionUserId;
-        return;
+        return false;
       }
 
       // F1: vínculo PENDING (sem ACTIVE) tem prioridade sobre SUSPENDED e INACTIVE.
@@ -504,17 +484,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const classified = classifyMemberships(allMemberships);
       if (classified.kind === 'PENDING_APPROVAL' || classified.kind === 'INACTIVE') {
         const blockedRow = classified.row!;
-        let storeName: string | null = null;
+        let storeName = readInviteStore(sessionStorage, blockedRow.tenant_id);
         try {
           const { data: tRow } = await supabase.from('tenants').select('name').eq('id', blockedRow.tenant_id).maybeSingle();
-          storeName = (tRow as any)?.name || null;
-        } catch {
-          storeName = null;
-        }
+          storeName = (tRow as any)?.name || storeName;
+        } catch { /* loja pendente usa o nome público do convite */ }
         const approval = blockedRow.role_id === 'DRIVER'
           ? await driverInviteRepository.getOwnApprovalStatus(blockedRow.tenant_id)
           : null;
-        if (resolutionId !== authResolutionIdRef.current) return;
+        if (resolutionId !== authResolutionIdRef.current) return false;
 
         setIsAccountSuspended(false);
         setHasTenantMembership(false);
@@ -530,28 +508,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: sessionEmail,
           phone: userPhone,
           role: null,
+          tenantId: blockedRow.tenant_id,
           avatar: userAvatar,
         });
         currentResolvedUserIdRef.current = sessionUserId;
-        return;
+        return true;
       }
 
       // Vínculo suspenso e nenhum ativo
       if (activeMemberships.length === 0 && suspendedMemberships.length > 0) {
-        console.log('[AUTH DEBUG]', {
-          sessionUserId,
-          sessionEmail,
-          publicUserId,
-          membershipQueryError: null,
-          membershipRows: allMemberships.length,
-          activeMemberships: 0,
-          hasTenantMembership: false,
-          activeTenantId: null,
-          activeRole: null,
-          isLoadingAuth: false,
-          isMembershipLoading: false,
-        });
-
+        setPendingTenantName(readInviteStore(sessionStorage, suspendedMemberships[0].tenant_id));
         setIsAccountSuspended(true);
         setHasTenantMembership(false);
         setActiveRole(null);
@@ -567,25 +533,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           avatar: userAvatar,
         });
         currentResolvedUserIdRef.current = sessionUserId;
-        return;
+        return true;
       }
 
       // Sem vínculos ativos
       if (activeMemberships.length === 0) {
-        console.log('[AUTH DEBUG]', {
-          sessionUserId,
-          sessionEmail,
-          publicUserId,
-          membershipQueryError: null,
-          membershipRows: allMemberships.length,
-          activeMemberships: 0,
-          hasTenantMembership: false,
-          activeTenantId: null,
-          activeRole: null,
-          isLoadingAuth: false,
-          isMembershipLoading: false,
-        });
-
         setIsAccountSuspended(false);
         setHasTenantMembership(false);
         setActiveRole(null);
@@ -601,26 +553,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           avatar: userAvatar,
         });
         currentResolvedUserIdRef.current = sessionUserId;
-        return;
+        return false;
       }
 
       // Caso 1: Usuário é CEO ou SUPER_ADMIN (vínculo global ou role específica)
       const ceoMembership = activeMemberships.find(m => m.role_id === 'CEO' || m.role_id === 'SUPER_ADMIN');
       if (ceoMembership) {
-        console.log('[AUTH DEBUG]', {
-          sessionUserId,
-          sessionEmail,
-          publicUserId,
-          membershipQueryError: null,
-          membershipRows: allMemberships.length,
-          activeMemberships: activeMemberships.length,
-          hasTenantMembership: true,
-          activeTenantId: null,
-          activeRole: ceoMembership.role_id,
-          isLoadingAuth: false,
-          isMembershipLoading: false,
-        });
-
         setIsAccountSuspended(false);
         setHasTenantMembership(true);
         setMembershipStatus('MEMBERSHIP_RESOLVED_WITH_DATA');
@@ -636,7 +574,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           avatar: userAvatar,
         });
         currentResolvedUserIdRef.current = sessionUserId;
-        return;
+        return false;
       }
 
       // Caso 2: Usuário possui vínculos ativos (OWNER, MANAGER, DRIVER, etc.)
@@ -655,7 +593,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .in('id', tenantIds);
 
           if (tRowsErr) {
-            console.warn('[AUTH DEBUG] Aviso na busca de estabelecimentos:', tRowsErr.message);
+            console.warn('[AUTH DEBUG] Aviso na busca de estabelecimentos:');
           }
           if (tenantRows) {
             tenantRows.forEach(t => {
@@ -663,11 +601,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
           }
         } catch (tErr) {
-          console.warn('[AUTH DEBUG] Aviso ao buscar dados dos estabelecimentos:', tErr);
+          console.warn('[AUTH DEBUG] Aviso ao buscar dados dos estabelecimentos:');
         }
       }
 
-      if (resolutionId !== authResolutionIdRef.current) return;
+      if (resolutionId !== authResolutionIdRef.current) return false;
 
       // Validação de Estabelecimento Pendente de Confirmação (Comando 42)
       // Se todos os estabelecimentos do usuário estiverem com status PENDING,
@@ -678,7 +616,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (activeTenantsList.length === 0 && pendingTenantsList.length > 0) {
         const pendingT = pendingTenantsList[0];
-        console.log('[AUTH DEBUG] Estabelecimento aguardando confirmação de e-mail:', pendingT);
+        console.log('[AUTH DEBUG] Estabelecimento aguardando confirmação de e-mail:');
 
         // AUTO-RECOVERY PARA GOOGLE OAUTH (Comando 86):
         // Se a conta for Google verificada, ativa o tenant pendente via RPC segura
@@ -687,7 +625,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log('[AUTH DEBUG] Usuário Google verificado com tenant PENDING. Executando auto-ativação segura...');
             const { data: googleActiveData, error: googleActiveErr } = await supabase.rpc('confirm_pending_tenant_after_verified_google');
             if (!googleActiveErr && googleActiveData?.success) {
-              console.log('[AUTH DEBUG] Tenant ativado com sucesso via Google verificado:', googleActiveData);
+              console.log('[AUTH DEBUG] Tenant ativado com sucesso via Google verificado:');
               clearTenantEmailConfirmation();
 
               // Recarrega os dados do tenant ativado
@@ -704,10 +642,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 pendingTenantsList.length = 0;
               }
             } else {
-              console.warn('[AUTH DEBUG] Falha na auto-ativação Google:', googleActiveErr?.message);
+              console.warn('[AUTH DEBUG] Falha na auto-ativação Google:');
             }
           } catch (gErr) {
-            console.warn('[AUTH DEBUG] Exceção na auto-ativação Google:', gErr);
+            console.warn('[AUTH DEBUG] Exceção na auto-ativação Google:');
           }
         }
 
@@ -743,7 +681,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             avatar: userAvatar,
           });
           currentResolvedUserIdRef.current = sessionUserId;
-          return;
+          return false;
         }
       }
 
@@ -774,19 +712,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setActiveRole(null);
         setActiveTenantState(null);
         setAvailableTenants([]);
-        return;
+        return false;
       }
 
-      let preferredMembership = mappedActiveTenants[0];
-      if (mappedActiveTenants.length > 1) {
-        const savedTenantPref = localStorage.getItem(`adegafood_pref_tenant_${sessionUserId}`);
-        const found = mappedActiveTenants.find(t => t.tenantId === savedTenantPref);
-        if (found) preferredMembership = found;
+      if (selectedTenantId && !mappedActiveTenants.some(t => t.tenantId === selectedTenantId)) {
+        throw new Error('Não foi possível abrir esta loja. Tente novamente.');
       }
+      const preferredMembership = mappedActiveTenants.find(t => t.tenantId === savedTenantId) || mappedActiveTenants[0];
 
       let chosenTenant = await fetchTenantData(preferredMembership.tenantId);
 
-      if (resolutionId !== authResolutionIdRef.current) return;
+      if (resolutionId !== authResolutionIdRef.current) return false;
 
       // Se fetchTenantData falhou, tenta resolver os dados a partir de tenantDetailsMap
       if (!chosenTenant) {
@@ -798,10 +734,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // NUNCA fabricar 'estabelecimento', 'meu-estabelecimento' ou qualquer valor falso.
         // Lançar erro explícito de carregamento para retry transparente.
         if (!realSlug || realSlug === 'estabelecimento' || realSlug === 'seu-negocio') {
-          console.error('[AuthContext] Falha ao carregar o slug real do estabelecimento:', preferredMembership.tenantId);
+          console.error('[AuthContext] Falha ao carregar o slug real do estabelecimento:');
           setMembershipStatus('MEMBERSHIP_ERROR');
           setMembershipError('Não foi possível carregar as informações do seu estabelecimento no momento. Verifique sua conexão e tente novamente.');
-          return;
+          return false;
         }
 
         chosenTenant = {
@@ -848,19 +784,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (!chosenTenant) {
-        console.warn('[AuthContext] Não foi possível resolver dados do tenant:', preferredMembership.tenantId);
+        console.warn('[AuthContext] Não foi possível resolver dados do tenant:');
         setMembershipStatus('MEMBERSHIP_ERROR');
         setMembershipError('Não foi possível carregar as informações do seu estabelecimento no momento. Verifique sua conexão e tente novamente.');
         setHasTenantMembership(false);
         setActiveRole(null);
         setActiveTenantState(null);
-        return;
+        return false;
       }
 
       // F1/F5: para DRIVER ativo, lê o próprio approval_status; só APPROVED confirmado abre o app.
       if (preferredMembership.roleId === 'DRIVER') {
         const approval = await driverInviteRepository.getOwnApprovalStatus(preferredMembership.tenantId);
-        if (resolutionId !== authResolutionIdRef.current) return;
+        if (resolutionId !== authResolutionIdRef.current) return false;
         setDriverApprovalStatus(approval);
         setPendingTenantName(chosenTenant.name || null);
       }
@@ -880,26 +816,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         avatar: userAvatar,
       });
 
-      console.log('[AUTH DEBUG]', {
-        sessionUserId,
-        sessionEmail,
-        publicUserId,
-        membershipQueryError: null,
-        membershipRows: allMemberships.length,
-        activeMemberships: activeMemberships.length,
-        hasTenantMembership: true,
-        activeTenantId: chosenTenant.id,
-        activeRole: preferredMembership.roleId,
-        isLoadingAuth: false,
-        isMembershipLoading: false,
-      });
-
       currentResolvedUserIdRef.current = sessionUserId;
+      return true;
 
     } catch (err: any) {
-      console.error('[AUTH DEBUG] Exceção ao resolver perfil no banco:', err);
+      console.error('[AUTH DEBUG] Exceção ao resolver perfil no banco:');
       setMembershipStatus('MEMBERSHIP_ERROR');
       setMembershipError(err?.message || 'Falha ao resolver perfil de usuário.');
+      return false;
     }
   }, [fetchTenantData]);
 
@@ -917,11 +841,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [supabaseUser, resolveSupabaseProfile]);
 
-  // Função estrita de troca de tenant: valida contra vínculos ativos reais do banco
+  // Troca de loja: revalida vínculo no banco; PENDING só abre a tela de status.
   const switchTenant = useCallback(async (targetTenantId: string): Promise<boolean> => {
+    if (supabaseUser && !isPreviewBypass) {
+      const { data, error } = await supabase.from('tenant_users')
+        .select('tenant_id, role_id, status').eq('user_id', supabaseUser.id).eq('tenant_id', targetTenantId).maybeSingle();
+      if (error || !data || (data.status !== 'ACTIVE' && data.role_id !== 'DRIVER')) return false;
+      // A preferência só é persistida depois de resolver o vínculo do próprio usuário no banco.
+      setIsMembershipLoading(true);
+      try {
+        const resolved = await resolveSupabaseProfile(supabaseUser, targetTenantId);
+        if (resolved) localStorage.setItem(`adegafood_pref_tenant_${supabaseUser.id}`, targetTenantId);
+        return resolved;
+      } finally { setIsMembershipLoading(false); }
+    }
     const validMembership = availableTenants.find(t => t.tenantId === targetTenantId);
     if (!validMembership) {
-      console.error('[AuthContext] Tentativa não autorizada de switchTenant para ID não associado:', targetTenantId);
+      console.error('[AuthContext] Tentativa não autorizada de switchTenant para ID não associado:');
       return false;
     }
 
@@ -930,7 +866,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       tenantData = dataStore.getTenants({ userId: 'local-demo', userRole: 'CEO', userName: 'Demo' }).find(t => t.id === targetTenantId) || null;
     }
     if (!tenantData) {
-      console.error('[AuthContext] Erro ao carregar dados do tenant associado:', targetTenantId);
+      console.error('[AuthContext] Erro ao carregar dados do tenant associado:');
       return false;
     }
 
@@ -953,7 +889,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return true;
-  }, [availableTenants, fetchTenantData, supabaseUser, isPreviewBypass]);
+  }, [availableTenants, fetchTenantData, supabaseUser, isPreviewBypass, resolveSupabaseProfile]);
 
   const enterPreviewWithoutLogin = useCallback(() => {
     try {
@@ -1044,7 +980,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     async function handleAuthChange(sbSession: SupabaseSession | null, source: string) {
       if (!mounted) return;
-      console.log(`[AuthContext] Processando autenticação (${source}):`, sbSession?.user?.email);
+      console.log(`[AuthContext] Processando autenticação (${source}).`);
 
       if (!sbSession?.user) {
         currentResolvedUserIdRef.current = null;
@@ -1078,7 +1014,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // - NÃO chama resolveSupabaseProfile()
       // - NÃO desmonta páginas nem fecha formulários abertos
       if (incomingUserId && knownUserId && incomingUserId === knownUserId && source !== 'SIGNED_OUT') {
-        console.log(`[AuthContext] ${source} silencioso — mesmo usuário (${sbSession.user.email}). Preservando estado.`);
+        console.log(`[AuthContext] ${source} silencioso — mesmo usuário. Preservando estado.`);
         setSupabaseSession(sbSession);
         setSupabaseUser(sbSession.user);
         return;
@@ -1109,7 +1045,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await resolveSupabaseProfile(sbSession.user);
         currentResolvedUserIdRef.current = sbSession.user.id;
       } catch (err) {
-        console.error('[AuthContext] Falha na resolução de perfil:', err);
+        console.error('[AuthContext] Falha na resolução de perfil:');
       } finally {
         if (mounted) {
           setIsMembershipLoading(false);
@@ -1150,7 +1086,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabase.auth.getSession().then(({ data, error }) => {
       if (!mounted) return;
       if (error) {
-        console.warn('[AuthContext] Erro getSession:', error.message);
+        console.warn('[AuthContext] Erro getSession:');
       }
       if (data?.session?.user) {
         handleAuthChange(data.session, 'getSession');
@@ -1173,7 +1109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     }).catch(err => {
-      console.warn('[AuthContext] Falha ao verificar getSession:', err);
+      console.warn('[AuthContext] Falha ao verificar getSession:');
       if (mounted) {
         if (isPreviewBypassActive()) {
           enterPreviewWithoutLogin();
@@ -1189,7 +1125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: authSubscription } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (!mounted) return;
-        console.log(`[Supabase Auth Event] ${event}`, session?.user?.email);
+        console.log(`[Supabase Auth Event] ${event}`);
 
         if (event === 'SIGNED_OUT') {
           currentResolvedUserIdRef.current = null;
@@ -1200,7 +1136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           // Se for o mesmo usuário já autenticado e resolvido, atualização 100% silenciosa (preserva UI)
           if (incomingUserId && knownUserId && incomingUserId === knownUserId) {
-            console.log(`[Supabase Auth Event] ${event} silencioso para usuário já ativo (${session?.user?.email}): preservando páginas e formulários.`);
+            console.log(`[Supabase Auth Event] ${event} silencioso para usuário já ativo: preservando páginas e formulários.`);
             setSupabaseSession(session);
             if (session?.user) {
               setSupabaseUser(session.user);
@@ -1332,17 +1268,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // confirmação de e-mail obrigatória pelo Supabase Auth.
       const requiresConfirmation = !!data.user && !data.session;
 
-      console.log('[AUTH DEBUG]', {
-        signupUserId: data.user?.id || null,
-        signupEmail: cleanEmail,
-        signupSessionPresent: !!data.session,
-        emailConfirmationRequired: requiresConfirmation,
-        authState: requiresConfirmation
-          ? 'EMAIL_CONFIRMATION_REQUIRED'
-          : (data.session ? 'AUTHENTICATED_RESOLVING_MEMBERSHIP' : 'NOT_AUTHENTICATED'),
-        confirmationEmailSent: requiresConfirmation,
-      });
-
       if (requiresConfirmation) {
         // NÃO tratar como erro
         // NÃO fazer login novamente automaticamente
@@ -1395,7 +1320,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        console.warn('[AUTH DEBUG] Falha no reenvio de e-mail:', error.message);
+        console.warn('[AUTH DEBUG] Falha no reenvio de e-mail:');
         let friendlyMsg = 'Não foi possível reenviar o link de confirmação no momento.';
         const lowerErr = error.message.toLowerCase();
         if (
@@ -1408,15 +1333,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         return { success: false, error: friendlyMsg };
       }
-
-      console.log('[AUTH DEBUG]', {
-        signupUserId: null,
-        signupEmail: emailToResend,
-        signupSessionPresent: false,
-        emailConfirmationRequired: true,
-        authState: 'EMAIL_CONFIRMATION_REQUIRED',
-        confirmationEmailSent: true,
-      });
 
       return { success: true };
     } catch (err: any) {
@@ -1509,7 +1425,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await supabase.auth.signOut();
     } catch (err) {
-      console.warn('[AuthContext] Erro ao deslogar do Supabase:', err);
+      console.warn('[AuthContext] Erro ao deslogar do Supabase:');
     }
     currentResolvedUserIdRef.current = null;
     clearEmailConfirmation();
@@ -1599,7 +1515,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (presetError) {
         const migrationMissing = presetError.code === 'PGRST202' || presetError.code === '42883';
         const log = migrationMissing ? console.warn : console.error;
-        log('[AuthContext] Não foi possível aplicar a predefinição inicial de módulos:', presetError.message);
+        log('[AuthContext] Não foi possível aplicar a predefinição inicial de módulos.');
       }
 
       // REGRA ARQUITETURAL COMANDO 86: GOOGLE OAUTH
@@ -1611,11 +1527,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: googleConfirmData, error: googleConfirmErr } = await supabase.rpc('confirm_pending_tenant_after_verified_google');
 
         if (googleConfirmErr) {
-          console.error('[AuthContext] Falha ao ativar estabelecimento via Google:', googleConfirmErr.message);
+          console.error('[AuthContext] Falha ao ativar estabelecimento via Google:');
           return { success: false, error: googleConfirmErr.message };
         }
 
-        console.log('[AuthContext] Estabelecimento ativado com sucesso via Google:', googleConfirmData);
+        console.log('[AuthContext] Estabelecimento ativado com sucesso via Google:');
         clearTenantEmailConfirmation();
         if (supabaseUser) {
           await resolveSupabaseProfile(supabaseUser);
@@ -1664,14 +1580,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         if (otpError) {
-          console.error('[AUTH DEBUG] Erro no disparo do Magic Link:', otpError);
+          console.error('[AUTH DEBUG] Erro no disparo do Magic Link:');
           emailDispatchError = 'Não foi possível enviar o e-mail de confirmação agora. Tente novamente mais tarde.';
           setTenantConfirmationError(emailDispatchError);
         } else {
-          console.log('[AUTH DEBUG] Magic Link disparado com sucesso para o e-mail da conta:', authAccountEmail);
+          console.log('[AUTH DEBUG] Magic Link disparado com sucesso para o e-mail da conta:');
         }
       } catch (otpErr) {
-        console.error('[AUTH DEBUG] Exceção no disparo de signInWithOtp:', otpErr);
+        console.error('[AUTH DEBUG] Exceção no disparo de signInWithOtp:');
         emailDispatchError = 'Não foi possível enviar o e-mail de confirmação agora. Tente novamente mais tarde.';
         setTenantConfirmationError(emailDispatchError);
       }
@@ -1698,7 +1614,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = await supabase.rpc('confirm_pending_tenant_after_verified_google');
 
       if (error) {
-        console.warn('[AuthContext] Falha ao ativar estabelecimento via Google verificado:', error.message);
+        console.warn('[AuthContext] Falha ao ativar estabelecimento via Google verificado:');
         return { success: false, error: error.message || 'Falha ao ativar estabelecimento via Google verificado.' };
       }
 
@@ -1734,7 +1650,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        console.warn('[AuthContext] Falha ao confirmar estabelecimento após e-mail:', error.message);
+        console.warn('[AuthContext] Falha ao confirmar estabelecimento após e-mail:');
         return { success: false, error: error.message || 'Falha ao confirmar estabelecimento após autenticação por e-mail.' };
       }
 
@@ -1791,7 +1707,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (otpError) {
-        console.error('[AUTH DEBUG] Erro no reenvio de confirmação:', otpError);
+        console.error('[AUTH DEBUG] Erro no reenvio de confirmação:');
         let msg = 'Não foi possível enviar o e-mail de confirmação agora. Tente novamente mais tarde.';
         if (otpError.message.toLowerCase().includes('rate limit') || (otpError as any).status === 429) {
           msg = 'Limite temporário de envio de e-mails atingido. Aguarde alguns instantes antes de tentar novamente.';
@@ -1801,7 +1717,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return { success: true };
     } catch (err: any) {
-      console.error('[AUTH DEBUG] Exceção no reenvio de confirmação:', err);
+      console.error('[AUTH DEBUG] Exceção no reenvio de confirmação:');
       return { success: false, error: 'Não foi possível enviar o e-mail de confirmação agora. Tente novamente mais tarde.' };
     }
   }, [pendingConfirmationTenant, currentUser, supabaseUser, confirmPendingTenantAfterVerifiedGoogle]);

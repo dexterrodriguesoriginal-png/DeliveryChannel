@@ -32,6 +32,7 @@ describe('convite do entregador: tela inicial do modal', () => {
     const h = html(<RoleTenantSwitcher isOpen onClose={noop} initialView="SIGNUP" audience="driver" storeName="Mercado Teste DC" />);
     expect(h).toContain('Criar minha conta');
     expect(h).toContain('Confirmar Senha');
+    expect(h).toContain('Continuar com Google');
     expect(h).not.toContain('Entre na sua conta');
   });
   it('initialView LOGIN renderiza o login', () => {

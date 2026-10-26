@@ -25,7 +25,16 @@ export function buildWhatsAppInviteLink(storeName: string, publicUrl: string): s
 export function inviteTokenFromPath(pathname: string): string | null {
   if (!pathname.startsWith(INVITE_PATH_PREFIX)) return null;
   const t = pathname.slice(INVITE_PATH_PREFIX.length).split('/')[0];
-  return t ? decodeURIComponent(t) : null;
+  try { return t ? decodeURIComponent(t) : null; } catch { return null; }
 }
 
 export const INVITE_TOKEN_SESSION_KEY = 'driver_invite_token';
+
+/** Rota curta de retorno do OAuth: token recuperado só da sessão da aba. */
+export function inviteTokenFromLocation(loc: { pathname: string; search: string }, session: Pick<Storage, 'getItem'>): string | null {
+  const pathToken = inviteTokenFromPath(loc.pathname);
+  if (pathToken) return pathToken;
+  if (loc.pathname !== '/convite-entregador' && loc.pathname !== '/entregador/convite') return null;
+  try { return new URLSearchParams(loc.search).get('token') || session.getItem(INVITE_TOKEN_SESSION_KEY); }
+  catch { return null; }
+}

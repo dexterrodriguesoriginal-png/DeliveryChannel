@@ -1,20 +1,22 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Share, X, MoreVertical, Download, CheckCircle2 } from 'lucide-react';
 import { StoreLogo } from './StoreLogo';
-import { openInstalledApp, detectInstalledApp } from '../../lib/pwa/openInstalledApp';
+import { consumeOpenAttempt, rememberOpenAttempt, openInstalledApp, detectInstalledApp } from '../../lib/pwa/openInstalledApp';
 import { storeStartUrl } from '../../lib/pwa/storeManifest';
 import {
   detectPlatform, isStandalone,
   isMarkedInstalled, markInstalled, getDeferredPrompt, clearDeferredPrompt, subscribeInstall, wasAppInstalledEvent,
   decideInvite, readInvite, recordInvite, recordAccepted, isEditableFocused, onInviteTrigger, activeKey,
   InviteKind, InviteTrigger, INVITE_ACTIVE_MS, inviteSurface,
-  InstallPhase, INSTALL_SLOW_MS, installPhaseCopy, nextInstallPhase, estimatedInstallPercent,
+  InstallPhase, INSTALL_MIN_MS, INSTALL_SLOW_MS, installPhaseCopy, nextInstallPhase, estimatedInstallPercent,
 } from '../../lib/pwa/installState';
 
 interface Props {
   tenantId: string; storeName: string; color: string; logoUrl?: string; hidden?: boolean; busy?: boolean;
   /** Distância (px) da borda inferior: mantém o convite acima da navegação inferior/barra da sacola. */
   bottomOffset?: number;
+  audience?: 'customer' | 'driver';
+  startPath?: string;
 }
 
 /**
@@ -38,7 +40,7 @@ function testPhase(): InstallPhase | null {
   try { const v = new URLSearchParams(window.location.search).get('pwa_test_phase'); return v === 'installing' || v === 'slow' || v === 'finishing' || v === 'done' ? v : null; } catch { return null; }
 }
 
-export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, color, logoUrl, hidden, busy, bottomOffset }) => {
+export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, color, logoUrl, hidden, busy, bottomOffset, audience = 'customer', startPath }) => {
   // Com bottomOffset, a posição vem do estilo (acima da navegação); sem ele, mantém bottom-2/bottom-3.
   const offsetStyle: React.CSSProperties | undefined = bottomOffset != null
     ? { bottom: `calc(${Math.max(0, Math.round(bottomOffset))}px + env(safe-area-inset-bottom, 0px))` }
@@ -49,13 +51,19 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   const [invite, setInvite] = useState<{ kind: InviteKind; trigger: InviteTrigger } | null>(null);
   const [help, setHelp] = useState(false);
   const barDismissed = false; // barra não é mais dispensável: fica até instalar
-  const [phase, setPhase] = useState<InstallPhase>(() => testPhase() || 'idle');
+  const [acceptedAt] = useState(() => {
+    const at = readInvite(localStorage, tenantId).acceptedAt;
+    return at != null && Date.now() - at < INSTALL_MIN_MS ? at : null;
+  });
+  const [phase, setPhase] = useState<InstallPhase>(() => testPhase() || (acceptedAt != null ? 'installing' : 'idle'));
   const [doneClosed, setDoneClosed] = useState(false);
-  const [installStart, setInstallStart] = useState<number | null>(null);
-  const [installedAt, setInstalledAt] = useState<number | null>(null);
+  const [installStart, setInstallStart] = useState<number | null>(acceptedAt);
+  const [installedAt, setInstalledAt] = useState<number | null>(() => acceptedAt != null && isMarkedInstalled(localStorage, tenantId) ? Date.now() : null);
   const [, setTick] = useState(0);
   const [appDetected, setAppDetected] = useState(() => testOpenBar());
   const [openBarClosed, setOpenBarClosed] = useState(false);
+  const [openHelp, setOpenHelp] = useState(false);
+  useEffect(() => { if (consumeOpenAttempt(sessionStorage, tenantId)) setOpenHelp(true); }, [tenantId]);
   const standalone = isStandalone(window);
   const platform = detectPlatform(navigator.userAgent);
   const blockedRef = useRef(false);
@@ -99,7 +107,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     let alive = true;
     const check = () => {
       if (isStandalone(window)) { setInstalledAt(a => a ?? Date.now()); return; }
-      detectInstalledApp().then(v => { if (alive && v) setInstalledAt(a => a ?? Date.now()); }).catch(() => {});
+      detectInstalledApp().then(v => { if (alive && v) { markInstalled(localStorage, tenantId); setInstalled(true); setInstalledAt(a => a ?? Date.now()); } }).catch(() => {});
     };
     const id = window.setInterval(check, 2000);
     // Ao voltar do diálogo/instalação do Chrome a aba pode ter ficado em segundo plano: confere já.
@@ -113,10 +121,18 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   useEffect(() => {
     if (standalone) return;
     let alive = true;
-    detectInstalledApp().then(v => { if (alive && v) setAppDetected(true); });
+    detectInstalledApp().then(v => { if (alive && v) { markInstalled(localStorage, tenantId); setInstalled(true); setAppDetected(true); setInvite(null); } });
     return () => { alive = false; };
   }, [standalone, tenantId]);
-  const openApp = () => { openInstalledApp(currentStartPath()); };
+  const openApp = () => {
+    rememberOpenAttempt(sessionStorage, tenantId);
+    openInstalledApp(startPath || currentStartPath(), {
+      location: window.location, document, userAgent: navigator.userAgent,
+      setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+      onStillVisible: () => setOpenHelp(true),
+    });
+  };
+  const openHint = openHelp && <p data-testid="open-app-hint" role="status" className="mt-1.5 text-xs text-neutral-400 leading-snug">Abra pelo ícone {storeName} na tela inicial do celular</p>;
   const openButton = (
     <button type="button" onClick={openApp} data-testid="open-installed-app"
       className="shrink-0 rounded-full bg-[#a8c7fa] px-4 py-1.5 text-sm font-semibold text-[#062e6f] transition active:scale-95 active:brightness-90 hover:brightness-105">Abrir app</button>
@@ -129,7 +145,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     fetch(href, { credentials: 'same-origin' }).then(r => {
       if (!r.ok) console.warn(`[PWA] Manifesto da loja indisponível (HTTP ${r.status}): ${href}. O Chrome não oferecerá a instalação nativa.`);
     }).catch(err => console.warn('[PWA] Falha ao buscar o manifesto da loja:', href, err));
-  }, [tenantId]);
+  }, [tenantId, audience]);
   // Se o app foi removido do aparelho, o navegador volta a oferecer beforeinstallprompt: volta a convidar.
   useEffect(() => {
     if (deferred && installed && !standalone && !appInstalledEvt) {
@@ -140,7 +156,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
 
   const tryInvite = useCallback((trigger: InviteTrigger) => {
     const kind = decideInvite({
-      now: Date.now(), trigger, record: readInvite(localStorage, tenantId),
+      now: Date.now(), trigger, record: readInvite(localStorage, tenantId), audience,
       installed: isMarkedInstalled(localStorage, tenantId) || wasAppInstalledEvent(), standalone: isStandalone(window),
       busy: blockedRef.current || isEditableFocused(document),
     });
@@ -148,7 +164,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     recordInvite(localStorage, tenantId, Date.now());
     setHelp(false);
     setInvite({ kind, trigger });
-  }, [tenantId]);
+  }, [tenantId, audience]);
 
   // Cada carregamento/visita: convite após a identidade da loja carregar (pequeno atraso).
   useEffect(() => { const id = window.setTimeout(() => tryInvite('visit'), 1200); return () => window.clearTimeout(id); }, [tryInvite]);
@@ -175,7 +191,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     return () => { window.clearInterval(id); evs.forEach(e => window.removeEventListener(e, act)); };
   }, [installed, standalone, tenantId, tryInvite]);
 
-  const copy = installPhaseCopy(phase, storeName);
+  const copy = installPhaseCopy(phase, storeName, audience);
   if (copy && !hidden && (phase !== 'done' || !doneClosed)) {
     const isDone = phase === 'done' || phase === 'finishing';
     const openReady = phase === 'done';
@@ -189,10 +205,10 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
               <p className="text-[15px] font-semibold leading-tight break-words">{copy.title}</p>
               {copy.subtitle && <p className="text-xs text-neutral-400 leading-tight mt-0.5">{copy.subtitle}</p>}
             </div>
-            {isDone && (openReady ? openButton : <button type="button" disabled aria-disabled="true" data-testid="open-installed-app-wait" className="shrink-0 rounded-full bg-white/10 px-4 py-1.5 text-sm font-semibold text-neutral-400 cursor-not-allowed">Abrir app</button>)}
+            {(openReady ? openButton : <button type="button" disabled aria-disabled="true" data-testid="open-installed-app-wait" className="shrink-0 rounded-full bg-white/10 px-4 py-1.5 text-sm font-semibold text-neutral-400 cursor-not-allowed">Abrir app</button>)}
             {phase !== 'installing' && <button type="button" aria-label="Fechar" onClick={() => { setDoneClosed(true); if (!isDone) setPhase('idle'); }} className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>}
           </div>
-          {isDone && <p data-testid="open-app-hint" className="mt-1.5 text-xs text-neutral-400 leading-snug">Se não abrir, toque no ícone {storeName} na sua tela inicial</p>}
+          {openHint}
           {(phase === 'installing' || phase === 'slow' || isDone) && (() => {
             const tp = testPhase();
             const elapsed = tp ? (tp === 'installing' ? 25000 : 200000) : Date.now() - (installStart ?? Date.now());
@@ -220,12 +236,12 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
             <StoreLogo logoUrl={logoUrl} name={storeName} color={color} className="w-10 h-10 shrink-0 rounded-xl" />
             <div className="min-w-0 flex-1">
               <p className="text-[15px] font-semibold leading-tight break-words">{storeName}</p>
-              <p className="text-xs text-neutral-400 leading-tight mt-0.5">Você já tem o app. Peça por ele.</p>
+              <p className="text-xs text-neutral-400 leading-tight mt-0.5">{audience === 'driver' ? 'Você já tem o app do entregador.' : 'Você já tem o app. Peça por ele.'}</p>
             </div>
             {openButton}
             <button type="button" aria-label="Fechar" onClick={() => setOpenBarClosed(true)} className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>
           </div>
-          <p className="mt-1.5 text-xs text-neutral-400 leading-snug">Se não abrir, toque no ícone {storeName} na sua tela inicial</p>
+          {openHint}
         </div>
       </div>
     );
@@ -241,7 +257,16 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     clearDeferredPrompt(); // o evento só pode ser usado uma vez
     try { await ev.prompt(); } catch { setHelp(true); return; }
     const choice = await ev.userChoice.catch(() => null);
-    if (choice?.outcome === 'accepted') { recordAccepted(localStorage, tenantId, Date.now()); setDoneClosed(false); setPhase(p => nextInstallPhase(p, 'accepted')); closeModal(); return; }
+    if (choice?.outcome === 'accepted') {
+      const now = Date.now();
+      recordAccepted(localStorage, tenantId, now);
+      setDoneClosed(false);
+      setInstallStart(now);
+      setInstalledAt(wasAppInstalledEvent() || isStandalone(window) ? now : null);
+      setPhase(p => nextInstallPhase(p, 'accepted'));
+      closeModal();
+      return;
+    }
     setPhase(p => nextInstallPhase(p, 'dismissed'));
     closeModal();
   };
@@ -259,7 +284,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
       </>}
       {platform === 'ios-safari' && <p className="flex flex-wrap items-center gap-1">No Safari, toque em <Share className="inline h-4 w-4" /> <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</p>}
       {platform === 'ios-other' && <p>No iPhone, a instalação é feita pelo <b>Safari</b>. Abra este link no Safari, toque em <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b>.</p>}
-      {platform === 'desktop' && <p>Abra este link no navegador do seu celular (Chrome no Android ou Safari no iPhone) para instalar o app da loja.</p>}
+      {platform === 'desktop' && <p>Abra este link no navegador do seu celular (Chrome no Android ou Safari no iPhone) para instalar {audience === 'driver' ? 'o app do entregador' : 'o app da loja'}.</p>}
       <p className="mt-3 text-xs text-neutral-400">É rápido, gratuito e não ocupa quase nada de espaço.</p>
       <button type="button" data-testid="install-help-ok" onClick={() => setHelp(false)}
         className="mt-3 w-full rounded-full bg-white/10 py-2 text-sm font-semibold text-white active:scale-[0.98] active:bg-white/20 transition">Entendi</button>
@@ -268,7 +293,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
 
   const card = surface !== 'fallback-bar';
   const t = invite?.trigger;
-  const line = !card ? 'Mais praticidade para pedir de novo.' : t === 'order' ? 'Acompanhe seu pedido pelo app' : t === 'cart' ? 'Peça mais rápido da próxima vez' : 'Abra a loja com um toque na tela inicial';
+  const line = audience === 'driver' ? 'Instale o app do entregador para receber as corridas mais rápido' : !card ? 'Mais praticidade para pedir de novo.' : t === 'order' ? 'Acompanhe seu pedido pelo app' : t === 'cart' ? 'Peça mais rápido da próxima vez' : 'Abra a loja com um toque na tela inicial';
   return (
     <div data-testid={card ? 'install-store-app-card' : 'install-store-app-banner'} data-surface={surface} data-trigger={t}
       role={card ? 'dialog' : 'region'} aria-label={`Instalar app ${storeName}`}

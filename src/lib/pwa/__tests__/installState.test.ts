@@ -82,10 +82,11 @@ describe('marca de instalado com validade', () => {
 
 import { installPhaseCopy, nextInstallPhase } from '../installState';
 describe('acompanhamento da instalação', () => {
-  it('aceite → instalando; appinstalled → pronto; recusa → normal; 3 min → conferir tela', () => {
+  it('aceite/appinstalled → instalando; recusa → normal; 3 min → conferir tela', () => {
     expect(nextInstallPhase('idle', 'accepted')).toBe('installing');
     expect(nextInstallPhase('installing', 'slow-timeout')).toBe('slow');
-    expect(nextInstallPhase('slow', 'appinstalled')).toBe('done');
+    expect(nextInstallPhase('slow', 'appinstalled')).toBe('installing');
+    expect(nextInstallPhase('done', 'appinstalled')).toBe('done');
     expect(nextInstallPhase('idle', 'dismissed')).toBe('idle');
     expect(nextInstallPhase('idle', 'slow-timeout')).toBe('idle');
   });
@@ -116,18 +117,21 @@ describe('porcentagem estimada da instalação (estilo player)', () => {
     const start = rate(0, 4_000), slow = rate(10_000, 20_000), again = rate(28_000, 36_000), end = rate(65_000, 75_000);
     expect(start).toBeGreaterThan(slow); expect(again).toBeGreaterThan(slow); expect(again).toBeGreaterThan(end);
   });
-  it('confirmação cedo: chega a 100% em ~3 s após a confirmação; monotônica', () => {
+  it('appinstalled aos 2 s: curva gradual aos 10 s e 100% só após 75 s', () => {
     let prev = -1;
-    for (let t = 0; t <= 6_000; t += 100) { const p = estimatedInstallPercent(t, 1_000); expect(p).toBeGreaterThanOrEqual(prev); prev = p; }
-    expect(estimatedInstallPercent(1_000, 1_000)).toBeLessThan(10);
-    expect(estimatedInstallPercent(4_000, 1_000)).toBe(100);
+    for (let t = 0; t <= 75_000; t += 100) {
+      const p = estimatedInstallPercent(t, 2_000);
+      expect(p).toBeGreaterThanOrEqual(prev);
+      if (t < 75_000) expect(p).toBeLessThan(100);
+      prev = p;
+    }
+    expect(estimatedInstallPercent(10_000, 2_000)).toBeLessThan(50);
+    expect(estimatedInstallPercent(74_999, 2_000)).toBeLessThan(100);
+    expect(estimatedInstallPercent(75_000, 2_000)).toBe(100);
   });
-  it('confirmação aos 30 s (barra em ~55%): sem salto e 100% em 3 s', () => {
-    let prev = estimatedInstallPercent(30_000, 30_000);
-    expect(prev).toBeLessThan(70);
-    for (let t = 30_000; t <= 33_000; t += 100) { const p = estimatedInstallPercent(t, 30_000); expect(p).toBeGreaterThanOrEqual(prev); prev = p; }
-    expect(estimatedInstallPercent(32_900, 30_000)).toBeLessThan(100);
-    expect(estimatedInstallPercent(33_000, 30_000)).toBe(100);
+  it('confirmação aos 30 s respeita mínimo de 75 s', () => {
+    expect(estimatedInstallPercent(33_000, 30_000)).toBeLessThan(100);
+    expect(estimatedInstallPercent(75_000, 30_000)).toBe(100);
   });
   it('confirmação tardia: de 90% a 100% em 3 s', () => {
     expect(estimatedInstallPercent(120_000, 120_000)).toBe(89);

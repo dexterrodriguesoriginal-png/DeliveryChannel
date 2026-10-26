@@ -1,3 +1,4 @@
+import { InstallDriverAppHint } from './components/driver/InstallDriverAppHint';
 import { LegalBoundary, CookieBanner } from './components/legal/LegalUI';
 import { FeedbackPage } from './pages/establishment/FeedbackPage';
 import { CallScreen } from './components/pickup/CallScreen';
@@ -56,7 +57,7 @@ import { DriverApp } from './pages/driver/DriverApp';
 import { DriverStatusScreen } from './pages/driver/DriverStatusScreen';
 import { DriverInvitePage } from './pages/driver/DriverInvitePage';
 import { resolveDriverScreen } from './lib/membershipResolution';
-import { inviteTokenFromPath } from './utils/inviteUrl';
+import { inviteTokenFromLocation } from './utils/inviteUrl';
 
 // Icons & UI
 import { ShieldAlert, Store, LogIn, Lock, RefreshCw, AlertTriangle, ShoppingBag } from 'lucide-react';
@@ -68,6 +69,8 @@ import { isPanelPathname, panelRouteHash, readPanelRoute } from './lib/panelRout
 import { isMarketingTab } from './lib/marketingTabs';
 
 function AppContent() {
+  // Mantém o convite em memória após remover o token da URL e do storage.
+  const [initialInviteToken] = useState(() => inviteTokenFromLocation(window.location, sessionStorage));
   const { 
     currentUser, 
     activeRole, 
@@ -185,7 +188,7 @@ function AppContent() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedReturnTo = sessionStorage.getItem('adegafood_auth_return_to');
-      if (savedReturnTo && (savedReturnTo.startsWith('/app/') || savedReturnTo.startsWith('/entregador/convite/') || savedReturnTo.startsWith('/chegada/')) && window.location.pathname !== savedReturnTo && !window.location.pathname.startsWith('/app/')) {
+      if (savedReturnTo && (savedReturnTo.startsWith('/app/') || savedReturnTo.startsWith('/entregador/convite/') || savedReturnTo === '/convite-entregador' || savedReturnTo.startsWith('/chegada/')) && window.location.pathname !== savedReturnTo && !(savedReturnTo === '/convite-entregador' && window.location.pathname === '/entregador/convite') && !window.location.pathname.startsWith('/app/')) {
         sessionStorage.removeItem('adegafood_auth_return_to');
         window.location.replace(savedReturnTo);
       }
@@ -236,9 +239,9 @@ function AppContent() {
   if (pathname === '/cozinha') return <KitchenPage />;
 
   // 2a. Convite público de entregador: /entregador/convite/:token (antes das demais regras de /entregador)
-  const inviteToken = inviteTokenFromPath(pathname);
-  if (inviteToken) {
-    return <DriverInvitePage token={inviteToken} />;
+  const inviteToken = initialInviteToken;
+  if (inviteToken || pathname === '/convite-entregador' || pathname === '/entregador/convite') {
+    return <DriverInvitePage token={inviteToken || ''} />;
   }
 
   // 2b. Vínculo PENDING/INACTIVE ou entregador não aprovado: tela neutra (nunca "criar estabelecimento")
@@ -260,6 +263,7 @@ function AppContent() {
     return (
       <DriverStatusScreen
         variant="SUSPENDED"
+        storeName={pendingTenantName}
         userName={currentUser?.name}
         onSignOut={async () => { await signOut(); window.location.replace('/'); }}
       />
@@ -738,6 +742,7 @@ export default function App() {
       <ToastProvider>
         <LegalBoundary><AppContent /></LegalBoundary>
         <CookieBanner />
+        <InstallDriverAppHint />
       </ToastProvider>
     </AuthProvider>
   );

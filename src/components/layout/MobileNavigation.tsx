@@ -9,6 +9,7 @@ export interface MobileNavigationProps {
   cartCount?: number;
   /** Ponto/contador no Perfil (notificações não lidas). */
   profileBadge?: number;
+  ordersBadge?: boolean;
   primaryColor?: string;
 }
 
@@ -18,6 +19,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
   onTabChange,
   cartCount = 0,
   profileBadge = 0,
+  ordersBadge = false,
   primaryColor = '#15803d',
 }) => {
   if (type === 'driver') {
@@ -68,7 +70,10 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
         </div>
       ),
     },
-    { id: 'orders', label: 'Pedidos', icon: <ClipboardList className="w-5 h-5" /> },
+    { id: 'orders', label: 'Pedidos', icon: <div className="relative">
+      <ClipboardList className="w-5 h-5" />
+      {ordersBadge && activeTab !== 'orders' && <span data-testid="nav-orders-dot" aria-label="Pedido atualizado" className="absolute -top-0.5 -right-1 w-2.5 h-2.5 rounded-full bg-rose-600 ring-2 ring-white" />}
+    </div> },
     {
       id: 'profile',
       label: 'Perfil',
