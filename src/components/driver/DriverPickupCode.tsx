@@ -10,6 +10,6 @@ export function DriverPickupCode({ orderId }: { orderId: string }) {
     return () => { alive = false; window.clearInterval(timer); };
   }, [orderId]);
   return <section className="rounded-xl bg-amber-50 p-4 text-center"><h3 className="font-bold">Seu código de retirada</h3>
-    <p className="text-3xl font-mono tracking-widest">{code || '…'}</p><p>Mostre à loja para retirar o pedido.</p>{error && <p role="alert">{error}</p>}
+    <p className="text-3xl font-mono tracking-widest">{code || '…'}</p><p>Mostre este código na loja.</p>{error && <p role="alert">{error}</p>}
   </section>;
 }

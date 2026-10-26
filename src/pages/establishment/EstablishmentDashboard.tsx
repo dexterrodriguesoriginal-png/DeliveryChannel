@@ -1,3 +1,5 @@
+import { DriverOffersContext, DriverOfferStatus } from '../../components/dispatch/DriverOfferStatus';
+import { useOwnerDriverOffers } from '../../hooks/useOwnerDriverOffers';
 import { visibleStaffOrders } from '../../lib/orders/onlinePaymentGate';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
@@ -199,6 +201,9 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   // 19/10: bipe a cada ~5 s enquanto houver pedido em "Novo" (para quando todos forem aceitos)
   const newOrderAlarm = useNewOrderAlarm(['OWNER','MANAGER'].includes(activeRole || '') ? 0 : (remoteOrders || []).filter(o => o.status === 'PENDING').length, { tenant: activeTenant?.id || '', user: supabaseUser?.id || '' });
 
+  const ownerOffers = useOwnerDriverOffers(activeTenant?.id,
+    (remoteOrders || []).filter(o => !['CANCELLED','DELIVERED'].includes(o.status)).map(o => o.id), () => { void fetchRealData(true); });
+
   if (!activeTenant) return null;
 
   // Dados reais 100% Supabase (sem fallbacks para dataStore)
@@ -380,7 +385,18 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
     if (currentStatus === 'PENDING') nextStatus = 'CONFIRMED';
     else if (currentStatus === 'CONFIRMED') nextStatus = 'PREPARING';
     else if (currentStatus === 'PREPARING') nextStatus = 'READY';
-    else if (currentStatus === 'READY') nextStatus = 'OUT_FOR_DELIVERY';
+    else if (currentStatus === 'READY') {
+      const order = orders.find(o => o.id === orderId);
+      if (order?.fulfillmentType === 'DELIVERY') {
+        if (!ownerOffers.offers.some(f => f.order_id === orderId && f.status === 'OFFERED')) {
+          sessionStorage.setItem(FOCUS_ORDER_KEY, orderId);
+          sessionStorage.setItem(`dc:dispatch-order:${activeTenant.id}`, orderId);
+          onNavigate?.('est-orders');
+        }
+        return;
+      }
+      nextStatus = 'DELIVERED';
+    }
     else if (currentStatus === 'OUT_FOR_DELIVERY') nextStatus = 'DELIVERED';
 
     try {
@@ -401,6 +417,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   };
 
   return (
+    <DriverOffersContext.Provider value={ownerOffers}>
     <div className="space-y-3">
       {/* ========================================================================= */}
       {/* 1. CABEÇALHO DO DASHBOARD (COMANDO 49 SEÇÃO 4 / COMANDO 125)               */}
@@ -935,14 +952,15 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
                             Pronto
                           </Button>
                         )}
-                        {order.status === 'READY' && (
+                        <DriverOfferStatus orderId={order.id} />
+                        {order.status === 'READY' && !ownerOffers.offers.some(f => f.order_id === order.id && f.status === 'OFFERED') && (
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => handleAdvanceStatus(order.id, order.status)}
                             className="text-xs"
                           >
-                            Despachar
+                            Chamar entregador
                           </Button>
                         )}
                         {order.status === 'OUT_FOR_DELIVERY' && (
@@ -968,5 +986,6 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         )}
       </SectionCard>
     </div>
+    </DriverOffersContext.Provider>
   );
 };

@@ -1,3 +1,4 @@
+import { DriverOfferStatus, useOrderOffer } from '../dispatch/DriverOfferStatus';
 import { OnlinePaymentBadge } from './OnlinePaymentBadge';
 import React, { useState, useEffect } from 'react';
 import { 
@@ -48,6 +49,8 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
   onCancelClick,
   prepMinutes,
 }) => {
+  const { live, last } = useOrderOffer(order.id);
+  const retry = last?.status === 'DECLINED' || last?.status === 'EXPIRED';
   const [elapsedSec, setElapsedSec] = useState<number>(() => {
     return Math.max(0, Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 1000));
   });
@@ -101,7 +104,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
     } else if (isReady && isPickup) {
       // Retirada: cliente buscou no balcão (mesma transição da faixa de alertas).
       onUpdateStatus(order.id, 'DELIVERED');
-    } else if (isReady) {
+    } else if (isReady && order.status === 'READY' && !live && !order.driverId) {
       onAssignDriverClick(order);
     } else if (isDelivery) {
       onUpdateStatus(order.id, 'DELIVERED');
@@ -131,6 +134,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
 
       <div className="pl-0.5 space-y-0.5">
         <OnlinePaymentBadge order={order} />
+        <DriverOfferStatus orderId={order.id} />
         {isPickup && !isDelivered && !isCancelled && (() => {
           const pay = paymentBadge(order);
           const wait = pickupWaitingMinutes(order, Date.now());
@@ -221,20 +225,12 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
           </button>
         )}
 
-        {order.status === 'READY' && order.fulfillmentType !== 'PICKUP' && (
-          <button
-            type="button"
-            data-testid="card-call-driver"
-            onClick={(e) => { e.stopPropagation(); onUpdateStatus(order.id, 'WAITING_FOR_DRIVER'); }}
-            className="flex-1 py-0.5 px-1 rounded font-bold text-[8.5px] bg-[#15803d] text-white flex items-center justify-center gap-0.5 shadow-2xs hover:bg-[#166534] cursor-pointer"
-          >
-            <Truck className="w-2 h-2" /><span className="truncate">Despachar entrega</span>
-          </button>
-        )}
+
         {/* Botão de Ação Primária */}
-        <button
+        {!live && <button
           type="button"
           onClick={handleActionClick}
+            data-testid={order.status === 'READY' && !live ? 'card-call-driver' : undefined}
           style={orderActionButtonStyle(theme, order)}
           className="flex-1 py-0.5 px-1 rounded font-bold text-[8.5px] flex items-center justify-center gap-0.5 shadow-2xs hover:opacity-90 transition-all cursor-pointer active:scale-98 truncate"
         >
@@ -244,8 +240,8 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
           {isReady && (isPickup ? <CheckCircle2 className="w-2 h-2" /> : <Truck className="w-2 h-2" />)}
           {isDelivery && <CheckCircle2 className="w-2 h-2" />}
           {(isDelivered || isCancelled) && <Eye className="w-2 h-2" />}
-          <span className="truncate">{(isPickup && pickupActionLabel(order.status)) || theme.buttonLabel}</span>
-        </button>
+          <span className="truncate">{order.status === 'WAITING_FOR_DRIVER' ? 'Ver detalhes' : (isPickup && pickupActionLabel(order.status)) || (retry && isReady ? 'Chamar outro' : theme.buttonLabel)}</span>
+        </button>}
       </div>
     </div>
   );

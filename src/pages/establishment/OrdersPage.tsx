@@ -1,3 +1,6 @@
+import { DriverOffersContext, DriverOfferStatus } from '../../components/dispatch/DriverOfferStatus';
+import { useOwnerDriverOffers } from '../../hooks/useOwnerDriverOffers';
+import { driverOfferRepository } from '../../repositories/driverOfferRepository';
 import { visibleStaffOrders } from '../../lib/orders/onlinePaymentGate';
 import { OnlineOrderPaymentPanel } from '../../components/client/OnlineOrderPaymentPanel';
 import { OnlinePaymentBadge } from '../../components/establishment/OnlinePaymentBadge';
@@ -16,7 +19,7 @@ import { orderRepository } from '../../repositories/orderRepository';
 import { validateStatusChange } from '../../repositories/orderMappers';
 import { isN1N6Backend, N1N6_ONLY_MESSAGE } from '../../lib/backendSchema';
 import { rpcErrorMessage } from '../../lib/rpcErrors';
-import { driverRepository, driverInviteRepository } from '../../repositories/driverRepository';
+import { driverInviteRepository } from '../../repositories/driverRepository';
 import { productRepository } from '../../repositories/productRepository';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
@@ -227,7 +230,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const [queueError, setQueueError] = useState('');
   useEffect(() => {
     let alive = true; setSelectedDriverUserId(''); setQueue([]); setQueueError(''); setDispatchMode('OWNER_PICKS'); setQueueLoading(false);
-    if (!assigningOrder || !activeTenant?.id || !['OWNER','MANAGER'].includes(activeRole || '')) return;
+    if (!assigningOrder || !activeTenant?.id || !['OWNER','MANAGER','DELIVERY_MANAGER'].includes(activeRole || '')) return;
     setQueueLoading(true);
     void dispatchChatRepository.queue(activeTenant.id).then(r => {
       if (!alive) return;
@@ -518,21 +521,17 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   // Atribuir entregador
   const handleAssignDriver = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!assigningOrder || !selectedDriverUserId || !activeTenant?.id) return;
+    if (!assigningOrder || (dispatchMode === 'OWNER_PICKS' && !selectedDriverUserId) || !activeTenant?.id) return;
 
     setIsAssigning(true);
     try {
-      await driverRepository.assignOrder(
-        securityContext,
-        activeTenant.id,
-        assigningOrder.id,
-        selectedDriverUserId
-      );
+      await driverOfferRepository.offer(assigningOrder.id, dispatchMode === 'AUTO_QUEUE' ? null : selectedDriverUserId);
+      await ownerOffers.refresh();
 
       showToast({
         type: 'success',
-        title: 'Entregador designado',
-        message: 'Peça o código ao entregador quando ele chegar para retirar.',
+        title: 'Chamada enviada',
+        message: 'Aguardando aceite do entregador.',
       });
 
       setAssigningOrder(null);
@@ -735,6 +734,12 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     ? true 
     : availableTenants.some(t => t.tenantId === activeTenant?.id && t.status === 'ACTIVE');
 
+  const ownerOffers = useOwnerDriverOffers(activeTenant?.id,
+    (remoteOrders || []).filter(o => !['CANCELLED','DELIVERED'].includes(o.status)).map(o => o.id), () => { void fetchOrders(true); });
+  const liveOffer = (id: string) => ownerOffers.offers.find(f => f.order_id === id && f.status === 'OFFERED');
+  const retryOffer = (id: string) => ['DECLINED','EXPIRED'].includes(ownerOffers.offers.find(f => f.order_id === id)?.status || '');
+
+  const orderQueue = queue.filter(d => !ownerOffers.offers.some(f => f.order_id === assigningOrder?.id && f.driver_user_id === d.user_id && ['DECLINED','EXPIRED'].includes(f.status)));
   if (!activeTenant) return null;
 
   if (!isAuthorizedForActiveTenant) {
@@ -1135,31 +1140,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                   </a>
                 )}
 
-                {selectedOrder.status === 'READY' && selectedOrder.fulfillmentType !== 'PICKUP' && (
-                  <button
-                    type="button"
-                    data-testid="panel-call-driver"
-                    onClick={() => setAssigningOrder(selectedOrder)}
-                    className="w-full p-2 rounded-lg bg-[#15803d] hover:bg-[#166534] text-white flex items-center justify-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide cursor-pointer"
-                  >
-                    <Bike className="w-3 h-3" /> Despachar entrega
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAssigningOrder(selectedOrder);
-                    const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
-                    setSelectedDriverUserId(firstAvail);
-                  }}
-                  className="w-full p-1.5 rounded-lg border border-green-300 bg-green-50/60 hover:bg-green-100/60 flex items-center justify-between text-[8.5px] font-bold text-green-900 transition-colors cursor-pointer"
-                >
-                  <span className="flex items-center gap-1.5 truncate">
-                    <Truck className="w-2.5 h-2.5 text-green-700 shrink-0" />
-                    <span className="truncate">Atribuir Entregador</span>
-                  </span>
-                  <ChevronRight className="w-2.5 h-2.5 text-green-700 shrink-0" />
-                </button>
+                <DriverOfferStatus orderId={selectedOrder.id} />
 
                 {selectedOrder.status !== 'CANCELLED' && selectedOrder.status !== 'DELIVERED' && (
                   <button
@@ -1235,7 +1216,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           </div>
 
           {/* Botão de Ação Primária no Drawer */}
-          {selectedOrder.status !== 'CANCELLED' && selectedOrder.status !== 'DELIVERED' && (
+          {selectedOrder.status !== 'CANCELLED' && selectedOrder.status !== 'DELIVERED' && !liveOffer(selectedOrder.id) && selectedOrder.status !== 'WAITING_FOR_DRIVER' && (
             <button
               type="button"
               onClick={() => {
@@ -1252,7 +1233,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               className="w-full py-1.5 px-1.5 rounded-md font-bold text-[9px] uppercase tracking-wide flex items-center justify-center gap-1 shadow-2xs hover:opacity-90 transition-all cursor-pointer active:scale-98 min-h-[30px] leading-tight text-center"
             >
               <Check className="w-2.5 h-2.5 stroke-[3] shrink-0" />
-              <span className="truncate">{selectedOrderTheme.buttonLabel}</span>
+              <span className="truncate">{selectedOrder.status === 'READY' && retryOffer(selectedOrder.id) ? 'Chamar outro' : selectedOrderTheme.buttonLabel}</span>
             </button>
           )}
         </div>
@@ -1261,6 +1242,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   };
 
   return (
+    <DriverOffersContext.Provider value={ownerOffers}>
     <div className="flex-1 min-w-0 h-full flex flex-row overflow-hidden relative font-sans">
       {/* ========================================================================= */}
       {/* REGIÃO 2: CONTEÚDO OPERACIONAL (TOPO + CARDS / KANBAN / TABELA)           */}
@@ -2119,7 +2101,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                               {/* Status Badge */}
                               <td className="py-1 px-1.5">
                                 <span className="inline-flex items-center gap-1">
-                                  <OrderStatusChip status={order.status} late={checkIsPreparingDelayed(order.createdAt, order.status, prepMinutes)} className="text-[7.5px] px-1 py-0" />
+                                  <DriverOfferStatus orderId={order.id} /><OrderStatusChip status={order.status} late={checkIsPreparingDelayed(order.createdAt, order.status, prepMinutes)} className="text-[7.5px] px-1 py-0" />
                                   <SlaTimerChip status={order.status} createdAt={order.createdAt} prepMinutes={prepMinutes} className="text-[7.5px] px-1 py-0" />
                                 </span>
                               </td>
@@ -2140,7 +2122,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                                       else if (order.status === 'CONFIRMED') handleUpdateStatus(order.id, 'PREPARING');
                                       else if (order.status === 'PREPARING') handleUpdateStatus(order.id, 'READY');
                                       else if (order.status === 'READY' && order.fulfillmentType === 'PICKUP') handleUpdateStatus(order.id, 'DELIVERED');
-                                      else if (order.status === 'READY') {
+                                      else if (order.status === 'READY' && !liveOffer(order.id)) {
                                         setAssigningOrder(order);
                                         const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                                         setSelectedDriverUserId(firstAvail);
@@ -2150,7 +2132,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                                     style={orderActionButtonStyle(rowTheme, order)}
                                     className="py-0.2 px-1.5 rounded text-[8.5px] font-bold shadow-2xs hover:opacity-90 transition-all cursor-pointer"
                                   >
-                                    {(order.fulfillmentType === 'PICKUP' && pickupActionLabel(order.status)) || rowTheme.buttonLabel}
+                                    {liveOffer(order.id) || order.status === 'WAITING_FOR_DRIVER' ? 'Ver detalhes' : (order.fulfillmentType === 'PICKUP' && pickupActionLabel(order.status)) || (retryOffer(order.id) ? 'Chamar outro' : rowTheme.buttonLabel)}
                                   </button>
                                   <button
                                     type="button"
@@ -2209,26 +2191,26 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       <Modal
         isOpen={Boolean(assigningOrder)}
         onClose={() => setAssigningOrder(null)}
-        title={`Despachar Pedido #${assigningOrder?.orderNumber}`}
+        title={`Chamar entregador — Pedido #${assigningOrder?.orderNumber}`}
         size="sm"
       >
         <form onSubmit={handleAssignDriver} className="space-y-4">
           <p className="text-xs text-slate-600">
-            Selecione o entregador responsável pelo transporte deste pedido:
+            O entregador receberá uma oferta e poderá aceitar ou recusar a corrida.
           </p>
 
           {queueError && <p role="alert">{queueError}</p>}
           {queueLoading && <p>Consultando entregadores…</p>}
           <div className="space-y-2">
-            {dispatchMode === 'AUTO_QUEUE' ? <p className="font-semibold">{queue[0] ? `Próximo da fila: ${queue[0].name}` : 'Nenhum entregador disponível.'}</p> : drivers.length === 0 ? (
+            {dispatchMode === 'AUTO_QUEUE' ? <p className="font-semibold">{orderQueue[0] ? `Será chamado: ${orderQueue[0].name}` : 'Nenhum entregador disponível.'}</p> : drivers.length === 0 ? (
               <p data-testid="no-approved-driver" className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
                 {driversLoaded
                   ? noApprovedDriverMessage()
                   : canListDrivers
                     ? 'Não foi possível carregar a lista de entregadores agora. Tente de novo em instantes.'
-                    : 'Seu perfil não vê a lista de entregadores. Use "Aguardar entregador" ou peça ao dono ou gerente para despachar.'}
+                    : 'Seu perfil não pode chamar entregadores. Peça ao dono ou gerente da loja.'}
               </p>
-            ) : !drivers.some(d => d.status === 'AVAILABLE') ? (
+            ) : !drivers.some(d => d.status === 'AVAILABLE' && queue.some(q => q.user_id === d.userId)) ? (
               <p data-testid="no-available-driver" role="status" className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
                 Nenhum entregador disponível agora. Peça para um entregador abrir o app e ficar online (Disponível); ele aparece aqui na hora.
               </p>
@@ -2239,10 +2221,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-700"
                 required
               >
-                <option value="">Selecione um motorista...</option>
-                {drivers.filter(d => d.status === 'AVAILABLE').map(d => (
+                <option value="">Selecione um entregador...</option>
+                {drivers.filter(d => d.status === 'AVAILABLE' && queue.some(q => q.user_id === d.userId)).map(d => (
                   <option key={d.id} value={d.userId || d.id}>
-                    {d.name} {d.status === 'AVAILABLE' ? '🟢 (Disponível)' : '🟡 (Em entrega)'}
+                    {d.name}{ownerOffers.offers.some(f => f.order_id === assigningOrder?.id && f.driver_user_id === d.userId && f.status === 'DECLINED') ? ' — recusou' : ownerOffers.offers.some(f => f.order_id === assigningOrder?.id && f.driver_user_id === d.userId && f.status === 'EXPIRED') ? ' — não respondeu' : ' — disponível'}
                   </option>
                 ))}
               </select>
@@ -2253,8 +2235,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
             <Button type="button" variant="outline" size="sm" onClick={() => setAssigningOrder(null)} className="text-xs">
               Cancelar
             </Button>
-            <Button type="submit" variant="primary" size="sm" disabled={isAssigning || queueLoading || Boolean(queueError) || !selectedDriverUserId} className="text-xs font-bold bg-[#15803d] hover:bg-[#166534] text-white">
-              {isAssigning ? 'Atribuindo...' : 'Confirmar e Despachar'}
+            <Button type="submit" variant="primary" size="sm" disabled={isAssigning || queueLoading || Boolean(queueError) || (dispatchMode === 'OWNER_PICKS' ? !selectedDriverUserId : !orderQueue.length)} className="text-xs font-bold bg-[#15803d] hover:bg-[#166534] text-white">
+              {isAssigning ? 'Chamando...' : 'Chamar entregador'}
             </Button>
           </div>
         </form>
@@ -2329,5 +2311,6 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
         />
       )}
     </div>
+    </DriverOffersContext.Provider>
   );
 };

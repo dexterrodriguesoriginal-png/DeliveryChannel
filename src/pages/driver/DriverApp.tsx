@@ -1,3 +1,7 @@
+import { DriverRideOffer } from '../../components/driver/DriverRideOffer';
+import { driverOfferRepository, MyDriverOffer } from '../../repositories/driverOfferRepository';
+import { dispatchErrorMessage } from '../../lib/orders/dispatchErrors';
+import { playNewOrderSound, unlockAudio } from '../../utils/audio';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { paymentMethodLabel } from '../../lib/orders/labels';
 import { formatBRL } from '../../lib/pricing/money';
@@ -119,6 +123,54 @@ export const DriverApp: React.FC<DriverAppProps> = ({ activeTab: requestedTab, o
     };
   }, [fetchDriverOrders, activeTenant?.id, ordersAllowed]);
 
+  const [rideOffers, setRideOffers] = useState<MyDriverOffer[]>([]);
+  const [offerBusy, setOfferBusy] = useState(false);
+  const [offerSoundEnabled, setOfferSoundEnabled] = useState(false);
+  const offerRefreshRef = useRef<() => Promise<void>>(async () => {});
+  const offerUserId = currentUser?.id || securityContext.userId;
+  useEffect(() => {
+    setRideOffers([]);
+    if (!activeTenant?.id || !offerUserId || !ordersAllowed) return;
+    let alive = true, running = false, queued = false;
+    const seen = new Set<string>();
+    const refresh = async () => {
+      if (running) { queued = true; return; }
+      running = true;
+      try {
+        do {
+          queued = false;
+          const offers = (await driverOfferRepository.mine()).filter(o => o.tenant_id === activeTenant.id);
+          if (!alive) return;
+          for (const offer of offers) if (!seen.has(offer.id)) {
+            seen.add(offer.id); playNewOrderSound();
+            try { navigator.vibrate?.([200, 100, 200]); } catch { /* navegador sem vibração */ }
+          }
+          setRideOffers(offers);
+        } while (queued && alive);
+      } catch { /* fallback de polling retoma após reconexão */ }
+      finally { running = false; }
+    };
+    offerRefreshRef.current = refresh;
+    void refresh();
+    const unsub = driverOfferRepository.subscribeDriver(offerUserId, () => { void refresh(); void fetchDriverOrders(true); });
+    const timer = window.setInterval(() => { void refresh(); }, 10000);
+    const onFocus = () => { void refresh(); };
+    window.addEventListener('focus', onFocus);
+    return () => { alive = false; offerRefreshRef.current = async () => {}; unsub(); window.clearInterval(timer); window.removeEventListener('focus', onFocus); };
+  }, [activeTenant?.id, offerUserId, ordersAllowed, fetchDriverOrders]);
+  const respondToOffer = async (accept: boolean) => {
+    const offer = rideOffers[0]; if (!offer || offerBusy) return;
+    setOfferBusy(true);
+    try {
+      await driverOfferRepository.respond(offer.id, accept);
+      setRideOffers(prev => prev.filter(o => o.id !== offer.id));
+      showToast({ type: 'success', title: accept ? 'Corrida aceita' : 'Chamada recusada', message: accept ? 'Mostre seu código de retirada na loja.' : 'Você pode receber novas chamadas.' });
+      await fetchDriverOrders(true);
+    } catch (e) {
+      showToast({ type: 'error', title: 'Não foi possível responder', message: dispatchErrorMessage(e) });
+    } finally { await offerRefreshRef.current(); setOfferBusy(false); }
+  };
+
   // Carrega a disponibilidade logo ao abrir o app (sem depender de abrir "Meu Perfil").
   useEffect(() => {
     if (!activeTenant?.id) return;
@@ -228,7 +280,9 @@ export const DriverApp: React.FC<DriverAppProps> = ({ activeTab: requestedTab, o
   })();
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 text-gray-900 font-sans">
+    <div className="min-h-screen bg-gray-50 pb-24 text-gray-900 font-sans" onPointerDownCapture={unlockAudio}>
+      {rideOffers[0] && <DriverRideOffer offer={rideOffers[0]} busy={offerBusy} onRespond={respondToOffer} />}
+      {!offerSoundEnabled && <button type="button" className="w-full bg-amber-100 p-2 text-sm" onClick={() => { unlockAudio(); setOfferSoundEnabled(true); }}>Ativar som das chamadas</button>}
       {/* Top Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-30 flex items-center justify-between shadow-xs">
         <div className="flex items-center gap-2.5">
