@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { FreeDeliverySetting } from '../../components/establishment/FreeDeliverySetting';
 import { MoneyInput } from '../../components/common/MoneyInput';
 import { useAuth } from '../../context/AuthContext';
 import { tenantRepository } from '../../repositories/tenantRepository';
@@ -385,13 +386,10 @@ export const SettingsPage: React.FC = () => {
               value={form.minOrderValue}
               onChange={(e) => setForm({ ...form, minOrderValue: parseFloat(e.target.value) || 0 })}
             />
-            <MoneyInput
-              label="Taxa de Entrega Padrão (R$)"
-              placeholder="7,00"
+            <FreeDeliverySetting
+              fee={form.deliveryFee}
               disabled={!canEdit}
-              value={form.deliveryFee}
-              onValueChange={(v) => setForm({ ...form, deliveryFee: v ?? 0 })}
-              helperText="Taxa fixa da plataforma: R$ 7,00 (cliente paga R$ 3,50 e a loja R$ 3,50; o entregador recebe R$ 7,00). Qualquer valor acima de 0 ativa a cobrança; 0 = entrega grátis (a loja assume R$ 7,00)."
+              onChange={deliveryFee => setForm({ ...form, deliveryFee })}
             />
             <MoneyInput
               label="Frete Grátis Acima de (R$)"

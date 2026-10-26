@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { 
   Settings, 
   Bike, 
-  DollarSign, 
   ShieldCheck, 
   Bell, 
   Check, 
@@ -17,8 +16,6 @@ interface DriverSettingsTabProps {
 
 export const DriverSettingsTab: React.FC<DriverSettingsTabProps> = ({ tenant }) => {
   const { showToast } = useToast();
-  const [fee, setFee] = useState(tenant.settings?.deliveryFee || 6.5);
-  const [driverPayout, setDriverPayout] = useState(5.0);
   const [maxRadiusKm, setMaxRadiusKm] = useState(7);
   const [autoAssign, setAutoAssign] = useState(false);
   const [whatsappNotify, setWhatsappNotify] = useState(true);
@@ -39,41 +36,7 @@ export const DriverSettingsTab: React.FC<DriverSettingsTabProps> = ({ tenant }) 
 
   return (
     <form onSubmit={handleSave} className="max-w-3xl space-y-6">
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">
-        <div>
-          <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
-            <DollarSign className="w-4 h-4 text-emerald-600" />
-            Taxas e Repasses de Entrega
-          </h4>
-          <p className="text-xs text-gray-500">Defina os valores cobrados do cliente e repassados aos entregadores</p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div>
-            <label className="font-semibold text-gray-700 block mb-1">Taxa de Entrega Padrão (R$)</label>
-            <input
-              type="number"
-              step="0.5"
-              value={fee}
-              onChange={(e) => setFee(parseFloat(e.target.value) || 0)}
-              className="w-full bg-white border border-gray-200 rounded-xl p-2.5 text-xs text-gray-900 focus:outline-none focus:border-emerald-600"
-            />
-            <p className="text-[10px] text-gray-400 mt-1">Valor cobrado do cliente no checkout.</p>
-          </div>
-
-          <div>
-            <label className="font-semibold text-gray-700 block mb-1">Repasse ao Entregador (R$)</label>
-            <input
-              type="number"
-              step="0.5"
-              value={driverPayout}
-              onChange={(e) => setDriverPayout(parseFloat(e.target.value) || 0)}
-              className="w-full bg-white border border-gray-200 rounded-xl p-2.5 text-xs text-gray-900 focus:outline-none focus:border-emerald-600"
-            />
-            <p className="text-[10px] text-gray-400 mt-1">Valor fixo pago por entrega concluída.</p>
-          </div>
-        </div>
-      </div>
+      <p className="text-sm text-gray-600">Para oferecer entrega grátis, acesse Configurações → Regras de Delivery &amp; Pedidos. O entregador recebe R$ 7,00 por entrega.</p>
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">
         <div>

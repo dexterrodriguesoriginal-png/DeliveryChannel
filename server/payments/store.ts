@@ -1,3 +1,4 @@
+import { paymentStorageError } from './errors';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { resolveServerPublicConfig } from '../config/publicConfig';
 import { chargeRecord, confirmationRecord } from './privacy';
@@ -12,7 +13,7 @@ export class PaymentStore {
   constructor(readonly db: SupabaseClient) {}
   async rpc<T = any>(name: string, args: object): Promise<T> {
     const { data, error } = await this.db.rpc(name, args);
-    if (error) throw new PaymentError('PAYMENT_STORAGE_ERROR', error.code === '42501' ? 403 : 409, 'Não foi possível concluir. Confira as configurações e os pagamentos pendentes.');
+    if (error) throw paymentStorageError(error);
     return data as T;
   }
   async user(token: string) {

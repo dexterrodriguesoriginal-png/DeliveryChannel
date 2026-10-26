@@ -253,7 +253,11 @@ export const tenantRepository = {
         // ausentes); INSERT via upsert somente quando a loja ainda não tem linha de configurações.
         let upsertError: any = null;
         if (n1n6) {
-          ({ error: upsertError } = await supabase.from('tenant_settings').update(dbSettings).eq('tenant_id', tenantId));
+          const updated = await supabase.from('tenant_settings').update(dbSettings).eq('tenant_id', tenantId).select('tenant_id');
+          upsertError = updated.error;
+          if (!updated.error && !updated.data?.length) {
+            throw new Error('As configurações não foram salvas. Confira se você tem permissão para editar esta loja e tente novamente.');
+          }
         } else {
           const upd = await supabase.from('tenant_settings').update(dbSettings).eq('tenant_id', tenantId).select('tenant_id');
           upsertError = upd.error;
