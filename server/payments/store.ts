@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { resolveServerPublicConfig } from '../config/publicConfig';
 import { chargeRecord, confirmationRecord } from './privacy';
 import { Charge, Confirmation, PaymentError, Provider, Method } from './types';
 
@@ -72,7 +73,7 @@ export class PaymentStore {
   async manualBrcode(orderId: string) { return this.rpc<string>('manual_order_payment_brcode', { p_order: orderId }); }
 }
 export function createPaymentStore(env: NodeJS.ProcessEnv): PaymentStore | null {
-  const url = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
+  const url = resolveServerPublicConfig(env).SUPABASE_URL;
   if (!url || !env.SUPABASE_SERVICE_ROLE_KEY) return null;
   return new PaymentStore(createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } }));
 }

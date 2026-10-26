@@ -15,7 +15,7 @@ Mercado Pago e PagBank usam OAuth por loja, renovação automática e confirmaç
 ## Validação
 
 - `npm run lint`: passou.
-- `npm test`: 1.068 testes passaram, em 124 arquivos (949 anteriores + 119 novos; 24 testes adicionais nesta revisão LGPD).
+- `npm test`: 1.086 testes passaram, em 126 arquivos, incluindo fallbacks públicos, env vazia, overrides de frontend/Express, clientes Supabase e guardas sobre os valores efetivos.
 - `npm run build`: passou.
 - As duas migrations e seus rollbacks passaram pela validação sintática SQL/PLpgSQL, sem execução no banco. A migration 040 tem 44 comandos e 13 funções; o roteiro SQL LGPD também foi validado sintaticamente.
 - RLS/grants/search_path têm testes de contrato offline e roteiro SQL real em `supabase/tests/payments/rls.sql`. Os roteiros SQL não foram executados, pois as migrations não foram aplicadas.
@@ -31,11 +31,31 @@ Mercado Pago e PagBank usam OAuth por loja, renovação automática e confirmaç
 - **Logs:** somente eventos fixos/contagens; sem dados pessoais, tokens, query strings, headers, payloads ou exceções brutas. Orientação de configuração equivalente para ingress/APM.
 - **Testes:** minimização, bloqueio de cartão, projeção de armazenamento, limpeza do corpo, logs, worker, disputa entre desconexão/OAuth/refresh, documentos legais e contratos SQL. Roteiro SQL real em `supabase/tests/payments/privacy.sql`; não executado porque as migrations não foram aplicadas.
 
-## Variáveis de ambiente (somente Express)
+## Configuração pública e Secrets do AI Studio
 
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PAYMENTS_PUBLIC_URL`, `PAYMENTS_ENCRYPTION_KEY` (32 bytes em hexadecimal), `PAYMENTS_STATE_SECRET` (mínimo 32 caracteres), `MP_CLIENT_ID`, `MP_CLIENT_SECRET`, `MP_WEBHOOK_SECRET`, `MP_TEST_TOKEN` (opcional), `PAGBANK_CLIENT_ID`, `PAGBANK_CLIENT_SECRET`, `PAGBANK_PLATFORM_TOKEN`, `PAGBANK_SANDBOX` (opcional).
+O painel do AI Studio tem limite de 11 secrets. Os valores públicos abaixo ficam versionados em `src/config/publicConfig.ts`, compartilhados com Express por `server/config/publicConfig.ts`. Podem ser removidos do painel depois de publicar esta alteração:
 
-Não usar prefixo `VITE_` nas credenciais. PagBank usa o token original da cobrança para validar `x-authenticity-token`; não há segredo HMAC adicional nesse fluxo. Sem configuração, o provedor mostra “Em breve”. Exemplo sem valores em `docs/payments/server-env.example`.
+| Configuração | Fallback de produção |
+| --- | --- |
+| `VITE_SUPABASE_URL` | `https://qjmhlbipmwobnuctzpft.supabase.co` |
+| `VITE_BACKEND_SCHEMA` | `n1n6` |
+| `VITE_DEPLOY_TARGET` | `production` |
+| `VITE_N1N6_PRODUCTION_APPROVED` | `yes` |
+| `PAYMENTS_PUBLIC_URL` | `https://deliverychannel.ai.studio` |
+
+Uma variável de ambiente não vazia sempre sobrescreve o fallback; valor vazio ou só com espaços usa o arquivo. No Express, a precedência da URL é `SUPABASE_URL` → `VITE_SUPABASE_URL` → URL fixa de produção; portanto `SUPABASE_URL` também não precisa ocupar uma entrada do painel em produção. Callbacks OAuth, webhooks e retornos de pagamento usam a origem efetiva de `PAYMENTS_PUBLIC_URL`.
+
+Staging deve continuar fornecendo `VITE_DEPLOY_TARGET=staging`, `VITE_STAGING_PROJECT_REF`, URL e chave pública do projeto de staging (ver `.env.staging.example`). O `deployGuard` aplica R1–R3 aos valores efetivos, inclusive recusando staging sem URL própria. O fallback `yes` é a aprovação de produção versionada solicitada nesta alteração; um override diferente de `yes`, como `no`, continua recusando n1n6 com URL de produção (R1). Integração local continua sobrescrevendo o schema por `vitest.integration.config.ts`.
+
+**Manter no painel, com valores definidos fora do código:**
+
+- Frontend: `VITE_SUPABASE_PUBLISHABLE_KEY` (ou a alternativa existente `VITE_SUPABASE_ANON_KEY`) e `VITE_GOOGLE_MAPS_API_KEY`, se usado.
+- Express/pagamentos: `SUPABASE_SERVICE_ROLE_KEY`, `PAYMENTS_ENCRYPTION_KEY` (32 bytes em hexadecimal) e `PAYMENTS_STATE_SECRET` (mínimo 32 caracteres).
+- Mercado Pago, quando habilitado: `MP_CLIENT_ID`, `MP_CLIENT_SECRET`, `MP_WEBHOOK_SECRET`; preservar também `MP_TEST_TOKEN` se configurado para homologação.
+- PagBank, quando habilitado: `PAGBANK_CLIENT_ID`, `PAGBANK_CLIENT_SECRET`, `PAGBANK_PLATFORM_TOKEN`; preservar `PAGBANK_SANDBOX` se configurado para homologação.
+- Outras chaves/tokens existentes do app continuam no painel; nenhum segredo recebe fallback no repositório.
+
+Com uma chave Supabase de frontend, maps, os três secrets de Express e ambos os provedores, são 11 entradas obrigatórias; flags de homologação e credenciais adicionais podem exigir um gerenciador de segredos da infraestrutura. Não usar prefixo `VITE_` nas credenciais de servidor. PagBank usa o token original da cobrança para validar `x-authenticity-token`; não há segredo HMAC adicional nesse fluxo. Sem as credenciais do provedor, ele mostra “Em breve”. Exemplo sem valores secretos em `docs/payments/server-env.example`.
 
 ## Cadastrar as aplicações
 

@@ -14,13 +14,14 @@ const okStaging = {
 };
 
 describe('deployGuard', () => {
-  it('build padrão de produção (legacy-020, sem target) passa', () => {
+  it('build padrão de produção (n1n6 aprovado, sem env) passa', () => {
     expect(checkBuildEnv({ VITE_SUPABASE_URL: PROD_URL, VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_x' })).toEqual([]);
     expect(checkBuildEnv({})).toEqual([]);
   });
-  it('n1n6 + URL de produção é recusado', () => {
-    expect(checkBuildEnv({ VITE_BACKEND_SCHEMA: 'n1n6', VITE_SUPABASE_URL: PROD_URL }).join()).toMatch(/PRODUÇÃO/);
-    expect(checkBuildEnv({ VITE_BACKEND_SCHEMA: ' N1N6 ', VITE_SUPABASE_URL: PROD_URL }).length).toBeGreaterThan(0);
+  it('n1n6 + URL de produção é recusado com aprovação negada no env', () => {
+    expect(checkBuildEnv({ VITE_BACKEND_SCHEMA: 'n1n6', VITE_SUPABASE_URL: PROD_URL, VITE_N1N6_PRODUCTION_APPROVED: 'no' }).join()).toMatch(/PRODUÇÃO/);
+    expect(checkBuildEnv({ VITE_BACKEND_SCHEMA: ' N1N6 ', VITE_SUPABASE_URL: PROD_URL, VITE_N1N6_PRODUCTION_APPROVED: 'no' }).length).toBeGreaterThan(0);
+    expect(checkBuildEnv({ VITE_N1N6_PRODUCTION_APPROVED: 'no' }).join()).toMatch(/PRODUÇÃO/);
   });
   it('n1n6 + produção só com aprovação explícita', () => {
     expect(checkBuildEnv({ VITE_BACKEND_SCHEMA: 'n1n6', VITE_SUPABASE_URL: PROD_URL, VITE_N1N6_PRODUCTION_APPROVED: 'yes' })).toEqual([]);
@@ -29,6 +30,13 @@ describe('deployGuard', () => {
   it('staging válido passa', () => {
     expect(checkBuildEnv(okStaging)).toEqual([]);
     expect(checkBuildEnv({ ...okStaging, VITE_SUPABASE_PUBLISHABLE_KEY: jwt({ ref: STG, role: 'anon' }) })).toEqual([]);
+  });
+  it('staging sem URL no env recusa o fallback de produção (R2)', () => {
+    for (const url of [undefined, '', '   ']) {
+      const errors = checkBuildEnv({ ...okStaging, VITE_SUPABASE_URL: url }).join();
+      expect(errors).toMatch(/Staging: VITE_SUPABASE_URL aponta para PRODUÇÃO/);
+      expect(errors).toMatch(/VITE_SUPABASE_URL contém o ref de PRODUÇÃO/);
+    }
   });
   it('staging apontando para produção é recusado', () => {
     expect(checkBuildEnv({ ...okStaging, VITE_SUPABASE_URL: PROD_URL }).join()).toMatch(/PRODUÇÃO/);

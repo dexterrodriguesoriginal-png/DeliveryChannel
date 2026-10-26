@@ -1,12 +1,11 @@
 /**
  * Compatibilidade de backend do frontend (estratégia de ativação N1–N6).
  *
- * O `main` é publicado no AI Studio, mas o banco de produção continua em 001–020
- * até o staging validar N1–N6. Por isso o frontend escolhe o caminho de servidor
- * por uma flag de build:
+ * O frontend escolhe o caminho de servidor pela configuração pública de produção,
+ * com possibilidade de sobrescrita por variável de ambiente:
  *
- *   VITE_BACKEND_SCHEMA=legacy-020   (padrão seguro; também usado se a variável faltar ou for inválida)
- *   VITE_BACKEND_SCHEMA=n1n6         (somente depois de N1–N6 aplicadas no banco alvo)
+ *   VITE_BACKEND_SCHEMA=legacy-020   (sobrescrita explícita; também usado se o valor for inválido)
+ *   VITE_BACKEND_SCHEMA=n1n6         (padrão de produção versionado)
  *
  * - legacy-020: usa apenas RPCs/tabelas existentes em 001–020 (ex.: process_checkout_atomic,
  *   UPDATE de orders sob RLS de staff). Recursos que só existem no N1–N6 (cupons, PDV atômico,
@@ -18,6 +17,8 @@
  *
  * Ver docs/n1-n6/ATIVACAO_FRONTEND.md.
  */
+import { resolvePublicConfig } from '../config/publicConfig';
+
 export type BackendSchema = 'legacy-020' | 'n1n6';
 
 export function resolveBackendSchema(raw: unknown): BackendSchema {
@@ -31,9 +32,9 @@ const env: Record<string, unknown> =
 /** Modo efetivo (lido do ambiente do build; resolvido na chamada; em testes Node lê process.env). */
 export const currentBackendSchema = (): BackendSchema =>
   resolveBackendSchema(
-    typeof process !== 'undefined' && process.env
-      ? process.env.VITE_BACKEND_SCHEMA
-      : env.VITE_BACKEND_SCHEMA
+    resolvePublicConfig(typeof process !== 'undefined' && process.env
+      ? process.env
+      : env).VITE_BACKEND_SCHEMA
   );
 
 /** Valor no carregamento do módulo (exibição/diagnóstico). Decisões usam isN1N6Backend(). */

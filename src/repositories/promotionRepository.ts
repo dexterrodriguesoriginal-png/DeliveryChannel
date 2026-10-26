@@ -1,6 +1,6 @@
 /**
  * Carrosséis promocionais (N4) e cupons (N2) — tabelas que SÓ existem no N1–N6.
- * Em VITE_BACKEND_SCHEMA=legacy-020 (padrão): leituras devolvem lista vazia e escritas/validações
+ * Em VITE_BACKEND_SCHEMA=legacy-020 (override): leituras devolvem lista vazia e escritas/validações
  * lançam N1N6_REQUIRED (sem cair para dataStore/localStorage).
  * — somente OWNER/MANAGER administram (RLS).
  * CASHIER apenas APLICA cupom no PDV (validate_coupon_pos / process_pos_sale_atomic).

@@ -1,7 +1,8 @@
 # Somente Express/runtime. Nunca usar prefixo VITE_ nas credenciais abaixo.
-SUPABASE_URL=https://projeto.supabase.co
+# Overrides públicos opcionais. Vazios usam a configuração de produção versionada.
+SUPABASE_URL=
+PAYMENTS_PUBLIC_URL=
 SUPABASE_SERVICE_ROLE_KEY=
-PAYMENTS_PUBLIC_URL=https://sua-plataforma.com.br
 # AES-256-GCM: 32 bytes aleatórios codificados em 64 caracteres hexadecimais.
 PAYMENTS_ENCRYPTION_KEY=
 # Segredo aleatório de pelo menos 32 caracteres, diferente da chave de criptografia.
