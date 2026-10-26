@@ -39,3 +39,4 @@ echo 'PASS: PR B migration, flows, roles, tenant isolation, rollback definitions
 
 # The payment gate depends on PR B; exercise it after PR B rollback/reapplication.
 sh supabase/tests/online_payment_gate/run_regressions.sh
+# resync

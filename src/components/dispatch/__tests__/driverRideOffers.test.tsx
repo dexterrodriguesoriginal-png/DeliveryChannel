@@ -66,3 +66,4 @@ describe('oferta de corrida na loja e no app do entregador', () => {
     expect([...host.querySelectorAll('button')].every(b => b.disabled)).toBe(true);
   });
 });
+// resync

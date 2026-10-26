@@ -37,3 +37,4 @@ describe('RPCs de ofertas', () => {
     expect(dispatchErrorMessage({ message, code: '42501' })).toContain(expected);
   });
 });
+// resync

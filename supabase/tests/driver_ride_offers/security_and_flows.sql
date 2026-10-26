@@ -257,3 +257,4 @@ SELECT pg_temp.denied($q$SELECT public.expire_driver_offers()$q$);
 SELECT pg_temp.denied($q$SELECT public.offer_order_to_driver('45000000-0000-0000-0000-000000000008',NULL)$q$);
 RESET ROLE;
 ROLLBACK;
+-- resync

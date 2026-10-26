@@ -100,3 +100,4 @@ async function start() {
 }
 
 start().catch(() => { console.error('[server] falha ao iniciar'); process.exit(1); });
+// resync

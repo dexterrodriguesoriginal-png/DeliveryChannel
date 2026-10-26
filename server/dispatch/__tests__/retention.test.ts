@@ -46,3 +46,4 @@ describe('expiração de ofertas sem pg_cron', () => {
     startDriverOfferExpiry(null)(); expect(vi.getTimerCount()).toBe(before);
   });
 });
+// resync

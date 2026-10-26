@@ -29,3 +29,4 @@ Preparar a versão anterior da aplicação e aplicar `supabase/rollback/20261026
 ## Evidências desta implementação
 
 Validação local em PostgreSQL 17: aplicar → reverter → reaplicar, permissões/RLS, isolamento, código novo, corrida legada, recusa, expiração lazy, continuação da fila, cancelamento e liberação do entregador. A execução em staging, a verificação física de áudio/vibração e a publicação em produção dependem dos acessos externos; não foram executadas neste ambiente.
+<!-- resync -->

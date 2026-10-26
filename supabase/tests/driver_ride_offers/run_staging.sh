@@ -24,3 +24,4 @@ before=$(hash_functions)
 "${PSQL[@]}" -f supabase/tests/driver_ride_offers/security_and_flows.sql
 "${PSQL[@]}" -c "INSERT INTO supabase_migrations.schema_migrations(version,name) VALUES ('20261026004500','driver_ride_offers')"
 echo 'PASS: staging apply → down → apply e testes com ROLLBACK.'
+# resync

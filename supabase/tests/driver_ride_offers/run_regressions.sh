@@ -49,3 +49,4 @@ psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261026004500_driver_ride_off
 psql -X -v ON_ERROR_STOP=1 -f supabase/tests/driver_ride_offers/legacy_flow.sql
 psql -X -v ON_ERROR_STOP=1 -f supabase/tests/driver_ride_offers/security_and_flows.sql
 echo 'PASS: oferta, aceite, recusa, expiração, isolamento, retirada, liberação, compatibilidade, rollback exato e reaplicação'
+# resync

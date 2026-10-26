@@ -68,3 +68,4 @@ describe('DriverApp recebe ofertas sem acesso antecipado ao pedido', () => {
     expect(host.querySelector('[aria-label="Oferta de corrida"]')).toBeNull();
   });
 });
+// resync

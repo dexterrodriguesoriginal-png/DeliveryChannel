@@ -158,3 +158,4 @@ DROP TABLE public.order_driver_offers;
 ALTER TABLE public.tenant_settings DROP COLUMN driver_offer_timeout_seconds;
 NOTIFY pgrst,'reload schema';
 COMMIT;
+-- resync

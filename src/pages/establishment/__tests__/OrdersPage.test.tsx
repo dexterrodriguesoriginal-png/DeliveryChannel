@@ -205,3 +205,4 @@ describe('chamadas de entregador na tela de Pedidos', () => {
     expect(container.textContent).toContain('Chamar outro');
   });
 });
+// resync

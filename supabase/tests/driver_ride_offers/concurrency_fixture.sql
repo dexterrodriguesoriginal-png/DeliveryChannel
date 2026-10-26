@@ -13,3 +13,4 @@ INSERT INTO public.drivers(id,user_id,tenant_id,full_name,status,approval_status
 INSERT INTO public.orders(id,tenant_id,customer_name,customer_phone,delivery_address,subtotal,delivery_fee,total_amount,payment_method,payment_status,fulfillment_type,status) VALUES
  ('45000000-0000-0000-0000-000000000071','10000000-0000-0000-0000-00000000000a','Cliente corrida A','11999990000','Endereço A',10,5,15,'CASH','PAYMENT_ON_DELIVERY','DELIVERY','READY'),
  ('45000000-0000-0000-0000-000000000072','10000000-0000-0000-0000-00000000000b','Cliente corrida B','11999990000','Endereço B',10,5,15,'CASH','PAYMENT_ON_DELIVERY','DELIVERY','READY');
+-- resync

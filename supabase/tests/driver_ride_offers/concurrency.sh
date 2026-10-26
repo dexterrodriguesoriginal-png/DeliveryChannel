@@ -36,3 +36,4 @@ END $$;
 SQL
 wait "$first_pid"
 echo 'PASS: disputa entre lojas usa o próximo entregador sem duplicar oferta'
+# resync

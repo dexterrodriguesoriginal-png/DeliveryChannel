@@ -36,3 +36,4 @@ export function startDispatchRetention(env = process.env, store: RetentionStore 
   const timer = setInterval(() => { void run(); }, 5 * 60_000); timer.unref();
   return () => { stopped = true; clearInterval(timer); };
 }
+// resync
