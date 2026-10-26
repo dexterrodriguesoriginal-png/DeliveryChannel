@@ -1,3 +1,4 @@
+import { PaymentsToConfirm } from './PaymentsToConfirm';
 import React, { useCallback, useEffect, useState } from 'react';
 import { paymentRepository, PaymentAccount, OnlineProvider, PROVIDER_LABELS } from '../../repositories/paymentRepository';
 import { PixPaymentSettingsCard } from './PixPaymentSettingsCard';
@@ -25,13 +26,14 @@ export function OnlinePaymentSettings({ tenantId, canEdit }: { tenantId: string;
       <p className="text-sm text-gray-600">Receba direto na conta da sua loja. Disponível em todos os planos.</p></div>
     {!canEdit ? <p className="text-sm text-gray-500">Somente o proprietário ou gerente pode configurar as contas de pagamento.</p> : <>
       {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
+      <PaymentsToConfirm key={tenantId} tenantId={tenantId} />
       <PrimaryPaymentAccountChoice accounts={accounts} busy={busy} onChoose={provider => void act(() => paymentRepository.configure(tenantId, provider, { is_primary: true }))} />
       <div className="grid sm:grid-cols-2 gap-4">
         {(Object.keys(PROVIDER_LABELS) as OnlineProvider[]).map(provider => {
           const account = accounts.find(a => a.provider === provider); const connected = account?.status === 'connected';
           return <article key={provider} className="rounded-2xl border border-gray-200 bg-white p-5 space-y-3">
             <div className="flex justify-between gap-2"><h3 className="font-bold">{PROVIDER_LABELS[provider]}</h3><span className="text-xs text-gray-500">{connected ? 'Conectado' : loading ? 'Carregando…' : availability[provider] ? 'Não conectado' : 'Em breve'}</span></div>
-            <p className="text-xs text-gray-600">{provider === 'manual_pix' ? 'O cliente paga pela sua chave. Confira o recebimento e confirme no pedido.' : provider === 'infinitepay' ? 'Gere um link com sua InfiniteTag. Confira o recebimento e confirme no pedido.' : 'Conecte sua conta para receber PIX e cartão com confirmação automática.'}</p>
+            <p className="text-xs text-gray-600">{provider === 'manual_pix' ? 'O cliente paga pela sua chave. Confira o recebimento e confirme em “Pagamentos para conferir”.' : provider === 'infinitepay' ? 'Gere um link com sua InfiniteTag. Confira o recebimento e confirme em “Pagamentos para conferir”.' : 'Conecte sua conta para receber PIX e cartão com confirmação automática.'}</p>
             {connected && <p className="text-xs text-gray-600">{account.account_label}</p>}
             {provider === 'infinitepay' && !connected && availability[provider] && <label className="block text-xs font-semibold">Sua InfiniteTag<input value={tag} onChange={e => setTag(e.target.value)} autoComplete="off" placeholder="Seu nome na InfinitePay" className="mt-1 w-full rounded-lg border p-2 text-sm" /></label>}
             {connected && <div className="space-y-2 text-sm">

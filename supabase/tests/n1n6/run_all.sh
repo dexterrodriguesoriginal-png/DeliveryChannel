@@ -3,6 +3,11 @@
 # Uso: supabase/tests/n1n6/run_all.sh [strict|legacy|both]   (padrão: both)
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Focused current-schema regression, independent of the historical N1–N6 fixtures.
+if [ "${1:-}" = 'online-payment-gate' ]; then
+  sh "$HERE/../online_payment_gate/run_regressions.sh" strict || exit $?
+  exec sh "$HERE/../online_payment_gate/run_regressions.sh" legacy
+fi
 source "$HERE/harness/lib.sh"
 set +e
 MODES="${1:-both}"; [ "$MODES" = both ] && MODES="strict legacy"

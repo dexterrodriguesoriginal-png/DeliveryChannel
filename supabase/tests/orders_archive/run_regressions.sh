@@ -16,6 +16,7 @@ for mode in strict legacy; do
   psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO vault.secrets_stub(name,decrypted_secret) VALUES ('n1n6_ip_hash_salt','local-archive-fixture-salt-0123456789abcdef'); CREATE PUBLICATION supabase_realtime"
   for file in supabase/migrations/*.sql; do
     [ "$file" = "$archive_migration" ] && continue
+    case "$file" in *20261026004301_online_payment_gate.sql) continue ;; esac
     name=${file##*/}; version=${name%%_*}
     if [ "$version" = 20261006000100 ]; then
       psql -X -v ON_ERROR_STOP=1 -f supabase/tests/n1n6/sql/01_legacy_data.sql

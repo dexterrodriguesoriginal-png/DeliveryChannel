@@ -1,3 +1,4 @@
+import { isOrderVisibleToStaff, visibleStaffOrders } from '../lib/orders/onlinePaymentGate';
 /**
  * Repositório de pedidos — compatível com os dois esquemas de backend (ver src/lib/backendSchema.ts).
  *
@@ -130,6 +131,7 @@ export interface PublicOrderInput {
   deliveryAddress?: string;
   addressDetails?: Order['addressDetails'];
   items: Array<{ productId: string; quantity: number; notes?: string; source?: 'catalog' | 'campaign'; campaignItemId?: string; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> }>;
+  onlinePayment?: boolean;
   paymentMethod: Order['paymentMethod'];
   fulfillmentType?: Order['fulfillmentType'];
   notes?: string;
@@ -150,6 +152,7 @@ export interface PromotionalOrderInput {
   customerEmail?: string;
   deliveryAddress?: string;
   addressDetails?: Order['addressDetails'];
+  onlinePayment?: boolean;
   paymentMethod: Order['paymentMethod'];
   fulfillmentType?: Order['fulfillmentType'];
   notes?: string;
@@ -202,7 +205,9 @@ export const orderRepository = {
       const pageSize = 500;
       for (let offset = 0; ; offset += pageSize) {
         let query = supabase.from('orders').select(STAFF_ORDER_SELECT)
-          .eq('tenant_id', tenantId).order('created_at', { ascending: false });
+          .eq('tenant_id', tenantId)
+          .match(isN1N6Backend() ? { awaiting_online_payment: false } : {})
+          .order('created_at', { ascending: false });
         if (options.allPages) query = query.order('id', { ascending: false }).range(offset, offset + pageSize - 1);
         const { data, error } = await query;
         if (error) throw toBackendError(error, 'Falha ao carregar pedidos.');
@@ -210,10 +215,10 @@ export const orderRepository = {
         rows.push(...page);
         if (!options.allPages || page.length < pageSize) break;
       }
-      return withOnlinePayments(rows.map((row: any) => mapStaffOrderRow(row, row.order_items || [], row.order_status_history || [])), tenantId);
+      return withOnlinePayments(visibleStaffOrders<any>(rows).map((row: any) => mapStaffOrderRow(row, row.order_items || [], row.order_status_history || [])), tenantId);
     }
     requireBackendOrLocalDemo('pedidos');
-    return dataStore.getOrders(context, tenantId);
+    return visibleStaffOrders(dataStore.getOrders(context, tenantId));
   },
 
   async getById(context: SecurityContext, tenantId: string, orderId: string): Promise<Order | undefined> {
@@ -224,12 +229,14 @@ export const orderRepository = {
         .select(STAFF_ORDER_SELECT)
         .eq('tenant_id', tenantId)
         .eq('id', orderId)
+        .match(isN1N6Backend() ? { awaiting_online_payment: false } : {})
         .maybeSingle();
       if (error) throw toBackendError(error, 'Falha ao carregar o pedido.');
-      return data ? (await withOnlinePayments([mapStaffOrderRow(data, (data as any).order_items || [], (data as any).order_status_history || [])], tenantId))[0] : undefined;
+      return data && isOrderVisibleToStaff(data) ? (await withOnlinePayments([mapStaffOrderRow(data, (data as any).order_items || [], (data as any).order_status_history || [])], tenantId))[0] : undefined;
     }
     requireBackendOrLocalDemo('pedidos');
-    return dataStore.getOrderById(context, tenantId, orderId);
+    const order = dataStore.getOrderById(context, tenantId, orderId);
+    return order && isOrderVisibleToStaff(order) ? order : undefined;
   },
 
   /** Arquivamento persistido, sem excluir pedidos ou alterar dados financeiros. */
@@ -380,6 +387,7 @@ export const orderRepository = {
         p_delivery_address: orderData.deliveryAddress || (orderData.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : ''),
         p_address_details: orderData.addressDetails || {},
         p_payment_method: orderData.paymentMethod,
+        ...(isN1N6Backend() ? { p_online_payment: orderData.onlinePayment === true } : {}),
         p_fulfillment_type: orderData.fulfillmentType || 'DELIVERY',
         p_notes: orderData.notes || null,
         p_items: toServerItems(orderData.items),
@@ -420,6 +428,7 @@ export const orderRepository = {
       p_delivery_address: orderData.deliveryAddress || (orderData.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : ''),
       p_address_details: orderData.addressDetails || {},
       p_payment_method: orderData.paymentMethod,
+      ...(isN1N6Backend() ? { p_online_payment: orderData.onlinePayment === true } : {}),
       p_fulfillment_type: orderData.fulfillmentType || 'DELIVERY',
       p_notes: orderData.notes || null,
       p_items: toServerItems(orderData.items),
@@ -457,6 +466,7 @@ export const orderRepository = {
       p_delivery_address: orderData.deliveryAddress || (orderData.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : ''),
       p_address_details: orderData.addressDetails || {},
       p_payment_method: orderData.paymentMethod,
+      ...(isN1N6Backend() ? { p_online_payment: orderData.onlinePayment === true } : {}),
       p_fulfillment_type: orderData.fulfillmentType || 'DELIVERY',
       p_notes: orderData.notes || null,
       p_coupon_code: orderData.couponCode?.trim() || null,
@@ -550,12 +560,13 @@ export const orderRepository = {
     if (!isSupabaseConfigured || ids.length === 0) return countPendingRows([], ids);
     const { data, error } = await supabase
       .from('orders')
-      .select('tenant_id')
+      .select(isN1N6Backend() ? 'tenant_id,awaiting_online_payment' : 'tenant_id')
+      .match(isN1N6Backend() ? { awaiting_online_payment: false } : {})
       .in('tenant_id', ids)
       .eq('status', 'PENDING')
       .limit(2000);
     if (error) throw toBackendError(error, 'Falha ao contar pedidos novos.');
-    return countPendingRows((data || []) as { tenant_id: string }[], ids);
+    return countPendingRows((data || []) as unknown as { tenant_id: string; awaiting_online_payment?: boolean }[], ids);
   },
 
   /**

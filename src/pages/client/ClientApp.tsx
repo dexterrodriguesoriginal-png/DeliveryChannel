@@ -1374,6 +1374,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           placeId,
         },
         paymentMethod,
+        onlinePayment: onlineChoice !== null,
         fulfillmentType,
         notes: finalNotes,
         origin,

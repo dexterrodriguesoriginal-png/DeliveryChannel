@@ -54,6 +54,7 @@ export function mapStaffOrderRow(row: any, items: any[] = [], history: any[] = [
     totalAmount: num(row.total_amount),
     paymentMethod: row.payment_method,
     paymentStatus: row.payment_status,
+    awaitingOnlinePayment: row.awaiting_online_payment === true,
     fulfillmentType: row.fulfillment_type || 'DELIVERY',
     tabId: row.tab_id || undefined,
     tableLabel: row.table_label || undefined,

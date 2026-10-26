@@ -10,6 +10,7 @@ export interface KitchenItem {
   options?: Array<{ group_name: string; option_name: string; qty: number; fraction?: number | null }>;
 }
 export interface KitchenOrder {
+  awaiting_online_payment?: boolean;
   order_id: string; order_number: number; status: KitchenStatus; fulfillment_type: 'DELIVERY' | 'PICKUP' | 'DINE_IN';
   created_at: string; notes?: string | null; customer_first_name?: string | null; pickup_code?: string | null;
   table_label?: string | null; round_no?: number | null;

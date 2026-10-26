@@ -31,7 +31,19 @@ async function membershipFor(tenantId: string) {
   // Only a membership selector is sent. Express revalidates it and derives tenant_id itself.
   return data.id as string;
 }
+export interface PaymentToConfirm {
+  order_number: number; amount: number; method: string; created_at: string; customer_first_name: string;
+}
 export const paymentRepository = {
+  async toConfirm(tenantId: string): Promise<PaymentToConfirm[]> {
+    const { data, error } = await supabase.rpc('list_payments_to_confirm', { p_tenant: tenantId });
+    if (error) throw new Error('Não foi possível carregar os pagamentos para conferir.');
+    return data || [];
+  },
+  async confirmPending(tenantId: string, orderNumber: number): Promise<void> {
+    const { error } = await supabase.rpc('confirm_pending_online_payment', { p_tenant: tenantId, p_order_number: orderNumber });
+    if (error) throw new Error('Não foi possível confirmar. Confira o recebimento e tente de novo.');
+  },
   options: (slug: string) => request<{ accounts: PaymentAccount[] }>('/options/' + encodeURIComponent(slug)),
   async accounts(tenantId: string) { return request<{ accounts: PaymentAccount[]; availability: Record<OnlineProvider, boolean> }>('/accounts', undefined, await membershipFor(tenantId)); },
   async connect(tenantId: string, provider: OnlineProvider, infiniteTag?: string) { return request<{ url?: string }>(`/accounts/${provider}/connect`, { infiniteTag }, await membershipFor(tenantId)); },

@@ -1,3 +1,4 @@
+import { visibleStaffOrders } from '../../lib/orders/onlinePaymentGate';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { productRepository } from '../../repositories/productRepository';
@@ -100,7 +101,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
     if (!silent) setIsLoading(true);
     setError(null);
     try {
-      const [fetchedOrders, fetchedCustomers, fetchedDrivers, tenantProducts] = await Promise.all([
+      const [receivedOrders, fetchedCustomers, fetchedDrivers, tenantProducts] = await Promise.all([
         orderRepository.getOrders(securityContext, activeTenant.id).catch(() => []),
         customerRepository.getCustomers(securityContext, activeTenant.id).catch(() => []),
         // 0700 v3.4: list_assignable_drivers (OWNER/MANAGER/DELIVERY_MANAGER; só APPROVED elegíveis).
@@ -111,6 +112,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
           : Promise.resolve([] as Driver[]),
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);
+      const fetchedOrders = visibleStaffOrders(receivedOrders);
       setRemoteOrders(fetchedOrders);
       // Pedido novo desde a última leitura: som existente + destaque por 15 s (a 1ª leitura não toca).
       const fresh = newPendingIds(prevPendingIdsRef.current, fetchedOrders);
@@ -200,7 +202,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   if (!activeTenant) return null;
 
   // Dados reais 100% Supabase (sem fallbacks para dataStore)
-  const orders = remoteOrders || [];
+  const orders = visibleStaffOrders(remoteOrders || []);
   const customers = remoteCustomers || [];
 
   // Cálculos de métricas reais

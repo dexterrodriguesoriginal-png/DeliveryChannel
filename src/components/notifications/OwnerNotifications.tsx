@@ -35,9 +35,12 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
       const n = payload.new as OwnerNotification;
       if (payload.eventType === 'INSERT' && n.tenant_id === tenant && !seen.has(n.id)) {
         seen.add(n.id);
-        const prefs = readPreferences(localStorage, tenant, user);
-        if (prefs.balloon) setBalloon(n);
-        if (prefs.sound) playNewOrderSound();
+        void repo.visibleNotifications(tenant, [n]).then(visible => {
+          if (!alive || !visible.length) return;
+          const prefs = readPreferences(localStorage, tenant, user);
+          if (prefs.balloon) setBalloon(n);
+          if (prefs.sound) playNewOrderSound();
+        }).catch(() => { /* The next successful reload will recover the list. */ });
       }
       void load();
     }).subscribe(() => { void load(); });
