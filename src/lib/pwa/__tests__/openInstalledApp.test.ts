@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildOpenAppIntent, openInstalledApp, detectInstalledApp, OPEN_APP_FALLBACK_MS } from '../openInstalledApp';
+import { consumeOpenAttempt, rememberOpenAttempt, buildOpenAppIntent, openInstalledApp, detectInstalledApp, OPEN_APP_FALLBACK_MS } from '../openInstalledApp';
 import { buildStoreManifest } from '../storeManifest';
 
 const mkEnv = (ua: string, vis = 'visible') => {
@@ -29,6 +29,31 @@ describe('openInstalledApp', () => {
   it('fora do Android: navega para start_url', () => {
     const { env } = mkEnv('iPhone');
     expect(openInstalledApp('/app/bar/', env)).toBe('navigate');
+  });
+  it.each(['Android', 'iPhone', 'Desktop'])('página visível em %s mostra instrução e tenta o fallback', ua => {
+    const { env, timers } = mkEnv(ua);
+    const onStillVisible = vi.fn();
+    openInstalledApp('/entregador', { ...env, onStillVisible });
+    expect(onStillVisible).not.toHaveBeenCalled();
+    timers[0]();
+    expect(onStillVisible).toHaveBeenCalledOnce();
+    expect(env.location.assign).toHaveBeenCalledWith('https://deliverychannel.ai.studio/entregador');
+  });
+  it('página oculta não mostra orientação de falha', () => {
+    const { env, timers } = mkEnv('Android', 'hidden');
+    const onStillVisible = vi.fn();
+    openInstalledApp('/entregador', { ...env, onStillVisible }); timers[0]();
+    expect(onStillVisible).not.toHaveBeenCalled();
+  });
+  it('orientação sobrevive ao fallback, só na mesma aba/app e por poucos segundos', () => {
+    const m = new Map<string, string>();
+    const storage = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+    rememberOpenAttempt(storage, 'driver', 1000);
+    expect(consumeOpenAttempt(storage, 'store', 2000)).toBe(false);
+    expect(consumeOpenAttempt(storage, 'driver', 2000)).toBe(true);
+    expect(consumeOpenAttempt(storage, 'driver', 2000)).toBe(false);
+    rememberOpenAttempt(storage, 'driver', 1000);
+    expect(consumeOpenAttempt(storage, 'driver', 12000)).toBe(false);
   });
   it('detecção sem API retorna false; com webapp retorna true', async () => {
     expect(await detectInstalledApp({} as Navigator)).toBe(false);

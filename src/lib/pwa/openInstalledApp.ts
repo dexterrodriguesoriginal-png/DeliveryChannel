@@ -23,6 +23,7 @@ interface OpenEnv {
   document: { visibilityState: string };
   userAgent: string;
   setTimeout: (fn: () => void, ms: number) => unknown;
+  onStillVisible?: () => void;
 }
 
 export function openInstalledApp(startPath: string, env: OpenEnv = {
@@ -30,9 +31,19 @@ export function openInstalledApp(startPath: string, env: OpenEnv = {
 }): 'intent' | 'navigate' {
   const abs = new URL(startPath, env.location.origin).href;
   const intent = /Android/i.test(env.userAgent) ? buildOpenAppIntent(abs) : null;
-  if (!intent) { env.location.assign(abs); return 'navigate'; }
+  const check = () => env.setTimeout(() => {
+    if (env.document.visibilityState === 'visible') {
+      env.onStillVisible?.();
+      if (intent) env.location.assign(abs);
+    }
+  }, OPEN_APP_FALLBACK_MS);
+  if (!intent) {
+    env.location.assign(abs);
+    check();
+    return 'navigate';
+  }
   env.location.href = intent;
-  env.setTimeout(() => { if (env.document.visibilityState === 'visible') env.location.assign(abs); }, OPEN_APP_FALLBACK_MS);
+  check();
   return 'intent';
 }
 
@@ -41,4 +52,18 @@ export async function detectInstalledApp(nav: Navigator = navigator): Promise<bo
   const fn = (nav as unknown as { getInstalledRelatedApps?: () => Promise<{ platform: string }[]> }).getInstalledRelatedApps;
   if (typeof fn !== 'function') return false;
   try { const apps = await fn.call(nav); return apps.some(a => a.platform === 'webapp'); } catch { return false; }
+}
+
+const openAttemptKey = (appId: string) => `deliverychannel_pwa_open_attempt_${appId}`;
+type OpenStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+/** Mantém a orientação se o fallback navegar nesta mesma aba (o timer anterior é destruído). */
+export function rememberOpenAttempt(storage: OpenStorage, appId: string, now = Date.now()): void {
+  try { storage.setItem(openAttemptKey(appId), String(now)); } catch { /* navegador sem storage */ }
+}
+export function consumeOpenAttempt(storage: OpenStorage, appId: string, now = Date.now()): boolean {
+  try {
+    const at = Number(storage.getItem(openAttemptKey(appId)));
+    storage.removeItem(openAttemptKey(appId));
+    return at > 0 && now >= at && now - at < 10_000;
+  } catch { return false; }
 }

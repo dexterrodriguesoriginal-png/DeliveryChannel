@@ -1,3 +1,4 @@
+import { driverGoogleOptions } from '../../lib/driverInviteFlow';
 import { LegalCheckbox } from '../legal/LegalUI';
 import { legalSignupMetadata } from '../../lib/legal/documents';
 import React, { useState, useEffect, useRef } from 'react';
@@ -324,7 +325,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
   // Login com Google
   const handleGoogleLogin = async () => {
     try {
-      await signInWithGoogle({ returnTo: googleReturnTo || '/', intent: 'owner' });
+      await signInWithGoogle(audience === 'driver' ? driverGoogleOptions : { returnTo: googleReturnTo || '/', intent: 'owner' });
     } catch (err: any) {
       setFormError('Não foi possível conectar com o Google no momento.');
     }
@@ -509,19 +510,8 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* TELA 2: LOGIN COM GOOGLE OU E-MAIL                                       */}
-        {/* ========================================================================= */}
-        {!isSupabaseAuth && viewMode === 'LOGIN' && (
-          <div className="space-y-4">
-            <div className="text-left">
-              <p className="text-xs text-gray-500">
-                {copy.loginSubtitle}
-              </p>
-            </div>
-
-
-
+        {!isSupabaseAuth && (viewMode === 'LOGIN' || (audience === 'driver' && viewMode === 'SIGNUP')) && (
+          <div className="space-y-4 mb-4">
             {/* Botão Principal: Google OAuth */}
             <button
               type="button"
@@ -554,6 +544,23 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
               <span className="shrink mx-4 text-xs text-gray-400 font-medium">ou entre com e-mail</span>
               <div className="grow border-t border-gray-200"></div>
             </div>
+
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TELA 2: LOGIN COM GOOGLE OU E-MAIL                                       */}
+        {/* ========================================================================= */}
+        {!isSupabaseAuth && viewMode === 'LOGIN' && (
+          <div className="space-y-4">
+            <div className="text-left">
+              <p className="text-xs text-gray-500">
+                {copy.loginSubtitle}
+              </p>
+            </div>
+
+
+
 
             {formError && (
               <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2">

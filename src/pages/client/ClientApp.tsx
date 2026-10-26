@@ -1,3 +1,5 @@
+import { CheckoutTrackingAction } from '../../components/client/CheckoutTrackingAction';
+import { reconcileOrderSeen } from '../../lib/customer/orderSeen';
 import { analyticsAllowed, openCookiePreferences } from '../../lib/legal/cookies';
 import { LegalCheckbox } from '../../components/legal/LegalUI';
 import { legalSignupMetadata } from '../../lib/legal/documents';
@@ -247,6 +249,11 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
   // 5. Histórico e Pedidos do Cliente
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
+  const [serverPayments, setServerPayments] = useState<{ scope: string; byId: Record<string, string> }>({ scope: '', byId: {} });
+  const [ordersUnread, setOrdersUnread] = useState(false);
+  const ordersScope = `${storeData?.tenant.id || ''}:${supabaseUser?.id || ''}`;
+  const ordersScopeRef = useRef(ordersScope);
+  ordersScopeRef.current = ordersScope;
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [customerOrdersError, setCustomerOrdersError] = useState<string | null>(null);
 
@@ -471,6 +478,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     if (prevSyncUserTenantRef.current !== currentKey) {
       prevSyncUserTenantRef.current = currentKey;
       setCustomerOrders([]);
+      setServerPayments({ scope: '', byId: {} });
+      setOrdersUnread(false);
       setCustomerOrdersError(null);
     }
 
@@ -497,11 +506,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       return;
     }
 
+    const requestScope = ordersScope;
     // Atualização em segundo plano (polling) não troca a lista pelo "Carregando..." a cada ciclo.
     if (!opts?.silent) setIsLoadingOrders(true);
     setCustomerOrdersError(null);
     try {
       const orders = await orderRepository.getCustomerOrders(storeData.tenant.id, supabaseUser.id);
+      if (ordersScopeRef.current !== requestScope) return;
+      setServerPayments({ scope: requestScope, byId: Object.fromEntries(orders.map(o => [o.id, o.paymentStatus])) });
       setCustomerOrders(prev => {
         // Se a busca remota retornou pedidos, mesclamos mantendo qualquer pedido criado localmente
         if (orders && orders.length > 0) {
@@ -524,7 +536,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         return orders;
       });
     } catch (err: any) {
-      console.warn('[ClientApp] Erro ao carregar pedidos do cliente:', err);
+      if (ordersScopeRef.current !== requestScope) return;
       // Não exibe erro impeditivo se já existirem pedidos carregados em memória
       setCustomerOrders(prev => {
         if (prev.length === 0) {
@@ -533,9 +545,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         return prev;
       });
     } finally {
-      setIsLoadingOrders(false);
+      if (ordersScopeRef.current === requestScope) setIsLoadingOrders(false);
     }
-  }, [storeData?.tenant.id, supabaseUser?.id]);
+  }, [storeData?.tenant.id, supabaseUser?.id, ordersScope]);
 
   // "Peça de novo": catálogo ATUAL (preço/disponibilidade de agora); itens que não existem mais ficam de fora.
   const handleRepeatOrder = useCallback((order: Order) => {
@@ -566,9 +578,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   }, [storeData, showToast, setNavTab]);
 
   useEffect(() => {
-    if (navTab === 'orders') {
-      loadCustomerOrders();
-      // Acompanhamento ao vivo: recarrega a cada 8 s enquanto a aba Pedidos está aberta e visível,
+    if (storeData?.tenant.id && supabaseUser?.id) {
+      loadCustomerOrders({ silent: true });
+      // Acompanhamento em todas as abas: atualiza status, pagamento e ponto de Pedidos,
       // e imediatamente ao voltar para o app (aba/PWA em primeiro plano).
       const interval = setInterval(() => {
         if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
@@ -594,7 +606,12 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         unsubscribeRealtime();
       };
     }
-  }, [navTab, loadCustomerOrders, storeData?.tenant.id, supabaseUser?.id]);
+  }, [loadCustomerOrders, storeData?.tenant.id, supabaseUser?.id]);
+
+  useEffect(() => {
+    if (!storeData?.tenant.id || !supabaseUser?.id || serverPayments.scope !== ordersScope) { setOrdersUnread(false); return; }
+    setOrdersUnread(reconcileOrderSeen(localStorage, ordersScope, customerOrders, navTab === 'orders'));
+  }, [customerOrders, navTab, ordersScope, serverPayments.scope, storeData?.tenant.id, supabaseUser?.id]);
 
   // Favoritos, endereço selecionado e leitura de notificações: por usuário (e por loja quando aplicável).
   useEffect(() => {
@@ -625,11 +642,6 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     if (sel) applySavedAddress(sel);
     else setSelectedAddress(null);
   }, [kv, userKey, applySavedAddress]);
-
-  // Cliente logado: carrega os pedidos uma vez (silencioso) para a central de notificações e o ponto no Perfil.
-  useEffect(() => {
-    if (supabaseUser?.id && storeData?.tenant.id) loadCustomerOrders({ silent: true });
-  }, [supabaseUser?.id, storeData?.tenant.id, loadCustomerOrders]);
 
   // Aviso do aparelho quando o status de um pedido muda com o app aberto (se o cliente permitiu).
   const lastStatusRef = useRef<Map<string, string> | null>(null);
@@ -3139,17 +3151,16 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           )}
 
           <div className="pt-2 flex flex-col gap-2">
-            <Button
-              className="w-full text-white font-bold"
-              style={{ backgroundColor: buttonColor }}
-              onClick={() => {
+            <CheckoutTrackingAction
+              requiresPayment={!!completedOnlineChoice || completedOrder?.paymentMethod === 'PIX'}
+              serverPaymentStatus={serverPayments.scope === ordersScope && completedOrder ? serverPayments.byId[completedOrder.id] : undefined}
+              color={buttonColor}
+              onTrack={() => {
                 if (completedOrder?.id) setFocusOrderId(completedOrder.id);
                 setCompletedOrder(null);
                 setNavTab('orders');
               }}
-            >
-              Acompanhar Meus Pedidos
-            </Button>
+            />
             <Button
               variant="outline"
               onClick={() => openWhatsAppContact(completedOrder?.orderNumber)}
@@ -3584,6 +3595,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             setNavTab(t);
           }}
           cartCount={cartTotalCount}
+          ordersBadge={navTab !== 'orders' && ordersUnread}
           profileBadge={unreadCount}
           primaryColor={buttonColor}
         />

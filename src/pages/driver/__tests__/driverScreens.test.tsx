@@ -4,7 +4,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DriverStatusScreen, DRIVER_STATUS_COPY } from '../DriverStatusScreen';
 import { DriverInviteView, INVALID_INVITE_MESSAGE, driverConfirmHint } from '../DriverInvitePage';
-import { redeemOutcome, storeInitials, rememberInviteToken, clearInviteToken } from '../../../lib/driverInviteFlow';
+import { applyDriverRedeem, redeemOutcome, storeInitials, rememberInviteToken, clearInviteToken } from '../../../lib/driverInviteFlow';
 
 const html = (el: React.ReactElement) => renderToStaticMarkup(el);
 const noop = () => {};
@@ -80,7 +80,7 @@ describe('F-G: página do convite', () => {
   it('válido sem sessão: placeholder do logo, nome, Criar conta / Já tenho conta', () => {
     const h = html(<DriverInviteView state="VALID" hasSession={false} preview={{ valid: true, storeName: 'Adega do Zé', storeLogo: null, expiresAt: '2026-10-21T00:00:00Z' }} />);
     expect(h).toContain('store-logo-placeholder'); expect(h).toContain('>AZ<');
-    expect(h).toContain('Adega do Zé'); expect(h).toContain('Criar conta'); expect(h).toContain('Já tenho conta');
+    expect(h).toContain('Adega do Zé'); expect(h).toContain('Criar conta'); expect(h).toContain('Já tenho conta'); expect(h).toContain('Continuar com Google');
     expect(h).not.toContain('Entrar na equipe');
   });
   it('válido com sessão: Entrar na equipe; desabilitado durante a chamada', () => {
@@ -105,13 +105,22 @@ describe('F-G: página do convite', () => {
     expect(html(<DriverInviteView state="VALID" hasSession={false} preview={{ valid: true, storeName: 'Mercado Teste DC', storeLogo: null }} />))
       .toContain('>MD<');
   });
-  it('cada resposta do redeem', () => {
+  it('loja A ativa + convite B: troca a seleção e mostra status com o nome de B', async () => {
+    let activeTenant = 'A';
+    const outcome = await applyDriverRedeem({ status: 'PENDING', consumed: true, tenantId: 'B' }, async id => { activeTenant = id; return true; });
+    expect(activeTenant).toBe('B');
+    expect(outcome.kind).toBe('PENDING');
+    const h = html(<DriverStatusScreen variant="PENDING" storeName="Mercado da loja B" onSignOut={noop} onRefresh={noop} />);
+    expect(h).toContain('Mercado da loja B');
+    expect(h).not.toContain('Loja A');
+  });
+  it('cada resposta do redeem carrega a loja retornada pelo servidor', () => {
     expect(redeemOutcome({ status: 'INVALID', consumed: false })).toEqual({ kind: 'INVALID' });
-    expect(redeemOutcome({ status: 'PENDING', consumed: true })).toEqual({ kind: 'PENDING' });
-    expect(redeemOutcome({ status: 'PENDING', consumed: false })).toEqual({ kind: 'PENDING' });
-    expect(redeemOutcome({ status: 'APPROVED', consumed: false })).toEqual({ kind: 'GO_APP' });
-    for (const s of ['SUSPENDED', 'REJECTED', 'REMOVED'] as const) {
-      expect(redeemOutcome({ status: s, consumed: false })).toEqual({ kind: 'STATUS', variant: s });
+    expect(redeemOutcome({ status: 'PENDING', consumed: true, tenantId: 'B' })).toEqual({ kind: 'PENDING', tenantId: 'B' });
+    expect(redeemOutcome({ status: 'PENDING', consumed: false, tenantId: 'B' })).toEqual({ kind: 'PENDING', tenantId: 'B' });
+    expect(redeemOutcome({ status: 'APPROVED', consumed: false, tenantId: 'B' })).toEqual({ kind: 'GO_APP', tenantId: 'B' });
+    for (const status of ['SUSPENDED', 'REJECTED', 'REMOVED'] as const) {
+      expect(redeemOutcome({ status, consumed: false, tenantId: 'B' })).toEqual({ kind: 'STATUS', variant: status, tenantId: 'B' });
     }
   });
   it('token só em sessionStorage e removido depois do redeem (também da barra)', () => {

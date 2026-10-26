@@ -1,3 +1,4 @@
+import { injectDriverHead, isDriverRoute } from './src/lib/pwa/driverManifest';
 /**
  * Servidor do app (convenção full-stack do Google AI Studio: Express em server.ts,
  * `npm run dev` => tsx server.ts; build => dist/server.cjs; `npm start` => node dist/server.cjs).
@@ -48,6 +49,14 @@ async function start() {
       server: { middlewareMode: true, hmr: process.env.DISABLE_HMR !== 'true' },
       appType: 'spa',
     });
+    app.get(['/entregador', '/entregador/*', '/convite-entregador'], async (req, res, next) => {
+      if (!isHtmlNav(req)) return next();
+      try {
+        const raw = await vite.transformIndexHtml(req.originalUrl, await fs.readFile(path.resolve(process.cwd(), 'index.html'), 'utf8'));
+        res.setHeader('Cache-Control', 'no-cache');
+        res.type('html').send(injectDriverHead(raw));
+      } catch (e) { next(e); }
+    });
     app.get('/app/*', async (req, res, next) => {
       const slug = storeSlugFromPath(req.path);
       if (!slug || !isHtmlNav(req)) return next();
@@ -63,12 +72,17 @@ async function start() {
     // Nunca servir o bundle do servidor como arquivo estático.
     app.use((req, res, next) => (isRuntimeArtifactPath(req.path) ? res.status(404).end() : next()));
     app.use(express.static(distDir, { index: false, maxAge: '1h', setHeaders: (res, file) => {
-      if (file.endsWith('.html') || file.endsWith('manifest.json')) res.setHeader('Cache-Control', 'no-cache');
+      if (file.endsWith('.html') || file.endsWith('manifest.json') || file.endsWith('.webmanifest')) res.setHeader('Cache-Control', 'no-cache');
     } }));
     app.get('*', (req, res, next) => {
       if (req.method !== 'GET' || path.extname(req.path)) return next();
       res.setHeader('Cache-Control', 'no-cache');
       const slug = storeSlugFromPath(req.path);
+      if (isDriverRoute(req.path)) {
+        indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
+        indexHtml.then(raw => res.type('html').send(injectDriverHead(raw)), next);
+        return;
+      }
       if (!slug) { res.sendFile(path.join(distDir, 'index.html')); return; }
       indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
       indexHtml.then((raw) => storeHtml(req, raw, slug)).then((h) => res.type('html').send(h), next);
