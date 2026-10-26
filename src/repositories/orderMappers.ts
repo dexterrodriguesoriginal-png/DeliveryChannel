@@ -71,6 +71,8 @@ export function mapStaffOrderRow(row: any, items: any[] = [], history: any[] = [
       })),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    archivedAt: row.archived_at || undefined,
+    archivedBy: row.archived_by || undefined,
     driverId: row.driver_id || undefined,
     driverAcceptedAt: row.driver_accepted_at || undefined,
     pickedUpAt: row.picked_up_at || undefined,

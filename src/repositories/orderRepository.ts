@@ -194,16 +194,23 @@ async function withOnlinePayments(orders: Order[], tenantId: string): Promise<Or
 }
 
 export const orderRepository = {
-  async getOrders(context: SecurityContext, tenantId: string): Promise<Order[]> {
+  /** allPages evita que a tela Pedidos e o arquivamento em massa parem no limite padrão da API. */
+  async getOrders(context: SecurityContext, tenantId: string, options: { allPages?: boolean } = {}): Promise<Order[]> {
     if (isSupabaseConfigured) {
       if (!isValidUuid(tenantId)) throw new BackendError('INVALID_TENANT', 'Loja inválida.');
-      const { data, error } = await supabase
-        .from('orders')
-        .select(STAFF_ORDER_SELECT)
-        .eq('tenant_id', tenantId)
-        .order('created_at', { ascending: false });
-      if (error) throw toBackendError(error, 'Falha ao carregar pedidos.');
-      return withOnlinePayments((data || []).map((row: any) => mapStaffOrderRow(row, row.order_items || [], row.order_status_history || [])), tenantId);
+      const rows: any[] = [];
+      const pageSize = 500;
+      for (let offset = 0; ; offset += pageSize) {
+        let query = supabase.from('orders').select(STAFF_ORDER_SELECT)
+          .eq('tenant_id', tenantId).order('created_at', { ascending: false });
+        if (options.allPages) query = query.order('id', { ascending: false }).range(offset, offset + pageSize - 1);
+        const { data, error } = await query;
+        if (error) throw toBackendError(error, 'Falha ao carregar pedidos.');
+        const page = data || [];
+        rows.push(...page);
+        if (!options.allPages || page.length < pageSize) break;
+      }
+      return withOnlinePayments(rows.map((row: any) => mapStaffOrderRow(row, row.order_items || [], row.order_status_history || [])), tenantId);
     }
     requireBackendOrLocalDemo('pedidos');
     return dataStore.getOrders(context, tenantId);
@@ -223,6 +230,16 @@ export const orderRepository = {
     }
     requireBackendOrLocalDemo('pedidos');
     return dataStore.getOrderById(context, tenantId, orderId);
+  },
+
+  /** Arquivamento persistido, sem excluir pedidos ou alterar dados financeiros. */
+  async archiveOrders(orderIds: string[], archive: boolean): Promise<void> {
+    requireBackend('arquivamento de pedidos');
+    if (!orderIds.length || orderIds.some(id => !isValidUuid(id))) {
+      throw new BackendError('INVALID_ORDER', 'Selecione pedidos válidos.');
+    }
+    const { error } = await supabase.rpc('archive_orders', { p_order_ids: orderIds, p_archive: archive });
+    if (error) throw toBackendError(error, 'Falha ao alterar o arquivamento dos pedidos.');
   },
 
   /** Muda o status. Pedido cancelado não reabre e cancelamento exige motivo (validado também no servidor N1). */

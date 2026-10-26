@@ -84,6 +84,7 @@ import { FOCUS_ORDER_KEY } from '../../lib/orders/orderAlerts';
 import { sortOrdersNewestFirst, countStaleActiveOrders } from '../../lib/orders/orderAge';
 import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE, shouldBlockCallDriver } from '../../lib/orders/dispatchErrors';
 import { supabase } from '../../lib/supabase';
+import { canArchiveOrder, matchesOrderStatusTab } from '../../lib/orders/archive';
 
 function orderForCard(order: Order): Order {
   return order.fulfillmentType === 'DINE_IN'
@@ -105,6 +106,7 @@ const ORDER_STATUS_TABS = new Set([
   'OUT_FOR_DELIVERY',
   'DELIVERED',
   'CANCELLED',
+  'ARCHIVED',
 ]);
 
 export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab, onTabChange }) => {
@@ -113,6 +115,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const { showToast } = useToast();
 
   // Estados principais da fila de pedidos
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const archiveInFlight = useRef(false);
+  const [archiveAllOpen, setArchiveAllOpen] = useState(false);
+  const canManageArchive = activeRole === 'OWNER' || activeRole === 'MANAGER';
   const [remoteOrders, setRemoteOrders] = useState<Order[] | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   // 19/10: true só quando list_assignable_drivers respondeu com sucesso (vazio = loja sem entregador aprovado).
@@ -167,7 +173,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const activeTab = requestedTab === undefined
     ? internalActiveTab
     : ORDER_STATUS_TABS.has(requestedTab) ? requestedTab : 'ALL';
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
   const changeActiveTab = (tab: string) => {
+    setSelectedOrder(null);
     setInternalActiveTab(tab);
     onTabChange?.(tab);
   };
@@ -227,7 +236,15 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     return () => { alive = false; };
   }, [assigningOrder?.id, activeTenant?.id, activeRole]);
   useEffect(() => {
-    const focus = (e: Event) => { const id = (e as CustomEvent).detail; const found = remoteOrders?.find(o => o.id === id); if (found) { setSelectedOrder(found); setDrawerTab('detalhes'); sessionStorage.removeItem(FOCUS_ORDER_KEY); } };
+    const focus = (e: Event) => {
+      const found = remoteOrders?.find(o => o.id === (e as CustomEvent).detail);
+      if (!found) return;
+      if (found.archivedAt) changeActiveTab('ARCHIVED');
+      else if (found.status === 'CANCELLED') changeActiveTab('CANCELLED');
+      setSelectedOrder(found);
+      setDrawerTab('detalhes');
+      sessionStorage.removeItem(FOCUS_ORDER_KEY);
+    };
     window.addEventListener('dc:focus-order', focus);
     return () => window.removeEventListener('dc:focus-order', focus);
   }, [remoteOrders]);
@@ -251,7 +268,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     try {
       setSyncError(null);
       const [orderData, driverData, productsData] = await Promise.all([
-        orderRepository.getOrders(securityContext, activeTenant.id),
+        orderRepository.getOrders(securityContext, activeTenant.id, { allPages: true }),
         // 0700 v3.4: list_assignable_drivers (OWNER/MANAGER/DELIVERY_MANAGER; só APPROVED elegíveis).
         canListDrivers
           ? driverInviteRepository.listAssignableDrivers(activeTenant.id)
@@ -289,6 +306,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       let focusId: string | null = null;
       try { focusId = sessionStorage.getItem(FOCUS_ORDER_KEY); } catch { /* sem storage */ }
       const focused = focusId ? ordersWithTableLabels.find(o => o.id === focusId) : undefined;
+      if (focused?.archivedAt) changeActiveTab('ARCHIVED');
+      else if (focused?.status === 'CANCELLED') changeActiveTab('CANCELLED');
       if (focusId) { try { sessionStorage.removeItem(FOCUS_ORDER_KEY); } catch { /* sem storage */ } }
       if (focused && sessionStorage.getItem(`dc:dispatch-order:${activeTenant.id}`) === focused.id) {
         sessionStorage.removeItem(`dc:dispatch-order:${activeTenant.id}`); setAssigningOrder(focused);
@@ -299,9 +318,11 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           // 19/10: no celular o detalhe cobre a tela inteira; só abre sozinho em telas largas.
           const wide = typeof window === 'undefined' || typeof window.matchMedia !== 'function'
             || window.matchMedia('(min-width: 1024px)').matches;
-          return wide ? (ordersWithTableLabels[0] || null) : null;
+          return wide ? (ordersWithTableLabels.find(o => matchesOrderStatusTab(o, activeTabRef.current)) || null) : null;
         }
-        return ordersWithTableLabels.find(o => o.id === prev.id) || prev;
+        const updated = ordersWithTableLabels.find(o => o.id === prev.id);
+        if (updated && !matchesOrderStatusTab(updated, activeTabRef.current)) return null;
+        return updated || null;
       });
 
       // Dispara som nativo Web Audio API caso novos pedidos pendentes tenham chegado
@@ -567,7 +588,29 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     }
   };
 
+  const handleArchive = async (orderIds: string[], archive: boolean) => {
+    if (!canManageArchive || archiveInFlight.current || !orderIds.length) return;
+    archiveInFlight.current = true;
+    setArchiveBusy(true);
+    try {
+      await orderRepository.archiveOrders(orderIds, archive);
+      setSelectedOrder(current => current && orderIds.includes(current.id) ? null : current);
+      setArchiveAllOpen(false);
+      await fetchOrders(true);
+      showToast({ type: 'success', title: archive ? 'Pedidos arquivados' : 'Pedidos desarquivados', message: 'Histórico e relatórios preservados.' });
+    } catch (err) {
+      showToast({ type: 'error', title: 'Não foi possível alterar o arquivamento', message: err instanceof Error ? err.message : 'Tente novamente.' });
+    } finally {
+      archiveInFlight.current = false;
+      setArchiveBusy(false);
+    }
+  };
+
   const allOrders = remoteOrders || [];
+  const unarchivedOrders = allOrders.filter(order => !order.archivedAt);
+  const cancelledOrderIds = unarchivedOrders.filter(order => order.status === 'CANCELLED').map(order => order.id);
+  // O Kanban só representa etapas ativas; abas de encerrados usam os mesmos cards da lista.
+  const effectiveViewMode = viewMode === 'kanban' && ['CANCELLED', 'DELIVERED', 'ARCHIVED'].includes(activeTab) ? 'cards' : viewMode;
   const visibleFulfillmentTabs = visibleFulfillmentTabsFor(isModuleEnabled, allOrders);
   const visibleTabsKey = visibleFulfillmentTabs.join(',');
   useEffect(() => {
@@ -607,41 +650,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     return true;
   };
 
-  // Contagens exatas dos 7 status + Faturamento hoje (idêntico ao screenshot)
-  const fulfillmentOrders = allOrders.filter(order => matchesFulfillmentTab(order, filterFulfillment));
-  const countNovos = fulfillmentOrders.filter(o => o.status === 'PENDING').length;
-  const countConfirmados = fulfillmentOrders.filter(o => o.status === 'CONFIRMED').length;
-  const countEmPreparo = fulfillmentOrders.filter(o => o.status === 'PREPARING').length;
-  const countProntos = fulfillmentOrders.filter(o => o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER').length;
-  const countEmRota = fulfillmentOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').length;
-  const countEntregues = fulfillmentOrders.filter(o => o.status === 'DELIVERED').length;
-  const countCancelados = fulfillmentOrders.filter(o => o.status === 'CANCELLED').length;
-
-  const faturamentoHoje = allOrders
-    .filter(o => o.status === 'DELIVERED')
-    .reduce((acc, cur) => acc + (cur.totalAmount || 0), 0);
-
-  // Status pills com contadores
-  const statusPills = [
-    { id: 'ALL', label: 'Todos', count: fulfillmentOrders.length },
-    { id: 'PENDING', label: 'Novos', count: countNovos },
-    { id: 'CONFIRMED', label: 'Confirmados', count: countConfirmados },
-    { id: 'PREPARING', label: 'Em preparo', count: countEmPreparo },
-    { id: 'READY', label: 'Prontos', count: countProntos },
-    { id: 'OUT_FOR_DELIVERY', label: 'Em rota', count: countEmRota },
-    { id: 'DELIVERED', label: 'Entregues', count: countEntregues },
-    { id: 'CANCELLED', label: 'Cancelados', count: countCancelados },
-  ];
-
   // Filtragem composta em memória
-  const filteredOrders = useMemo(() => {
+  const scopedOrders = useMemo(() => {
     // 19/10: pedido novo sempre no topo; os antigos em aberto ganham o selo "recebido há ...".
     return sortOrdersNewestFirst(allOrders).filter(order => {
-      // 1. Filtro de Status
-      if (activeTab !== 'ALL' && order.status !== activeTab) {
-        return false;
-      }
-
       // 2. Filtro de Atendimento
       if (!matchesFulfillmentTab(order, filterFulfillment)) {
         return false;
@@ -673,7 +685,36 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
 
       return true;
     });
-  }, [allOrders, activeTab, filterFulfillment, filterDriver, filterPeriod, searchQuery]);
+  }, [allOrders, filterFulfillment, filterDriver, filterPeriod, searchQuery]);
+
+  // Contagens exatas dos 7 status + Faturamento hoje (idêntico ao screenshot)
+  const fulfillmentOrders = scopedOrders.filter(order => !order.archivedAt);
+  const countNovos = fulfillmentOrders.filter(o => o.status === 'PENDING').length;
+  const countConfirmados = fulfillmentOrders.filter(o => o.status === 'CONFIRMED').length;
+  const countEmPreparo = fulfillmentOrders.filter(o => o.status === 'PREPARING').length;
+  const countProntos = fulfillmentOrders.filter(o => o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER').length;
+  const countEmRota = fulfillmentOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').length;
+  const countEntregues = fulfillmentOrders.filter(o => o.status === 'DELIVERED').length;
+  const countCancelados = fulfillmentOrders.filter(o => o.status === 'CANCELLED').length;
+
+  const faturamentoHoje = allOrders
+    .filter(o => o.status === 'DELIVERED')
+    .reduce((acc, cur) => acc + (cur.totalAmount || 0), 0);
+
+  // Status pills com contadores
+  const statusPills = [
+    { id: 'ALL', label: 'Todos', count: fulfillmentOrders.filter(o => matchesOrderStatusTab(o, 'ALL')).length },
+    { id: 'PENDING', label: 'Novos', count: countNovos },
+    { id: 'CONFIRMED', label: 'Confirmados', count: countConfirmados },
+    { id: 'PREPARING', label: 'Em preparo', count: countEmPreparo },
+    { id: 'READY', label: 'Prontos', count: countProntos },
+    { id: 'OUT_FOR_DELIVERY', label: 'Em rota', count: countEmRota },
+    { id: 'DELIVERED', label: 'Entregues', count: countEntregues },
+    { id: 'CANCELLED', label: 'Cancelados', count: countCancelados },
+    { id: 'ARCHIVED', label: 'Arquivados', count: scopedOrders.filter(o => o.archivedAt).length },
+  ];
+
+  const filteredOrders = scopedOrders.filter(order => matchesOrderStatusTab(order, activeTab));
 
   const staleActiveCount = countStaleActiveOrders(allOrders, lastSyncTime.getTime());
 
@@ -1142,6 +1183,12 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
 
         {/* Rodapé Fixo: Botões de Ação */}
         <div className="p-1.5 bg-white border-t border-slate-100 space-y-1 shrink-0 shadow-xs">
+          {canManageArchive && canArchiveOrder(selectedOrder) && (
+            <Button size="sm" variant="outline" disabled={archiveBusy}
+              onClick={() => void handleArchive([selectedOrder.id], !selectedOrder.archivedAt)}>
+              {selectedOrder.archivedAt ? 'Desarquivar' : 'Arquivar'}
+            </Button>
+          )}
           <div className="grid grid-cols-2 gap-1">
             {isModuleEnabled('printing') && (
             <button
@@ -1228,7 +1275,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                   Pedidos
                 </h1>
                 <span className="text-xs sm:text-sm px-3 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200 tabular-nums">
-                  {allOrders.length} {allOrders.length === 1 ? 'pedido' : 'pedidos'}
+                  {unarchivedOrders.filter(o => o.status !== 'CANCELLED').length} pedidos ativos
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 mt-1 font-normal">
@@ -1715,6 +1762,14 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           <PickupHandoverModal order={handoverOrder} onClose={() => setHandoverOrder(null)}
             onDone={() => { setHandoverOrder(null); showToast({ type: 'success', title: 'Retirada confirmada', message: 'Pedido entregue ao cliente.' }); fetchOrders(true); }}
             onOverride={(id, reason) => handleUpdateStatus(id, 'DELIVERED', reason)} />
+          {activeTab === 'CANCELLED' && canManageArchive && (
+            <div className="mb-3 flex items-center gap-3">
+              <Button variant="outline" size="sm" disabled={archiveBusy || !cancelledOrderIds.length} onClick={() => setArchiveAllOpen(true)}>
+                Arquivar todos os cancelados
+              </Button>
+              <span className="text-xs text-slate-500">Todos os cancelados da loja, em qualquer atendimento ou período.</span>
+            </div>
+          )}
           {syncError && (!remoteOrders || remoteOrders.length === 0) ? (
             <div className="bg-white border border-amber-200/80 rounded-2xl p-12 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mx-auto">
@@ -1760,7 +1815,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               {/* ========================================================================= */}
               {/* MODO CARDS (SCREENSHOT 1)                                                 */}
               {/* ========================================================================= */}
-              {viewMode === 'cards' && (
+              {effectiveViewMode === 'cards' && (
                 <div className={cardsGridClass} style={{ zoom: `${cardScale}%` }}>
                   {filteredOrders.map(order => (
                     <CompactOrderCard
@@ -1768,6 +1823,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                       key={order.id}
                       order={orderForCard(order)}
                       density={density}
+                      archiveBusy={archiveBusy}
+                      onArchiveClick={canManageArchive ? order => void handleArchive([order.id], !order.archivedAt) : undefined}
                       isSelected={selectedOrder?.id === order.id}
                       onSelectOrder={(ord) => setSelectedOrder(ord)}
                       onUpdateStatus={handleUpdateStatus}
@@ -1788,7 +1845,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               {/* ========================================================================= */}
               {/* MODO KANBAN (FLUXO OPERACIONAL - 4 COLUNAS CONFORTÁVEIS COM DRAWER)       */}
               {/* ========================================================================= */}
-              {viewMode === 'kanban' && (
+              {effectiveViewMode === 'kanban' && (
                 <div className="w-full overflow-x-auto scrollbar-thin pb-4" style={{ zoom: `${cardScale}%` }}>
                   <div className="flex items-start gap-2.5 min-w-max">
                     {/* 1. NOVOS (AMARELO SUAVE) */}
@@ -1799,7 +1856,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                     >
                       <KanbanColumnHeader status="PENDING" label="Novos" count={countNovos} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {fulfillmentOrders.filter(o => o.status === 'PENDING').map(order => (
+                        {filteredOrders.filter(o => o.status === 'PENDING').map(order => (
                           <KanbanOrderCard
                             prepMinutes={prepMinutes}
                             key={order.id}
@@ -1829,7 +1886,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                     >
                       <KanbanColumnHeader status="CONFIRMED" label="Confirmados" count={countConfirmados} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {fulfillmentOrders.filter(o => o.status === 'CONFIRMED').map(order => (
+                        {filteredOrders.filter(o => o.status === 'CONFIRMED').map(order => (
                           <KanbanOrderCard
                             prepMinutes={prepMinutes}
                             key={order.id}
@@ -1859,7 +1916,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                     >
                       <KanbanColumnHeader status="PREPARING" label="Em preparo" count={countEmPreparo} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {fulfillmentOrders.filter(o => o.status === 'PREPARING').map(order => (
+                        {filteredOrders.filter(o => o.status === 'PREPARING').map(order => (
                           <KanbanOrderCard
                             prepMinutes={prepMinutes}
                             key={order.id}
@@ -1889,7 +1946,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                     >
                       <KanbanColumnHeader status="READY" label="Prontos" count={countProntos} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {fulfillmentOrders.filter(o => o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER').map(order => (
+                        {filteredOrders.filter(o => o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER').map(order => (
                           <KanbanOrderCard
                             prepMinutes={prepMinutes}
                             key={order.id}
@@ -1919,7 +1976,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                     >
                       <KanbanColumnHeader status="OUT_FOR_DELIVERY" label="Em rota" count={countEmRota} />
                       <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] pr-0.5 scrollbar-thin flex-1">
-                        {fulfillmentOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').map(order => (
+                        {filteredOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').map(order => (
                           <KanbanOrderCard
                             prepMinutes={prepMinutes}
                             key={order.id}
@@ -1947,7 +2004,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               {/* ========================================================================= */}
               {/* MODO TABELA VISUAL POR STATUS (SCREENSHOT 3 - COMANDO 125 COMPACTADO)    */}
               {/* ========================================================================= */}
-              {viewMode === 'table' && (
+              {effectiveViewMode === 'table' && (
                 <div className="bg-white border border-slate-200/90 rounded-lg shadow-xs overflow-hidden" style={{ zoom: `${cardScale}%` }}>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-[9.5px]">
@@ -2196,6 +2253,18 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal isOpen={archiveAllOpen} onClose={() => { if (!archiveBusy) setArchiveAllOpen(false); }}
+        title="Arquivar todos os cancelados" size="sm">
+        <p className="text-sm text-slate-700">Os pedidos saem desta tela, mas continuam no histórico e nos relatórios.</p>
+        <p className="mt-2 text-sm">{cancelledOrderIds.length} pedidos cancelados da loja serão arquivados.</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" disabled={archiveBusy} onClick={() => setArchiveAllOpen(false)}>Voltar</Button>
+          <Button disabled={archiveBusy || !cancelledOrderIds.length} onClick={() => void handleArchive(cancelledOrderIds, true)}>
+            {archiveBusy ? 'Arquivando...' : 'Arquivar todos os cancelados'}
+          </Button>
+        </div>
       </Modal>
 
       {/* Modal de Cancelamento */}

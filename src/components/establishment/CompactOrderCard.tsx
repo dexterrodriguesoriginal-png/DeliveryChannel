@@ -1,3 +1,4 @@
+import { canArchiveOrder } from '../../lib/orders/archive';
 import { OnlinePaymentBadge } from './OnlinePaymentBadge';
 import React, { useState, useEffect } from 'react';
 import { 
@@ -38,6 +39,8 @@ interface CompactOrderCardProps {
   onUpdateStatus: (orderId: string, newStatus: OrderStatus) => Promise<void>;
   onAssignDriverClick: (order: Order) => void;
   onCancelClick?: (order: Order) => void;
+  onArchiveClick?: (order: Order) => void;
+  archiveBusy?: boolean;
   /** Tempo de Preparo da loja (min); padrão 25. */
   prepMinutes?: number | null;
 }
@@ -50,6 +53,8 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
   onUpdateStatus,
   onAssignDriverClick,
   onCancelClick,
+  onArchiveClick,
+  archiveBusy,
   prepMinutes,
 }) => {
   const [elapsedSec, setElapsedSec] = useState<number>(() => {
@@ -281,6 +286,13 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
               className="py-0.1 px-1 rounded font-bold text-[8.5px] bg-[#15803d] text-white flex items-center justify-center gap-0.5 shadow-2xs hover:bg-[#166534] cursor-pointer"
             >
               <Truck className="w-2 h-2" /><span className="truncate">Despachar entrega</span>
+            </button>
+          )}
+          {onArchiveClick && canArchiveOrder(order) && (
+            <button type="button" disabled={archiveBusy}
+              onClick={e => { e.stopPropagation(); onArchiveClick(order); }}
+              className="px-1 py-0.5 rounded border border-slate-300 bg-white text-slate-700 text-[9px] font-bold disabled:opacity-50">
+              {order.archivedAt ? 'Desarquivar' : 'Arquivar'}
             </button>
           )}
           {/* Botão Principal */}
