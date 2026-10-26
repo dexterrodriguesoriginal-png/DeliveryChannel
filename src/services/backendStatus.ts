@@ -4,7 +4,7 @@
  * de persistência, Supabase, PostgreSQL e segurança do projeto.
  */
 
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, supabaseUrl, isSupabaseConfigured } from '../lib/supabase';
 
 export interface BackendAuditReport {
   timestamp: string;
@@ -44,7 +44,6 @@ export interface LiveConnectionCheckResult {
 
 export const backendStatus = {
   getAuditReport(): BackendAuditReport {
-    const supabaseUrl = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_SUPABASE_URL : '';
     const supabaseKey = typeof import.meta !== 'undefined' && import.meta.env 
       ? (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY)
       : '';
@@ -111,7 +110,6 @@ export const backendStatus = {
   async testSupabaseConnection(): Promise<LiveConnectionCheckResult> {
     const start = performance.now();
     const configured = isSupabaseConfigured;
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
     const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
     
     const maskedKey = supabaseKey && supabaseKey.length > 8 
@@ -131,7 +129,7 @@ export const backendStatus = {
         databaseAccessible: false,
         accessibleTables: [],
         latencyMs: 0,
-        errorMessage: 'VITE_SUPABASE_URL ou VITE_SUPABASE_PUBLISHABLE_KEY ausentes no ambiente.',
+        errorMessage: 'URL Supabase inválida ou VITE_SUPABASE_PUBLISHABLE_KEY ausente no ambiente.',
       };
     }
 

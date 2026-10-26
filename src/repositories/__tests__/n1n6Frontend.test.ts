@@ -25,12 +25,16 @@ const setMode = (m?: string) => {
 afterEach(() => setMode(undefined));
 
 describe('VITE_BACKEND_SCHEMA', () => {
-  it('padrão seguro é legacy-020 (ausente, vazio ou inválido)', () => {
+  it('padrão efetivo é n1n6; valores inválidos ainda resolvem para legacy-020', () => {
     expect(resolveBackendSchema(undefined)).toBe('legacy-020');
     expect(resolveBackendSchema('')).toBe('legacy-020');
     expect(resolveBackendSchema('N1N6-beta')).toBe('legacy-020');
     expect(resolveBackendSchema(' n1n6 ')).toBe('n1n6');
     setMode(undefined);
+    expect(isN1N6Backend()).toBe(true);
+    setMode('');
+    expect(isN1N6Backend()).toBe(true);
+    setMode('legacy-020');
     expect(isN1N6Backend()).toBe(false);
     setMode('n1n6');
     expect(isN1N6Backend()).toBe(true);

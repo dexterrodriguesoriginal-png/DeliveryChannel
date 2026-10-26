@@ -13,7 +13,7 @@
  *  - PIX:         get_order_pix_payload (BR Code gerado no servidor).
  *  - Cupom:       validate_coupon / validate_coupon_pos (prévia; o consumo é atômico no checkout/PDV).
  *
- * legacy-020 (padrão, produção atual 001–020):
+ * legacy-020 (override para bancos em 001–020):
  *  - Checkout:    process_checkout_atomic (001–020, exige auth.uid(), preço no servidor).
  *  - Status:      UPDATE de orders sob RLS de staff + order_status_history (caminho atual do 001–020).
  *  - PDV:         INSERT direto sob RLS de staff (único caminho que existe no 001–020 — ver docs/n1-n6/ATIVACAO_FRONTEND.md).

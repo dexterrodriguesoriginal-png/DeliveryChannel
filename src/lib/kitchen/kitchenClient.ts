@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { resolvePublicConfig } from '../../config/publicConfig';
 
-const env: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) ? (import.meta as any).env : (typeof process !== 'undefined' ? process.env : {});
+const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : (typeof process !== 'undefined' ? process.env : {});
 
 /**
  * 19/10: cliente separado para o tablet da cozinha (login anônimo do aparelho).
@@ -9,7 +10,7 @@ const env: any = (typeof import.meta !== 'undefined' && (import.meta as any).env
 let client: SupabaseClient | null = null;
 export function kitchenClient(): SupabaseClient {
   if (!client) {
-    client = createClient(env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co',
+    client = createClient(resolvePublicConfig(env).VITE_SUPABASE_URL,
       env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_ANON_KEY || 'placeholder-key', {
         auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'dc-kitchen-auth' },
       });

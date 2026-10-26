@@ -5,6 +5,7 @@
  * Não usa service_role nem escreve nada no banco.
  */
 import type { StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
+import { resolveServerPublicConfig } from '../config/publicConfig';
 
 export type StoreLookup =
   | { status: 'ok'; store: StoreIdentityInput }
@@ -52,7 +53,7 @@ export function identityFromPayload(payload: unknown, slug: string): StoreIdenti
 export interface SupabaseEnv { url: string; key: string; }
 
 export function supabaseEnvFrom(env: NodeJS.ProcessEnv): SupabaseEnv | null {
-  const url = (env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').trim();
+  const url = resolveServerPublicConfig(env).SUPABASE_URL;
   const key = (env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_ANON_KEY || '').trim();
   if (!url.startsWith('https://') || !key) return null;
   return { url: url.replace(/\/$/, ''), key };

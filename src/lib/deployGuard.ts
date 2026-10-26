@@ -2,7 +2,7 @@
  * Guarda de build (staging × produção). Usada por vite.config.ts: o build FALHA se algum erro for retornado.
  *
  * Regras:
- *  R1. VITE_BACKEND_SCHEMA=n1n6 com VITE_SUPABASE_URL de PRODUÇÃO é recusado (produção está em 001–020),
+ *  R1. VITE_BACKEND_SCHEMA=n1n6 com VITE_SUPABASE_URL de PRODUÇÃO é recusado,
  *      salvo VITE_N1N6_PRODUCTION_APPROVED=yes — usar SOMENTE após N1–N6 aplicadas em produção com
  *      aprovação escrita do fundador.
  *  R2. VITE_DEPLOY_TARGET=staging exige:
@@ -12,8 +12,11 @@
  *      - chave pública (se for JWT com claim `ref`) do mesmo projeto de staging;
  *      - nenhum valor contendo o ref de produção.
  *  R3. VITE_DEPLOY_TARGET com valor desconhecido é recusado (evita erro de digitação silencioso).
+ * As regras são aplicadas aos valores efetivos (env não vazia → configuração pública versionada).
  * Nunca use service_role/secret no frontend: chaves `sb_secret_` ou JWT com role=service_role são recusadas.
  */
+import { resolvePublicConfig } from '../config/publicConfig';
+
 export const PRODUCTION_PROJECT_REF = 'qjmhlbipmwobnuctzpft';
 const REF_RE = /^[a-z]{20}$/;
 
@@ -35,8 +38,9 @@ function jwtClaims(key: string): Record<string, unknown> | null {
 }
 
 export function checkBuildEnv(env: Env): string[] {
+  const effectiveEnv: Env = { ...env, ...resolvePublicConfig(env) };
   const errors: string[] = [];
-  const v = (k: string) => (env[k] ?? '').trim();
+  const v = (k: string) => (effectiveEnv[k] ?? '').trim();
   const url = v('VITE_SUPABASE_URL');
   const key = v('VITE_SUPABASE_PUBLISHABLE_KEY') || v('VITE_SUPABASE_ANON_KEY');
   const schema = v('VITE_BACKEND_SCHEMA').toLowerCase();
@@ -49,7 +53,7 @@ export function checkBuildEnv(env: Env): string[] {
   }
   if (schema === 'n1n6' && urlIsProd && v('VITE_N1N6_PRODUCTION_APPROVED') !== 'yes') {
     errors.push(
-      'VITE_BACKEND_SCHEMA=n1n6 apontando para o Supabase de PRODUÇÃO (ainda em 001–020). Recusado. ' +
+      'VITE_BACKEND_SCHEMA=n1n6 apontando para o Supabase de PRODUÇÃO sem aprovação. Recusado. ' +
         'Só após ativação aprovada por escrito: VITE_N1N6_PRODUCTION_APPROVED=yes.'
     );
   }
@@ -69,7 +73,7 @@ export function checkBuildEnv(env: Env): string[] {
     if (claims && typeof claims.ref === 'string' && claims.ref !== ref) {
       errors.push('Staging: a chave anon pertence a outro projeto (claim ref diferente do staging).');
     }
-    for (const [k, val] of Object.entries(env)) {
+    for (const [k, val] of Object.entries(effectiveEnv)) {
       if (k.startsWith('VITE_') && (val ?? '').toLowerCase().includes(PRODUCTION_PROJECT_REF)) {
         errors.push(`Staging: ${k} contém o ref de PRODUÇÃO.`);
       }

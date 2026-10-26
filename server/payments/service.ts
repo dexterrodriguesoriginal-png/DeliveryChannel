@@ -1,4 +1,5 @@
 import { paymentLog } from './privacy';
+import { resolveServerPublicConfig } from '../config/publicConfig';
 import { randomBytes } from 'node:crypto';
 import { MercadoPago, pkceChallenge } from './mercadopago';
 import { PagBank } from './pagbank';
@@ -34,7 +35,7 @@ export class PaymentService {
   }
   get origin() {
     try {
-      const url = new URL(this.env.PAYMENTS_PUBLIC_URL!);
+      const url = new URL(resolveServerPublicConfig(this.env).PAYMENTS_PUBLIC_URL);
       if (url.protocol === 'https:' || (this.env.NODE_ENV !== 'production' && url.protocol === 'http:' && ['localhost','127.0.0.1'].includes(url.hostname))) return url.origin;
     } catch { /* unavailable */ }
     throw new PaymentError('PAYMENTS_UNAVAILABLE', 503, 'Pagamentos online em breve.');
