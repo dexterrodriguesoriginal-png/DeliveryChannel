@@ -37,4 +37,3 @@ describe('arquivamento na tela Pedidos', () => {
     expect(mapStaffOrderRow({ ...row, archived_at: null, archived_by: null }).archivedAt).toBeUndefined();
   });
 });
-// resync

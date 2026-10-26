@@ -148,4 +148,3 @@ describe('rastreamento durante a oferta', () => {
     expect(buildCustomerTimeline(mk('READY', [h('READY', 1), h('DRIVER_OFFERED', 2), h(status, 3)])).headline).toBe('Pedido pronto');
   });
 });
-// resync

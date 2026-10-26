@@ -13,4 +13,3 @@ export function DriverPickupCode({ orderId }: { orderId: string }) {
     <p className="text-3xl font-mono tracking-widest">{code || '…'}</p><p>Mostre este código na loja.</p>{error && <p role="alert">{error}</p>}
   </section>;
 }
-// resync

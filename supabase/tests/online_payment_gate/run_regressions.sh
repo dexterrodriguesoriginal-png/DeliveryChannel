@@ -44,4 +44,3 @@ psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261026004301_online_payment_
 psql -X -v ON_ERROR_STOP=1 -f supabase/tests/online_payment_gate/assert_backfill.sql
 psql -X -v ON_ERROR_STOP=1 -f supabase/tests/online_payment_gate/security_and_flows.sql
 echo 'PASS: online gate, backfill, tenant isolation, stock, rollback definitions/ACLs/policies, reapplication'
-# resync

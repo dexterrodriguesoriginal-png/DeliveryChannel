@@ -182,4 +182,3 @@ export function orderActionButtonStyle(
   }
   return { backgroundColor: theme.buttonBg, color: theme.buttonText };
 }
-// resync

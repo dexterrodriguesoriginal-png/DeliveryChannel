@@ -47,4 +47,3 @@ export function DispatchSettings() {
     {error && <p role="alert">{error}</p>}
   </section>;
 }
-// resync

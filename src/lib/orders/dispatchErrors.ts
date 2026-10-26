@@ -85,4 +85,3 @@ export function dispatchErrorMessage(err: unknown): string {
 export function shouldBlockCallDriver(opts: { canListDrivers: boolean; driversLoaded: boolean; approvedCount: number }): boolean {
   return opts.canListDrivers && opts.driversLoaded && opts.approvedCount === 0;
 }
-// resync

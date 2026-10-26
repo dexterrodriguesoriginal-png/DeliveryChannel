@@ -36,4 +36,3 @@ export const dispatchChatRepository = {
   },
   send: (orderId: string, body: string) => rpc<string>('send_order_message', { p_order_id: orderId, p_body: body }),
 };
-// resync

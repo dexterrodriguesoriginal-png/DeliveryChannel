@@ -177,4 +177,3 @@ export function buildCustomerTimeline(
 
   return { cancelled, cancelledAt, delivered, steps, current, headline };
 }
-// resync
