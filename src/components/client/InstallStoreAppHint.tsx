@@ -40,6 +40,16 @@ function testPhase(): InstallPhase | null {
   try { const v = new URLSearchParams(window.location.search).get('pwa_test_phase'); return v === 'installing' || v === 'slow' || v === 'finishing' || v === 'done' ? v : null; } catch { return null; }
 }
 
+/** Tempo máximo esperando o Chrome liberar o convite nativo depois do toque em Instalar. */
+export const PROMPT_WAIT_MS = 8000;
+
+/** App do entregador: garante o manifesto próprio mesmo após navegação interna (sem recarregar). */
+export function ensureDriverManifest(d: Document) {
+  let link = d.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+  if (!link) { link = d.createElement('link'); link.rel = 'manifest'; d.head.appendChild(link); }
+  if (link.getAttribute('href') !== '/driver.webmanifest') link.setAttribute('href', '/driver.webmanifest');
+}
+
 export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, color, logoUrl, hidden, busy, bottomOffset, audience = 'customer', startPath }) => {
   // Com bottomOffset, a posição vem do estilo (acima da navegação); sem ele, mantém bottom-2/bottom-3.
   const offsetStyle: React.CSSProperties | undefined = bottomOffset != null
@@ -51,8 +61,21 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   const [invite, setInvite] = useState<{ kind: InviteKind; trigger: InviteTrigger } | null>(null);
   const [help, setHelp] = useState(false);
   const [nativeNotice, setNativeNotice] = useState(false);
+  // Clique em Instalar antes do Chrome liberar o convite nativo: espera em vez de mostrar erro.
+  const [waitingPrompt, setWaitingPrompt] = useState<number | null>(null);
   const prompting = useRef(false);
   useEffect(() => { if (deferred) { setHelp(false); setNativeNotice(false); } }, [deferred]);
+  // O convite nativo chegou durante a espera: dispara na sequência (ainda dentro do gesto, quando possível).
+  useEffect(() => {
+    if (waitingPrompt == null || !deferred) return;
+    setWaitingPrompt(null);
+    void runPrompt(deferred);
+  }, [waitingPrompt, deferred]);
+  useEffect(() => {
+    if (waitingPrompt == null) return;
+    const id = window.setTimeout(() => { setWaitingPrompt(null); setNativeNotice(true); setHelp(true); }, PROMPT_WAIT_MS);
+    return () => window.clearTimeout(id);
+  }, [waitingPrompt]);
   const barDismissed = false; // barra não é mais dispensável: fica até instalar
   const [acceptedAt] = useState(() => {
     const at = readInvite(localStorage, tenantId).acceptedAt;
@@ -258,10 +281,16 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     if (prompting.current) return;
     const ev = getDeferredPrompt();
     if (!ev) {
-      setHelp(!supportsNativeInstall(window));
-      setNativeNotice(supportsNativeInstall(window));
+      if (!supportsNativeInstall(window)) { setHelp(true); return; }
+      if (audience === 'driver') ensureDriverManifest(document);
+      setNativeNotice(false);
+      setWaitingPrompt(Date.now());
       return;
     }
+    return runPrompt(ev);
+  };
+  async function runPrompt(ev: NonNullable<ReturnType<typeof getDeferredPrompt>>) {
+    if (prompting.current) return;
     prompting.current = true;
     setHelp(false);
     setNativeNotice(false);
@@ -289,7 +318,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     }
     setPhase(p => nextInstallPhase(p, 'dismissed'));
     closeModal();
-  };
+  }
 
   const steps = platform === 'android-chrome' || platform === 'android-other';
   const instructions = (
@@ -333,7 +362,13 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
             className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button> : null}
         </div>
         {help && instructions}
-        {nativeNotice && <p role="status" data-testid="install-native-notice" className="mt-2 text-xs text-neutral-300">A instalação ainda não está disponível. Aguarde e tente novamente.</p>}
+        {waitingPrompt != null && (
+          <div data-testid="install-waiting" role="status" aria-live="polite" className="mt-2">
+            <p className="text-xs text-neutral-300">Preparando a instalação…</p>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full w-1/3 animate-pulse rounded-full bg-[#a8c7fa]" /></div>
+          </div>
+        )}
+        {nativeNotice && <p role="status" data-testid="install-native-notice" className="mt-2 text-xs text-neutral-300">{help ? 'Não deu para iniciar a instalação automática neste navegador. Siga os passos abaixo.' : 'Não foi possível iniciar a instalação. Toque em Instalar de novo.'}</p>}
       </div>
     </div>
   );

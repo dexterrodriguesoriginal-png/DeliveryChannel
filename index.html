@@ -75,8 +75,10 @@
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <script>
       // App do entregador instalável à parte: id/start_url próprios (/entregador). Sem service worker.
-      if (location.pathname.indexOf('/entregador') === 0 && location.pathname.indexOf('/entregador/convite/') !== 0) {
-        document.querySelector('link[rel=manifest]').setAttribute('href', '/manifest-entregador.json');
+      // Mesmo manifesto que o servidor injeta (/driver.webmanifest); sem erro se o link já foi trocado.
+      if (location.pathname === '/entregador' || location.pathname.indexOf('/entregador/') === 0 || location.pathname === '/convite-entregador') {
+        var m = document.querySelector('link[rel=manifest]');
+        if (m) m.setAttribute('href', '/driver.webmanifest');
       }
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">

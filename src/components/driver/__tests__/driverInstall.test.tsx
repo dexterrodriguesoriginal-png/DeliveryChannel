@@ -153,16 +153,27 @@ describe('instalação compartilhada do entregador e do cliente', () => {
     expect(state.isMarkedInstalled(localStorage, 'driver-app')).toBe(false);
   });
 
-  it('Chrome aguardando evento não cai em instruções; evento posterior permite prompt no próximo clique', async () => {
+  it('Chrome aguardando evento: toque em Instalar já mostra a preparação e dispara o prompt quando o evento chega', async () => {
     await render();
     await act(() => { query('install-primary')!.click(); });
-    expect(query('install-native-notice')).not.toBeNull();
+    expect(query('install-waiting')).not.toBeNull();
+    expect(query('install-native-notice')).toBeNull();
     expect(query('install-instructions')).toBeNull();
     const { event } = await offer();
-    expect(query('install-native-notice')).toBeNull();
-    await act(() => { query('install-primary')!.click(); });
     expect(event.prompt).toHaveBeenCalledOnce();
+    expect(query('install-waiting')).toBeNull();
     expect(query('install-instructions')).toBeNull();
+  });
+
+  it('sem evento nativo após a espera, cai nas instruções com aviso claro', async () => {
+    vi.useFakeTimers();
+    try {
+      await render();
+      await act(() => { query('install-primary')!.click(); });
+      await act(async () => { vi.advanceTimersByTime(8100); });
+      expect(query('install-waiting')).toBeNull();
+      expect(query('install-native-notice')?.textContent).toContain('Siga os passos');
+    } finally { vi.useRealTimers(); }
   });
 
   it('falha no prompt nativo permite tentar novamente sem instruções intermediárias', async () => {
@@ -186,5 +197,18 @@ describe('instalação compartilhada do entregador e do cliente', () => {
     expect(query('install-instructions')?.textContent).toContain('Adicionar à Tela de Início');
     expect(query('install-progress')).toBeNull();
     expect(query('open-installed-app')).toBeNull();
+  });
+});
+
+describe('manifesto do entregador', () => {
+  it('ensureDriverManifest troca o manifesto global pelo do entregador', async () => {
+    const { ensureDriverManifest } = await import('../../client/InstallStoreAppHint');
+    document.head.querySelectorAll('link[rel="manifest"]').forEach(l => l.remove());
+    const l = document.createElement('link'); l.rel = 'manifest'; l.href = '/manifest.json'; document.head.appendChild(l);
+    ensureDriverManifest(document);
+    expect(document.querySelector('link[rel="manifest"]')!.getAttribute('href')).toBe('/driver.webmanifest');
+    l.remove();
+    ensureDriverManifest(document);
+    expect(document.querySelector('link[rel="manifest"]')!.getAttribute('href')).toBe('/driver.webmanifest');
   });
 });

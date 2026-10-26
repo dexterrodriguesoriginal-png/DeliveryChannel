@@ -25,6 +25,6 @@ describe('PWA manifests (pacote C)', () => {
   it('sem service worker registrado no código', () => {
     const html = fs.readFileSync(path.resolve(__dirname, '../../../index.html'), 'utf8');
     expect(html).not.toMatch(/serviceWorker\.register/);
-    expect(html).toContain('/manifest-entregador.json');
+    expect(html).toContain('/driver.webmanifest');
   });
 });

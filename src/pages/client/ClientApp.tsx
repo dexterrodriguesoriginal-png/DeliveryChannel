@@ -49,7 +49,8 @@ import { Card } from '../../components/ui/Card';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
-import { SAFE_FONT_FAMILIES, themeToTokens, generateCssVariables } from '../../lib/theme/themeEngine';
+import { shouldRefreshTheme, subscribeThemeRefresh } from '../../lib/theme/silentThemeRefresh';
+import { SAFE_FONT_FAMILIES, themeToTokens, generateCssVariables, getSurfaceBackgroundStyle } from '../../lib/theme/themeEngine';
 import { ThemedProductList } from '../../components/storefront/ThemedProductList';
 import { cartStorageKey } from '../../lib/pwa/storeManifest';
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
@@ -414,6 +415,22 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     } finally {
       setIsLoadingStore(false);
     }
+  }, [slug]);
+
+  // Tema atualizado pelo dono enquanto o app do cliente ficou aberto: atualiza só o tema, em silêncio
+  // (sem spinner, sem mexer em carrinho/produtos), ao voltar ao app após 30 s.
+  const themeLoadedAtRef = useRef(Date.now());
+  useEffect(() => { if (storeData) themeLoadedAtRef.current = Date.now(); }, [storeData?.tenant.id]);
+  useEffect(() => {
+    if (!slug) return;
+    return subscribeThemeRefresh(window, document, () => {
+      if (!shouldRefreshTheme(themeLoadedAtRef.current, Date.now(), document.visibilityState === 'visible')) return;
+      themeLoadedAtRef.current = Date.now();
+      void publicStoreRepository.loadPublicStore(slug).then(result => {
+        if (result.status !== 'ok' || !result.data?.theme) return;
+        setStoreData(prev => (prev && prev.tenant.id === result.data.tenant.id ? { ...prev, theme: result.data.theme } : prev));
+      }).catch(() => {});
+    });
   }, [slug]);
 
   // Relógio da vitrine (relógio do SERVIDOR corrigido pelo offset recebido no get_public_store).
@@ -1731,7 +1748,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       className="min-h-screen pb-44 font-sans text-gray-900 transition-colors client-store-container"
       style={{ 
         ...activeCssVars,
-        backgroundColor: activeTokens.palette.bgGeneral || theme.backgroundColor || '#f8fafc',
+        // Fundo geral completo do tema (sólido, gradiente ou imagem), não só a cor.
+        ...getSurfaceBackgroundStyle(activeTokens.backgrounds.general, activeTokens.palette.bgGeneral || theme.backgroundColor || '#f8fafc'),
         fontFamily: 'var(--dc-font-family, Inter, sans-serif)',
       }}
     >
@@ -1746,20 +1764,20 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       />
       {/* Barra de Retorno ao Painel: só para a equipe autenticada DESTE estabelecimento. */}
       {isStaffPreview(!!supabaseUser, activeTenant?.id, storeData.tenant.id) && (
-      <div className="bg-slate-950 text-white text-xs px-3.5 py-2 flex items-center justify-between border-b border-slate-800 z-40 relative">
+      <div data-testid="staff-preview-bar" className="text-xs px-3.5 py-2 flex items-center justify-between border-b border-black/10 z-40 relative" style={{ backgroundColor: 'var(--dc-primary)', color: 'var(--dc-button-text)' }}>
         <div className="flex items-center gap-2 min-w-0">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
-          <span className="font-bold text-[11px] sm:text-xs text-white truncate">
+          <span className="w-2 h-2 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: 'var(--dc-button-text)' }} />
+          <span className="font-bold text-[11px] sm:text-xs truncate">
             Vitrine do Cliente • Visualização em Tempo Real
           </span>
-          <span className="text-[10px] text-slate-400 hidden sm:inline truncate">
+          <span className="text-[10px] opacity-75 hidden sm:inline truncate">
             ({storeData.tenant.name})
           </span>
         </div>
         <button
           type="button"
           onClick={() => { window.location.href = '/'; }}
-          className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
+          className="px-2.5 py-1 rounded-lg bg-black/20 hover:bg-black/30 font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs" style={{ color: 'var(--dc-button-text)' }}
           title="Voltar ao Painel Administrativo"
         >
           <span>← Voltar ao Painel</span>
@@ -1778,15 +1796,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         <div className="flex items-center gap-3 min-w-0">
           <StoreLogo logoUrl={theme.logoUrl} name={theme.storeName || storeData.tenant.name} color={primaryColor} />
           <div className="min-w-0">
-            <h1 className="font-extrabold text-sm text-gray-900 truncate flex items-center gap-1.5">
+            <h1 data-testid="store-header-title" className="font-extrabold text-sm truncate flex items-center gap-1.5" style={{ color: 'var(--dc-text-title)', fontFamily: 'var(--dc-heading-font-family, var(--dc-font-family))' }}>
               <span>{storeData.tenant.name}</span>
               <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shrink-0" title="Aberto para pedidos" />
             </h1>
-            <p className="text-[11px] text-gray-500 truncate flex items-center gap-1">
-              <Clock className="w-3 h-3 text-gray-400" />
+            <p data-testid="store-header-subtitle" className="text-[11px] truncate flex items-center gap-1" style={{ color: 'var(--dc-text-secondary)' }}>
+              <Clock className="w-3 h-3" style={{ color: 'var(--dc-icon-color)' }} />
               <span>{storeData.settings.defaultPrepTimeMinutes ? `Preparo: ${storeData.settings.defaultPrepTimeMinutes} min` : (storeData.settings.estimatedDeliveryTime || 'Preparo: 30 min')}</span>
               <span>•</span>
-              <span className="font-medium text-emerald-700">
+              <span className="font-medium" style={{ color: 'var(--dc-primary)' }}>
                 {storeDeliveryLabel(storeData.settings)}
               </span>
             </p>
