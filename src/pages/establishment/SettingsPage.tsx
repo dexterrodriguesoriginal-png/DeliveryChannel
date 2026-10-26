@@ -1,3 +1,4 @@
+import { DispatchSettings } from '../../components/establishment/DispatchSettings';
 import React, { useState, useEffect } from 'react';
 import { FreeDeliverySetting } from '../../components/establishment/FreeDeliverySetting';
 import { MoneyInput } from '../../components/common/MoneyInput';
@@ -240,6 +241,7 @@ export const SettingsPage: React.FC = () => {
         </p>
       </div>
 
+      <DispatchSettings key={activeTenant.id} />
       {!canEdit && (
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2.5 text-xs text-amber-800">
           <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />

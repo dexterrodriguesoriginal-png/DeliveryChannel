@@ -18,7 +18,8 @@ import { DriverDeliveryMap } from '../../components/driver/DriverDeliveryMap';
 import { useDriverLocationTracking } from '../../lib/useDriverLocationTracking';
 import { DriverLocationConsentModal } from '../../components/driver/DriverLocationConsentModal';
 import { HandoffCodeForm } from '../../components/driver/HandoffCodeForm';
-import { AvailableRidesList } from '../../components/driver/AvailableRidesList';
+import { DriverPickupCode } from '../../components/driver/DriverPickupCode';
+import { OrderChat } from '../../components/chat/OrderChat';
 import { pickDriverActiveOrder, driverEarning } from '../../lib/orders/handoff';
 
 const AVAIL_DOT: Record<string, string> = {
@@ -432,25 +433,25 @@ export const DriverApp: React.FC<DriverAppProps> = ({ activeTab: requestedTab, o
 
               {/* Action Button */}
               <div className="pt-2">
-                <HandoffCodeForm
+                {activeOrder.status !== 'OUT_FOR_DELIVERY' ? <DriverPickupCode key={activeOrder.id} orderId={activeOrder.id} /> : <HandoffCodeForm
                   key={`${activeOrder.id}-${activeOrder.status}`}
                   orderId={activeOrder.id}
                   kind={activeOrder.status === 'OUT_FOR_DELIVERY' ? 'delivery' : 'pickup'}
                   onDone={() => fetchDriverOrders()}
-                />
+                />}
+                <OrderChat audience="driver" key={activeOrder.id} tenantId={activeTenant.id} orderId={activeOrder.id} storePhone={activeTenant.settings?.phoneWhatsApp || activeTenant.phone} />
               </div>
             </Card>
           </div>
         ) : (
           <>
-          <AvailableRidesList tenantId={activeTenant.id} enabled={availability === 'AVAILABLE'} onAccepted={() => fetchDriverOrders()} />
           <Card className="p-8 text-center space-y-3">
             <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto text-gray-400">
               <PackageCheck className="w-8 h-8 text-emerald-600" />
             </div>
             <h3 className="font-bold text-base text-gray-900">Nenhuma entrega pendente</h3>
             <p className="text-xs text-gray-500 max-w-xs mx-auto">
-              Você está livre no momento. Corridas chamadas pela loja aparecem acima para você aceitar.
+              Você está livre no momento. As corridas atribuídas pela loja aparecem aqui.
             </p>
           </Card>
           </>

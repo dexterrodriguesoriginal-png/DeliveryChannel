@@ -6,14 +6,15 @@
   "scripts": {
     "dev": "tsx server.ts",
     "dev:vite": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs && esbuild server/payments/runRetention.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/payment-retention.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs && esbuild server/payments/runRetention.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/payment-retention.cjs && esbuild server/dispatch/runRetention.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/dispatch-retention.cjs",
     "start": "NODE_ENV=production node dist/server.cjs",
     "preview": "vite preview",
     "payments:retention": "node dist/payment-retention.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "test:integration": "FE_IT_MODE=n1n6 vitest run -c vitest.integration.config.ts && FE_IT_MODE=legacy-020 vitest run -c vitest.integration.config.ts"
+    "test:integration": "FE_IT_MODE=n1n6 vitest run -c vitest.integration.config.ts && FE_IT_MODE=legacy-020 vitest run -c vitest.integration.config.ts",
+    "dispatch:retention": "node dist/dispatch-retention.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

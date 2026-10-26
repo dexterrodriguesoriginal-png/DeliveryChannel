@@ -1,3 +1,4 @@
+import { readPreferences, savePreferences } from '../notifications/preferences';
 import { useCallback, useEffect, useState } from 'react';
 import { playShortBeep, unlockAudio } from '../../utils/audio';
 
@@ -30,8 +31,15 @@ export interface NewOrderAlarm {
   toggle: () => void;
 }
 
-export function useNewOrderAlarm(pendingCount: number): NewOrderAlarm {
-  const [enabled, setEnabled] = useState<boolean>(() => readSoundPref(ls()));
+export function useNewOrderAlarm(pendingCount: number, scope?: { tenant: string; user: string }): NewOrderAlarm {
+  const scoped = Boolean(scope?.tenant && scope?.user);
+  const read = () => scoped && ls() ? readPreferences(ls()!, scope!.tenant, scope!.user).sound : readSoundPref(ls());
+  const [enabled, setEnabled] = useState<boolean>(read);
+  useEffect(() => {
+    const refresh = () => setEnabled(read()); refresh();
+    window.addEventListener('dc:notification-preferences', refresh);
+    return () => window.removeEventListener('dc:notification-preferences', refresh);
+  }, [scope?.tenant, scope?.user]);
   const [unlocked, setUnlocked] = useState(false);
 
   useEffect(() => {
@@ -55,13 +63,12 @@ export function useNewOrderAlarm(pendingCount: number): NewOrderAlarm {
   const toggle = useCallback(() => {
     unlockAudio();
     setUnlocked(true);
-    setEnabled(prev => {
-      const next = !(prev && unlocked) ? true : false;
-      writeSoundPref(ls(), next);
-      if (next) playShortBeep();
-      return next;
-    });
-  }, [unlocked]);
+    const next = !(enabled && unlocked);
+    setEnabled(next);
+    if (scoped && ls()) savePreferences(ls()!,scope!.tenant,scope!.user,{ ...readPreferences(ls()!,scope!.tenant,scope!.user),sound: next });
+    else writeSoundPref(ls(), next);
+    if (next) playShortBeep();
+  }, [enabled, unlocked, scope?.tenant, scope?.user]);
 
   return { enabled, unlocked, toggle };
 }

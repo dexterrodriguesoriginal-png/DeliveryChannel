@@ -56,7 +56,7 @@ interface EstablishmentDashboardProps {
 }
 
 export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ onNavigate }) => {
-  const { activeTenant, currentUser, securityContext, activeRole } = useAuth();
+  const { activeTenant, currentUser, supabaseUser, securityContext, activeRole } = useAuth();
   const { showToast } = useToast();
 
   // Estados de dados reais do Supabase / Repositórios
@@ -163,6 +163,11 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
       showToast({ type: 'warning', title: NO_APPROVED_DRIVER_TITLE, message: noApprovedDriverMessage() });
       return;
     }
+    if (step.kind === 'call_driver') {
+      sessionStorage.setItem(FOCUS_ORDER_KEY, order.id);
+      sessionStorage.setItem(`dc:dispatch-order:${activeTenant.id}`, order.id);
+      onNavigate?.('est-orders'); return;
+    }
     if (step.kind === 'pickup_done' && arrivalRepository.isOn()) { setHandoverOrder(order); return; }
     const check = validateStatusChange(order.status, step.to, step.note);
     if (!check.ok) { showToast({ type: 'warning', title: 'Alteração não permitida', message: check.message }); return; }
@@ -173,7 +178,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
       showToast({ type: 'success', title: step.label, message: ownerStatusToastMessage(updated?.status || step.to, updated?.orderNumber || order.orderNumber) });
       await fetchRealData(true);
     } catch (err: any) {
-      const dispatch = step.kind === 'call_driver';
+      const dispatch = false;
       showToast({
         type: 'error',
         title: dispatch ? 'Não foi possível chamar o entregador' : 'Falha ao atualizar',
@@ -190,7 +195,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   };
 
   // 19/10: bipe a cada ~5 s enquanto houver pedido em "Novo" (para quando todos forem aceitos)
-  const newOrderAlarm = useNewOrderAlarm((remoteOrders || []).filter(o => o.status === 'PENDING').length);
+  const newOrderAlarm = useNewOrderAlarm(['OWNER','MANAGER'].includes(activeRole || '') ? 0 : (remoteOrders || []).filter(o => o.status === 'PENDING').length, { tenant: activeTenant?.id || '', user: supabaseUser?.id || '' });
 
   if (!activeTenant) return null;
 

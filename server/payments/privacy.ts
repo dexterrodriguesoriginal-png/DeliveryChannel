@@ -33,6 +33,6 @@ export function paymentLog(event: PaymentEvent, count?: number) {
 }
 
 export function isRuntimeArtifactPath(path: string): boolean {
-  try { return /(?:^|\/)(?:server|payment-retention)\.cjs(?:\.map)?$/i.test(decodeURIComponent(path)); }
+  try { return /(?:^|\/)(?:server|payment-retention|dispatch-retention)\.cjs(?:\.map)?$/i.test(decodeURIComponent(path)); }
   catch { return true; }
 }

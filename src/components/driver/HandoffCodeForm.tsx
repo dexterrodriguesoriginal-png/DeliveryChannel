@@ -10,7 +10,7 @@ interface Props {
   onDone: () => void | Promise<void>;
 }
 
-/** Campo de 4 dígitos para o entregador confirmar retirada (código da loja) ou entrega (código do cliente). */
+/** A loja confirma a retirada com o código do entregador; o entregador confirma a entrega com o código do cliente. */
 export const HandoffCodeForm: React.FC<Props> = ({ orderId, kind, onDone }) => {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -33,7 +33,7 @@ export const HandoffCodeForm: React.FC<Props> = ({ orderId, kind, onDone }) => {
       showToast({
         type: 'success',
         title: isPickup ? 'Retirada confirmada' : 'Entrega concluída!',
-        message: isPickup ? 'Boa rota! O cliente já recebeu o código de entrega.' : 'Corrida finalizada com sucesso.',
+        message: isPickup ? 'O entregador já pode iniciar a rota.' : 'Corrida finalizada com sucesso.',
       });
       await onDone();
     } catch (err: any) {
@@ -46,7 +46,7 @@ export const HandoffCodeForm: React.FC<Props> = ({ orderId, kind, onDone }) => {
   return (
     <form onSubmit={submit} className="space-y-2" data-testid={`handoff-${kind}`}>
       <label className="block text-xs font-semibold text-gray-700">
-        {isPickup ? 'Código de retirada (peça à loja)' : 'Código de entrega (peça ao cliente)'}
+        {isPickup ? 'Código de retirada (peça ao entregador)' : 'Código de entrega (peça ao cliente)'}
       </label>
       <input
         value={code}

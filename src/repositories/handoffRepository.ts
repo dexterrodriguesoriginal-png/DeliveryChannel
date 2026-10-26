@@ -1,5 +1,5 @@
 /**
- * RPCs do despacho com códigos (migrations 1500–1700).
+ * RPCs do despacho com códigos (migrations 1500–1700 e PR B).
  * Os códigos nunca são lidos por SELECT: só por estas RPCs SECURITY DEFINER, que aplicam quem pode ver o quê.
  */
 import { supabase } from '../lib/supabase';
@@ -41,6 +41,8 @@ export const handoffRepository = {
     return { success: Boolean(r?.success), attemptsLeft: r?.attemptsLeft };
   },
   getPickupCode: (orderId: string) => call<PickupCodeInfo | null>('get_order_pickup_code', { p_order_id: orderId }),
+  getStatus: (orderId: string) => call<{ pickupLocked: boolean; deliveryLocked: boolean; confirmed: boolean } | null>('get_handoff_status', { p_order_id: orderId }),
+  reset: (orderId: string, kind: 'pickup' | 'delivery') => call('reset_handoff_code', { p_order_id: orderId, p_kind: kind }),
   resetPickupCode: (orderId: string) => call<PickupCodeInfo | null>('reset_order_pickup_code', { p_order_id: orderId }),
   async getMyDeliveryCode(orderId: string): Promise<string | null> {
     const r = await call<{ code?: string } | null>('get_my_order_delivery_code', { p_order_id: orderId });

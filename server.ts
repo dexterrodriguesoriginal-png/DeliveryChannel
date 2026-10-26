@@ -1,3 +1,4 @@
+import { startDispatchRetention } from './server/dispatch/retention';
 import { injectDriverHead, isDriverRoute } from './src/lib/pwa/driverManifest';
 /**
  * Servidor do app (convenção full-stack do Google AI Studio: Express em server.ts,
@@ -91,7 +92,8 @@ async function start() {
 
   const listener = app.listen(port, '0.0.0.0', () => {
     const stopRetention = startPaymentRetention();
-    listener.once('close', stopRetention);
+    const stopDispatchRetention = startDispatchRetention();
+    listener.once('close', () => { stopRetention(); stopDispatchRetention(); });
     console.log(`[server] ouvindo em 0.0.0.0:${port} (${isProd ? 'produção' : 'desenvolvimento'}; lojas PWA: ${mode})`);
   });
 }

@@ -6,6 +6,8 @@ import { ChegadaPage } from './components/pickup/ChegadaPage';
 import { KitchenPage, KitchenPairPage } from './components/kitchen/KitchenPages';
 import { KitchenSettingsPage } from './pages/establishment/KitchenSettingsPage';
 import { chegadaCodeFromPath } from './lib/pickup/arrival';
+import { OwnerNotifications } from './components/notifications/OwnerNotifications';
+import { FOCUS_ORDER_KEY } from './lib/orders/orderAlerts';
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -708,6 +710,19 @@ function AppContent() {
 
       {/* 19/10: loja atual bem visível + seletor com pedidos novos de cada loja */}
       <StoreContextBar />
+      <OwnerNotifications key={`${activeTenant?.id}:${supabaseUser?.id}`} onOpen={n => {
+        if (n.kind === 'DRIVER_JOIN_REQUEST') {
+          sessionStorage.setItem(`dc:focus-driver:${n.tenant_id}`, n.ref_id);
+          setActiveTab('est-drivers');
+          window.dispatchEvent(new CustomEvent('dc:focus-driver', { detail: n.ref_id }));
+        } else {
+          sessionStorage.setItem(FOCUS_ORDER_KEY, n.ref_id);
+          if (n.kind === 'ORDER_MESSAGE') sessionStorage.setItem(`dc:focus-chat:${n.tenant_id}`, n.ref_id);
+          setActiveTab('est-orders');
+          window.dispatchEvent(new CustomEvent('dc:focus-order', { detail: n.ref_id }));
+          if (n.kind === 'ORDER_MESSAGE') window.dispatchEvent(new CustomEvent('dc:open-chat', { detail: n.ref_id }));
+        }
+      }} />
 
       {/* AppShell Global: Header Fixo + Menu Fixo à Esquerda + Conteúdo Flexível (COMANDO 131: 100% da altura da janela) */}
       <div className="flex-1 min-h-0 flex w-full max-w-none overflow-hidden">
