@@ -469,7 +469,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
 
     if (targetStatus === 'OUT_FOR_DELIVERY' && !targetOrder.driverId && targetOrder.fulfillmentType !== 'PICKUP') {
       setAssigningOrder(targetOrder);
-      const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
+      const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
       setSelectedDriverUserId(firstAvail);
       return;
     }
@@ -1149,7 +1149,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                   type="button"
                   onClick={() => {
                     setAssigningOrder(selectedOrder);
-                    const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
+                    const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                     setSelectedDriverUserId(firstAvail);
                   }}
                   className="w-full p-1.5 rounded-lg border border-green-300 bg-green-50/60 hover:bg-green-100/60 flex items-center justify-between text-[8.5px] font-bold text-green-900 transition-colors cursor-pointer"
@@ -1244,7 +1244,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 else if (selectedOrder.status === 'PREPARING') handleUpdateStatus(selectedOrder.id, 'READY');
                 else if (selectedOrder.status === 'READY') {
                   setAssigningOrder(selectedOrder);
-                  const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
+                  const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                   setSelectedDriverUserId(firstAvail);
                 } else if (selectedOrder.status === 'OUT_FOR_DELIVERY') handleUpdateStatus(selectedOrder.id, 'DELIVERED');
               }}
@@ -1831,7 +1831,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                       onUpdateStatus={handleUpdateStatus}
                       onAssignDriverClick={(ord) => {
                         setAssigningOrder(ord);
-                        const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
+                        const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                         setSelectedDriverUserId(firstAvail);
                       }}
                       onCancelClick={(ord) => {
@@ -1867,7 +1867,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                             onUpdateStatus={handleUpdateStatus}
                             onAssignDriverClick={(ord) => {
                               setAssigningOrder(ord);
-                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
+                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                               setSelectedDriverUserId(firstAvail);
                             }}
                             onCancelClick={(ord) => {
@@ -1897,7 +1897,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                             onUpdateStatus={handleUpdateStatus}
                             onAssignDriverClick={(ord) => {
                               setAssigningOrder(ord);
-                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
+                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                               setSelectedDriverUserId(firstAvail);
                             }}
                             onCancelClick={(ord) => {
@@ -1927,7 +1927,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                             onUpdateStatus={handleUpdateStatus}
                             onAssignDriverClick={(ord) => {
                               setAssigningOrder(ord);
-                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
+                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                               setSelectedDriverUserId(firstAvail);
                             }}
                             onCancelClick={(ord) => {
@@ -1957,7 +1957,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                             onUpdateStatus={handleUpdateStatus}
                             onAssignDriverClick={(ord) => {
                               setAssigningOrder(ord);
-                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
+                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                               setSelectedDriverUserId(firstAvail);
                             }}
                             onCancelClick={(ord) => {
@@ -1987,7 +1987,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                             onUpdateStatus={handleUpdateStatus}
                             onAssignDriverClick={(ord) => {
                               setAssigningOrder(ord);
-                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
+                              const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                               setSelectedDriverUserId(firstAvail);
                             }}
                             onCancelClick={(ord) => {
@@ -2142,7 +2142,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                                       else if (order.status === 'READY' && order.fulfillmentType === 'PICKUP') handleUpdateStatus(order.id, 'DELIVERED');
                                       else if (order.status === 'READY') {
                                         setAssigningOrder(order);
-                                        const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || drivers[0]?.userId || '';
+                                        const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                                         setSelectedDriverUserId(firstAvail);
                                       } else if (order.status === 'OUT_FOR_DELIVERY') handleUpdateStatus(order.id, 'DELIVERED');
                                       else setSelectedOrder(order);
@@ -2227,6 +2227,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                   : canListDrivers
                     ? 'Não foi possível carregar a lista de entregadores agora. Tente de novo em instantes.'
                     : 'Seu perfil não vê a lista de entregadores. Use "Aguardar entregador" ou peça ao dono ou gerente para despachar.'}
+              </p>
+            ) : !drivers.some(d => d.status === 'AVAILABLE') ? (
+              <p data-testid="no-available-driver" role="status" className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
+                Nenhum entregador disponível agora. Peça para um entregador abrir o app e ficar online (Disponível); ele aparece aqui na hora.
               </p>
             ) : (
               <select
