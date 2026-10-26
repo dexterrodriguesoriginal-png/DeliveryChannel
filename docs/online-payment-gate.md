@@ -1,6 +1,6 @@
 # Pedido online só chega à loja depois do pagamento
 
-Base: `main e6182c7`. Migration única: `20261026004301_online_payment_gate.sql`.
+Base solicitada: `main e6182c7`; integrada com `main 3aa4068` após a entrada dos PRs #10/#11. A versão 04301 evita a migration de arquivamento 04300. Migration única: `20261026004301_online_payment_gate.sql`.
 
 O checkout informa a escolha online no INSERT. PIX de cliente sempre aguarda pagamento; dinheiro/cartão na entrega e PDV preservam o fluxo atual. Reservas de cobrança de clientes antigos também ativam a proteção. O backfill marca pedidos não finais não pagos, incluindo os já CONFIRMED, sem mudar status, estoque ou timestamps.
 

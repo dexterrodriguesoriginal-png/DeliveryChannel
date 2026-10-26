@@ -161,6 +161,13 @@ BEGIN
      '(SELECT * FROM public.orders WHERE NOT awaiting_online_payment)');
  END LOOP;
 END $block$;
+-- main may already include archive migration 04300. Hidden cancelled orders stay hidden there too.
+DO $block$ BEGIN
+ IF to_regprocedure('public.archive_orders(uuid[],boolean)') IS NOT NULL THEN
+   PERFORM pg_temp.gate_patch('public.archive_orders(uuid[],boolean)','FROM public.orders o',
+     'FROM (SELECT * FROM public.orders WHERE NOT awaiting_online_payment) o');
+ END IF;
+END $block$;
 SELECT pg_temp.gate_patch('public.get_handoff_status(uuid)',
  'WHERE order_id=p_order_id;', 'WHERE order_id=p_order_id AND EXISTS(SELECT 1 FROM public.orders o WHERE o.id=p_order_id AND NOT o.awaiting_online_payment);');
 SELECT pg_temp.gate_patch('public.send_order_message(uuid,text)',

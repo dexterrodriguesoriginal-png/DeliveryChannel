@@ -83,7 +83,7 @@ SELECT t.login('a0000000-0000-0000-0000-000000000001');
 SELECT t.lives(format($$SELECT public.update_order_status(%L,'CANCELLED','após estorno')$$, current_setting('t.o1')), 'cancelar pedido já estornado: no-op no cupom');
 RESET ROLE;
 SELECT t.is(t.sq($$SELECT times_used FROM public.coupons WHERE code='DEZ10'$$), '0', 'inválido→inválido não estorna duas vezes');
-SELECT t.throws(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.o1')), 'foreign key|coupon_redemptions', 'pedido com histórico de cupom não é apagado (histórico preservado)');
+SELECT t.throws(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.o1')), 'ORDER_DELETE_FORBIDDEN', 'pedido com histórico de cupom não é apagado (histórico preservado)');
 SELECT t.throws($$DELETE FROM public.coupons WHERE code='DEZ10'$$, 'foreign key|coupon_redemptions', 'cupom com histórico não é apagado (arquivar)');
 SELECT t.ok((SELECT bool_and(drift = 0) FROM (SELECT c.times_used - (SELECT count(*) FROM public.coupon_redemptions r WHERE r.coupon_id = c.id AND r.status='APPLIED') AS drift FROM public.coupons c) x), 'invariante times_used = resgates APPLIED');
 SET ROLE authenticated;

@@ -210,6 +210,9 @@ SELECT set_config('request.jwt.claim.sub','a0000000-0000-0000-0000-000000000001'
 SET LOCAL ROLE authenticated;
 DO $$ BEGIN
  ASSERT NOT EXISTS(SELECT 1 FROM public.orders WHERE id=current_setting('gate.v1')::uuid), 'expired order became visible';
+ IF to_regprocedure('public.archive_orders(uuid[],boolean)') IS NOT NULL THEN
+   PERFORM pg_temp.gate_denied(format('SELECT public.archive_orders(ARRAY[%L::uuid],true)',current_setting('gate.v1')));
+ END IF;
  ASSERT NOT EXISTS(SELECT 1 FROM public.owner_notifications WHERE kind='ORDER_NEW' AND ref_id=current_setting('gate.v1')::uuid);
 END $$;
 RESET ROLE;
