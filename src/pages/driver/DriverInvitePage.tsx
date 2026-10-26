@@ -206,7 +206,7 @@ export const DriverInvitePage: React.FC<{ token: string }> = ({ token }) => {
         onSignUp={() => goToAuth('SIGNUP')}
         onLogin={() => goToAuth('LOGIN')}
         onGoogle={() => {
-          void startDriverGoogleAuth(sessionStorage, token, signInWithGoogle)
+          void startDriverGoogleAuth(sessionStorage, token, options => signInWithGoogle({ ...options, storeName: preview?.storeName }))
             .catch(() => setError('Não foi possível entrar com o Google. Tente novamente.'));
         }}
         confirmationEmail={confirmationEmail}

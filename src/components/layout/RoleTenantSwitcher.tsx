@@ -1,6 +1,7 @@
 import { driverGoogleOptions } from '../../lib/driverInviteFlow';
 import { LegalCheckbox } from '../legal/LegalUI';
 import { legalSignupMetadata } from '../../lib/legal/documents';
+import { storeEmailData } from '../../lib/auth/storeEmailBranding';
 import React, { useState, useEffect, useRef } from 'react';
 import { INVALID_CREDENTIALS_MSG } from '../../lib/auth/authErrors';
 import { useAuth } from '../../context/AuthContext';
@@ -261,7 +262,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
 
     setLoading(true);
     try {
-      const res = await signUp(email.trim(), pwd, fullName.trim(), phone.trim(), legalSignupMetadata(legalAccepted, 'owner'));
+      const res = await signUp(email.trim(), pwd, fullName.trim(), phone.trim(), { ...legalSignupMetadata(legalAccepted, 'owner'), ...(audience === 'driver' ? storeEmailData(storeName) : {}) });
       if (res.success) {
         if (res.requiresEmailConfirmation) {
           if (onEmailConfirmationRequired) {
@@ -325,7 +326,7 @@ export const RoleTenantSwitcher: React.FC<RoleTenantSwitcherProps> = ({
   // Login com Google
   const handleGoogleLogin = async () => {
     try {
-      await signInWithGoogle(audience === 'driver' ? driverGoogleOptions : { returnTo: googleReturnTo || '/', intent: 'owner' });
+      await signInWithGoogle(audience === 'driver' ? { ...driverGoogleOptions, storeName } : { returnTo: googleReturnTo || '/', intent: 'owner' });
     } catch (err: any) {
       setFormError('Não foi possível conectar com o Google no momento.');
     }

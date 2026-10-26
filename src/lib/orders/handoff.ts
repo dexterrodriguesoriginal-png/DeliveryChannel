@@ -1,6 +1,6 @@
 /**
  * Regras de cliente para o despacho com códigos (migrations 1500–1700). Sem Supabase: testável.
- * - Código de retirada: só a loja vê; o entregador digita para retirar.
+ * - Código de retirada: só o entregador atribuído vê; a loja digita para validar.
  * - Código de entrega: só o cliente vê; o entregador digita no endereço.
  */
 import type { Order } from '../../types';
@@ -33,7 +33,7 @@ export function handoffErrorMessage(raw: unknown): string {
   if (m.includes('RATE_LIMITED')) return 'Muitas tentativas. Aguarde um minuto.';
   if (m.includes('ORDER_NOT_AVAILABLE')) return 'Esta corrida já foi aceita por outro entregador.';
   if (m.includes('DRIVER_NOT_AVAILABLE')) return 'Fique disponível para aceitar corridas.';
-  if (m.includes('PICKUP_CODE_REQUIRED')) return 'Digite o código de retirada fornecido pela loja.';
+  if (m.includes('PICKUP_CODE_REQUIRED')) return 'Peça o código ao entregador e confirme a retirada.';
   if (m.includes('DELIVERY_CODE_REQUIRED')) return 'Digite o código que o cliente vai informar.';
   if (m.includes('CODE_NOT_FOUND')) return 'Pedido sem código. Fale com a loja.';
   if (m.includes('INVALID_STATE')) return 'O pedido mudou de etapa. Atualize a tela.';

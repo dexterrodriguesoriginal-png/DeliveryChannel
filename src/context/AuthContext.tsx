@@ -1,4 +1,5 @@
 import { LEGAL_VERSION } from '../lib/legal/documents';
+import { AUTH_STORE_KEY, rememberAuthStore } from '../lib/auth/storeEmailBranding';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { isEmailRateLimitError, EMAIL_RATE_LIMIT_MSG, isEmailNotConfirmedError, isInvalidCredentialsError, INVALID_CREDENTIALS_MSG, isMembershipLoadFailure } from '../lib/auth/authErrors';
 import { currentEmailRedirectUrl, DEFAULT_APP_ORIGIN } from '../lib/auth/authRedirect';
@@ -29,6 +30,7 @@ export interface TenantMembership {
 export interface GoogleAuthOptions {
   returnTo?: string;
   intent?: 'owner' | 'customer' | 'driver';
+  storeName?: string;
 }
 
 export type MembershipStatus = 
@@ -251,6 +253,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.removeItem('adegafood_pending_confirmation_email');
     }
   }, []);
+
+  // OAuth has no options.data in Supabase. Persist public branding on the existing user after return.
+  useEffect(() => {
+    if (!supabaseUser?.id) return;
+    let name: string | null = null;
+    try { name = sessionStorage.getItem(AUTH_STORE_KEY); } catch { return; }
+    if (!name) return;
+    if (supabaseUser.user_metadata?.store_name === name) { sessionStorage.removeItem(AUTH_STORE_KEY); return; }
+    const expected = name;
+    let active = true;
+    void supabase.auth.updateUser({ data: { store_name: name } }).then(({ error }) => {
+      if (!error && active && sessionStorage.getItem(AUTH_STORE_KEY) === expected) sessionStorage.removeItem(AUTH_STORE_KEY);
+    }).catch(() => { /* keep public branding for retry on the next authenticated visit */ });
+    return () => { active = false; };
+  }, [supabaseUser?.id]);
 
   // Controle estrito de Confirmação de E-mail do Primeiro Estabelecimento (Comando 42 & 86)
   const [isTenantConfirmationRequired, setIsTenantConfirmationRequired] = useState<boolean>(() => {
@@ -1226,6 +1243,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Volta para a loja de origem (/app/<slug>) quando o cadastro foi feito na vitrine.
       const redirectUrl = currentEmailRedirectUrl();
 
+      sessionStorage.removeItem(AUTH_STORE_KEY);
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
@@ -1369,6 +1387,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setMembershipStatus('AUTH_LOADING');
       setMembershipError(null);
 
+      if (options?.storeName) rememberAuthStore(sessionStorage, options.storeName);
+      else sessionStorage.removeItem(AUTH_STORE_KEY);
       const targetPath = options?.returnTo && options.returnTo.startsWith('/') ? options.returnTo : '/';
       const authIntent = options?.intent || (targetPath.startsWith('/app/') ? 'customer' : 'owner');
 

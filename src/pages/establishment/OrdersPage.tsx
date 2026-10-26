@@ -1,5 +1,7 @@
 import { OnlineOrderPaymentPanel } from '../../components/client/OnlineOrderPaymentPanel';
 import { OnlinePaymentBadge } from '../../components/establishment/OnlinePaymentBadge';
+import { OrderChat } from '../../components/chat/OrderChat';
+import { dispatchChatRepository, QueueDriver, DispatchMode } from '../../repositories/dispatchChatRepository';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { KanbanColumnHeader } from '../../components/establishment/KanbanColumnHeader';
 import { ArrivalQueuePanel } from '../../components/pickup/ArrivalQueuePanel';
@@ -156,7 +158,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const density: CardDensity = cardScale <= 80 ? 'compact' : cardScale <= 110 ? 'normal' : 'comfortable';
 
   // Som de alerta e Auto-aceitar
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const soundEnabled = !['OWNER','MANAGER'].includes(activeRole || '');
   // Tempo de Preparo da loja (min) para o semáforo/atraso; padrão 25 (lib/orders/sla)
   const prepMinutes = activeTenant?.settings?.defaultPrepTimeMinutes;
 
@@ -209,6 +211,26 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const [assigningOrder, setAssigningOrder] = useState<Order | null>(null);
   const [selectedDriverUserId, setSelectedDriverUserId] = useState<string>('');
   const [isAssigning, setIsAssigning] = useState(false);
+  const [dispatchMode, setDispatchMode] = useState<DispatchMode>('OWNER_PICKS');
+  const [queue, setQueue] = useState<QueueDriver[]>([]);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [queueError, setQueueError] = useState('');
+  useEffect(() => {
+    let alive = true; setSelectedDriverUserId(''); setQueue([]); setQueueError(''); setDispatchMode('OWNER_PICKS'); setQueueLoading(false);
+    if (!assigningOrder || !activeTenant?.id || !['OWNER','MANAGER'].includes(activeRole || '')) return;
+    setQueueLoading(true);
+    void dispatchChatRepository.queue(activeTenant.id).then(r => {
+      if (!alive) return;
+      setDispatchMode(r.mode); setQueue(r.drivers);
+      if (r.mode === 'AUTO_QUEUE') setSelectedDriverUserId(r.drivers[0]?.user_id || '');
+    }).catch(e => { if (alive) setQueueError(e.message); }).finally(() => { if (alive) setQueueLoading(false); });
+    return () => { alive = false; };
+  }, [assigningOrder?.id, activeTenant?.id, activeRole]);
+  useEffect(() => {
+    const focus = (e: Event) => { const id = (e as CustomEvent).detail; const found = remoteOrders?.find(o => o.id === id); if (found) { setSelectedOrder(found); setDrawerTab('detalhes'); sessionStorage.removeItem(FOCUS_ORDER_KEY); } };
+    window.addEventListener('dc:focus-order', focus);
+    return () => window.removeEventListener('dc:focus-order', focus);
+  }, [remoteOrders]);
 
   // Modal de cancelamento de pedido com justificativa
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
@@ -268,6 +290,9 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       try { focusId = sessionStorage.getItem(FOCUS_ORDER_KEY); } catch { /* sem storage */ }
       const focused = focusId ? ordersWithTableLabels.find(o => o.id === focusId) : undefined;
       if (focusId) { try { sessionStorage.removeItem(FOCUS_ORDER_KEY); } catch { /* sem storage */ } }
+      if (focused && sessionStorage.getItem(`dc:dispatch-order:${activeTenant.id}`) === focused.id) {
+        sessionStorage.removeItem(`dc:dispatch-order:${activeTenant.id}`); setAssigningOrder(focused);
+      }
       setSelectedOrder(prev => {
         if (focused) return focused;
         if (!prev) {
@@ -354,6 +379,13 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus, note?: string) => {
     if (!activeTenant?.id) return;
     const currentOrder = (remoteOrders || []).find(o => o.id === orderId);
+    if (currentOrder?.fulfillmentType !== 'PICKUP' && currentOrder && newStatus === 'WAITING_FOR_DRIVER' && !currentOrder.driverId) {
+      setAssigningOrder(currentOrder); return;
+    }
+    if (newStatus === 'OUT_FOR_DELIVERY' && currentOrder?.driverId) {
+      setSelectedOrder(currentOrder); setDrawerTab('detalhes');
+      showToast({ type: 'info', title: 'Retirada', message: 'Peça o código ao entregador.' }); return;
+    }
     // 2100: com a fila de chegada ativa, retirada se conclui conferindo o código do cliente.
     if (!note && newStatus === 'DELIVERED' && currentOrder?.fulfillmentType === 'PICKUP' && arrivalRepository.isOn()) {
       setHandoverOrder(currentOrder);
@@ -366,7 +398,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       if (!reason || !reason.trim()) return;
       note = reason.trim();
     }
-    // 19/10: "Chamar motoboy" sem nenhum entregador aprovado deixaria o pedido esperando para sempre
+    // 19/10: "Aguardar entregador" sem nenhum entregador aprovado deixaria o pedido esperando para sempre
     // (o servidor aceita a mudança). Avisa o porquê e o que fazer em vez de chamar.
     if (newStatus === 'WAITING_FOR_DRIVER' && shouldBlockCallDriver({ canListDrivers, driversLoaded, approvedCount: drivers.length })) {
       showToast({ type: 'warning', title: NO_APPROVED_DRIVER_TITLE, message: noApprovedDriverMessage() });
@@ -478,7 +510,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       showToast({
         type: 'success',
         title: 'Entregador designado',
-        message: 'O entregador vai buscar o pedido e digitar o código de retirada.',
+        message: 'Peça o código ao entregador quando ele chegar para retirar.',
       });
 
       setAssigningOrder(null);
@@ -545,7 +577,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleTabsKey, filterFulfillment]);
   // 19/10: bipe a cada ~5 s enquanto houver pedido em "Novo" (mesma preferência do Dashboard)
-  const newOrderAlarm = useNewOrderAlarm(allOrders.filter(o => o.status === 'PENDING').length);
+  const newOrderAlarm = useNewOrderAlarm(['OWNER','MANAGER'].includes(activeRole || '') ? 0 : allOrders.filter(o => o.status === 'PENDING').length, { tenant: activeTenant?.id || '', user: supabaseUser?.id || '' });
 
   // Helper de filtro de período
   const isDateInPeriod = (dateStr: string, period: string) => {
@@ -871,9 +903,12 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 </div>
               </div>
               {selectedOrder.fulfillmentType !== 'PICKUP' && selectedOrder.status !== 'DELIVERED' && selectedOrder.status !== 'CANCELLED' && (
-                <PickupCodeBadge orderId={selectedOrder.id} status={selectedOrder.status} />
+                <PickupCodeBadge key={selectedOrder.id} orderId={selectedOrder.id} status={selectedOrder.status} onDone={() => fetchOrders(true)} />
               )}
 
+              {selectedOrder.driverId && <OrderChat key={selectedOrder.id} tenantId={activeTenant.id} orderId={selectedOrder.id}
+                initialOpen={sessionStorage.getItem(`dc:focus-chat:${activeTenant.id}`) === selectedOrder.id}
+                closed={['DELIVERED','CANCELLED'].includes(selectedOrder.status)} />}
               {/* Seção 3: Itens do pedido */}
               <div className="p-1.5 rounded-lg bg-slate-50/80 border border-slate-200/80 space-y-1">
                 <div className="flex items-center justify-between">
@@ -1062,10 +1097,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                   <button
                     type="button"
                     data-testid="panel-call-driver"
-                    onClick={() => handleUpdateStatus(selectedOrder.id, 'WAITING_FOR_DRIVER', 'Chamando motoboy')}
+                    onClick={() => setAssigningOrder(selectedOrder)}
                     className="w-full p-2 rounded-lg bg-[#15803d] hover:bg-[#166534] text-white flex items-center justify-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide cursor-pointer"
                   >
-                    <Bike className="w-3 h-3" /> Chamar motoboy
+                    <Bike className="w-3 h-3" /> Despachar entrega
                   </button>
                 )}
                 <button
@@ -1207,7 +1242,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 onClick={newOrderAlarm.toggle}
                 data-testid="orders-sound"
                 aria-pressed={newOrderAlarm.enabled && newOrderAlarm.unlocked}
-                title={newOrderAlarm.enabled && newOrderAlarm.unlocked ? 'Som ligado: bipe a cada 5 s enquanto houver pedido novo. Clique para desligar.' : 'Ativar o bipe de pedido novo'}
+                title={newOrderAlarm.enabled && newOrderAlarm.unlocked ? 'Som ligado para notificações desta loja. Clique para desligar.' : 'Ativar som das notificações'}
                 className={`h-9 py-2 px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
                   newOrderAlarm.enabled && newOrderAlarm.unlocked ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-amber-50 border-amber-400 text-amber-900 hover:bg-amber-100'}`}
               >
@@ -2124,14 +2159,16 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
             Selecione o entregador responsável pelo transporte deste pedido:
           </p>
 
+          {queueError && <p role="alert">{queueError}</p>}
+          {queueLoading && <p>Consultando entregadores…</p>}
           <div className="space-y-2">
-            {drivers.length === 0 ? (
+            {dispatchMode === 'AUTO_QUEUE' ? <p className="font-semibold">{queue[0] ? `Próximo da fila: ${queue[0].name}` : 'Nenhum entregador disponível.'}</p> : drivers.length === 0 ? (
               <p data-testid="no-approved-driver" className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
                 {driversLoaded
                   ? noApprovedDriverMessage()
                   : canListDrivers
                     ? 'Não foi possível carregar a lista de entregadores agora. Tente de novo em instantes.'
-                    : 'Seu perfil não vê a lista de entregadores. Use "Chamar motoboy" ou peça ao dono ou gerente para despachar.'}
+                    : 'Seu perfil não vê a lista de entregadores. Use "Aguardar entregador" ou peça ao dono ou gerente para despachar.'}
               </p>
             ) : (
               <select
@@ -2141,7 +2178,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 required
               >
                 <option value="">Selecione um motorista...</option>
-                {drivers.map(d => (
+                {drivers.filter(d => d.status === 'AVAILABLE').map(d => (
                   <option key={d.id} value={d.userId || d.id}>
                     {d.name} {d.status === 'AVAILABLE' ? '🟢 (Disponível)' : '🟡 (Em entrega)'}
                   </option>
@@ -2150,25 +2187,11 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
             )}
           </div>
 
-          {assigningOrder?.status === 'READY' && (
-            <button
-              type="button"
-              data-testid="call-any-driver"
-              onClick={async () => {
-                const o = assigningOrder;
-                setAssigningOrder(null);
-                if (o) await handleUpdateStatus(o.id, 'WAITING_FOR_DRIVER', 'Chamando motoboy');
-              }}
-              className="w-full text-xs font-bold py-2 rounded-xl border border-emerald-600 text-emerald-700 hover:bg-emerald-50 cursor-pointer"
-            >
-              Chamar motoboy (o primeiro entregador disponível que aceitar leva)
-            </button>
-          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setAssigningOrder(null)} className="text-xs">
               Cancelar
             </Button>
-            <Button type="submit" variant="primary" size="sm" disabled={isAssigning || !selectedDriverUserId} className="text-xs font-bold bg-[#15803d] hover:bg-[#166534] text-white">
+            <Button type="submit" variant="primary" size="sm" disabled={isAssigning || queueLoading || Boolean(queueError) || !selectedDriverUserId} className="text-xs font-bold bg-[#15803d] hover:bg-[#166534] text-white">
               {isAssigning ? 'Atribuindo...' : 'Confirmar e Despachar'}
             </Button>
           </div>

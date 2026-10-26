@@ -3,6 +3,7 @@ import { reconcileOrderSeen } from '../../lib/customer/orderSeen';
 import { analyticsAllowed, openCookiePreferences } from '../../lib/legal/cookies';
 import { LegalCheckbox } from '../../components/legal/LegalUI';
 import { legalSignupMetadata } from '../../lib/legal/documents';
+import { storeEmailData } from '../../lib/auth/storeEmailBranding';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { normalizeBRPhone, formatBRPhone, brPhoneDigits } from '../../lib/phone/brPhone';
 import { DeliveryCodeCard } from '../../components/client/DeliveryCodeCard';
@@ -1168,7 +1169,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     setIsGoogleAuthenticating(true);
     try {
       if (isSupabaseConfigured) {
-        await signInWithGoogle({ returnTo: `/app/${slug}`, intent: 'customer' });
+        await signInWithGoogle({ returnTo: `/app/${slug}`, intent: 'customer', storeName: theme.storeName || storeData?.tenant.name });
       } else {
         showToast({
           type: 'info',
@@ -1220,7 +1221,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           setIsAuthenticating(false);
           return;
         }
-        const res = await signUp(authEmail.trim(), authPassword, authName.trim(), phoneDigits ? `+55${phoneDigits}` : undefined, { user_type: 'customer', ...legalSignupMetadata(legalAccepted, 'customer') });
+        const res = await signUp(authEmail.trim(), authPassword, authName.trim(), phoneDigits ? `+55${phoneDigits}` : undefined, { ...storeEmailData(theme.storeName || storeData?.tenant.name), user_type: 'customer', ...legalSignupMetadata(legalAccepted, 'customer') });
         if (!res.success) throw new Error(res.error || 'Falha ao criar conta.');
         setCustomerName(authName.trim());
         if (phoneDigits) setCustomerPhone(formatBRPhone(phoneDigits));

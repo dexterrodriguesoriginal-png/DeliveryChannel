@@ -228,7 +228,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
             onClick={(e) => { e.stopPropagation(); onUpdateStatus(order.id, 'WAITING_FOR_DRIVER'); }}
             className="flex-1 py-0.5 px-1 rounded font-bold text-[8.5px] bg-[#15803d] text-white flex items-center justify-center gap-0.5 shadow-2xs hover:bg-[#166534] cursor-pointer"
           >
-            <Truck className="w-2 h-2" /><span className="truncate">Chamar motoboy</span>
+            <Truck className="w-2 h-2" /><span className="truncate">Despachar entrega</span>
           </button>
         )}
         {/* Botão de Ação Primária */}

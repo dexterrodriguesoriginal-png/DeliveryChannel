@@ -280,7 +280,7 @@ export const CompactOrderCard: React.FC<CompactOrderCardProps> = ({
               onClick={(e) => { e.stopPropagation(); onUpdateStatus(order.id, 'WAITING_FOR_DRIVER'); }}
               className="py-0.1 px-1 rounded font-bold text-[8.5px] bg-[#15803d] text-white flex items-center justify-center gap-0.5 shadow-2xs hover:bg-[#166534] cursor-pointer"
             >
-              <Truck className="w-2 h-2" /><span className="truncate">Chamar motoboy</span>
+              <Truck className="w-2 h-2" /><span className="truncate">Despachar entrega</span>
             </button>
           )}
           {/* Botão Principal */}

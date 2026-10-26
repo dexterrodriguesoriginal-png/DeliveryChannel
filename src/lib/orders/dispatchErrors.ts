@@ -42,7 +42,7 @@ export function dispatchErrorMessage(err: unknown): string {
     return `Este entregador não está cadastrado (ou foi removido) nesta loja. Confira no ${DRIVERS_MENU_HINT}.`;
   }
   if (/não está disponível para receber|driver_not_available/.test(m)) {
-    return 'Este entregador está indisponível ou já em outra entrega. Escolha outro ou use "Chamar motoboy" para o primeiro disponível.';
+    return 'Este entregador está indisponível ou já em outra entrega. Escolha outro entregador disponível.';
   }
   if (/driver_already_assigned|já está com outro entregador/.test(m)) {
     return 'Este pedido já está com outro entregador. Remova o entregador atual antes de trocar.';

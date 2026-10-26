@@ -59,6 +59,10 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNavigate }) => {
   const [activeTab, setActiveTab] = useState<
     'list' | 'map' | 'invites' | 'history' | 'performance' | 'settings'
   >('list');
+  useEffect(() => {
+    const focus = () => { if (activeTenant && sessionStorage.getItem(`dc:focus-driver:${activeTenant.id}`)) setActiveTab('invites'); };
+    focus(); window.addEventListener('dc:focus-driver', focus); return () => window.removeEventListener('dc:focus-driver', focus);
+  }, [activeTenant?.id]);
 
   // Convites por link/QR (0700). O token só existe em `createdInvite` enquanto o modal está aberto.
   const [inviteLinks, setInviteLinks] = useState<DriverInviteLink[]>([]);
@@ -97,6 +101,8 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNavigate }) => {
     try {
       const data = await driverRepository.listDrivers(securityContext, activeTenant.id);
       setDrivers(data);
+      const focusId = sessionStorage.getItem(`dc:focus-driver:${activeTenant.id}`);
+      if (focusId) { setSelectedDriver(data.find(d => d.id === focusId) || null); setActiveTab('invites'); sessionStorage.removeItem(`dc:focus-driver:${activeTenant.id}`); }
       // Auto select first driver if none selected or selected was removed
       setSelectedDriver((prev) => {
         if (!prev) return data.length > 0 ? data[0] : null;
