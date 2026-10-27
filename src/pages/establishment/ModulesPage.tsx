@@ -169,6 +169,7 @@ export const ModulesPage: React.FC = () => {
         <SalonSetupPanel
           tenantId={activeTenant.id}
           tenantName={activeTenant.name}
+          tenantSlug={activeTenant.slug}
           canManageTables={salonAccess.canManageSalon}
           canConfigure={salonAccess.canManageSalon}
           canManageServiceFeeModule={salonAccess.canManageServiceFeeModule}

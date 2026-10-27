@@ -18,6 +18,8 @@ const CLOSE_ROLE_OPTIONS = [
 interface Props {
   tenantId: string;
   tenantName: string;
+  /** store slug: when present the printed QR uses /app/<slug>?mesa=<token> */
+  tenantSlug?: string;
   canManageTables: boolean;
   canConfigure: boolean;
   canManageServiceFeeModule: boolean;
@@ -28,6 +30,7 @@ interface Props {
 export const SalonSetupPanel: React.FC<Props> = ({
   tenantId,
   tenantName,
+  tenantSlug,
   canManageTables,
   canConfigure,
   canManageServiceFeeModule,
@@ -295,7 +298,7 @@ export const SalonSetupPanel: React.FC<Props> = ({
                   </> : <>
                     <td className="p-2 font-medium text-gray-900">{table.label}</td><td className="p-2">{table.area || '—'}</td><td className="p-2">{table.seats}</td>
                     <td className="space-x-1 p-2 text-right">
-                      <Button size="sm" variant="outline" onClick={() => window.open(diningTableQrUrl(window.location.origin, table.qrToken), '_blank', 'noopener,noreferrer')}><QrCode className="h-3.5 w-3.5" /><span className="ml-1">Ver QR</span></Button>
+                      <Button size="sm" variant="outline" onClick={() => window.open(diningTableQrUrl(window.location.origin, table.qrToken, tenantSlug), '_blank', 'noopener,noreferrer')}><QrCode className="h-3.5 w-3.5" /><span className="ml-1">Ver QR</span></Button>
                       {canManageTables && <Button size="sm" variant="ghost" title="Editar mesa" onClick={() => { setEditingId(table.id); setEditValues({ label: table.label, area: table.area || '', seats: table.seats }); }}><Pencil className="h-3.5 w-3.5" /></Button>}
                       {canRegenerateQr && <Button size="sm" variant="ghost" disabled={regeneratingId === table.id} title="Gerar novo QR" onClick={() => void regenerateQr(table)}>{regeneratingId === table.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <QrCode className="h-3.5 w-3.5" />}</Button>}
                       {canManageTables && <Button size="sm" variant="ghost" title="Excluir mesa" onClick={() => void removeTable(table)}><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
@@ -313,9 +316,9 @@ export const SalonSetupPanel: React.FC<Props> = ({
           <article key={table.id} className="salon-poster flex min-h-[130mm] flex-col items-center justify-center gap-3 text-center">
             <h2 className="text-3xl font-bold">{tenantName} · {table.label}</h2>
             <p className="text-sm">Aponte a câmera para acessar o cardápio</p>
-            <QRCodeSVG value={diningTableQrUrl(window.location.origin, table.qrToken)} size={250} level="M" />
+            <QRCodeSVG value={diningTableQrUrl(window.location.origin, table.qrToken, tenantSlug)} size={250} level="M" />
             {feeEnabled && <p className="text-sm">A taxa de serviço de {feePercent}% é opcional</p>}
-            <p className="break-all text-[9px]">{diningTableQrUrl(window.location.origin, table.qrToken)}</p>
+            <p className="break-all text-[9px]">{diningTableQrUrl(window.location.origin, table.qrToken, tenantSlug)}</p>
           </article>
         ))}
       </div>

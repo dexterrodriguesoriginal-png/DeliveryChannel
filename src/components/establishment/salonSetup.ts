@@ -1,3 +1,4 @@
+import { tableAppUrl } from '../../lib/salon/tableQr';
 import { RoleId } from '../../types';
 
 export const DEFAULT_CLOSE_ROLES = ['OWNER', 'MANAGER', 'CASHIER'] as const;
@@ -33,8 +34,10 @@ export function readDineInConfig(value: Record<string, unknown> = {}): DineInCon
   };
 }
 
-export function diningTableQrUrl(origin: string, token: string): string {
-  return `${origin.replace(/\/+$/, '')}/mesa/${encodeURIComponent(token)}`;
+/** New-style link /app/<slug>?mesa=<token> when the store slug is known and valid; legacy /mesa/<token> otherwise (both stay valid). */
+export function diningTableQrUrl(origin: string, token: string, slug?: string): string {
+  const modern = slug ? tableAppUrl(origin, slug, token) : '';
+  return modern || `${origin.replace(/\/+$/, '')}/mesa/${encodeURIComponent(token)}`;
 }
 
 export function bulkTableInputs(count: number, area: string, seats: number) {
