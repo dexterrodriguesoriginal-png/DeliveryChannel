@@ -128,13 +128,28 @@ export const WaiterApp: React.FC = () => {
   const { supabaseUser, isLoadingAuth, isMembershipLoading, authState, activeTenant, activeRole, availableTenants = [], switchTenant, signOut } = useAuth();
   const { available, loading: modulesLoading, isModuleEnabled } = useModules();
   const [autoSwitchingStore, setAutoSwitchingStore] = useState(false);
+  // Confirma "Mesa/Comanda desligada" na mesma fonte da tela Ferramentas (tenant_modules) via RPC pública
+  // (SECURITY DEFINER), que não depende de RLS de leitura do cargo do usuário.
+  const [publicDineIn, setPublicDineIn] = useState<{ tenantId: string; enabled: boolean } | null>(null);
   const autoTriedRef = useRef<Set<string>>(new Set());
+  const moduleOff = !!available && !isModuleEnabled('dine_in');
+  useEffect(() => {
+    if (!activeTenant?.id || !moduleOff) return;
+    const tenantId = activeTenant.id;
+    let alive = true;
+    void tenantModuleRepository.getPublicEnabled(tenantId)
+      .then(keys => { if (alive) setPublicDineIn({ tenantId, enabled: !!keys?.has('dine_in') }); })
+      .catch(() => { if (alive) setPublicDineIn({ tenantId, enabled: false }); });
+    return () => { alive = false; };
+  }, [activeTenant?.id, moduleOff]);
+  const dineInConfirmedByServer = publicDineIn?.tenantId === activeTenant?.id && publicDineIn?.enabled === true;
+  const dineInChecking = moduleOff && publicDineIn?.tenantId !== activeTenant?.id;
   const signOutBtn = <button type="button" onClick={() => void signOut()} className="h-12 rounded-2xl border border-white/20 text-sm font-bold">Entrar com outra conta</button>;
 
   // Se o usuário tem vínculo em mais de uma loja e a loja ativa está com Mesa/Comanda desligada,
   // procura automaticamente outra loja vinculada que tenha Mesa/Comanda (dine_in) ligada.
   useEffect(() => {
-    if (!activeTenant?.id || !available || isModuleEnabled('dine_in')) return;
+    if (!activeTenant?.id || !available || isModuleEnabled('dine_in') || dineInChecking || dineInConfirmedByServer) return;
     if (!availableTenants || availableTenants.length <= 1 || typeof switchTenant !== 'function') return;
     if (autoTriedRef.current.has(activeTenant.id)) return;
     autoTriedRef.current.add(activeTenant.id);
@@ -159,7 +174,7 @@ export const WaiterApp: React.FC = () => {
       }
     })();
     return () => { alive = false; };
-  }, [activeTenant?.id, available, isModuleEnabled, availableTenants, switchTenant]);
+  }, [activeTenant?.id, available, isModuleEnabled, availableTenants, switchTenant, dineInChecking, dineInConfirmedByServer]);
 
   if (isLoadingAuth || isMembershipLoading || autoSwitchingStore || authState === 'AUTHENTICATING' || authState === 'AUTHENTICATED_RESOLVING_MEMBERSHIP') {
     return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
@@ -168,7 +183,8 @@ export const WaiterApp: React.FC = () => {
   if (!activeTenant) return <JoinInvite email={supabaseUser.email || ''} signOutBtn={signOutBtn} />;
   if (!canUseWaiterApp(activeRole)) return <Notice testId="waiter-wrong-role" title="Acesso só para a equipe do salão" text="O aplicativo do Garçom é para Garçom, Caixa, Gerente e Dono.">{signOutBtn}</Notice>;
   if (modulesLoading && !available) return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
-  if (available && !isModuleEnabled('dine_in')) {
+  if (dineInChecking) return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
+  if (moduleOff && !dineInConfirmedByServer) {
     return (
       <Notice
         testId="waiter-tool-off"

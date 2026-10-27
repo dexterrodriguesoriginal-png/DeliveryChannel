@@ -27,4 +27,12 @@ describe('open dining tab warning', () => {
       { id: 'table-4', label: 'Mesa 04' },
     ], Date.parse('2026-10-19T23:41:00.000Z'))).toEqual(['Mesa 04 aberta há 2 h']);
   });
+
+  it('collapses a duplicated prefix: "Mesa Mesa 01" shows as "Mesa 01"', () => {
+    expect(openDiningTabLabels([
+      { id: 't1', table_id: 'table-1', opened_at: '2026-10-19T21:00:00.000Z', status: 'OPEN' },
+    ], [
+      { id: 'table-1', label: 'Mesa Mesa 01' },
+    ], Date.parse('2026-10-19T23:41:00.000Z'))).toEqual(['Mesa 01 aberta há 2 h']);
+  });
 });

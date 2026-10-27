@@ -8,18 +8,19 @@ const h = vi.hoisted(() => ({
   team: { listMyReceivedInvites: vi.fn(), acceptInvite: vi.fn() },
   modules: { enabled: true },
   getForTenant: vi.fn(async (_id: string) => ({ available: true, modules: [{ key: 'dine_in', enabled: true }] })),
+  getPublicEnabled: vi.fn(async (_id: string) => new Set<string>()),
 }));
 vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: {} }));
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => h.auth }));
 vi.mock('../../../hooks/useModules', () => ({ useModules: () => ({ available: true, loading: false, isModuleEnabled: () => h.modules.enabled }) }));
 vi.mock('../../../repositories/teamRepository', () => ({ teamRepository: h.team }));
-vi.mock('../../../repositories/tenantModuleRepository', () => ({ tenantModuleRepository: { getForTenant: (id: string) => h.getForTenant(id) } }));
+vi.mock('../../../repositories/tenantModuleRepository', () => ({ tenantModuleRepository: { getForTenant: (id: string) => h.getForTenant(id), getPublicEnabled: (id: string) => h.getPublicEnabled(id) } }));
 
 import { WaiterApp } from '../WaiterApp';
 import { WaiterTableSheet } from '../WaiterTableSheet';
 
 const invite = (id: string, roleId = 'WAITER') => ({ id, roleId, status: 'PENDING', tenantName: 'Bar do Zé' });
-beforeEach(() => { Object.values(h.team).forEach(m => m.mockReset()); h.auth.refreshSession.mockReset(); h.auth.switchTenant.mockReset(); h.auth.supabaseUser = { email: 'ana@loja.com' }; h.auth.activeTenant = null; h.auth.activeRole = null; h.auth.availableTenants = []; h.modules.enabled = true; window.history.replaceState(null, '', '/garcom'); });
+beforeEach(() => { Object.values(h.team).forEach(m => m.mockReset()); h.auth.refreshSession.mockReset(); h.auth.switchTenant.mockReset(); h.auth.supabaseUser = { email: 'ana@loja.com' }; h.auth.activeTenant = null; h.auth.activeRole = null; h.auth.availableTenants = []; h.modules.enabled = true; h.getPublicEnabled.mockReset(); h.getPublicEnabled.mockResolvedValue(new Set<string>()); window.history.replaceState(null, '', '/garcom'); });
 afterEach(cleanup);
 
 describe('/garcom — convite pendente', () => {
@@ -66,6 +67,17 @@ describe('/garcom — convite pendente', () => {
     expect(await screen.findByText('Salão desligado')).toBeTruthy();
     expect(screen.getByTestId('waiter-store-picker')).toBeTruthy();
     await waitFor(() => expect(h.auth.switchTenant).toHaveBeenCalledWith('t-adega'));
+  });
+  it('Parte H: leitura de módulos diz desligado mas a fonte das Ferramentas (RPC pública) diz dine_in ligado: NÃO mostra "Salão desligado"', async () => {
+    h.auth.activeTenant = { id: 't-adega', name: 'ADEGASHOW' };
+    h.auth.activeRole = 'WAITER';
+    h.auth.availableTenants = [{ tenantId: 't-adega', tenantName: 'ADEGASHOW', roleId: 'WAITER' }];
+    h.modules.enabled = false;
+    h.getPublicEnabled.mockResolvedValue(new Set(['dine_in']));
+    render(<WaiterApp />);
+    await waitFor(() => expect(h.getPublicEnabled).toHaveBeenCalledWith('t-adega'));
+    await waitFor(() => expect(screen.queryByTestId('waiter-tool-off')).toBeNull());
+    expect(screen.queryByText('Salão desligado')).toBeNull();
   });
 });
 
