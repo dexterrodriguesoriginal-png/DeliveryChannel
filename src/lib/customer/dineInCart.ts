@@ -6,6 +6,7 @@ export interface DineInCartLine {
   product: Product;
   quantity: number;
   options: SelectedProductOption[];
+  notes?: string;
 }
 
 /** Formato do servidor (_normalize_product_option_selections): chaves snake_case. */
@@ -61,6 +62,14 @@ export function changeDineInCartLineQuantity(
     .filter(line => line.quantity > 0);
 }
 
+export function setDineInCartLineNotes(
+  cart: DineInCartLine[],
+  key: string,
+  notes: string
+): DineInCartLine[] {
+  return cart.map(line => line.key === key ? { ...line, notes } : line);
+}
+
 export function dineInCartLineUnitPriceCents(line: DineInCartLine): number {
   return Math.round(line.product.price * 100) +
     optionPriceCents(line.product.optionGroups || [], line.options);
@@ -89,6 +98,7 @@ export function dineInRoundItems(cart: DineInCartLine[]): DineInRoundItem[] {
   return cart.map(line => dineInRoundItem({
     productId: line.product.id,
     quantity: line.quantity,
+    notes: line.notes?.trim() || '',
     options: line.options,
   }));
 }

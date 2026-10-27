@@ -71,6 +71,7 @@ export function endedMessage(reason: string | null | undefined): string {
     case 'TAB_CLOSED': return 'A conta desta mesa foi encerrada. Para pedir de novo, chame o garçom.';
     case 'REMOVED': return 'Você foi removido desta mesa pelo responsável. Se foi engano, peça um novo convite.';
     case 'REJECTED': return 'O garçom não liberou este acesso. Fale com a equipe se precisar de ajuda.';
+    case 'STAFF_RESET':
     case 'RESET': return 'A equipe reiniciou o acesso desta mesa. Escaneie o QR Code novamente para continuar.';
     case 'TRANSFERRED': return 'A responsabilidade desta mesa foi passada para outra pessoa.';
     default: return 'Seu acesso a esta mesa terminou. Escaneie o QR Code novamente.';
@@ -98,20 +99,32 @@ export function friendlyAccessError(message: string): string {
 export const PENDING_MESA_KEY = 'dc_pending_mesa';
 const PENDING_MESA_TTL_MS = 3 * 60 * 60 * 1000;
 type KV = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
-export function rememberPendingMesa(storage: KV | null | undefined, token: string, now = Date.now()): void {
+export function rememberPendingMesa(storage: KV | null | undefined, token: string, now = Date.now(), inviteCode?: string | null): void {
   if (!storage) return;
-  try { storage.setItem(PENDING_MESA_KEY, JSON.stringify({ token, at: now })); } catch { /* storage unavailable */ }
+  const cleanInvite = inviteCode ? normalizeInviteCode(inviteCode) : undefined;
+  try {
+    storage.setItem(
+      PENDING_MESA_KEY,
+      JSON.stringify({ token, at: now, ...(cleanInvite && isInviteCodeComplete(cleanInvite) ? { inviteCode: cleanInvite } : {}) }),
+    );
+  } catch { /* storage unavailable */ }
 }
-export function readPendingMesa(storage: KV | null | undefined, now = Date.now()): string | null {
+export function readPendingMesaDetails(storage: KV | null | undefined, now = Date.now()): { token: string; inviteCode?: string } | null {
   if (!storage) return null;
   try {
     const raw = storage.getItem(PENDING_MESA_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { token?: unknown; at?: unknown };
+    const parsed = JSON.parse(raw) as { token?: unknown; at?: unknown; inviteCode?: unknown };
     if (typeof parsed.token !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(parsed.token)) return null;
     if (typeof parsed.at !== 'number' || now - parsed.at > PENDING_MESA_TTL_MS || parsed.at > now + 60000) { storage.removeItem(PENDING_MESA_KEY); return null; }
-    return parsed.token;
+    const inviteCode = typeof parsed.inviteCode === 'string' && isInviteCodeComplete(parsed.inviteCode)
+      ? normalizeInviteCode(parsed.inviteCode)
+      : undefined;
+    return { token: parsed.token, inviteCode };
   } catch { return null; }
+}
+export function readPendingMesa(storage: KV | null | undefined, now = Date.now()): string | null {
+  return readPendingMesaDetails(storage, now)?.token ?? null;
 }
 export function clearPendingMesa(storage: KV | null | undefined): void {
   try { storage?.removeItem(PENDING_MESA_KEY); } catch { /* ignore */ }

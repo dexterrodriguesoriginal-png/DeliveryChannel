@@ -6,8 +6,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 const h = vi.hoisted(() => ({
   rpc: vi.fn(),
   caps: vi.fn(),
-  access: { enterTable: vi.fn(), joinWithCode: vi.fn(), createInvite: vi.fn(), getInvite: vi.fn(), revokeInvite: vi.fn(), removeGuest: vi.fn(), transferResponsibility: vi.fn(), pingPending: vi.fn() },
-  auth: { user: null as null | { id: string; is_anonymous?: boolean; user_metadata?: Record<string, unknown> }, signUp: vi.fn(), signInWithPassword: vi.fn() },
+  access: { enterTable: vi.fn(), joinWithCode: vi.fn(), createInvite: vi.fn(), getInvite: vi.fn(), revokeInvite: vi.fn(), removeGuest: vi.fn(), transferResponsibility: vi.fn(), pingPending: vi.fn(), resolveInvite: vi.fn() },
+  auth: { user: null as null | { id: string; is_anonymous?: boolean; email?: string; user_metadata?: Record<string, unknown> }, signUp: vi.fn(), signInWithPassword: vi.fn() },
 }));
 const product = { id: 'p1', name: 'Chopp', description: '', price: 12, imageUrl: '', isActive: true, isAvailable: true, optionGroups: [] };
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ supabaseUser: h.auth.user, signUp: h.auth.signUp, signInWithPassword: h.auth.signInWithPassword }) }));
@@ -46,7 +46,7 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     expect(await screen.findByTestId('identity-gate')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Continuar como visitante/ })).toBeNull();
     expect(screen.getByLabelText('Celular')).toBeTruthy();
-    expect(JSON.parse(localStorage.getItem('dc_pending_mesa') || '{}').token).toBe(TOKEN);
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('dc_pending_mesa') || '{}').token).toBe(TOKEN));
     expect(h.access.enterTable).not.toHaveBeenCalled();
   });
   it('visitante anônimo antigo também precisa se identificar', async () => {
@@ -74,13 +74,16 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     expect(call[4]).toMatchObject({ user_type: 'customer', legal_accepted: true });
     expect(localStorage.getItem('dc_pending_mesa')).toContain(TOKEN);
   });
-  it('mesa em uso: mostra "Esta mesa já está em uso", "Fui convidado" e aceita só o código certo', async () => {
+  it('mesa em uso: confirma conta logada ("Entrar como <Nome>?"), mostra "Esta mesa já está em uso — chame o garçom", "Fui convidado" e aceita só o código certo', async () => {
     h.caps.mockResolvedValue(V2); baseRpc(); h.auth.user = { id: 'u1', user_metadata: { name: 'Beto Lima' } };
     h.access.enterTable.mockResolvedValue({ state: 'IN_USE', tableLabel: 'Mesa 03' });
     h.access.joinWithCode.mockResolvedValueOnce({ entry: null, invalid: true, free: false })
       .mockResolvedValueOnce({ entry: { state: 'GUEST', sessionId: 's2', approved: true }, invalid: false, free: false });
     render(<DineInClientApp token={TOKEN} />);
-    expect((await screen.findByTestId('table-in-use')).textContent).toContain('Esta mesa já está em uso');
+    expect((await screen.findByTestId('confirm-logged-user-gate')).textContent).toContain('Entrar como Beto?');
+    expect(h.access.enterTable).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('confirm-identity-continue'));
+    expect((await screen.findByTestId('table-in-use')).textContent).toContain('Esta mesa já está em uso — chame o garçom');
     expect(h.access.enterTable).toHaveBeenCalledWith(TOKEN, 'Beto', expect.any(String));
     fireEvent.click(screen.getByRole('button', { name: 'Fui convidado' }));
     const input = screen.getByLabelText('Código do convite');
@@ -93,14 +96,23 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     h.rpc.mockImplementation(async (name: string) => name === 'get_my_tab' ? myTab('GUEST') : name === 'resolve_table_qr' ? { data: resolved, error: null } : { data: null, error: null });
     expect((await screen.findByTestId('role-chip')).textContent).toContain('Convidado');
   });
-  it('link/QR de convite (&convite=) tenta o código automaticamente depois do login', async () => {
+  it('link/QR de convite (&convite=) vai direto para a tela de boas-vindas da loja (nunca chama enterTable nem mostra "mesa em uso") e cria a sessão via joinWithCode', async () => {
     window.history.replaceState(null, '', `/app/loja-x?mesa=${TOKEN}&convite=ab3k7p`);
-    h.caps.mockResolvedValue(V2); baseRpc(); h.auth.user = { id: 'u1' };
+    h.caps.mockResolvedValue(V2); baseRpc({ get_my_tab: myTab('GUEST', true) });
+    h.auth.user = { id: 'u1', user_metadata: { name: 'Carlos' } };
+    h.access.resolveInvite.mockResolvedValue({ valid: true, storeName: 'Loja X', tableLabel: 'Mesa 03', responsibleName: 'Ana', expiresAt: new Date(Date.now() + 900000).toISOString() });
     h.access.enterTable.mockResolvedValue({ state: 'IN_USE' });
-    h.access.joinWithCode.mockResolvedValue({ entry: { state: 'GUEST', sessionId: 's2', approved: false }, invalid: false, free: false });
+    h.access.joinWithCode.mockResolvedValue({ entry: { state: 'GUEST', sessionId: 's2', approved: true }, invalid: false, free: false });
     render(<DineInClientApp token={TOKEN} />);
-    await waitFor(() => expect(h.access.joinWithCode).toHaveBeenCalledWith(TOKEN, 'AB3K7P', 'Cliente', expect.any(String)));
+    const welcome = await screen.findByTestId('invite-welcome-screen');
+    expect(welcome.textContent).toContain('Ana convidou você para a Mesa 03 · Loja X');
+    expect(screen.queryByTestId('table-in-use')).toBeNull();
+    expect(h.access.enterTable).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('invite-enter-table-btn'));
+    await waitFor(() => expect(h.access.joinWithCode).toHaveBeenCalledWith(TOKEN, 'AB3K7P', 'Carlos', expect.any(String)));
+    expect(h.access.enterTable).not.toHaveBeenCalled();
     expect(window.location.search).not.toContain('convite');
+    expect((await screen.findByTestId('role-chip')).textContent).toContain('Convidado');
   });
   it('Responsável: vê a faixa, gera código de convite com QR, vê pessoas e remove convidado', async () => {
     h.caps.mockResolvedValue(V2); h.auth.user = { id: 'u1' };
@@ -110,6 +122,7 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     h.access.removeGuest.mockResolvedValue(undefined);
     baseRpc({ get_my_tab: myTab('RESPONSIBLE') });
     render(<DineInClientApp token={TOKEN} />);
+    fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     expect((await screen.findByTestId('role-chip')).textContent).toContain('responsável');
     fireEvent.click(screen.getByRole('button', { name: 'Ver minha conta' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Gerar código de convite' }));
@@ -125,23 +138,29 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     h.access.enterTable.mockResolvedValue({ state: 'GUEST', sessionId: 's2', approved: true });
     baseRpc({ get_my_tab: { data: { ended: true, endedReason: 'REMOVED', me: { sessionId: 's2', ended: true, endedReason: 'REMOVED' } }, error: null } });
     render(<DineInClientApp token={TOKEN} />);
+    fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     expect((await screen.findByTestId('dine-in-ended')).textContent).toMatch(/removido desta mesa/);
     expect(screen.queryByTestId('invite-panel')).toBeNull();
   });
-  it('mesa aguardando liberação: texto amigável (sem "aprovação do garçom") e aviso ao servidor', async () => {
+  it('mesa aguardando liberação: texto amigável (sem "aprovação do garçom"), aviso ao servidor e modal "Aguarde a liberação da mesa" ao tentar Fazer pedido', async () => {
     h.caps.mockResolvedValue(V2); h.auth.user = { id: 'u1' };
     h.access.enterTable.mockResolvedValue({ state: 'RESPONSIBLE', sessionId: 's1', approved: false });
     baseRpc({ get_my_tab: myTab('RESPONSIBLE', false) });
     render(<DineInClientApp token={TOKEN} />);
+    fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     const banner = await screen.findByTestId('awaiting-release');
     expect(banner.textContent).toContain('Avisamos o garçom');
     expect(banner.textContent).not.toMatch(/aprovação do garçom/i);
     await waitFor(() => expect(h.access.pingPending).toHaveBeenCalledWith('s1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar Chopp' }));
+    expect((await screen.findByTestId('added-to-bag-toast')).textContent).toContain('Adicionado à sacola · 1× Chopp');
+    fireEvent.click(screen.getByRole('button', { name: 'Fazer pedido' }));
+    expect((await screen.findByTestId('awaiting-release-modal')).textContent).toContain('Aguarde a liberação da mesa');
   });
 });
 
 describe('Mesa — modelo antigo (banco sem a migração) continua igual', () => {
-  it('botão chama "Fazer pedido" e a espera de liberação usa texto amigável', async () => {
+  it('botão chama "Fazer pedido", abre modal de confirmação do pedido na mesa e a espera de liberação usa texto amigável', async () => {
     h.caps.mockResolvedValue(V1); h.auth.user = { id: 'u1' };
     h.rpc.mockImplementation(async (name: string) => {
       if (name === 'resolve_table_qr') return { data: resolved, error: null };
@@ -152,8 +171,12 @@ describe('Mesa — modelo antigo (banco sem a migração) continua igual', () =>
     });
     render(<DineInClientApp token={TOKEN} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
+    expect(screen.getByTestId('added-to-bag-toast').textContent).toContain('Adicionado à sacola · 1× Chopp');
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toContain('1');
     expect(screen.queryByText('Enviar para a cozinha')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Fazer pedido' }));
+    expect(await screen.findByTestId('confirm-order-modal')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('confirm-order-submit'));
     const note = await screen.findByRole('status');
     expect(note.textContent).toContain('Avisamos o garçom');
     expect(h.access.enterTable).not.toHaveBeenCalled();

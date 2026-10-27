@@ -6,8 +6,40 @@ export class TableAccessError extends Error {
 }
 const fail = (error: { message?: string } | null): never => { throw new TableAccessError(String(error?.message || 'Falha na operação.')); };
 
+export interface InvitePreview {
+  available: boolean;
+  valid: boolean;
+  purpose?: 'GUEST' | 'HOLDER';
+  tenantSlug?: string;
+  storeName?: string;
+  logoUrl?: string | null;
+  primaryColor?: string | null;
+  tableLabel?: string;
+  responsibleName?: string;
+}
+
 /** Customer-side calls of the "Responsável / convidado" model (migration 20261027004700). Each call is tenant-scoped on the server. */
 export const tableAccessRepository = {
+  async resolveInvite(token: string, code: string): Promise<InvitePreview | null> {
+    try {
+      const { data, error } = await supabase.rpc('resolve_table_invite', { p_qr_token: token, p_code: code });
+      if (error || !data || typeof data !== 'object') return null;
+      const d = data as Record<string, unknown>;
+      return {
+        available: d.available === true,
+        valid: d.valid === true,
+        purpose: d.purpose === 'HOLDER' ? 'HOLDER' : 'GUEST',
+        tenantSlug: typeof d.tenantSlug === 'string' ? d.tenantSlug : undefined,
+        storeName: typeof d.storeName === 'string' ? d.storeName : undefined,
+        logoUrl: typeof d.logoUrl === 'string' ? d.logoUrl : null,
+        primaryColor: typeof d.primaryColor === 'string' ? d.primaryColor : null,
+        tableLabel: typeof d.tableLabel === 'string' ? d.tableLabel : undefined,
+        responsibleName: typeof d.responsibleName === 'string' ? d.responsibleName : undefined,
+      };
+    } catch {
+      return null;
+    }
+  },
   async enterTable(token: string, name: string, device: string): Promise<TableEntry> {
     const { data, error } = await supabase.rpc('enter_table', { p_qr_token: token, p_display_name: name, p_device_id: device });
     if (error) fail(error);

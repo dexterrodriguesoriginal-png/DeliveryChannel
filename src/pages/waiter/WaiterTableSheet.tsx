@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { BellRing, Check, Clock, Crown, Plus, Receipt, UserCheck, X } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { formatBRL } from '../../lib/pricing/money';
+import { inviteUrl } from '../../lib/customer/tableAccess';
 import type { TableStatusInfo } from '../../lib/salon/tableStatus';
-import type { WaiterCallRow, WaiterRound, WaiterSession, WaiterTab, WaiterTable } from '../../repositories/salonStaffRepository';
+import type { StaffHolderCode, WaiterCallRow, WaiterRound, WaiterSession, WaiterTab, WaiterTable } from '../../repositories/salonStaffRepository';
 import { callTitle, type WaiterFeatures } from './waiterLogic';
 
 const roundStatus = (s: string) => s === 'CONFIRMED' ? 'Recebido' : s === 'PREPARING' ? 'Preparando' : s === 'READY' ? 'Pronto' : s === 'DELIVERED' ? 'Entregue' : s;
@@ -17,6 +19,8 @@ export const WaiterTableSheet: React.FC<{
   calls: WaiterCallRow[];
   rounds: WaiterRound[];
   holderSessionId: string | null | undefined;
+  holderCode?: StaffHolderCode | null;
+  tenantSlug?: string | null;
   features: WaiterFeatures;
   busy: string | null;
   message: string;
@@ -28,12 +32,18 @@ export const WaiterTableSheet: React.FC<{
   onOrder: () => void;
   onRequestBill: () => void;
   onResetHolder: () => void;
+  onChangeHolder?: () => void;
+  onReleaseEmptyTab?: (reason: string) => void;
   onTransferHolder: (sessionId: string) => void;
-}> = ({ table, tab, info, sessions, calls, rounds, holderSessionId, features, busy, message, onClose, onApprove, onReject, onHandleCall, onOpenTable, onOrder, onRequestBill, onResetHolder, onTransferHolder }) => {
+}> = ({ table, tab, info, sessions, calls, rounds, holderSessionId, holderCode, tenantSlug, features, busy, message, onClose, onApprove, onReject, onHandleCall, onOpenTable, onOrder, onRequestBill, onResetHolder, onChangeHolder, onReleaseEmptyTab, onTransferHolder }) => {
   const [confirmReject, setConfirmReject] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [releaseEmptyOpen, setReleaseEmptyOpen] = useState(false);
+  const [releaseEmptyReason, setReleaseEmptyReason] = useState('Cliente desistiu');
+  const [releaseEmptyCustomReason, setReleaseEmptyCustomReason] = useState('');
   const pending = sessions.filter(s => !s.approved_at);
   const approved = sessions.filter(s => s.approved_at);
+  const isEmptyTab = info.totalCents === 0 && rounds.length === 0;
   return (
     <div className="fixed inset-0 z-[80] flex items-end bg-slate-950/60 backdrop-blur-sm" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <section role="dialog" aria-modal="true" aria-label={table.label} data-testid="waiter-table-sheet" className="max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] bg-white text-slate-900 pb-[max(env(safe-area-inset-bottom),1rem)] shadow-2xl">
@@ -80,16 +90,39 @@ export const WaiterTableSheet: React.FC<{
               </div>
             )}
 
-            {approved.length > 0 && (
-              <div className="space-y-1">
+            {(approved.length > 0 || features.holder) && (
+              <div className="space-y-2" data-testid="waiter-sheet-holder">
                 <h3 className="text-sm font-black text-slate-700">Na mesa</h3>
-                <ul className="divide-y divide-slate-100 rounded-2xl border border-slate-200">
-                  {approved.map(s => <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm"><span className="flex items-center gap-1.5 font-semibold">{holderSessionId === s.id && <Crown className="h-4 w-4 text-amber-500" aria-label="Responsável" />}{s.display_name}</span>{holderSessionId === s.id && <span className="text-xs font-bold text-slate-500">Responsável</span>}</li>)}
-                </ul>
+                {approved.length > 0 ? (
+                  <ul className="divide-y divide-slate-100 rounded-2xl border border-slate-200">
+                    {approved.map(s => <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm"><span className="flex items-center gap-1.5 font-semibold">{holderSessionId === s.id && <Crown className="h-4 w-4 text-amber-500" aria-label="Responsável" />}{s.display_name}</span>{holderSessionId === s.id && <span className="text-xs font-bold text-slate-500">Responsável</span>}</li>)}
+                  </ul>
+                ) : (
+                  <p className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">Sem responsável (mesa travada): ninguém assume sozinho pelo QR da mesa. Use Trocar responsável na frente do cliente.</p>
+                )}
                 {features.holder && (
                   <div className="flex flex-wrap gap-2 pt-1">
-                    <button type="button" disabled={!!busy} onClick={onResetHolder} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700">Liberar responsável (celular perdido)</button>
+                    <button type="button" disabled={!!busy} onClick={onChangeHolder ?? onResetHolder} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700">Trocar responsável</button>
                     {approved.some(s => s.id !== holderSessionId) && <button type="button" disabled={!!busy} onClick={() => setTransferOpen(o => !o)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700">Passar responsável</button>}
+                  </div>
+                )}
+                {holderCode && (
+                  <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-slate-900" data-testid="waiter-holder-code">
+                    <p className="text-xs font-black uppercase tracking-wide text-amber-900">Código único para o novo responsável (5 min)</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      {holderCode.qrToken && (holderCode.tenantSlug || tenantSlug) && typeof window !== 'undefined' && (
+                        <div className="rounded-xl bg-white p-2 shadow-sm">
+                          <QRCodeSVG
+                            value={inviteUrl(window.location.origin, holderCode.tenantSlug || tenantSlug || '', holderCode.qrToken, holderCode.code)}
+                            size={108}
+                          />
+                        </div>
+                      )}
+                      <div className="space-y-1">
+                        <p className="font-mono text-2xl font-black tracking-[0.22em] text-slate-900">{holderCode.code}</p>
+                        <p className="text-xs font-semibold text-amber-950">Uso único · Expira em 5 minutos · Fica só na tela da equipe</p>
+                      </div>
+                    </div>
                   </div>
                 )}
                 {transferOpen && <div className="space-y-1" role="group" aria-label="Passar responsável para">{approved.filter(s => s.id !== holderSessionId).map(s => <button key={s.id} type="button" disabled={!!busy} onClick={() => { setTransferOpen(false); onTransferHolder(s.id); }} className="block w-full rounded-xl border border-slate-200 px-3 py-3 text-left font-semibold">{s.display_name}</button>)}</div>}
@@ -104,10 +137,64 @@ export const WaiterTableSheet: React.FC<{
 
             <div className="grid grid-cols-2 gap-2 pb-2">
               <button type="button" onClick={onOrder} className={`${btn} bg-slate-900 text-white`}><Plus className="h-4 w-4" />Lançar pedido</button>
-              {features.requestBill
-                ? <button type="button" disabled={!!busy || tab.status === 'BILL_REQUESTED'} onClick={onRequestBill} className={`${btn} border border-violet-200 bg-violet-50 text-violet-800`}><Receipt className="h-4 w-4" />{tab.status === 'BILL_REQUESTED' ? 'Conta pedida' : 'Pedir a conta'}</button>
-                : <span />}
+              {isEmptyTab && onReleaseEmptyTab ? (
+                <button
+                  type="button"
+                  data-testid="waiter-release-empty-btn"
+                  disabled={!!busy}
+                  onClick={() => setReleaseEmptyOpen(true)}
+                  className={`${btn} border border-rose-200 bg-rose-50 text-rose-800`}
+                >
+                  Liberar mesa (sem consumo)
+                </button>
+              ) : features.requestBill ? (
+                <button type="button" disabled={!!busy || tab.status === 'BILL_REQUESTED'} onClick={onRequestBill} className={`${btn} border border-violet-200 bg-violet-50 text-violet-800`}><Receipt className="h-4 w-4" />{tab.status === 'BILL_REQUESTED' ? 'Conta pedida' : 'Pedir a conta'}</button>
+              ) : <span />}
             </div>
+            {releaseEmptyOpen && onReleaseEmptyTab && (
+              <div role="alertdialog" aria-label="Liberar mesa sem consumo" data-testid="waiter-release-empty-dialog" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-slate-900">
+                <p className="font-black text-rose-900">Liberar {table.label} sem consumo?</p>
+                <p className="mt-1 text-xs text-slate-700">A comanda será encerrada como cancelada (R$ 0,00) e a mesa voltará para Livre.</p>
+                <label className="mt-3 block text-xs font-bold text-slate-700">
+                  Motivo (opcional)
+                  <select
+                    aria-label="Motivo para liberar a mesa"
+                    value={releaseEmptyReason}
+                    onChange={e => setReleaseEmptyReason(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold"
+                  >
+                    <option value="Cliente desistiu">Cliente desistiu</option>
+                    <option value="Aberta por engano">Aberta por engano</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </label>
+                {releaseEmptyReason === 'Outro' && (
+                  <input
+                    aria-label="Descreva o motivo"
+                    value={releaseEmptyCustomReason}
+                    onChange={e => setReleaseEmptyCustomReason(e.target.value)}
+                    placeholder="Descreva o motivo (opcional)"
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                  />
+                )}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setReleaseEmptyOpen(false)} className={`${btn} border border-slate-200 bg-white text-slate-700`}>Voltar</button>
+                  <button
+                    type="button"
+                    data-testid="waiter-release-empty-confirm"
+                    disabled={!!busy}
+                    onClick={() => {
+                      const finalReason = releaseEmptyReason === 'Outro' ? (releaseEmptyCustomReason.trim() || 'Outro') : releaseEmptyReason;
+                      setReleaseEmptyOpen(false);
+                      onReleaseEmptyTab(finalReason);
+                    }}
+                    className={`${btn} bg-rose-600 text-white`}
+                  >
+                    Confirmar liberação
+                  </button>
+                </div>
+              </div>
+            )}
             <p className="pb-2 text-center text-xs text-slate-400">O fechamento e o pagamento da conta são feitos no painel (Salão) pelo caixa.</p>
           </>)}
         </div>

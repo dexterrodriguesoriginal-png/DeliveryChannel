@@ -30,6 +30,14 @@ export interface SalonAccessExtras {
   claimableTabs: Set<string>;
 }
 
+export interface StaffHolderCode {
+  code: string;
+  expiresAt: string;
+  qrToken?: string;
+  tableLabel?: string;
+  tenantSlug?: string;
+}
+
 const must = <T>(result: { data: T | null; error: { message?: string } | null }): T => {
   if (result.error) throw Object.assign(new Error(result.error.message || 'Falha na operação.'), { cause: result.error });
   return (result.data ?? ([] as unknown as T));
@@ -183,6 +191,15 @@ export const salonStaffRepository = {
   async reject(sessionId: string): Promise<void> { const { error } = await supabase.rpc('reject_session', { p_session_id: sessionId }); if (error) throw error; },
   async handleCall(callId: string): Promise<void> { const { error } = await supabase.rpc('handle_waiter_call', { p_call_id: callId }); if (error) throw error; },
   async resetHolder(tabId: string): Promise<void> { const { error } = await supabase.rpc('staff_reset_tab_holder', { p_tab_id: tabId }); if (error) throw error; },
+  async createHolderCode(tabId: string): Promise<StaffHolderCode> {
+    const { data, error } = await supabase.rpc('staff_create_holder_code', { p_tab_id: tabId });
+    if (error) throw error;
+    return data as StaffHolderCode;
+  },
+  async releaseEmptyTab(tabId: string, reason?: string): Promise<void> {
+    const { error } = await supabase.rpc('release_empty_tab', { p_tab_id: tabId, p_reason: reason?.trim() || null });
+    if (error) throw error;
+  },
   async transferHolder(tabId: string, targetSessionId: string, endPrevious = true): Promise<void> {
     const { error } = await supabase.rpc('staff_transfer_tab_holder', { p_tab_id: tabId, p_target_session_id: targetSessionId, p_end_previous: endPrevious }); if (error) throw error;
   },

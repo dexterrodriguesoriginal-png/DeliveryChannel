@@ -14,7 +14,8 @@ import { dineInRoundItems, type DineInCartLine } from '../../lib/customer/dineIn
 import { deriveTableStatus, compareTables, matchesFilter, matchesSearch, statusCounts, ELAPSED_REFRESH_MS, type CallLike, type TableFilter } from '../../lib/salon/tableStatus';
 import { formatTableLabel } from '../../lib/orders/labels';
 import { mesasQrRepository, NO_CAPABILITIES, type MesasQrCapabilities } from '../../repositories/mesasQrRepository';
-import { salonStaffRepository, type SalonAccessExtras, type SalonSnapshot, type WaiterCallRow, type WaiterSession } from '../../repositories/salonStaffRepository';
+import { salonStaffRepository, type SalonAccessExtras, type SalonSnapshot, type StaffHolderCode, type WaiterCallRow, type WaiterSession } from '../../repositories/salonStaffRepository';
+import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
 import { ApprovalRow } from '../../components/establishment/salon/ApprovalsAlert';
 import { TableCard } from '../../components/establishment/salon/TableCard';
 import '../../components/establishment/salon/salon.css';
@@ -124,11 +125,43 @@ const Notice: React.FC<{ title: string; text: string; testId: string; children?:
 );
 
 export const WaiterApp: React.FC = () => {
-  const { supabaseUser, isLoadingAuth, isMembershipLoading, authState, activeTenant, activeRole, signOut } = useAuth();
+  const { supabaseUser, isLoadingAuth, isMembershipLoading, authState, activeTenant, activeRole, availableTenants = [], switchTenant, signOut } = useAuth();
   const { available, loading: modulesLoading, isModuleEnabled } = useModules();
+  const [autoSwitchingStore, setAutoSwitchingStore] = useState(false);
+  const autoTriedRef = useRef<Set<string>>(new Set());
   const signOutBtn = <button type="button" onClick={() => void signOut()} className="h-12 rounded-2xl border border-white/20 text-sm font-bold">Entrar com outra conta</button>;
 
-  if (isLoadingAuth || isMembershipLoading || authState === 'AUTHENTICATING' || authState === 'AUTHENTICATED_RESOLVING_MEMBERSHIP') {
+  // Se o usuário tem vínculo em mais de uma loja e a loja ativa está com Mesa/Comanda desligada,
+  // procura automaticamente outra loja vinculada que tenha Mesa/Comanda (dine_in) ligada.
+  useEffect(() => {
+    if (!activeTenant?.id || !available || isModuleEnabled('dine_in')) return;
+    if (!availableTenants || availableTenants.length <= 1 || typeof switchTenant !== 'function') return;
+    if (autoTriedRef.current.has(activeTenant.id)) return;
+    autoTriedRef.current.add(activeTenant.id);
+    let alive = true;
+    const candidates = availableTenants
+      .filter(t => t.tenantId !== activeTenant.id)
+      .sort((a, b) => (a.roleId === 'WAITER' ? -1 : 1) - (b.roleId === 'WAITER' ? -1 : 1));
+    void (async () => {
+      for (const candidate of candidates) {
+        try {
+          const snap = await tenantModuleRepository.getForTenant(candidate.tenantId);
+          if (!alive) return;
+          if (snap.modules.some(m => m.key === 'dine_in' && m.enabled)) {
+            setAutoSwitchingStore(true);
+            await switchTenant(candidate.tenantId);
+            if (alive) setAutoSwitchingStore(false);
+            return;
+          }
+        } catch {
+          // tenta a próxima loja
+        }
+      }
+    })();
+    return () => { alive = false; };
+  }, [activeTenant?.id, available, isModuleEnabled, availableTenants, switchTenant]);
+
+  if (isLoadingAuth || isMembershipLoading || autoSwitchingStore || authState === 'AUTHENTICATING' || authState === 'AUTHENTICATED_RESOLVING_MEMBERSHIP') {
     return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
   }
   if (!supabaseUser) return <LoginScreen />;
@@ -136,8 +169,37 @@ export const WaiterApp: React.FC = () => {
   if (!canUseWaiterApp(activeRole)) return <Notice testId="waiter-wrong-role" title="Acesso só para a equipe do salão" text="O aplicativo do Garçom é para Garçom, Caixa, Gerente e Dono.">{signOutBtn}</Notice>;
   if (modulesLoading && !available) return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
   if (available && !isModuleEnabled('dine_in')) {
-    return <Notice testId="waiter-tool-off" title="Salão desligado" text="A ferramenta Mesa/Comanda está desligada nesta loja. O dono liga em Ferramentas, no painel.">
-      <a href="/" className="grid h-12 place-items-center rounded-2xl bg-emerald-500 text-sm font-black text-slate-950">Abrir o painel</a>{signOutBtn}</Notice>;
+    return (
+      <Notice
+        testId="waiter-tool-off"
+        title="Salão desligado"
+        text={`A ferramenta Mesa/Comanda está desligada na loja ${activeTenant.name || 'atual'}. O dono liga em Ferramentas, no painel.`}
+      >
+        {availableTenants.length > 1 && typeof switchTenant === 'function' && (
+          <div className="space-y-2 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10" data-testid="waiter-store-picker">
+            <p className="text-xs font-bold uppercase tracking-wide text-emerald-300">Escolher outra loja</p>
+            {availableTenants.map(t => (
+              <button
+                key={t.tenantId}
+                type="button"
+                disabled={t.tenantId === activeTenant.id}
+                onClick={() => void switchTenant(t.tenantId)}
+                className={`flex h-12 w-full items-center justify-between rounded-xl px-3 text-sm font-black ${
+                  t.tenantId === activeTenant.id
+                    ? 'bg-white/10 text-slate-300 opacity-60'
+                    : 'bg-emerald-500 text-slate-950'
+                }`}
+              >
+                <span className="truncate">{t.tenantName || t.tenantSlug || 'Loja'}</span>
+                <span className="text-xs font-bold">{t.tenantId === activeTenant.id ? 'Atual' : 'Abrir'}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <a href="/" className="grid h-12 place-items-center rounded-2xl bg-emerald-500 text-sm font-black text-slate-950">Abrir o painel</a>
+        {signOutBtn}
+      </Notice>
+    );
   }
   return <WaiterMain tenantId={activeTenant.id} />;
 };
@@ -158,6 +220,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<TableFilter | 'ATTN'>('ALL');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [holderCode, setHolderCode] = useState<StaffHolderCode | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [toast, setToast] = useState('');
@@ -474,14 +537,28 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           calls={selectedTab ? (calls.filter(c => c.tab_id === selectedTab.id) as WaiterCallRow[]) : []}
           rounds={selectedTab ? rounds.filter(r => r.tab_id === selectedTab.id) : []}
           holderSessionId={selectedTab ? extras?.responsibleSessionByTab.get(selectedTab.id) : undefined}
-          features={features} busy={busy} message={message} onClose={() => { setSelectedId(null); setMessage(''); }}
+          holderCode={holderCode}
+          tenantSlug={activeTenant?.slug}
+          features={features} busy={busy} message={message} onClose={() => { setSelectedId(null); setHolderCode(null); setMessage(''); }}
           onApprove={id => void run(`approve-${id}`, () => salonStaffRepository.approve(id), 'Liberado.')}
           onReject={id => void run(`reject-${id}`, () => salonStaffRepository.reject(id), 'Recusado.')}
           onHandleCall={id => void run(`call-${id}`, () => salonStaffRepository.handleCall(id), 'Chamado atendido.')}
           onOpenTable={openTable}
           onOrder={() => selectedTab && void openOrder(selectedTab.id, selected.label)}
           onRequestBill={() => selectedTab && void run('bill', () => salonStaffRepository.requestBill(selectedTab.id), 'Conta pedida.')}
-          onResetHolder={() => selectedTab && void run('reset-holder', () => salonStaffRepository.resetHolder(selectedTab.id), 'Responsável liberado.')}
+          onResetHolder={() => selectedTab && void run('change-holder', async () => {
+            const created = await salonStaffRepository.createHolderCode(selectedTab.id);
+            setHolderCode(created);
+          }, 'Código gerado para o novo responsável.')}
+          onChangeHolder={() => selectedTab && void run('change-holder', async () => {
+            const created = await salonStaffRepository.createHolderCode(selectedTab.id);
+            setHolderCode(created);
+          }, 'Código gerado para o novo responsável.')}
+          onReleaseEmptyTab={reason => selectedTab && void run('release-empty', async () => {
+            await salonStaffRepository.releaseEmptyTab(selectedTab.id, reason);
+            setSelectedId(null);
+            setHolderCode(null);
+          }, 'Mesa liberada.')}
           onTransferHolder={id => selectedTab && void run('transfer-holder', () => salonStaffRepository.transferHolder(selectedTab.id, id, true), 'Responsável alterado.')}
         />
       )}

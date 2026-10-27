@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CircleUserRound, Crown, Loader2, Minus, Plus, ReceiptText, Utensils, UserRound, Users, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CircleUserRound, Crown, Loader2, Minus, Plus, ReceiptText, ShoppingBag, Utensils, UserRound, Users, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
@@ -11,13 +11,13 @@ import { productOptionRepository } from '../../repositories/productOptionReposit
 import { isModuleEnabled } from '../../lib/modules';
 import { friendlyTableError, tableAppUrl } from '../../lib/salon/tableQr';
 import { mesasQrRepository } from '../../repositories/mesasQrRepository';
-import { tableAccessRepository } from '../../repositories/tableAccessRepository';
+import { tableAccessRepository, type InvitePreview } from '../../repositories/tableAccessRepository';
 import {
-  clearPendingMesa, endedMessage, friendlyAccessError, inviteUrl, readInviteParam, rememberPendingMesa,
+  clearPendingMesa, endedMessage, friendlyAccessError, inviteUrl, readInviteParam, readPendingMesaDetails, rememberPendingMesa,
   PENDING_APPROVAL_TEXT, PENDING_APPROVAL_TITLE, PENDING_TABLE_TEXT,
   type TabInvite, type TabMember,
 } from '../../lib/customer/tableAccess';
-import { IdentityGate, InvitePanel, MembersPanel, TableInUseScreen } from '../../components/client/dinein/TableAccessPanels';
+import { ConfirmLoggedUserGate, IdentityGate, InvitePanel, InviteWelcomeScreen, MembersPanel, TableInUseScreen } from '../../components/client/dinein/TableAccessPanels';
 import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import {
@@ -26,6 +26,7 @@ import {
   dineInCartLineUnitPriceCents,
   dineInOptionLabels,
   dineInRoundItems,
+  setDineInCartLineNotes,
   type DineInCartLine,
 } from '../../lib/customer/dineInCart';
 
@@ -91,9 +92,11 @@ const paymentChoices: Array<{ value: DineInPaymentMethod; label: string }> = [
 ];
 
 export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
-  const { supabaseUser } = useAuth();
+  const { supabaseUser, signOut } = useAuth();
   const [resolution, setResolution] = useState<TableResolution | null>(null);
   const [storeName, setStoreName] = useState('');
+  const [storeLogoUrl, setStoreLogoUrl] = useState<string | null>(null);
+  const [storePrimaryColor, setStorePrimaryColor] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -121,7 +124,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [notice, setNotice] = useState('');
   const [tabClosed, setTabClosed] = useState(false);
   const [qrPaused, setQrPaused] = useState(false);
-  // Modelo de acesso (Responsável / convidado): só liga quando o banco declara capabilities v2.
+  // Modelo de acesso (Responsável / convidado): só liga quando o banco declara capabilities v2+.
   const [access, setAccess] = useState(false);
   const [entered, setEntered] = useState(false);
   const [entryDone, setEntryDone] = useState(false);
@@ -134,7 +137,20 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [invite, setInvite] = useState<TabInvite | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [membersBusy, setMembersBusy] = useState(false);
-  const inviteParamRef = useRef<string | null>(null);
+  const [identityConfirmed, setIdentityConfirmed] = useState(false);
+  const [inviteCode, setInviteCode] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const fromUrl = readInviteParam(window.location.search);
+    if (fromUrl) return fromUrl;
+    const saved = typeof localStorage !== 'undefined' ? readPendingMesaDetails(localStorage) : null;
+    return saved?.token === token && saved.inviteCode ? saved.inviteCode : null;
+  });
+  const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null);
+  const [addedToast, setAddedToast] = useState<{ name: string; quantity: number; seq: number } | null>(null);
+  const [bagBounce, setBagBounce] = useState(false);
+  const [confirmOrderOpen, setConfirmOrderOpen] = useState(false);
+  const [awaitingReleaseModalOpen, setAwaitingReleaseModalOpen] = useState(false);
+  const inviteParamRef = useRef<string | null>(inviteCode);
   const deviceIdRef = useRef('');
   const submitKeyRef = useRef(uuid());
   const submitLockRef = useRef(false);
@@ -151,7 +167,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const myRole = tab?.me?.role || entryRole;
   const approvedNow = tab?.me ? tab.me.approved : entryApproved;
   const awaitingRelease = access ? approvedNow === false : pendingApproval;
-  const orderingDisabled = qrPaused || (!access && pendingApproval) || tabClosed || tab?.status === 'BILL_REQUESTED';
+  // Parte E: Enquanto aguarda liberação, o cardápio fica visível e o cliente pode montar a sacola.
+  const orderingDisabled = qrPaused || tabClosed || tab?.status === 'BILL_REQUESTED';
   const split = useMemo(() => {
     const customCents = parseTenderCents(customShare) || 0;
     try { return billSplitAmounts(accountTotalCents, splitMode, Number(splitParts), customCents); } catch { return []; }
@@ -184,7 +201,20 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       const caps = await mesasQrRepository.capabilities();
       if (!alive) return;
       setAccess(caps.tableAccess);
-      inviteParamRef.current = caps.tableAccess ? readInviteParam(window.location.search) : null;
+      const urlInvite = caps.tableAccess ? readInviteParam(window.location.search) : null;
+      const savedPending = caps.tableAccess && typeof localStorage !== 'undefined' ? readPendingMesaDetails(localStorage) : null;
+      const resolvedInvite = urlInvite || (savedPending?.token === token ? savedPending.inviteCode || null : null);
+      inviteParamRef.current = resolvedInvite;
+      setInviteCode(resolvedInvite);
+      if (resolvedInvite && typeof tableAccessRepository.resolveInvite === 'function') {
+        void tableAccessRepository.resolveInvite(token, resolvedInvite).then(preview => {
+          if (alive && preview) {
+            setInvitePreview(preview);
+            if (preview.logoUrl) setStoreLogoUrl(preview.logoUrl);
+            if (preview.primaryColor) setStorePrimaryColor(preview.primaryColor);
+          }
+        });
+      }
       // The store can pause QR ordering. Older databases do not have this function: then it is simply "not paused".
       void Promise.resolve(supabase.rpc('get_table_qr_status', { p_qr_token: token }))
         .then(({ data: status, error: statusError }) => { if (alive && !statusError && (status as { paused?: boolean } | null)?.paused === true) setQrPaused(true); })
@@ -200,7 +230,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         const optionGroups = isModuleEnabled(enabledModules, 'addons')
           ? await productOptionRepository.getPublicForProducts(store.data.tenant.id, store.data.products.map(product => product.id))
           : new Map();
-        setStoreName(result.storeName || store.data.tenant.name);
+        setStoreName(result.storeName || store.data.theme?.storeName || store.data.tenant.name);
+        if (store.data.theme?.logoUrl) setStoreLogoUrl(store.data.theme.logoUrl);
+        if (store.data.theme?.primaryColor) setStorePrimaryColor(store.data.theme.primaryColor);
         setProducts(store.data.products
           .filter(product => product.isActive && product.isAvailable)
           .map(product => ({ ...product, optionGroups: optionGroups.get(product.id) || [] })));
@@ -217,14 +249,18 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     deviceIdRef.current = deviceId();
     try {
       const cached = sessionStorage.getItem(`${SESSION_KEY_PREFIX}${token}`);
-      if (cached) setSessionId(cached);
+      if (cached) {
+        setSessionId(cached);
+        setIdentityConfirmed(true);
+      }
     } catch { /* storage may be unavailable */ }
   }, [token]);
 
-  const displayNameForEntry = useCallback(() => {
+  const displayNameForEntry = useCallback((overrideName?: string) => {
     const meta = (supabaseUser?.user_metadata || {}) as { name?: unknown; full_name?: unknown };
     const fromAccount = typeof meta.name === 'string' ? meta.name : typeof meta.full_name === 'string' ? meta.full_name : '';
-    return guestDisplayName(firstName || fromAccount);
+    const emailPrefix = supabaseUser?.email ? supabaseUser.email.split('@')[0] : '';
+    return guestDisplayName(overrideName || firstName || fromAccount || emailPrefix);
   }, [firstName, supabaseUser]);
 
   const applyEntry = useCallback((entry: { state: string; sessionId?: string; approved?: boolean }) => {
@@ -238,6 +274,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setEndedReason(null);
     setSessionId(entry.sessionId);
     setEntered(true);
+    setInviteCode(null);
+    inviteParamRef.current = null;
     clearPendingMesa(typeof localStorage !== 'undefined' ? localStorage : null);
     try { sessionStorage.setItem(`${SESSION_KEY_PREFIX}${token}`, entry.sessionId); } catch { /* best effort */ }
     // Tira o código de convite do endereço: ele já foi usado.
@@ -247,38 +285,59 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     } catch { /* ignore */ }
   }, [token]);
 
-  const openOrJoin = useCallback(async () => {
+  const openOrJoin = useCallback(async (overrideName?: string) => {
     if (!supabaseUser || !resolution?.available || !deviceIdRef.current) return;
     if (access && supabaseUser.is_anonymous) return;
     if (openedUserRef.current === supabaseUser.id) return;
     openedUserRef.current = supabaseUser.id;
     setBusy(true);
+    setJoinBusy(true);
     setNotice('');
+    setJoinMessage('');
+    const chosenName = displayNameForEntry(overrideName);
     if (access) {
       try {
-        const entry = await tableAccessRepository.enterTable(token, displayNameForEntry(), deviceIdRef.current);
-        applyEntry(entry);
-        // Veio por link/QR de convite: tenta o código já.
-        if (entry.state === 'IN_USE' && inviteParamRef.current) {
-          const code = inviteParamRef.current; inviteParamRef.current = null;
-          const joined = await tableAccessRepository.joinWithCode(token, code, displayNameForEntry(), deviceIdRef.current);
-          if (joined.entry) applyEntry(joined.entry);
-          else if (joined.invalid) setJoinMessage('Código inválido ou expirado. Peça um novo convite a quem abriu a mesa.');
+        // Parte F (DETALHE DO BUG): Quando há convite (&convite=CODIGO), chama joinWithCode DIRETAMENTE,
+        // sem chamar enterTable antes (evitando corrida que exibia "Esta mesa já está em uso").
+        const pendingInvite = inviteParamRef.current || inviteCode;
+        if (pendingInvite) {
+          const joined = await tableAccessRepository.joinWithCode(token, pendingInvite, chosenName, deviceIdRef.current);
+          if (joined.entry) {
+            applyEntry(joined.entry);
+            return;
+          }
+          if (joined.free) {
+            inviteParamRef.current = null;
+            setInviteCode(null);
+            const entry = await tableAccessRepository.enterTable(token, chosenName, deviceIdRef.current);
+            applyEntry(entry);
+            return;
+          }
+          if (joined.invalid) {
+            openedUserRef.current = '';
+            setJoinMessage('Código inválido ou expirado. Peça um novo convite a quem abriu a mesa.');
+            return;
+          }
         }
+        const entry = await tableAccessRepository.enterTable(token, chosenName, deviceIdRef.current);
+        applyEntry(entry);
       } catch (openError) {
         openedUserRef.current = '';
         const message = errorText(openError);
         if (/QR_PAUSED/i.test(message)) setQrPaused(true);
-        setNotice(friendlyAccessError(message));
+        const friendly = friendlyAccessError(message);
+        setNotice(friendly);
+        if (inviteParamRef.current || inviteCode) setJoinMessage(friendly);
       } finally {
         setEntryDone(true);
         setBusy(false);
+        setJoinBusy(false);
       }
       return;
     }
     const { data, error: openError } = await supabase.rpc('open_or_join_tab', {
       p_qr_token: token,
-      p_display_name: guestDisplayName(firstName),
+      p_display_name: guestDisplayName(overrideName || firstName),
       p_device_id: deviceIdRef.current,
     });
     if (openError || !data?.sessionId) {
@@ -286,6 +345,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       if (/QR_PAUSED/i.test(errorText(openError))) setQrPaused(true);
       setNotice(friendlyTableError(errorText(openError)) || 'Não foi possível abrir sua comanda.');
       setBusy(false);
+      setJoinBusy(false);
       return;
     }
     const id = String(data.sessionId);
@@ -293,11 +353,18 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     try { sessionStorage.setItem(`${SESSION_KEY_PREFIX}${token}`, id); } catch { /* best effort */ }
     setNotice('');
     setBusy(false);
-  }, [access, applyEntry, displayNameForEntry, firstName, resolution?.available, supabaseUser, token]);
+    setJoinBusy(false);
+  }, [access, applyEntry, displayNameForEntry, firstName, inviteCode, resolution?.available, supabaseUser, token]);
 
+  // Parte E: Com conta já logada no aparelho, exige confirmação ("Entrar como <Nome>?") antes de entrar na mesa.
   useEffect(() => {
-    if (supabaseUser && resolution?.available && (access || !qrPaused)) void openOrJoin();
-  }, [supabaseUser, resolution?.available, qrPaused, access, openOrJoin]);
+    if (!supabaseUser || !resolution?.available) return;
+    if (access) {
+      if (!supabaseUser.is_anonymous && identityConfirmed) void openOrJoin();
+      return;
+    }
+    if (!qrPaused) void openOrJoin();
+  }, [supabaseUser, resolution?.available, qrPaused, access, identityConfirmed, openOrJoin]);
 
   const submitInviteCode = useCallback(async (code: string) => {
     if (!supabaseUser || !deviceIdRef.current) return;
@@ -313,10 +380,12 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     } finally { setJoinBusy(false); }
   }, [applyEntry, displayNameForEntry, openOrJoin, supabaseUser, token]);
 
-  // Cadastro novo: lembra a mesa para voltar a ela depois do e-mail de confirmação.
+  // Cadastro novo ou convite: lembra a mesa e o código de convite para voltar depois do e-mail de confirmação.
   useEffect(() => {
-    if (needsIdentity) rememberPendingMesa(typeof localStorage !== 'undefined' ? localStorage : null, token);
-  }, [needsIdentity, token]);
+    if (needsIdentity || inviteCode) {
+      rememberPendingMesa(typeof localStorage !== 'undefined' ? localStorage : null, token, Date.now(), inviteCode);
+    }
+  }, [needsIdentity, token, inviteCode]);
 
   const loadAccount = useCallback(async (silent = false) => {
     if (!sessionId) return;
@@ -353,16 +422,53 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   useEffect(() => {
     if (!sessionId) return;
     void loadAccount(true);
-    // Enquanto a mesa aguarda liberação, confere com mais frequência para liberar a tela assim que o garçom aprovar.
-    const interval = window.setInterval(() => void loadAccount(true), access && awaitingRelease ? 4000 : 15000);
-    return () => window.clearInterval(interval);
+    // Enquanto a mesa aguarda liberação, confere com mais frequência + escuta Realtime para liberar a tela assim que o garçom aprovar.
+    const interval = window.setInterval(() => void loadAccount(true), access && awaitingRelease ? 3000 : 15000);
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    if (typeof supabase?.channel === 'function') {
+      try {
+        channel = supabase
+          .channel(`dinein-session-${sessionId}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_sessions', filter: `id=eq.${sessionId}` }, () => { void loadAccount(true); })
+          .subscribe();
+      } catch {
+        channel = null;
+      }
+    }
+    return () => {
+      window.clearInterval(interval);
+      if (channel && typeof supabase?.removeChannel === 'function') void supabase.removeChannel(channel);
+    };
   }, [sessionId, loadAccount, access, awaitingRelease]);
+
+  useEffect(() => {
+    if (!awaitingRelease && awaitingReleaseModalOpen) {
+      setAwaitingReleaseModalOpen(false);
+    }
+  }, [awaitingRelease, awaitingReleaseModalOpen]);
 
   useEffect(() => {
     if (!access || !sessionId || approvedNow !== false || pingedRef.current === sessionId) return;
     pingedRef.current = sessionId;
     void tableAccessRepository.pingPending(sessionId);
   }, [access, sessionId, approvedNow]);
+
+  useEffect(() => {
+    if (!addedToast) return;
+    const t = window.setTimeout(() => setAddedToast(null), 2600);
+    return () => window.clearTimeout(t);
+  }, [addedToast]);
+
+  useEffect(() => {
+    if (!bagBounce) return;
+    const t = window.setTimeout(() => setBagBounce(false), 500);
+    return () => window.clearTimeout(t);
+  }, [bagBounce]);
+
+  const triggerAddedFeedback = useCallback((productName: string, quantity = 1) => {
+    setAddedToast(prev => ({ name: productName, quantity, seq: (prev?.seq || 0) + 1 }));
+    setBagBounce(true);
+  }, []);
 
   const submitRound = useCallback(async () => {
     if (!sessionId || cart.length === 0 || submitLockRef.current || tabClosed) return;
@@ -381,10 +487,12 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     if (submitError) {
       const message = errorText(submitError);
       if (/SESSION_NOT_APPROVED/i.test(message)) {
+        setConfirmOrderOpen(false);
         setPendingApproval(true);
-        setNotice(`${PENDING_APPROVAL_TITLE}. ${PENDING_APPROVAL_TEXT}`);
+        setAwaitingReleaseModalOpen(true);
         if (access) { setEntryApproved(false); void tableAccessRepository.pingPending(sessionId); }
       } else if (/TAB_CLOSED/i.test(message)) {
+        setConfirmOrderOpen(false);
         setTabClosed(true);
         setNotice('Conta encerrada. Para pedir de novo, chame o garçom.');
       } else {
@@ -394,7 +502,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
     if (data) {
+      setConfirmOrderOpen(false);
       setPendingApproval(false);
+      setAwaitingReleaseModalOpen(false);
       if (access) setEntryApproved(true);
       setCart([]);
       submitKeyRef.current = uuid();
@@ -409,6 +519,16 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     return () => window.clearInterval(retry);
   }, [pendingApproval, submitRound, tabClosed]);
 
+  const handleRequestOrder = () => {
+    if (cart.length === 0 || orderingDisabled || busy) return;
+    if (awaitingRelease) {
+      setAwaitingReleaseModalOpen(true);
+      if (sessionId) void tableAccessRepository.pingPending(sessionId);
+      return;
+    }
+    setConfirmOrderOpen(true);
+  };
+
   const addItem = (product: Product) => {
     if (product.optionGroups?.some(group => group.active)) {
       setOptionsProduct(product);
@@ -416,6 +536,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
     setCart(current => addDineInCartLine(current, product));
+    triggerAddedFeedback(product.name, 1);
   };
   const addConfiguredItem = () => {
     if (!optionsProduct) return;
@@ -425,17 +546,46 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       setNotice(validation.messages[0] || 'Confira os adicionais selecionados.');
       return;
     }
+    const addedName = optionsProduct.name;
     setCart(current => addDineInCartLine(current, optionsProduct, optionChoices));
     setOptionsProduct(null);
     setOptionChoices([]);
     setNotice('');
+    triggerAddedFeedback(addedName, 1);
   };
-  const changeQuantity = (productId: string, delta: number) => setCart(current => {
-    const line = [...current].reverse().find(item => item.product.id === productId);
-    return line ? changeDineInCartLineQuantity(current, line.key, delta) : current;
-  });
-  const changeLineQuantity = (key: string, delta: number) =>
+  const changeQuantity = (productId: string, delta: number) => {
+    if (delta > 0) {
+      const p = products.find(item => item.id === productId);
+      if (p) triggerAddedFeedback(p.name, delta);
+    }
+    setCart(current => {
+      const line = [...current].reverse().find(item => item.product.id === productId);
+      return line ? changeDineInCartLineQuantity(current, line.key, delta) : current;
+    });
+  };
+  const changeLineQuantity = (key: string, delta: number) => {
+    if (delta > 0) {
+      const line = cart.find(item => item.key === key);
+      if (line) triggerAddedFeedback(line.product.name, delta);
+    }
     setCart(current => changeDineInCartLineQuantity(current, key, delta));
+  };
+  const changeLineNotes = (key: string, lineNotes: string) =>
+    setCart(current => setDineInCartLineNotes(current, key, lineNotes));
+
+  const handleSwitchAccount = async () => {
+    try { sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${token}`); } catch { /* ignore */ }
+    setSessionId('');
+    setEntered(false);
+    setIdentityConfirmed(false);
+    openedUserRef.current = '';
+    try {
+      if (typeof signOut === 'function') await signOut();
+      else await supabase.auth.signOut();
+    } catch {
+      // ignore
+    }
+  };
 
   const enterAsGuest = async () => {
     const name = guestDisplayName(firstName);
@@ -551,6 +701,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const unavailable = !loading && (!resolution?.available || Boolean(error));
   const totalCartCents = cart.reduce((sum, line) => sum + dineInCartLineUnitPriceCents(line) * line.quantity, 0);
   const totalCart = totalCartCents / 100;
+  const totalCartItems = cart.reduce((sum, line) => sum + line.quantity, 0);
+  const customerDisplayName = tab?.me?.displayName || displayNameForEntry();
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-700"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Carregando mesa e cardápio…</div>;
   if (unavailable) {
@@ -561,7 +713,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     return <main className="min-h-screen grid place-items-center bg-slate-50 p-6" data-testid="dine-in-paused"><section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl"><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><h1 className="text-xl font-black">Pedidos pelo QR pausados</h1><p className="mt-2 text-sm text-slate-600">{storeName || 'O estabelecimento'} pausou os pedidos pelo celular por enquanto. Chame um atendente para pedir.</p></section></main>;
   }
 
-  const tableName = mesaTitle(resolution?.tableLabel);
+  const tableName = mesaTitle(invitePreview?.tableLabel || resolution?.tableLabel);
+  const displayStoreName = invitePreview?.storeName || storeName || resolution?.storeName || '';
   if (access && endedReason && !sessionId) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-8" data-testid="dine-in-ended">
@@ -569,8 +722,46 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           <AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" />
           <h1 className="text-xl font-black">{tableName}</h1>
           <p className="mt-2 text-sm text-slate-600">{endedMessage(endedReason)}</p>
-          <button type="button" onClick={() => { setEndedReason(null); setInUse(false); setEntryDone(false); openedUserRef.current = ''; void openOrJoin(); }} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">Entrar na mesa de novo</button>
+          <button type="button" onClick={() => { setEndedReason(null); setInUse(false); setEntryDone(false); openedUserRef.current = ''; setIdentityConfirmed(true); void openOrJoin(); }} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">Entrar na mesa de novo</button>
         </section>
+      </main>
+    );
+  }
+  // Parte F: Quem abriu um link de convite (&convite=CODIGO) vai DIRETO para a tela de boas-vindas da loja,
+  // nunca vendo "Esta mesa já está em uso".
+  if (access && inviteCode && !sessionId && !inUse) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-8">
+        <InviteWelcomeScreen
+          storeName={displayStoreName}
+          tableLabel={tableName}
+          responsibleName={invitePreview?.responsibleName || 'Responsável'}
+          inviteCode={inviteCode}
+          logoUrl={invitePreview?.logoUrl ?? storeLogoUrl}
+          primaryColor={invitePreview?.primaryColor ?? storePrimaryColor}
+          identifiedUser={!needsIdentity}
+          loggedUserName={displayNameForEntry()}
+          loggedUserEmail={supabaseUser?.email}
+          busy={joinBusy || busy}
+          message={joinMessage || notice}
+          onJoinLoggedUser={() => {
+            openedUserRef.current = '';
+            setIdentityConfirmed(true);
+            void openOrJoin();
+          }}
+          onSwitchAccount={() => void handleSwitchAccount()}
+          onGoogle={() => void loginWithGoogle(false)}
+          onSignedUp={info => {
+            if (info.name) setFirstName(guestDisplayName(info.name));
+            if (!info.requiresEmailConfirmation) setIdentityConfirmed(true);
+          }}
+          onAuthenticated={name => {
+            const cleanName = name ? guestDisplayName(name) : undefined;
+            if (cleanName) setFirstName(cleanName);
+            openedUserRef.current = '';
+            setIdentityConfirmed(true);
+          }}
+        />
       </main>
     );
   }
@@ -578,21 +769,51 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-8">
         <IdentityGate
-          storeName={storeName || resolution?.storeName || ''}
+          storeName={displayStoreName}
           tableLabel={tableName}
           initialName={firstName}
           intro="A primeira pessoa a abrir a mesa fica como responsável. Pedimos seus dados para a loja saber quem está na mesa."
           onGoogle={() => void loginWithGoogle(false)}
-          onSignedUp={info => { if (info.name) setFirstName(guestDisplayName(info.name)); }}
+          onSignedUp={info => {
+            if (info.name) setFirstName(guestDisplayName(info.name));
+            if (!info.requiresEmailConfirmation) setIdentityConfirmed(true);
+          }}
+          onAuthenticated={name => {
+            if (name) setFirstName(guestDisplayName(name));
+            openedUserRef.current = '';
+            setIdentityConfirmed(true);
+          }}
         />
         {notice && <p role="alert" className="mx-auto mt-4 max-w-md rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
+      </main>
+    );
+  }
+  // Parte E: Com conta já logada no aparelho, mostra sempre "Entrar como <Nome>?" antes de entrar sozinho.
+  if (access && !sessionId && !identityConfirmed) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-8">
+        <ConfirmLoggedUserGate
+          storeName={displayStoreName}
+          tableLabel={tableName}
+          userName={displayNameForEntry()}
+          userEmail={supabaseUser?.email}
+          logoUrl={storeLogoUrl}
+          primaryColor={storePrimaryColor}
+          busy={busy}
+          message={notice}
+          onConfirm={() => {
+            openedUserRef.current = '';
+            setIdentityConfirmed(true);
+          }}
+          onSwitchAccount={() => void handleSwitchAccount()}
+        />
       </main>
     );
   }
   if (access && inUse && !sessionId) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-8">
-        <TableInUseScreen storeName={storeName || resolution?.storeName || ''} tableLabel={tableName} busy={joinBusy} message={joinMessage} onSubmitCode={code => void submitInviteCode(code)} />
+        <TableInUseScreen storeName={displayStoreName} tableLabel={tableName} busy={joinBusy} message={joinMessage} onSubmitCode={code => void submitInviteCode(code)} />
       </main>
     );
   }
@@ -640,12 +861,40 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   return (
     <main className="min-h-screen bg-slate-50 pb-28">
       <header className="sticky top-0 z-20 border-b bg-white/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center justify-between">
+        <div className="mx-auto flex max-w-2xl items-center justify-between gap-2">
           <div><p className="font-extrabold">Você está na {mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {storeName}</p>{access && myRole && <p data-testid="role-chip" className="mt-0.5 flex items-center gap-1 text-xs font-bold text-slate-500">{myRole === 'RESPONSIBLE' ? <><Crown className="h-3.5 w-3.5 text-amber-500" />Você é o responsável pela mesa</> : <>Convidado{tab?.responsibleName ? ` de ${tab.responsibleName}` : ''}</>}</p>}</div>
-          <button type="button" onClick={() => { setAccountOpen(true); void loadAccount(); }} aria-label="Ver minha conta" className="rounded-full bg-slate-100 p-2"><CircleUserRound className="h-6 w-6" /></button>
+          <div className="flex items-center gap-2">
+            <div
+              data-testid="dinein-bag-counter"
+              aria-label={`Sacola com ${totalCartItems} ${totalCartItems === 1 ? 'item' : 'itens'}`}
+              className={`relative flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-900 transition-transform duration-300 ${bagBounce ? 'scale-110 ring-2 ring-emerald-500 animate-bounce' : 'scale-100'}`}
+            >
+              <ShoppingBag className="h-4 w-4 text-emerald-700" />
+              <span>{totalCartItems}</span>
+            </div>
+            <button type="button" onClick={() => { setAccountOpen(true); void loadAccount(); }} aria-label="Ver minha conta" className="rounded-full bg-slate-100 p-2"><CircleUserRound className="h-6 w-6" /></button>
+          </div>
         </div>
       </header>
-      {access && awaitingRelease && !qrPaused && <div role="status" data-testid="awaiting-release" className="mx-auto mt-3 max-w-2xl rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-extrabold">{PENDING_APPROVAL_TITLE}</p><p>{cart.length ? PENDING_APPROVAL_TEXT : PENDING_TABLE_TEXT}</p></div>}
+      {addedToast && (
+        <div
+          aria-live="polite"
+          data-testid="added-to-bag-toast"
+          className="fixed inset-x-4 top-16 z-40 mx-auto flex max-w-sm items-center gap-2.5 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-xl transition-all"
+        >
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+          <span className="truncate">Adicionado à sacola · {addedToast.quantity}× {addedToast.name}</span>
+        </div>
+      )}
+      {awaitingRelease && !qrPaused && (
+        <div role="status" data-testid="awaiting-release" className="mx-auto mt-3 flex max-w-2xl items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+          <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-amber-700" />
+          <div>
+            <p className="font-extrabold">Aguarde a liberação da mesa · {PENDING_APPROVAL_TITLE}</p>
+            <p>{cart.length ? PENDING_APPROVAL_TEXT : PENDING_TABLE_TEXT}</p>
+          </div>
+        </div>
+      )}
       {qrPaused && <div role="status" className="mx-auto mt-3 max-w-2xl rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Pedidos pelo QR pausados no momento. Chame um atendente para pedir.</div>}
 
       <section className="mx-auto max-w-2xl px-4 py-5">
@@ -666,24 +915,112 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           <h2 className="font-extrabold">Sua rodada</h2>
           {cart.map(line => {
             const optionLabels = dineInOptionLabels(line.product, line.options);
-            return <div key={line.key} className="flex items-start justify-between gap-3 border-b border-slate-100 py-2 text-sm">
-              <div className="min-w-0">
-                <p className="font-semibold">{line.quantity}× {line.product.name}</p>
-                {optionLabels.map(label => <p key={label} className="text-xs text-slate-500">{label}</p>)}
-                <p className="text-xs text-slate-500">{formatBRL(dineInCartLineUnitPriceCents(line) / 100)} cada</p>
+            return <div key={line.key} className="border-b border-slate-100 py-2 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">{line.quantity}× {line.product.name}</p>
+                  {optionLabels.map(label => <p key={label} className="text-xs text-slate-500">{label}</p>)}
+                  {line.notes && <p className="text-xs italic text-slate-600">Obs.: {line.notes}</p>}
+                  <p className="text-xs text-slate-500">{formatBRL(dineInCartLineUnitPriceCents(line) / 100)} cada</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button type="button" aria-label={`Remover uma unidade de ${line.product.name}`} onClick={() => changeLineQuantity(line.key, -1)} disabled={orderingDisabled || busy} className="rounded-full bg-slate-100 p-1.5 disabled:opacity-40"><Minus className="h-3.5 w-3.5" /></button>
+                  <span>{formatBRL(dineInCartLineUnitPriceCents(line) * line.quantity / 100)}</span>
+                  <button type="button" aria-label={`Adicionar uma unidade de ${line.product.name}`} onClick={() => changeLineQuantity(line.key, 1)} disabled={orderingDisabled || busy} className="rounded-full bg-slate-100 p-1.5 disabled:opacity-40"><Plus className="h-3.5 w-3.5" /></button>
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button type="button" aria-label={`Remover uma unidade de ${line.product.name}`} onClick={() => changeLineQuantity(line.key, -1)} disabled={orderingDisabled || busy} className="rounded-full bg-slate-100 p-1.5 disabled:opacity-40"><Minus className="h-3.5 w-3.5" /></button>
-                <span>{formatBRL(dineInCartLineUnitPriceCents(line) * line.quantity / 100)}</span>
-                <button type="button" aria-label={`Adicionar uma unidade de ${line.product.name}`} onClick={() => changeLineQuantity(line.key, 1)} disabled={orderingDisabled || busy} className="rounded-full bg-slate-100 p-1.5 disabled:opacity-40"><Plus className="h-3.5 w-3.5" /></button>
-              </div>
+              <input
+                type="text"
+                aria-label={`Observação de ${line.product.name}`}
+                value={line.notes || ''}
+                onChange={e => changeLineNotes(line.key, e.target.value)}
+                placeholder="Alguma observação? (ex.: sem gelo, bem passado)"
+                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-emerald-600"
+              />
             </div>;
           })}
           <div className="flex justify-between border-t pt-3 font-bold"><span>Subtotal estimado</span><span>{formatBRL(totalCart)}</span></div>
-          <button type="button" onClick={() => void submitRound()} disabled={busy || orderingDisabled} className="mt-3 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Fazer pedido'}</button>
-          {pendingApproval && <p className="mt-2 text-xs font-semibold text-amber-800">{PENDING_APPROVAL_TITLE}. {PENDING_APPROVAL_TEXT}</p>}
+          <button type="button" onClick={handleRequestOrder} disabled={busy || orderingDisabled} className="mt-3 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Fazer pedido'}</button>
+          {(pendingApproval || awaitingRelease) && <p className="mt-2 text-xs font-semibold text-amber-800">Aguarde a liberação da mesa. {PENDING_APPROVAL_TITLE}. {PENDING_APPROVAL_TEXT}</p>}
           {tab?.status === 'BILL_REQUESTED' && <p className="mt-2 text-xs font-semibold text-amber-800">A conta já foi solicitada. Chame o garçom se precisar reabrir a comanda.</p>}
         </section>}
+        {awaitingReleaseModalOpen && awaitingRelease && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setAwaitingReleaseModalOpen(false); }}>
+            <section role="dialog" aria-modal="true" aria-label="Aguarde a liberação da mesa" data-testid="awaiting-release-modal" className="w-full max-w-md rounded-3xl bg-white p-6 text-center shadow-2xl">
+              <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full bg-amber-100 text-amber-700">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+              <h2 className="text-xl font-black text-slate-900">Aguarde a liberação da mesa</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                O garçom já foi chamado para liberar a <b>{mesaTitle(tab?.tableLabel || resolution?.tableLabel)}</b>. Assim que ele aprovar, este aviso some sozinho e você poderá confirmar seu pedido.
+              </p>
+              <button
+                type="button"
+                onClick={() => setAwaitingReleaseModalOpen(false)}
+                className="mt-5 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700"
+              >
+                Continuar olhando o cardápio
+              </button>
+            </section>
+          </div>
+        )}
+        {confirmOrderOpen && cart.length > 0 && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget && !busy) setConfirmOrderOpen(false); }}>
+            <section role="dialog" aria-modal="true" aria-label="Confirmar pedido na mesa" data-testid="confirm-order-modal" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-extrabold uppercase tracking-wide text-emerald-700" data-testid="confirm-order-identity">
+                    {mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {customerDisplayName}
+                  </p>
+                  <h2 className="text-xl font-black text-slate-900">Confira seu pedido</h2>
+                </div>
+                <button type="button" disabled={busy} onClick={() => setConfirmOrderOpen(false)} aria-label="Fechar confirmação"><X className="h-5 w-5" /></button>
+              </div>
+              <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2">
+                {cart.map(line => {
+                  const unitCents = dineInCartLineUnitPriceCents(line);
+                  const lineTotalCents = unitCents * line.quantity;
+                  const optionLabels = dineInOptionLabels(line.product, line.options);
+                  return (
+                    <div key={line.key} className="py-2.5 text-sm">
+                      <div className="flex items-start justify-between gap-2 font-bold text-slate-900">
+                        <span>{line.quantity}× {line.product.name}</span>
+                        <span>{formatBRL(lineTotalCents / 100)}</span>
+                      </div>
+                      <p className="text-xs text-slate-500">Valor unitário: {formatBRL(unitCents / 100)}</p>
+                      {optionLabels.map(label => <p key={label} className="text-xs text-slate-600">{label}</p>)}
+                      {line.notes?.trim() && <p className="mt-0.5 text-xs font-semibold text-amber-900">Obs.: {line.notes.trim()}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3 text-base font-black text-slate-900">
+                <span>Total desta rodada</span>
+                <span>{formatBRL(totalCart)}</span>
+              </div>
+              <div className="mt-4 space-y-2">
+                <button
+                  type="button"
+                  data-testid="confirm-order-submit"
+                  disabled={busy || submitLockRef.current}
+                  onClick={() => void submitRound()}
+                  className="w-full rounded-xl bg-emerald-700 px-4 py-3.5 text-base font-black text-white disabled:opacity-50"
+                >
+                  {busy ? 'Enviando pedido…' : 'Confirmar pedido na mesa'}
+                </button>
+                <button
+                  type="button"
+                  data-testid="confirm-order-cancel"
+                  disabled={busy}
+                  onClick={() => setConfirmOrderOpen(false)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 disabled:opacity-50"
+                >
+                  Voltar e editar
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
         {optionsProduct && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOptionsProduct(null); }}>
           <section role="dialog" aria-modal="true" aria-label={`Personalizar ${optionsProduct.name}`} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5">
             <div className="mb-4 flex items-start justify-between gap-3">

@@ -48,14 +48,29 @@ export const tenantModuleRepository = {
     if (tenantResult.error) throw toBackendError(tenantResult.error, 'Falha ao carregar o segmento do estabelecimento.');
     const validTypes = new Set<string>(BUSINESS_TYPES.map(type => type.key));
     const rows = moduleResult.data || [];
-    return {
-      available: true,
-      // No rows yet: keep the legacy feature set on (same rule as the database guard).
-      modules: rows.length === 0 ? legacySnapshot().modules : rows.map(row => ({
+    let modules: TenantModule[];
+    if (rows.length === 0) {
+      let publicKeys: ReadonlySet<ModuleKey> | null = null;
+      try {
+        if (typeof supabase.rpc === 'function') {
+          publicKeys = await this.getPublicEnabled(tenantId);
+        }
+      } catch {
+        publicKeys = null;
+      }
+      modules = publicKeys && publicKeys.size > 0
+        ? Array.from(publicKeys).map(key => ({ key, enabled: true, config: {} }))
+        : legacySnapshot().modules;
+    } else {
+      modules = rows.map(row => ({
         key: row.module_key as ModuleKey,
         enabled: Boolean(row.enabled),
         config: row.config && typeof row.config === 'object' ? row.config as Record<string, unknown> : {},
-      })),
+      }));
+    }
+    return {
+      available: true,
+      modules,
       businessType: validTypes.has(tenantResult.data?.business_type || '')
         ? tenantResult.data?.business_type as BusinessType
         : null,

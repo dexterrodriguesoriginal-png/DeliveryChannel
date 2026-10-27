@@ -15,7 +15,7 @@ for file in supabase/migrations/202609*.sql; do apply "$file" "${file##*/}"; don
 psql -X -q -v ON_ERROR_STOP=1 -f supabase/tests/n1n6/sql/01_legacy_data.sql >/dev/null
 for file in supabase/migrations/202610*.sql; do
   name=${file##*/}
-  case "$name" in 20261026004500_*|20261027004700_*) continue ;; 20261027004600_*) [ "${INCLUDE_4600:-0}" = 1 ] || continue ;; esac   # driver_ride_offers is unrelated and has its own suite
+  case "$name" in 20261026004500_*|20261027004700_*|20261027004800_*) continue ;; 20261027004600_*) [ "${INCLUDE_4600:-0}" = 1 ] || continue ;; esac   # driver_ride_offers is unrelated and has its own suite
   [ "$name" = '20261014000800_revoke_excess_table_privileges.sql' ] && psql -X -q -v ON_ERROR_STOP=1 -c 'GRANT ALL ON public.drivers,public.team_invites,public.tenant_users TO postgres'
   apply "$file" "$name"
 done

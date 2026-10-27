@@ -23,7 +23,9 @@ import { TableCard } from '../../components/establishment/salon/TableCard';
 import { SalonSidebar, SidebarTab } from '../../components/establishment/salon/SalonSidebar';
 import { TabPixPanel } from '../../components/establishment/salon/TabPixPanel';
 import { FOCUS_TABLE_KEY } from '../../components/establishment/salon/ApprovalsAlert';
-import { salonStaffRepository, type SalonAccessExtras } from '../../repositories/salonStaffRepository';
+import { salonStaffRepository, type SalonAccessExtras, type StaffHolderCode } from '../../repositories/salonStaffRepository';
+import { QRCodeSVG } from 'qrcode.react';
+import { inviteUrl } from '../../lib/customer/tableAccess';
 import '../../components/establishment/salon/salon.css';
 
 type DiningTable = { id: string; label: string; area: string | null; seats: number; active: boolean };
@@ -111,6 +113,10 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const [access, setAccess] = useState<SalonAccessExtras | null>(null);
   const [confirmReject, setConfirmReject] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [holderCode, setHolderCode] = useState<StaffHolderCode | null>(null);
+  const [releaseEmptyOpen, setReleaseEmptyOpen] = useState(false);
+  const [releaseEmptyReason, setReleaseEmptyReason] = useState('Cliente desistiu');
+  const [releaseEmptyCustomReason, setReleaseEmptyCustomReason] = useState('');
 
   const resolvedTableId = useMemo(() => {
     if (!selectedTableId) return null;
@@ -323,6 +329,11 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     setOptionChoices([]);
   }, [productId]);
 
+  useEffect(() => {
+    setHolderCode(null);
+    setReleaseEmptyOpen(false);
+  }, [selectedTableId]);
+
   // Responsável pela mesa (só com o modelo de acesso novo; antes dele nada disso existe no banco).
   useEffect(() => {
     if (!activeTenant?.id || !enabled || !caps.tableAccess || !tabs.length) { setAccess(null); return; }
@@ -363,7 +374,24 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     await salonStaffRepository.reject(sessionId);
     setConfirmReject(null);
   });
-  const resetHolder = () => { if (selectedTab) void run('reset-holder', () => salonStaffRepository.resetHolder(selectedTab.id)); };
+  const changeHolder = () => {
+    if (!selectedTab) return;
+    void run('change-holder', async () => {
+      const created = await salonStaffRepository.createHolderCode(selectedTab.id);
+      setHolderCode(created);
+    });
+  };
+  const releaseEmptyTab = () => {
+    if (!selectedTab) return;
+    const reason = releaseEmptyReason === 'Outro'
+      ? (releaseEmptyCustomReason.trim() || 'Outro')
+      : releaseEmptyReason;
+    void run('release-empty', async () => {
+      await salonStaffRepository.releaseEmptyTab(selectedTab.id, reason);
+      setReleaseEmptyOpen(false);
+      setSelectedTableId(null);
+    });
+  };
   const transferHolder = (sessionId: string) => {
     if (!selectedTab) return;
     void run('transfer-holder', async () => { await salonStaffRepository.transferHolder(selectedTab.id, sessionId, true); setTransferOpen(false); });
@@ -581,11 +609,43 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
               {activeSessions.length === 0 && <p className="text-sm text-gray-500">Sem sessões ativas.</p>}
               {caps.tableAccess && access && <div className="rounded-xl bg-slate-50 p-3 text-sm" data-testid="salon-holder">
                 <p className="font-bold">Responsável pela mesa</p>
-                <p className="text-xs text-gray-600">{access.responsibleSessionByTab.get(selectedTab.id) ? (activeSessions.find(item => item.id === access.responsibleSessionByTab.get(selectedTab.id))?.display_name || 'Cliente') : access.claimableTabs.has(selectedTab.id) ? 'Sem responsável: o próximo cliente que ler o QR assume a mesa.' : 'Mesa aberta pela equipe: o cliente entra com convite ou você passa o responsável.'}</p>
+                <p className="text-xs text-gray-600">
+                  {access.responsibleSessionByTab.get(selectedTab.id)
+                    ? (activeSessions.find(item => item.id === access.responsibleSessionByTab.get(selectedTab.id))?.display_name || 'Cliente')
+                    : 'Sem responsável (mesa travada): ninguém assume sozinho pelo QR da mesa. Use Trocar responsável na frente do cliente.'}
+                </p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {(access.responsibleSessionByTab.get(selectedTab.id) || !access.claimableTabs.has(selectedTab.id)) && <button type="button" disabled={!!busy} onClick={resetHolder} className="rounded-lg border bg-white px-3 py-2 font-bold" title="Para quando o responsável perdeu o celular: a mesa fica livre para o próximo QR.">Liberar responsável (celular perdido)</button>}
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    onClick={changeHolder}
+                    className="rounded-lg border bg-white px-3 py-2 font-bold"
+                    title="Gera um QR ou código de 6 caracteres de uso único (expira em 5 min) para o cliente assumir na frente do garçom."
+                  >
+                    Trocar responsável
+                  </button>
                   {activeSessions.some(item => item.approved_at && item.id !== access.responsibleSessionByTab.get(selectedTab.id)) && <button type="button" disabled={!!busy} onClick={() => setTransferOpen(open => !open)} className="rounded-lg border bg-white px-3 py-2 font-bold">Passar responsável</button>}
                 </div>
+                {holderCode && (
+                  <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-slate-900" data-testid="salon-holder-code">
+                    <p className="text-xs font-black uppercase tracking-wide text-amber-900">Código único para o novo responsável (5 min)</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      {holderCode.qrToken && (holderCode.tenantSlug || activeTenant?.slug) && typeof window !== 'undefined' && (
+                        <div className="rounded-xl bg-white p-2 shadow-sm">
+                          <QRCodeSVG
+                            value={inviteUrl(window.location.origin, holderCode.tenantSlug || activeTenant?.slug || '', holderCode.qrToken, holderCode.code)}
+                            size={108}
+                          />
+                        </div>
+                      )}
+                      <div className="space-y-1">
+                        <p className="font-mono text-2xl font-black tracking-[0.22em] text-slate-900">{holderCode.code}</p>
+                        <p className="text-xs font-semibold text-amber-950">Uso único · Expira em 5 minutos · Fica somente na tela da equipe</p>
+                        <p className="text-xs text-slate-700">Mostre na frente do cliente para ele ler este QR ou digitar em &ldquo;Fui convidado&rdquo;.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {transferOpen && <div className="mt-2 space-y-1" role="group" aria-label="Passar responsável para">{activeSessions.filter(item => item.approved_at && item.id !== access.responsibleSessionByTab.get(selectedTab.id)).map(item => <button key={item.id} type="button" disabled={!!busy} onClick={() => transferHolder(item.id)} className="block w-full rounded-lg border bg-white px-3 py-2 text-left font-semibold">{item.display_name}</button>)}</div>}
               </div>}
             </div>
@@ -635,11 +695,80 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
               >
                 <Plus className="h-4 w-4" />Lançar pedido
               </button>
-              {canClose && <button type="button" disabled={totalCents <= 0} onClick={() => {
-                setPayments([{ method: 'CAIXA', amount: (totalCents / 100).toFixed(2), tendered: '' }]);
-                setCloseOpen(true);
-              }} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white"><Receipt className="h-4 w-4" />Fechar conta</button>}
+              {totalCents === 0 && activeRounds.length === 0 ? (
+                <button
+                  type="button"
+                  data-testid="salon-release-empty-btn"
+                  disabled={!!busy}
+                  onClick={() => setReleaseEmptyOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 font-bold text-rose-800"
+                >
+                  Liberar mesa (sem consumo)
+                </button>
+              ) : canClose ? (
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={() => {
+                    if (totalCents <= 0) {
+                      setMessage('Não há valor pendente para cobrar nesta comanda.');
+                      return;
+                    }
+                    setPayments([{ method: 'CAIXA', amount: (totalCents / 100).toFixed(2), tendered: '' }]);
+                    setCloseOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white"
+                >
+                  <Receipt className="h-4 w-4" />Fechar conta
+                </button>
+              ) : null}
             </div>
+            {releaseEmptyOpen && (
+              <div role="alertdialog" aria-label="Liberar mesa sem consumo" data-testid="salon-release-empty-dialog" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-slate-900">
+                <p className="font-black text-rose-900">Liberar {selectedTable.label} sem consumo?</p>
+                <p className="mt-1 text-xs text-slate-700">A comanda será encerrada como cancelada (R$ 0,00), as sessões ativas serão encerradas e a mesa voltará para Livre.</p>
+                <label className="mt-3 block text-xs font-bold text-slate-700">
+                  Motivo (opcional)
+                  <select
+                    aria-label="Motivo para liberar a mesa"
+                    value={releaseEmptyReason}
+                    onChange={event => setReleaseEmptyReason(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold"
+                  >
+                    <option value="Cliente desistiu">Cliente desistiu</option>
+                    <option value="Aberta por engano">Aberta por engano</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </label>
+                {releaseEmptyReason === 'Outro' && (
+                  <input
+                    aria-label="Descreva o motivo"
+                    value={releaseEmptyCustomReason}
+                    onChange={event => setReleaseEmptyCustomReason(event.target.value)}
+                    placeholder="Descreva o motivo (opcional)"
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  />
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    data-testid="salon-release-empty-confirm"
+                    disabled={!!busy}
+                    onClick={releaseEmptyTab}
+                    className="rounded-lg bg-rose-600 px-4 py-2 font-bold text-white disabled:opacity-50"
+                  >
+                    Confirmar liberação
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReleaseEmptyOpen(false)}
+                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 font-bold text-slate-700"
+                  >
+                    Voltar
+                  </button>
+                </div>
+              </div>
+            )}
           </>}
         </section>
       </div>}

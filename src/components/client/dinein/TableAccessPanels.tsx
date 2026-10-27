@@ -21,8 +21,11 @@ export const IdentityGate: React.FC<{
   intro: string;
   onGoogle: () => void;
   onSignedUp: (info: { requiresEmailConfirmation: boolean; name: string }) => void;
+  onAuthenticated?: (name?: string) => void;
   initialName?: string;
-}> = ({ storeName, tableLabel, intro, onGoogle, onSignedUp, initialName }) => {
+  submitSignupLabel?: string;
+  submitLoginLabel?: string;
+}> = ({ storeName, tableLabel, intro, onGoogle, onSignedUp, onAuthenticated, initialName, submitSignupLabel, submitLoginLabel }) => {
   const { signInWithPassword, signUp } = useAuth();
   const [mode, setMode] = useState<'signup' | 'login'>('signup');
   const [name, setName] = useState(initialName || '');
@@ -41,7 +44,11 @@ export const IdentityGate: React.FC<{
     try {
       if (mode === 'login') {
         const res = await signInWithPassword(email.trim(), password);
-        if (!res.success) setMessage(res.code === 'EMAIL_NOT_CONFIRMED' ? 'Confirme seu e-mail pelo link que enviamos e depois entre aqui.' : (res.error || 'E-mail ou senha incorretos.'));
+        if (!res.success) {
+          setMessage(res.code === 'EMAIL_NOT_CONFIRMED' ? 'Confirme seu e-mail pelo link que enviamos e depois entre aqui.' : (res.error || 'E-mail ou senha incorretos.'));
+        } else {
+          onAuthenticated?.();
+        }
         return;
       }
       if (name.trim().length < 2) { setMessage('Informe seu nome.'); return; }
@@ -52,6 +59,7 @@ export const IdentityGate: React.FC<{
       if (!res.success) { setMessage(res.error || 'Não foi possível criar sua conta.'); return; }
       if (res.requiresEmailConfirmation) setConfirmEmail(email.trim());
       onSignedUp({ requiresEmailConfirmation: !!res.requiresEmailConfirmation, name: name.trim() });
+      if (!res.requiresEmailConfirmation) onAuthenticated?.(name.trim());
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Não foi possível continuar.');
     } finally { setBusy(false); }
@@ -81,7 +89,9 @@ export const IdentityGate: React.FC<{
         <label className="block text-sm font-semibold">E-mail<input aria-label="E-mail" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" className={inputCls} /></label>
         <label className="block text-sm font-semibold">Senha<input aria-label="Senha" type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} className={inputCls} /></label>
         {mode === 'signup' && <LegalCheckbox checked={legal} onChange={setLegal} audience="customer" />}
-        <button disabled={busy || (mode === 'signup' && !legal)} className={primaryBtn}>{busy ? 'Aguarde…' : mode === 'signup' ? 'Criar conta e continuar' : 'Entrar'}</button>
+        <button disabled={busy || (mode === 'signup' && !legal)} className={primaryBtn}>
+          {busy ? 'Aguarde…' : mode === 'signup' ? (submitSignupLabel || 'Criar conta e continuar') : (submitLoginLabel || 'Entrar')}
+        </button>
         <button type="button" onClick={onGoogle} disabled={busy} className="w-full rounded-xl border border-slate-300 px-4 py-3 font-semibold">Continuar com Google</button>
         <button type="button" onClick={() => { setMode(mode === 'signup' ? 'login' : 'signup'); setMessage(''); }} className="w-full py-2 text-sm font-semibold text-emerald-800">{mode === 'signup' ? 'Já tenho conta' : 'Ainda não tenho conta'}</button>
       </form>
@@ -91,7 +101,173 @@ export const IdentityGate: React.FC<{
   );
 };
 
-/** "Esta mesa já está em uso" + "Fui convidado" (código de 6 caracteres). */
+/** Parte E: Quando já existe uma conta logada no aparelho, confirma a identidade antes de entrar na mesa. */
+export const ConfirmLoggedUserGate: React.FC<{
+  storeName: string;
+  tableLabel: string;
+  userName: string;
+  userEmail?: string;
+  logoUrl?: string | null;
+  primaryColor?: string | null;
+  busy?: boolean;
+  message?: string | null;
+  onConfirm: () => void;
+  onSwitchAccount: () => void;
+}> = ({ storeName, tableLabel, userName, userEmail, logoUrl, primaryColor, busy, message, onConfirm, onSwitchAccount }) => {
+  const accentStyle = primaryColor ? { backgroundColor: primaryColor } : undefined;
+  return (
+    <section data-testid="confirm-logged-user-gate" className="mx-auto max-w-md rounded-3xl bg-white p-6 shadow-xl">
+      <div className="mb-4 flex items-center gap-3">
+        {logoUrl ? (
+          <img src={logoUrl} alt={storeName} className="h-12 w-12 rounded-2xl object-cover shadow-sm" />
+        ) : (
+          <ShieldCheck className="h-9 w-9 text-emerald-700" />
+        )}
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{storeName}</p>
+          <h1 className="text-xl font-black text-slate-900">{tableLabel}</h1>
+        </div>
+      </div>
+      <h2 className="text-lg font-black text-slate-900">Entrar como {userName}?</h2>
+      {userEmail && <p className="mt-0.5 text-xs text-slate-500">{userEmail}</p>}
+      <p className="mb-5 mt-2 text-sm text-slate-600">Confirme sua identificação para acessar o cardápio desta mesa.</p>
+      <div className="space-y-2.5">
+        <button
+          type="button"
+          data-testid="confirm-identity-continue"
+          disabled={busy}
+          onClick={onConfirm}
+          style={accentStyle}
+          className={primaryBtn}
+        >
+          {busy ? 'Entrando…' : 'Sou eu, continuar'}
+        </button>
+        <button
+          type="button"
+          data-testid="confirm-identity-switch"
+          disabled={busy}
+          onClick={onSwitchAccount}
+          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 disabled:opacity-50"
+        >
+          Não sou eu / trocar conta
+        </button>
+      </div>
+      {message && <p role="alert" className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{message}</p>}
+    </section>
+  );
+};
+
+/**
+ * Parte F: Tela de boas-vindas direta do link de convite (&convite=CODIGO).
+ * Nunca mostra "Esta mesa já está em uso" para quem abriu o link de convite válido.
+ */
+export const InviteWelcomeScreen: React.FC<{
+  storeName: string;
+  tableLabel: string;
+  responsibleName: string;
+  inviteCode: string;
+  logoUrl?: string | null;
+  primaryColor?: string | null;
+  identifiedUser: boolean;
+  loggedUserName?: string;
+  loggedUserEmail?: string;
+  busy: boolean;
+  message?: string | null;
+  onJoinLoggedUser: () => void;
+  onSwitchAccount: () => void;
+  onGoogle: () => void;
+  onSignedUp: (info: { requiresEmailConfirmation: boolean; name: string }) => void;
+  onAuthenticated: (name?: string) => void;
+}> = ({
+  storeName,
+  tableLabel,
+  responsibleName,
+  inviteCode,
+  logoUrl,
+  primaryColor,
+  identifiedUser,
+  loggedUserName,
+  loggedUserEmail,
+  busy,
+  message,
+  onJoinLoggedUser,
+  onSwitchAccount,
+  onGoogle,
+  onSignedUp,
+  onAuthenticated,
+}) => {
+  const accentStyle = primaryColor ? { backgroundColor: primaryColor } : undefined;
+  const hostName = responsibleName?.trim() || 'Responsável';
+  return (
+    <div data-testid="invite-welcome-screen" className="mx-auto max-w-md space-y-4">
+      <div className="rounded-3xl bg-white p-6 shadow-xl">
+        <div className="flex items-center gap-3">
+          {logoUrl ? (
+            <img src={logoUrl} alt={storeName} className="h-14 w-14 rounded-2xl object-cover shadow-sm" />
+          ) : (
+            <span
+              style={accentStyle}
+              className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-emerald-700 text-white shadow-sm"
+            >
+              <Users className="h-7 w-7" />
+            </span>
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-xs font-bold uppercase tracking-wide text-emerald-700">{storeName}</p>
+            <h1 className="text-xl font-black text-slate-900">
+              {hostName} convidou você para a {tableLabel} · {storeName}
+            </h1>
+          </div>
+        </div>
+        <p className="mt-3 text-sm text-slate-600">
+          Identifique-se para entrar na comanda da {tableLabel} e fazer seus pedidos junto com a mesa.
+        </p>
+        <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 font-mono text-xs font-bold text-emerald-900">
+          <KeyRound className="h-3.5 w-3.5" />Convite {formatInviteCode(inviteCode)}
+        </p>
+        {identifiedUser && (
+          <div className="mt-5 space-y-2.5 border-t border-slate-100 pt-4">
+            <p className="text-base font-black text-slate-900">Entrar como {loggedUserName || 'Cliente'}?</p>
+            {loggedUserEmail && <p className="text-xs text-slate-500">{loggedUserEmail}</p>}
+            <button
+              type="button"
+              data-testid="invite-enter-table-btn"
+              disabled={busy}
+              onClick={onJoinLoggedUser}
+              style={accentStyle}
+              className={primaryBtn}
+            >
+              {busy ? 'Entrando na mesa…' : 'Entrar na mesa'}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onSwitchAccount}
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 disabled:opacity-50"
+            >
+              Não sou eu / trocar conta
+            </button>
+          </div>
+        )}
+        {message && <p role="alert" className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{message}</p>}
+      </div>
+      {!identifiedUser && (
+        <IdentityGate
+          storeName={storeName}
+          tableLabel={tableLabel}
+          intro={`Crie sua conta ou entre para aceitar o convite de ${hostName} e entrar na ${tableLabel}.`}
+          onGoogle={onGoogle}
+          onSignedUp={onSignedUp}
+          onAuthenticated={onAuthenticated}
+          submitSignupLabel="Criar conta e entrar na mesa"
+          submitLoginLabel="Entrar na mesa"
+        />
+      )}
+    </div>
+  );
+};
+
+/** "Esta mesa já está em uso — chame o garçom" + "Fui convidado" (código de 6 caracteres). */
 export const TableInUseScreen: React.FC<{
   storeName: string;
   tableLabel: string;
@@ -105,8 +281,8 @@ export const TableInUseScreen: React.FC<{
   return (
     <section data-testid="table-in-use" className="mx-auto max-w-md rounded-3xl bg-white p-6 shadow-xl">
       <div className="mb-4 flex items-center gap-3"><Users className="h-8 w-8 text-amber-600" /><div><p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{storeName}</p><h1 className="text-xl font-black">{tableLabel}</h1></div></div>
-      <h2 className="text-lg font-black">Esta mesa já está em uso</h2>
-      <p className="mb-4 mt-1 text-sm text-slate-600">Quem abriu a mesa pode te convidar. Se você é convidado, use o código que ele mostrar no celular dele. Se a mesa é sua, chame o garçom.</p>
+      <h2 className="text-lg font-black">Esta mesa já está em uso — chame o garçom</h2>
+      <p className="mb-4 mt-1 text-sm text-slate-600">Quem abriu a mesa pode te convidar. Se você é convidado, toque em &ldquo;Fui convidado&rdquo; e digite o código. Se a mesa é sua ou está sem responsável, chame o garçom.</p>
       {!open ? (
         <button type="button" onClick={() => setOpen(true)} className={primaryBtn}>Fui convidado</button>
       ) : (
