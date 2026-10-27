@@ -153,6 +153,23 @@ export function useThemeControls(
   };
 
   // Atualização de fundo na aba Fundos & Efeitos com sincronia estrita por superfície
+  /** Cores das barras do sistema Android do app instalado (vazio = segue a cor do cabeçalho). */
+  const updateSystemBars = useCallback(
+    (patch: { statusBarColor?: string | null; navBarColor?: string | null }) => {
+      updateTokens((prev) => {
+        const current = { ...(prev.meta?.systemBars || {}) } as Record<string, string>;
+        for (const [k, v] of Object.entries(patch)) {
+          if (v === null || v === '') delete current[k];
+          else if (typeof v === 'string' && validateHexColor(v)) current[k] = normalizeHexColor(v);
+        }
+        const meta = { ...(prev.meta || {}) };
+        if (Object.keys(current).length) meta.systemBars = current;
+        else delete meta.systemBars;
+        return { ...prev, meta };
+      });
+    },
+    [updateTokens]
+  );
   const updateSurfaceBackground = useCallback(
     (surface: 'general' | 'header' | 'card', updates: Partial<BackgroundStyleConfig>) => {
       updateTokens((prev) => {
@@ -248,5 +265,6 @@ export function useThemeControls(
     currentTargetColor,
     handleColorChange,
     updateSurfaceBackground,
+    updateSystemBars,
   };
 }

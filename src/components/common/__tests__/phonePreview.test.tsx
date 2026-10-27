@@ -2,11 +2,11 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
-import { LiveStorePreview } from '../LiveStorePreview';
+import { LiveStorePreview } from '../../establishment/theme/LiveStorePreview';
 import {
   PREVIEW_READY_MSG, PREVIEW_THEME_MSG, isEmbeddedPreview, parsePreviewThemeMessage, previewUrl,
-} from '../../../../lib/theme/previewBridge';
-import { replicaScale, PHONE_W } from '../StoreReplicaPreview';
+} from '../../../lib/theme/previewBridge';
+import { replicaScale, PHONE_W } from '../PhonePreview';
 
 afterEach(cleanup);
 const base = { storeName: 'Adega Show', primaryColor: '#15803d' } as any;

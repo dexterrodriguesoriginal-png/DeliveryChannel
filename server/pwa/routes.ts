@@ -29,6 +29,13 @@ export function iconVersion(store: StoreIdentityInput): string {
   return crypto.createHash('sha256').update(src).digest('hex').slice(0, 10);
 }
 
+/** Versão da identidade completa (logo, nome, cores e barras do sistema): vai em ?v= do manifesto. */
+export function identityVersion(store: StoreIdentityInput): string {
+  const t = store.theme || {};
+  const src = [iconVersion(store), t.headerColor || '', t.statusBarColor || '', t.navBarColor || '', t.backgroundColor || '', t.shortName || '', t.tagline || ''].join('|');
+  return crypto.createHash('sha256').update(src).digest('hex').slice(0, 10);
+}
+
 export function serverManifest(store: StoreIdentityInput) {
   const base = `/app/${encodeURIComponent(store.slug)}/icons`;
   const v = iconVersion(store);
@@ -44,7 +51,7 @@ export function serverManifest(store: StoreIdentityInput) {
 export type PwaRouter = Router & { lookupStore: (slug: string) => Promise<StoreIdentityInput | null> };
 
 export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
-  const ttl = opts.ttlMs ?? 5 * 60 * 1000;
+  const ttl = opts.ttlMs ?? 30 * 1000;
   const storeCache = new Map<string, { at: number; v: Awaited<ReturnType<StoreResolver>> }>();
   const iconCache = new Map<string, Buffer>();
   const fetchLogo = opts.fetchLogo ?? ((u: string) => fetchPublicImage(u));
@@ -94,7 +101,8 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     const store = await guard(req, res);
     if (!store) return;
     res.set('Content-Type', 'application/manifest+json; charset=utf-8');
-    res.set('Cache-Control', 'public, max-age=300');
+    // Sempre revalidado: tema/logo/barras novos chegam ao app logo após a loja salvar.
+    res.set('Cache-Control', 'no-cache');
     res.set('X-Content-Type-Options', 'nosniff');
     res.send(JSON.stringify(serverManifest(store)));
   });
@@ -116,7 +124,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       if (iconCache.size > 600) iconCache.delete(iconCache.keys().next().value as string);
     }
     res.set('Content-Type', 'image/png');
-    res.set('Cache-Control', req.query.v ? 'public, max-age=86400' : 'public, max-age=300');
+    res.set('Cache-Control', req.query.v ? 'public, max-age=86400' : 'no-cache');
     res.set('X-Content-Type-Options', 'nosniff');
     res.send(png);
   });

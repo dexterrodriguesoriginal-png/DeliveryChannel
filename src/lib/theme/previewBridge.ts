@@ -1,4 +1,4 @@
-import type { TenantTheme } from '../../types';
+import type { Offer, TenantTheme } from '../../types';
 
 /**
  * Ponte da prévia do Design do App: o editor embute o app REAL do cliente (/app/<slug>?preview=1)
@@ -7,6 +7,7 @@ import type { TenantTheme } from '../../types';
  */
 export const PREVIEW_THEME_MSG = 'dc-theme-preview';
 export const PREVIEW_READY_MSG = 'dc-theme-preview-ready';
+export const PREVIEW_CARD_MSG = 'dc-card-preview';
 
 type Win = Pick<Window, 'location' | 'parent'>;
 
@@ -41,4 +42,22 @@ export function sendPreviewTheme(frame: Window | null, theme: Partial<TenantThem
   if (!frame) return;
   // Clone estruturado simples: só dados (sem funções), mesma origem.
   frame.postMessage({ type: PREVIEW_THEME_MSG, theme: JSON.parse(JSON.stringify(theme)) }, origin);
+}
+
+/** Card promocional em rascunho (editor de Marketing). `null` = sem rascunho. Só dados, mesma origem. */
+export function parsePreviewCardMessage(
+  ev: Pick<MessageEvent, 'origin' | 'source' | 'data'>,
+  w: Win,
+): { card: Partial<Offer> | null } | null {
+  if (ev.origin !== w.location.origin || ev.source !== (w.parent as unknown)) return null;
+  const d = ev.data as { type?: unknown; card?: unknown } | null;
+  if (!d || d.type !== PREVIEW_CARD_MSG) return null;
+  if (d.card === null) return { card: null };
+  if (!d.card || typeof d.card !== 'object' || Array.isArray(d.card)) return null;
+  return { card: d.card as Partial<Offer> };
+}
+
+export function sendPreviewCard(frame: Window | null, card: Partial<Offer> | null | undefined, origin: string) {
+  if (!frame) return;
+  frame.postMessage({ type: PREVIEW_CARD_MSG, card: card ? JSON.parse(JSON.stringify(card)) : null }, origin);
 }

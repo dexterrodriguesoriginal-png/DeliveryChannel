@@ -8,17 +8,7 @@ export interface MobileSimulatorProps {
   isOpen?: boolean;
 }
 
-export const MobileSimulator: React.FC<MobileSimulatorProps> = ({
-  theme,
-  storeSlug,
-  isOpen = true,
-}) => {
-  return (
-    <LiveStorePreview
-      theme={theme}
-      storeSlug={storeSlug}
-      isOpen={isOpen}
-      defaultMode="mobile"
-    />
-  );
-};
+/** Simulador de celular: usa a prévia única (PhonePreview via LiveStorePreview). */
+export const MobileSimulator: React.FC<MobileSimulatorProps> = ({ theme, storeSlug, isOpen = true }) => (
+  <LiveStorePreview theme={theme} storeSlug={storeSlug} isOpen={isOpen} defaultMode="mobile" />
+);

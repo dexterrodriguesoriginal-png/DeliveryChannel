@@ -31,6 +31,9 @@ export function identityFromPayload(payload: unknown, slug: string): StoreIdenti
   const p = payload as Record<string, unknown>;
   const tenant = p.tenant as Record<string, unknown> | undefined;
   const theme = (p.theme || undefined) as Record<string, unknown> | undefined;
+  const tokens = (theme?.theme_tokens || theme?.tokens || undefined) as Record<string, unknown> | undefined;
+  const bars = ((tokens?.meta as Record<string, unknown> | undefined)?.systemBars || undefined) as Record<string, unknown> | undefined;
+  const palette = (tokens?.palette || undefined) as Record<string, unknown> | undefined;
   const id = str(tenant?.id);
   const tSlug = str(tenant?.slug);
   if (!id || tSlug !== slug) return null; // nunca misturar lojas
@@ -46,6 +49,9 @@ export function identityFromPayload(payload: unknown, slug: string): StoreIdenti
       primaryColor: pick(theme, 'primaryColor', 'primary_color') || undefined,
       backgroundColor: pick(theme, 'backgroundColor', 'background_color') || undefined,
       tagline: pick(theme, 'tagline', 'tagline') || undefined,
+      headerColor: str(palette?.bgHeader) || undefined,
+      statusBarColor: str(bars?.statusBarColor) || undefined,
+      navBarColor: str(bars?.navBarColor) || undefined,
     },
   };
 }

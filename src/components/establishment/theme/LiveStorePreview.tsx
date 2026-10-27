@@ -9,7 +9,7 @@ import {
 import { ThemedStoreHeader } from '../../storefront/ThemedStoreHeader';
 import { ThemedProductList, ThemedProductItem } from '../../storefront/ThemedProductList';
 import { sampleProducts } from '../../../lib/theme/previewProducts';
-import { StoreReplicaPreview } from './StoreReplicaPreview';
+import { PhonePreview } from '../../common/PhonePreview';
 
 export interface LiveStorePreviewProps {
   theme: TenantTheme;
@@ -19,6 +19,8 @@ export interface LiveStorePreviewProps {
   products?: ThemedProductItem[];
   segmentId?: string;
   compact?: boolean;
+  /** Ocupa toda a altura do pai (coluna fixa do editor): o celular inteiro cabe sem cortar. */
+  fill?: boolean;
   maxProducts?: number;
 }
 
@@ -151,13 +153,14 @@ export function StorefrontPreview({
 export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
   defaultMode = 'mobile',
   compact,
+  fill,
   ...props
 }) => {
   const [mode, setMode] = useState(defaultMode);
   return (
-    <div data-testid="live-store-preview" className="w-full min-w-0">
+    <div data-testid="live-store-preview" className={`w-full min-w-0 ${fill ? 'flex h-full min-h-0 flex-col' : ''}`}>
       {!compact && (
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <div className="mb-2 flex flex-none flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
           <span className="font-semibold">Sua loja, ao vivo</span>
           <div className="flex gap-1">
             {(['mobile', 'desktop'] as const).map((value) => (
@@ -181,7 +184,9 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
       )}
       {props.storeSlug ? (
         // Réplica idêntica: o app real do cliente com o tema em rascunho (ADENDO 1).
-        <StoreReplicaPreview theme={props.theme} storeSlug={props.storeSlug} mode={mode} maxHeight={compact ? 640 : 720} />
+        <div className={fill ? 'relative min-h-0 flex-1' : ''}>
+          <PhonePreview theme={props.theme} storeSlug={props.storeSlug} mode={mode} fill={fill} reservedHeight={compact ? 330 : 260} />
+        </div>
       ) : (
       <div className={`theme-phone mx-auto ${mode === 'desktop' ? 'theme-phone-desktop' : ''}`}>
         <div className="theme-phone-camera" aria-hidden="true" />

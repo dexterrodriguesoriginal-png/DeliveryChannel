@@ -19,6 +19,7 @@ import { useToast } from '../../../context/ToastContext';
 import { themeService } from '../../../services/themeService';
 import { productRepository } from '../../../repositories/productRepository';
 import { safeImageUrl, validateHexColor } from '../../../lib/theme/themeEngine';
+import { announceThemeSaved } from '../../../lib/theme/themeLiveUpdate';
 import { useBottomActionsOffset } from '../../../lib/ui/bottomActionsOffset';
 import { LiveStorePreview } from '../../../components/establishment/theme/LiveStorePreview';
 import { ThemedProductItem } from '../../../components/storefront/ThemedProductList';
@@ -29,6 +30,7 @@ import { TemplateGallery } from './TemplateGallery';
 import { ThemeDialog } from './ThemeDialog';
 import { IdentityTab } from './tabs/IdentityTab';
 import { ColorsTab } from './tabs/ColorsTab';
+import { SystemBarsCard } from './tabs/SystemBarsCard';
 import { BackgroundsTab } from './tabs/BackgroundsTab';
 import { FontsTab } from './tabs/FontsTab';
 import { StyleTab } from './tabs/StyleTab';
@@ -134,6 +136,7 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
       });
       draft.markSaved(saved, submitted);
       setActiveTenant({ ...tenant, theme: saved });
+      void announceThemeSaved(tenant.id); // apps abertos atualizam em segundos
       showToast({
         type: 'success',
         title: 'Design salvo',
@@ -166,6 +169,7 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
         bannerUrl: tenant.theme.bannerUrl,
       });
       draft.markSaved(restored, draft.draftTheme);
+      void announceThemeSaved(tenant.id);
       setActiveTenant({ ...tenant, theme: restored });
       setConfirmRestore(false);
       showToast({
@@ -198,8 +202,9 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
         <span>{mobile && 'short' in item ? item.short : item.label}</span>
       </button>
     ));
-  const preview = (
+  const previewFor = (fill: boolean) => (
     <LiveStorePreview
+      fill={fill}
       theme={draft.draftTheme}
       storeSlug={tenant.slug}
       products={products}
@@ -207,6 +212,7 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
       isOpen={tenant.settings?.isOpen}
     />
   );
+  const preview = previewFor(false);
   return (
     <ThemeEditorContext.Provider value={{ ...draft, ...controls, activeTenant: tenant }}>
       <div className="theme-editor" data-testid="theme-editor">
@@ -251,7 +257,12 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
                 />
               </div>
               {tab === 'identity' && <IdentityTab />}
-              {tab === 'colors' && <ColorsTab />}
+              {tab === 'colors' && (
+                <div className="space-y-4">
+                  <ColorsTab />
+                  <SystemBarsCard />
+                </div>
+              )}
               {tab === 'backgrounds' && <BackgroundsTab />}
               {tab === 'fonts' && <FontsTab />}
               {tab === 'style' && (
@@ -292,7 +303,7 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
           </main>
           {tab !== 'models' && tab !== 'preview' && (
             <aside className="theme-editor-preview" aria-label="Prévia da sua loja">
-              {preview}
+              {previewFor(true)}
             </aside>
           )}
         </div>

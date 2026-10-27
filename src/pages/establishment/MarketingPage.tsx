@@ -1,3 +1,4 @@
+import { PhonePreview } from '../../components/common/PhonePreview';
 import { ArrivalQrMarketingCard } from '../../components/pickup/ArrivalQrMarketingCard';
 import { useModules } from '../../hooks/useModules';
 import { showPickupQrTab, type MarketingTab } from '../../lib/marketingTabs';
@@ -265,7 +266,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
   const [previewingCard, setPreviewingCard] = useState<Offer | null>(null);
 
   // Estados da Pré-visualização Interativa no Editor (Formulário à Esquerda / Prévia à Direita)
-  const [editorPreviewTab, setEditorPreviewTab] = useState<'isolated' | 'carousel' | 'action'>('isolated');
+  const [editorPreviewTab, setEditorPreviewTab] = useState<'isolated' | 'carousel' | 'action' | 'phone'>('isolated');
   const [simulatedProgress, setSimulatedProgress] = useState(0);
 
   // Efeito da Barra de Progresso Simulada para Modo Carrossel na Prévia
@@ -2762,7 +2763,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
                   </div>
 
                   {/* Abas da Prévia */}
-                  <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl text-[11px] font-semibold">
+                  <div className="grid grid-cols-4 gap-1 bg-slate-950 p-1 rounded-xl text-[11px] font-semibold">
                     <button
                       type="button"
                       onClick={() => setEditorPreviewTab('isolated')}
@@ -2796,10 +2797,35 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
                     >
                       🛍️ Ao Clicar
                     </button>
+                    <button
+                      type="button"
+                      data-testid="marketing-preview-phone-tab"
+                      onClick={() => setEditorPreviewTab('phone')}
+                      className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                        editorPreviewTab === 'phone'
+                          ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      📱 Celular
+                    </button>
                   </div>
 
                   {/* Banner 16:9 Fiel ao App do Cliente */}
-                  <div className="relative aspect-16/9 w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-slate-800 shadow-2xl group">
+                  {editorPreviewTab === 'phone' && activeTenant?.slug && (
+                    <div className="rounded-2xl bg-slate-950 p-3" data-testid="marketing-phone-preview">
+                      <PhonePreview
+                        storeSlug={activeTenant.slug}
+                        reservedHeight={340}
+                        card={{
+                          title, subtitle, badge, mediaType, mediaUrl, imageUrl: mediaType === 'IMAGE' ? mediaUrl : undefined,
+                          durationSeconds, destinationType, isActive: true,
+                        } as any}
+                      />
+                      <p className="mt-2 text-center text-[10px] text-slate-400">É o app real da loja; seu card aparece primeiro. Nada é salvo.</p>
+                    </div>
+                  )}
+                  <div className={`${editorPreviewTab === 'phone' ? 'hidden ' : ''}relative aspect-16/9 w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-slate-800 shadow-2xl group`}>
                     {mediaType === 'VIDEO' && mediaUrl ? (
                       <video
                         key={mediaUrl}

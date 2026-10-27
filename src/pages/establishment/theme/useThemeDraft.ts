@@ -68,9 +68,14 @@ export function useThemeDraft(savedTheme: TenantTheme) {
   );
   const applyTemplate = useCallback(
     (template: StoreTemplate) => {
-      updateTokens(() => ({
+      updateTokens((prev) => ({
         ...copy(template.tokens),
-        meta: { ...copy(template.tokens.meta || {}), templateId: template.id },
+        // O modelo troca o visual, mas as cores das barras do sistema escolhidas pela loja são preservadas.
+        meta: {
+          ...copy(template.tokens.meta || {}),
+          templateId: template.id,
+          ...(prev.meta?.systemBars ? { systemBars: copy(prev.meta.systemBars) } : {}),
+        },
       }));
     },
     [updateTokens]

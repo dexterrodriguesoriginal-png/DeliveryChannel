@@ -5,6 +5,7 @@
  * apple-mobile-web-app-title, apple-touch-icon e <title>.
  * Só é usado em rotas /app/<slug>. As demais rotas mantêm o manifesto global (/manifest.json).
  */
+import { resolveSystemBars } from './systemBars';
 import { buildStoreManifest, storeAppId, fallbackIconSvg, manifestDataUrl, ManifestIcon, safeColor, FALLBACK_THEME_COLOR, StoreIdentityInput, storeDisplayName, svgDataUrl } from './storeManifest';
 
 const GLOBAL_MANIFEST_HREF = '/manifest.json';
@@ -54,6 +55,22 @@ export async function buildLogoIcons(logoUrl: string | undefined, bg: string): P
   }
 }
 
+/** Hash curto e estável da identidade visível (logo, cores, barras): cache-buster do manifesto. */
+export function identityHash(store: StoreIdentityInput): string {
+  const t = store.theme || {};
+  const src = [store.id, t.logoUrl, t.primaryColor, t.headerColor, t.statusBarColor, t.navBarColor, t.backgroundColor, t.storeName].join('|');
+  let h = 5381;
+  for (let i = 0; i < src.length; i++) h = ((h << 5) + h + src.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/** <meta theme-color> + color-scheme: a barra de status/navegação segue a loja sem recarregar. */
+export function applySystemBarMeta(statusColor: string, scheme: 'dark' | 'light') {
+  meta('theme-color', statusColor);
+  meta('color-scheme', scheme);
+  document.documentElement.style.colorScheme = scheme;
+}
+
 function upsert(selector: string, create: () => HTMLElement): HTMLElement {
   let el = document.head.querySelector(selector) as HTMLElement | null;
   if (!el) { el = create(); document.head.appendChild(el); }
@@ -95,12 +112,21 @@ export async function fetchServedManifest(store: StoreIdentityInput, fetchImpl: 
 
 export async function applyStoreIdentity(store: StoreIdentityInput): Promise<AppliedIdentity> {
   const name = storeDisplayName(store);
-  const themeColor = safeColor(store.theme?.primaryColor, FALLBACK_THEME_COLOR);
+  const bars = resolveSystemBars({
+    statusBarColor: store.theme?.statusBarColor, navBarColor: store.theme?.navBarColor,
+    headerColor: store.theme?.headerColor, primaryColor: store.theme?.primaryColor, backgroundColor: store.theme?.backgroundColor,
+  });
+  const themeColor = bars.status;
+  // Cores das barras do sistema ao vivo (não depende do manifesto, que o Android só relê de tempos em tempos).
+  applySystemBarMeta(bars.status, bars.colorScheme);
   // Manifesto já injetado pelo servidor no HTML desta loja: mantê-lo (o Chrome já o leu no carregamento).
   const injected = document.head.querySelector('link[rel="manifest"][data-server-injected]') as HTMLLinkElement | null;
   const ownHref = `/app/${encodeURIComponent(store.slug)}/manifest.webmanifest`;
-  if (injected && injected.getAttribute('href') === ownHref) {
+  if (injected && (injected.getAttribute('href') || '').split('?')[0] === ownHref) {
     injected.setAttribute('data-store-id', store.id);
+    // Versão nova do manifesto (cores/logo mudaram): troca o ?v= para o Chrome reler o arquivo.
+    const wantV = store.theme ? identityHash(store) : '';
+    if (wantV && !(injected.getAttribute('href') || '').endsWith(`?v=${wantV}`)) injected.setAttribute('href', `${ownHref}?v=${wantV}`);
     const touch = (document.head.querySelector('link[rel="apple-touch-icon"]') as HTMLLinkElement | null)?.getAttribute('href');
     applyHeadMeta(name, name, themeColor, touch && touch.startsWith(`/app/`) ? touch : `/app/${encodeURIComponent(store.slug)}/icons/icon-192.png`);
     return { manifestHref: ownHref, usedFallbackIcon: false, served: true };

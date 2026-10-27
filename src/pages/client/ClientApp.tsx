@@ -46,11 +46,13 @@ import { PromotionalCheckoutModal } from '../../components/client/PromotionalChe
 import { MobileNavigation } from '../../components/layout/MobileNavigation';
 import { AddressAutocompleteInput, ParsedAddress } from '../../components/onboarding/AddressAutocompleteInput';
 import { Card } from '../../components/ui/Card';
+import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
-import { isEmbeddedPreview, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
+import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
+import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
-import { shouldRefreshTheme, subscribeThemeRefresh } from '../../lib/theme/silentThemeRefresh';
+import { THEME_REFRESH_MIN_MS, subscribeThemeRefresh } from '../../lib/theme/silentThemeRefresh';
 import { SAFE_FONT_FAMILIES, themeToTokens, generateCssVariables, getSurfaceBackgroundStyle } from '../../lib/theme/themeEngine';
 import { ThemedProductList } from '../../components/storefront/ThemedProductList';
 import { cartStorageKey } from '../../lib/pwa/storeManifest';
@@ -197,6 +199,18 @@ function getCampaignSessionId(): string {
   }
 }
 
+/** Tema do cliente -> identidade do PWA (inclui cabeçalho e barras do sistema vindos dos tokens). */
+function identityTheme(theme: TenantTheme | undefined): StoreIdentityInput['theme'] {
+  if (!theme) return undefined;
+  const tk = themeToTokens(theme);
+  return {
+    ...theme,
+    headerColor: tk.palette.bgHeader,
+    statusBarColor: tk.meta?.systemBars?.statusBarColor,
+    navBarColor: tk.meta?.systemBars?.navBarColor,
+  };
+}
+
 export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => {
   const { supabaseUser, signInWithGoogle, signInWithPassword, signUp, signOut, activeTenant, resendConfirmationEmail } = useAuth();
   const { showToast } = useToast();
@@ -215,9 +229,13 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // sem carrinho persistente, sem analytics, sem notificações/som e sem mexer no PWA.
   const previewMode = useMemo(() => typeof window !== 'undefined' && isEmbeddedPreview(window), []);
   const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
+  const [previewCard, setPreviewCard] = useState<Partial<Offer> | null>(null);
   useEffect(() => {
     if (!previewMode) return;
-    const onMsg = (ev: MessageEvent) => { const t = parsePreviewThemeMessage(ev, window); if (t) setPreviewTheme(t); };
+    const onMsg = (ev: MessageEvent) => {
+      const t = parsePreviewThemeMessage(ev, window); if (t) setPreviewTheme(t);
+      const c = parsePreviewCardMessage(ev, window); if (c) setPreviewCard(c.card);
+    };
     window.addEventListener('message', onMsg);
     try { window.parent.postMessage({ type: PREVIEW_READY_MSG }, window.location.origin); } catch { /* sem pai */ }
     return () => window.removeEventListener('message', onMsg);
@@ -430,21 +448,35 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     }
   }, [slug, previewMode]);
 
-  // Tema atualizado pelo dono enquanto o app do cliente ficou aberto: atualiza só o tema, em silêncio
-  // (sem spinner, sem mexer em carrinho/produtos), ao voltar ao app após 30 s.
+  // Tema atualizado pelo dono enquanto o app do cliente ficou aberto: atualiza só o tema (logo, cores, fundo,
+  // barras do sistema), em silêncio e sem tocar em carrinho/produtos. Gatilhos: aviso em tempo real da loja
+  // (segundos), volta ao primeiro plano (>5 s) e poll curto (30 s) enquanto visível.
   const themeLoadedAtRef = useRef(Date.now());
+  const themeFetchingRef = useRef(false);
   useEffect(() => { if (storeData) themeLoadedAtRef.current = Date.now(); }, [storeData?.tenant.id]);
+  const tenantIdForTheme = storeData?.tenant.id;
   useEffect(() => {
     if (!slug || previewMode) return;
-    return subscribeThemeRefresh(window, document, () => {
-      if (!shouldRefreshTheme(themeLoadedAtRef.current, Date.now(), document.visibilityState === 'visible')) return;
+    const refresh = (minMs: number) => {
+      if (document.visibilityState !== 'visible' || themeFetchingRef.current) return;
+      if (!shouldRefetchTheme(themeLoadedAtRef.current, Date.now(), minMs)) return;
+      themeFetchingRef.current = true;
       themeLoadedAtRef.current = Date.now();
       void publicStoreRepository.loadPublicStore(slug).then(result => {
         if (result.status !== 'ok' || !result.data?.theme) return;
-        setStoreData(prev => (prev && prev.tenant.id === result.data.tenant.id ? { ...prev, theme: result.data.theme } : prev));
-      }).catch(() => {});
-    });
-  }, [slug, previewMode]);
+        setStoreData(prev => {
+          if (!prev || prev.tenant.id !== result.data.tenant.id) return prev;
+          return JSON.stringify(prev.theme) === JSON.stringify(result.data.theme) ? prev : { ...prev, theme: result.data.theme };
+        });
+      }).catch(() => {}).finally(() => { themeFetchingRef.current = false; });
+    };
+    const stopFocus = subscribeThemeRefresh(window, document, () => refresh(THEME_REFRESH_MIN_MS));
+    const poll = window.setInterval(() => refresh(THEME_POLL_MS - 1000), THEME_POLL_MS);
+    const stopLive = tenantIdForTheme && isSupabaseConfigured
+      ? subscribeThemeUpdates(supabase as any, tenantIdForTheme, () => refresh(THEME_PING_MIN_MS))
+      : () => {};
+    return () => { stopFocus(); window.clearInterval(poll); stopLive(); };
+  }, [slug, previewMode, tenantIdForTheme]);
 
   // Relógio da vitrine (relógio do SERVIDOR corrigido pelo offset recebido no get_public_store).
   // Atualiza a cada 15 s para que cards que expiram com a página aberta saiam da vitrine.
@@ -458,13 +490,19 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // filtrados por status/início/término e ordenados (ver utils/storefrontCards.ts).
   const storefrontCards = useMemo<Offer[]>(() => {
     if (!storeData) return [];
-    return buildStorefrontCards(
+    const live = buildStorefrontCards(
       storeData.offers,
       storeData.campaigns,
       storefrontClockTick + storeData.serverTimeOffsetMs,
       storeData.tenant.id
     );
-  }, [storeData, storefrontClockTick]);
+    // Prévia do editor de Marketing: o card em rascunho aparece primeiro, como o cliente verá.
+    if (previewMode && previewCard) {
+      const draft = { source: 'PANEL', cardModel: 'HERO', cardFormat: 'HORIZONTAL', isActive: true, ...previewCard, id: 'draft-preview', tenantId: storeData.tenant.id } as Offer;
+      return [draft, ...live.filter(c => c.id !== previewCard.id)];
+    }
+    return live;
+  }, [storeData, storefrontClockTick, previewMode, previewCard]);
 
   useEffect(() => {
     loadStore();
@@ -484,7 +522,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   useEffect(() => {
     const t = storeData?.tenant;
     if (!t || previewMode) return;
-    applyStoreIdentity({ id: t.id, slug: t.slug, name: t.name, theme: storeData?.theme }).catch(err => {
+    applyStoreIdentity({ id: t.id, slug: t.slug, name: t.name, theme: identityTheme(storeData?.theme) }).catch(err => {
       console.warn('[ClientApp] Falha ao aplicar identidade PWA da loja:', err);
     });
   }, [storeData?.tenant, storeData?.theme, previewMode]);

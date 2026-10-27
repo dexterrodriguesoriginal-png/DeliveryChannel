@@ -209,10 +209,16 @@
   max-height: 90px;
 }
 .theme-editor-preview {
-  display: block;
-  flex: 0 0 404px;
-  width: 404px;
-  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  position: sticky;
+  top: 0;
+  align-self: stretch;
+  flex: 0 0 clamp(230px, 30vw, 404px);
+  width: clamp(230px, 30vw, 404px);
+  /* embaixo: espaço para o botão flutuante de Notificações não cobrir o celular */
+  padding: 14px 12px 58px;
   border-left: 1px solid var(--theme-line);
   background: #edf0eb;
   min-height: 0;
@@ -254,6 +260,10 @@
 }
 .theme-phone-desktop .theme-phone-screen {
   border-radius: 13px;
+}
+.theme-editor-preview > [data-testid='live-store-preview'] {
+  flex: 1;
+  min-height: 0;
 }
 .theme-editor-preview .theme-phone-screen {
   height: min(500px, calc(100dvh - 320px));
@@ -337,7 +347,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 24px;
 }
-@media (max-width: 1100px) {
+@media (max-width: 899px) {
   .theme-editor-preview {
     display: none;
   }
@@ -491,22 +501,35 @@
 .theme-phone-screen [data-testid="preview-product-desc"],
 .theme-phone-screen [data-testid="preview-promo-banner"] > span:last-child { display: none; }
 
-/* Réplica do app do cliente (iframe) — celular realista */
+/* Celular inteiro (PhonePreview): moldura realista, tela lógica 390x844 escalada para caber */
 .replica-phone {
   position: relative;
-  margin: 0 auto;
-  border-radius: 46px;
-  background: linear-gradient(145deg, #1f2937, #0b1220);
-  box-shadow: 0 0 0 1px #374151, 0 0 0 3px #0b1220, 0 30px 60px -28px #0f172a99, inset 0 0 2px #ffffff30;
+  box-sizing: border-box;
+  border-radius: 52px;
+  background: linear-gradient(145deg, #2a3342, #0b1220);
+  box-shadow: 0 0 0 1.5px #475569, 0 0 0 3px #0b1220, 0 28px 50px -24px #0f172acc, inset 0 0 3px #ffffff40;
 }
+.replica-phone::before,
+.replica-phone::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  width: 3px;
+  border-radius: 2px;
+  background: #1e293b;
+}
+.replica-phone::before { top: 150px; height: 64px; }
+.replica-phone::after { top: 240px; height: 40px; }
 .replica-island {
-  position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
-  width: 96px; height: 26px; border-radius: 20px; background: #000; z-index: 3;
+  position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+  width: 22px; height: 22px; border-radius: 999px; background: #000; z-index: 3;
+  box-shadow: 0 0 0 2px #0b1220, inset 0 0 4px #3b82f655;
 }
-.replica-screen { position: relative; overflow: hidden; border-radius: 36px; background: #fff; }
-.replica-desktop .replica-screen { border-radius: 10px; }
+.replica-screen { position: relative; overflow: hidden; border-radius: 40px; background: #fff; }
+.replica-desktop .replica-screen { border-radius: 8px; }
 .replica-desktop {
-  margin: 0 auto; border-radius: 14px; background: #e5e7eb;
+  box-sizing: border-box;
+  border-radius: 14px; background: #e5e7eb;
   box-shadow: 0 0 0 1px #cbd5e1, 0 24px 50px -30px #0f172a80;
 }
 .replica-statusbar {
@@ -514,10 +537,6 @@
   font: 600 13px/1 -apple-system, 'SF Pro Text', Inter, sans-serif; letter-spacing: .01em;
 }
 .replica-status-icons { display: flex; gap: 5px; align-items: center; }
-.replica-home {
-  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
-  width: 34%; height: 5px; border-radius: 4px; background: #0f172acc; z-index: 3; pointer-events: none;
-}
 .replica-loading {
   position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 600; color: #64748b; background: #f8fafc;
@@ -528,3 +547,7 @@
 }
 @keyframes replica-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .replica-loading span { animation: none; } }
+
+.replica-navbar {
+  display: flex; align-items: center; justify-content: space-around; padding: 0 56px;
+}

@@ -16,6 +16,10 @@ export interface StoreIdentityInput {
     primaryColor?: string;
     backgroundColor?: string;
     tagline?: string;
+    /** Cor do cabeçalho (padrão das barras do sistema). */
+    headerColor?: string;
+    statusBarColor?: string;
+    navBarColor?: string;
   };
 }
 
@@ -47,6 +51,8 @@ export interface StoreManifest {
   related_applications: { platform: 'webapp'; url: string }[];
   prefer_related_applications: false;
 }
+
+import { resolveSystemBars } from './systemBars';
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 export const FALLBACK_THEME_COLOR = '#334155';
@@ -122,8 +128,13 @@ export function fallbackIcons(name: string, color: string): ManifestIcon[] {
  */
 export function buildStoreManifest(store: StoreIdentityInput, origin: string, icons?: ManifestIcon[]): StoreManifest {
   const name = storeDisplayName(store);
-  const theme = safeColor(store.theme?.primaryColor, FALLBACK_THEME_COLOR);
-  const bg = safeColor(store.theme?.backgroundColor, FALLBACK_BG_COLOR);
+  // theme_color = barra de status; background_color = barra de navegação/splash (Android deriva ambos do manifesto).
+  const bars = resolveSystemBars({
+    statusBarColor: store.theme?.statusBarColor, navBarColor: store.theme?.navBarColor,
+    headerColor: store.theme?.headerColor, primaryColor: store.theme?.primaryColor, backgroundColor: store.theme?.backgroundColor,
+  });
+  const theme = bars.status;
+  const bg = bars.nav;
   const o = origin.replace(/\/$/, '');
   return {
     id: `${o}${storeAppId(store.id)}`,
