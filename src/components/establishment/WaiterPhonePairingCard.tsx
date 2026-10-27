@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
 import { Smartphone } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { WaiterAccessBlock } from './WaiterAccessBlock';
+import { waiterEntryUrl } from '../../lib/waiter/waiterAccess';
 
-export function waiterEntryUrl(origin: string): string {
-  return `${origin.replace(/\/$/, '')}/garcom`;
-}
+export { waiterEntryUrl };
 
 export const WaiterPhonePairingCard: React.FC = () => {
-  const [expanded, setExpanded] = useState(false);
-  const url = waiterEntryUrl(typeof window === 'undefined' ? 'https://deliverychannel.app' : window.location.origin);
+  const [expanded, setExpanded] = useState(true);
+  const { activeTenant } = useAuth();
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4" data-testid="waiter-phone-pairing">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -20,10 +20,7 @@ export const WaiterPhonePairingCard: React.FC = () => {
           {expanded ? 'Ocultar QR' : 'Conectar celular'}
         </button>
       </div>
-      {expanded && <div className="mt-4 flex flex-col items-center gap-3 rounded-xl bg-slate-50 p-4">
-        <QRCodeSVG value={url} size={192} level="M" includeMargin aria-label="QR para acesso do garçom pelo celular" />
-        <p className="break-all text-center text-xs text-slate-600">{url}</p>
-      </div>}
+      {expanded && <div className="mt-4"><WaiterAccessBlock storeName={activeTenant?.name} /></div>}
     </section>
   );
 };

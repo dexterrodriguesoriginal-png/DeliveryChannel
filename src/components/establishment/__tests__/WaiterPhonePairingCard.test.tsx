@@ -1,6 +1,8 @@
 import React from 'react';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { vi } from 'vitest';
+vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ activeTenant: { name: 'Loja' } }) }));
 import { WaiterPhonePairingCard, waiterEntryUrl } from '../WaiterPhonePairingCard';
 
 describe('waiter phone access', () => {
@@ -9,6 +11,7 @@ describe('waiter phone access', () => {
     const html = renderToStaticMarkup(<WaiterPhonePairingCard />);
     expect(html).toContain('Acesso do garçom pelo celular');
     expect(html).toContain('abre o Aplicativo do Garçom');
-    expect(html).toContain('Conectar celular');
+    expect(html).toContain('Ocultar QR');
+    expect(html).toContain('waiter-access-qr');
   });
 });

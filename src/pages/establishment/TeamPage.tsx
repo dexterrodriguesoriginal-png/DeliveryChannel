@@ -11,6 +11,7 @@ import { Users, UserPlus, Trash2, Mail, Phone, Clock, RefreshCw, XCircle, Send }
 import { useToast } from '../../context/ToastContext';
 import { TeamMemberStatusBadge } from '../../components/establishment/statusBadges';
 import { WaiterPhonePairingCard } from '../../components/establishment/WaiterPhonePairingCard';
+import { WaiterAccessBlock } from '../../components/establishment/WaiterAccessBlock';
 
 export const TeamPage: React.FC = () => {
   const { activeTenant, securityContext } = useAuth();
@@ -22,6 +23,8 @@ export const TeamPage: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [waiterShare, setWaiterShare] = useState<string | null>(null);
+  const [openAccessId, setOpenAccessId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     email: '',
     role: 'OPERATOR' as RoleId,
@@ -72,9 +75,10 @@ export const TeamPage: React.FC = () => {
 
       showToast({
         type: 'success',
-        title: 'Convite Enviado com Sucesso',
-        message: `Convite enviado para ${formData.email} com papel de ${formData.role}.`,
+        title: 'Convite criado',
+        message: `Convite criado para ${formData.email} com papel de ${formData.role}. Avise o colaborador: ele entra com este e-mail.`,
       });
+      if (formData.role === 'WAITER') setWaiterShare(formData.email.trim().toLowerCase());
 
       setIsModalOpen(false);
       setFormData({ email: '', role: 'OPERATOR' });
@@ -272,6 +276,12 @@ export const TeamPage: React.FC = () => {
                 <div className="pt-2 border-t border-amber-100 text-[10px] text-gray-400">
                   Aguardando o usuário criar conta ou autenticar com este e-mail.
                 </div>
+                {String(invite.roleId) === 'WAITER' && (
+                  <div>
+                    <button type="button" onClick={() => setOpenAccessId(openAccessId === invite.id ? null : invite.id)} className="w-full rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700" aria-expanded={openAccessId === invite.id}>{openAccessId === invite.id ? 'Ocultar acesso do garçom' : 'Acesso do garçom (QR e link)'}</button>
+                    {openAccessId === invite.id && <div className="mt-3"><WaiterAccessBlock email={invite.email} storeName={activeTenant?.name} compact /></div>}
+                  </div>
+                )}
               </Card>
             ))}
           </div>
@@ -335,6 +345,10 @@ export const TeamPage: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal isOpen={!!waiterShare} onClose={() => setWaiterShare(null)} title="Convite do garçom criado" description="Nenhum e-mail é enviado automaticamente. Mostre o QR ou envie o link para o garçom." size="lg">
+        {waiterShare && <WaiterAccessBlock email={waiterShare} storeName={activeTenant?.name} />}
       </Modal>
     </div>
   );

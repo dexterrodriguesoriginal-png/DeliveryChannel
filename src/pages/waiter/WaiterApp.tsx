@@ -1,6 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BellRing, ChevronRight, LayoutGrid, LogOut, Loader2, MoreHorizontal, Search, ShieldAlert, UserCheck, Volume2, WifiOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { LegalCheckbox } from '../../components/legal/LegalUI';
+import { legalSignupMetadata } from '../../lib/legal/documents';
+import { teamRepository } from '../../repositories/teamRepository';
+import { readWaiterEmailParam } from '../../lib/waiter/waiterAccess';
+import type { TeamInvite } from '../../types';
 import { useModules } from '../../hooks/useModules';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals';
 import { newIdempotencyKey } from '../../lib/backend';
@@ -29,27 +34,88 @@ const Brand: React.FC = () => (
   <div className="mb-6 flex items-center gap-3"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30"><UserCheck className="h-6 w-6" /></span><div><p className="text-xs font-bold uppercase tracking-widest text-emerald-300">Delivery Channel</p><h1 className="text-2xl font-black">Garçom</h1></div></div>
 );
 
+const inputCls = 'mt-1 h-12 w-full rounded-2xl border-0 bg-white px-4 text-base text-slate-900 outline-none ring-1 ring-slate-300 focus:ring-2 focus:ring-emerald-500';
+
 const LoginScreen: React.FC = () => {
-  const { signInWithPassword } = useAuth();
-  const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
+  const { signInWithPassword, signUp } = useAuth();
+  const invited = useMemo(() => (typeof window === 'undefined' ? null : readWaiterEmailParam(window.location.search)), []);
+  const [mode, setMode] = useState<'login' | 'signup'>(invited ? 'signup' : 'login');
+  const [email, setEmail] = useState(invited || ''); const [password, setPassword] = useState(''); const [name, setName] = useState('');
+  const [legal, setLegal] = useState(false);
+  const [busy, setBusy] = useState(false); const [message, setMessage] = useState(''); const [confirmEmail, setConfirmEmail] = useState('');
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setMessage('');
-    const res = await signInWithPassword(email.trim(), password);
-    if (!res.success) setMessage(res.code === 'EMAIL_NOT_CONFIRMED' ? 'Confirme seu e-mail pelo link que recebeu e entre de novo.' : (res.error || 'E-mail ou senha incorretos.'));
-    setBusy(false);
+    try {
+      if (mode === 'login') {
+        const res = await signInWithPassword(email.trim(), password);
+        if (!res.success) setMessage(res.code === 'EMAIL_NOT_CONFIRMED' ? 'Confirme seu e-mail pelo link que recebeu e entre de novo.' : (res.error || 'E-mail ou senha incorretos.'));
+      } else {
+        if (name.trim().length < 2) { setMessage('Informe seu nome.'); return; }
+        if (password.length < 6) { setMessage('A senha precisa ter pelo menos 6 caracteres.'); return; }
+        const res = await signUp(email.trim(), password, name.trim(), undefined, legalSignupMetadata(legal, 'owner'));
+        if (!res.success) setMessage(res.error || 'Não foi possível criar a conta.');
+        else if (res.requiresEmailConfirmation) setConfirmEmail(email.trim());
+      }
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível continuar.'); }
+    finally { setBusy(false); }
   };
+  if (confirmEmail) {
+    return <Center testId="waiter-confirm-email"><Brand /><div className="rounded-3xl bg-white/5 p-5 ring-1 ring-white/10"><h2 className="text-lg font-black">Confirme seu e-mail</h2><p className="mt-1 text-sm text-slate-300">Enviamos um link para <strong>{confirmEmail}</strong>. Abra o link e você volta direto para o aplicativo do Garçom.</p></div></Center>;
+  }
   return (
     <Center testId="waiter-login">
       <Brand />
       <form onSubmit={submit} className="space-y-3 rounded-3xl bg-white/5 p-5 ring-1 ring-white/10">
-        <p className="text-sm text-slate-300">Entre com a conta que o dono da loja convidou para a equipe.</p>
-        <label className="block text-sm font-semibold">E-mail<input aria-label="E-mail" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} className="mt-1 h-12 w-full rounded-2xl border-0 bg-white px-4 text-base text-slate-900" /></label>
-        <label className="block text-sm font-semibold">Senha<input aria-label="Senha" type="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} className="mt-1 h-12 w-full rounded-2xl border-0 bg-white px-4 text-base text-slate-900" /></label>
-        <button disabled={busy} className="h-14 w-full rounded-2xl bg-emerald-500 text-base font-black text-slate-950 disabled:opacity-60">{busy ? 'Entrando…' : 'Entrar'}</button>
+        <p className="text-sm text-slate-300">{mode === 'signup' ? 'Crie sua conta com o e-mail que o dono usou no convite.' : 'Entre com a conta que o dono da loja convidou para a equipe.'}</p>
+        {mode === 'signup' && <label className="block text-sm font-semibold">Seu nome<input aria-label="Seu nome" autoComplete="name" required value={name} onChange={e => setName(e.target.value)} className={inputCls} /></label>}
+        <label className="block text-sm font-semibold">E-mail<input aria-label="E-mail" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} className={inputCls} /></label>
+        <label className="block text-sm font-semibold">Senha<input aria-label="Senha" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required value={password} onChange={e => setPassword(e.target.value)} className={inputCls} /></label>
+        {mode === 'signup' && <div className="rounded-2xl bg-white p-3 text-slate-900"><LegalCheckbox checked={legal} onChange={setLegal} audience="owner" /></div>}
+        <button disabled={busy || (mode === 'signup' && !legal)} className="h-14 w-full rounded-2xl bg-emerald-500 text-base font-black text-slate-950 disabled:opacity-60">{busy ? 'Aguarde…' : mode === 'login' ? 'Entrar' : 'Criar conta e entrar'}</button>
         {message && <p role="alert" className="rounded-xl bg-rose-500/15 p-3 text-sm text-rose-200">{message}</p>}
+        <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(''); }} className="w-full py-1 text-center text-sm font-bold text-emerald-300">{mode === 'login' ? 'Primeiro acesso? Criar conta' : 'Já tenho conta'}</button>
       </form>
-      <p className="mt-4 text-center text-xs text-slate-400">Ainda não tem acesso? Peça ao dono: Equipe &amp; Permissões → Convidar Colaborador → cargo Garçom.</p>
+      <p className="mt-4 text-center text-xs text-slate-400">Sem convite ainda? Peça ao dono: Equipe &amp; Permissões → Convidar Colaborador → cargo Garçom.</p>
+    </Center>
+  );
+};
+
+/** Conta sem equipe: se existe convite pendente de Garçom para o e-mail da conta, entra na equipe (um convite = automático). */
+const JoinInvite: React.FC<{ email: string; signOutBtn: React.ReactNode }> = ({ email, signOutBtn }) => {
+  const { refreshSession } = useAuth();
+  const [invites, setInvites] = useState<Array<TeamInvite & { tenantName?: string }> | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const tried = useRef(false);
+  const accept = useCallback(async (id: string) => {
+    setBusyId(id); setError('');
+    try { await teamRepository.acceptInvite(id); await refreshSession(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível aceitar o convite.'); setBusyId(null); }
+  }, [refreshSession]);
+  useEffect(() => {
+    let alive = true;
+    void teamRepository.listMyReceivedInvites().then(list => {
+      if (!alive) return;
+      const waiter = list.filter(i => String(i.roleId) === 'WAITER' && i.status === 'PENDING');
+      setInvites(waiter);
+      if (waiter.length === 1 && !tried.current) { tried.current = true; void accept(waiter[0].id); }
+    }).catch(() => alive && setInvites([]));
+    return () => { alive = false; };
+  }, [accept]);
+  if (invites === null || (invites.length === 1 && busyId && !error)) {
+    return <Center testId="waiter-joining"><Brand /><div className="flex items-center gap-3 rounded-3xl bg-white/5 p-5 text-slate-200 ring-1 ring-white/10"><Loader2 className="h-5 w-5 animate-spin" />Entrando na equipe…</div></Center>;
+  }
+  if (!invites.length) {
+    return <Notice testId="waiter-no-access" title="Sem acesso a uma loja" text={`Não encontramos convite de Garçom para ${email}. Entre com o mesmo e-mail que o dono convidou (ou peça um novo convite).`}>{signOutBtn}</Notice>;
+  }
+  return (
+    <Center testId="waiter-invites"><Brand />
+      <div className="space-y-3 rounded-3xl bg-white/5 p-5 ring-1 ring-white/10">
+        <h2 className="text-lg font-black">Você foi convidado(a)</h2>
+        {invites.map(invite => <button key={invite.id} type="button" disabled={!!busyId} onClick={() => void accept(invite.id)} className="h-14 w-full rounded-2xl bg-emerald-500 text-base font-black text-slate-950 disabled:opacity-60">{busyId === invite.id ? 'Entrando…' : `Entrar na equipe${invite.tenantName ? ` · ${invite.tenantName}` : ''}`}</button>)}
+        {error && <p role="alert" className="rounded-xl bg-rose-500/15 p-3 text-sm text-rose-200">{error}</p>}
+        {signOutBtn}
+      </div>
     </Center>
   );
 };
@@ -67,7 +133,7 @@ export const WaiterApp: React.FC = () => {
     return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
   }
   if (!supabaseUser) return <LoginScreen />;
-  if (!activeTenant) return <Notice testId="waiter-no-access" title="Sem acesso a uma loja" text="Esta conta ainda não faz parte da equipe de nenhuma loja. Peça ao dono para convidar você como Garçom e aceite o convite no e-mail.">{signOutBtn}</Notice>;
+  if (!activeTenant) return <JoinInvite email={supabaseUser.email || ''} signOutBtn={signOutBtn} />;
   if (!canUseWaiterApp(activeRole)) return <Notice testId="waiter-wrong-role" title="Acesso só para a equipe do salão" text="O aplicativo do Garçom é para Garçom, Caixa, Gerente e Dono.">{signOutBtn}</Notice>;
   if (modulesLoading && !available) return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
   if (available && !isModuleEnabled('dine_in')) {

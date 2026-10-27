@@ -33,6 +33,7 @@ export function driverInvitePathFromPath(pathname: string | null | undefined): s
  */
 export function emailRedirectUrl(loc?: { origin?: string; pathname?: string } | null): string {
   const origin = loc?.origin && /^https?:\/\//.test(loc.origin) ? loc.origin.replace(/\/+$/, '') : DEFAULT_APP_ORIGIN;
+  if (/^\/garcom\/?$/.test(String(loc?.pathname || ''))) return `${origin}/garcom`;
   const invitePath = driverInvitePathFromPath(loc?.pathname);
   if (invitePath) return `${origin}${invitePath}`;
   const slug = storeSlugFromPath(loc?.pathname);

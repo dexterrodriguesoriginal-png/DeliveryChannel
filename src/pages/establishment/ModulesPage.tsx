@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, Bike, CalendarClock, Check, ChefHat, ConciergeBell, Copy, CreditCard, ExternalLink, FileText, Gauge, Gift, LayoutGrid, LoaderCircle,
+  AlertTriangle, Bike, CalendarClock, Check, ChefHat, ConciergeBell, CreditCard, ExternalLink, FileText, Gauge, Gift, LayoutGrid, LoaderCircle,
   PlusCircle, Percent, Printer, QrCode, Repeat, Scale, ScanBarcode, Shirt, SlidersHorizontal, Smartphone, Store, UserPlus, Utensils, Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -10,6 +10,7 @@ import { tenantModuleRepository } from '../../repositories/tenantModuleRepositor
 import { useModules } from '../../hooks/useModules';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { WaiterAccessBlock } from '../../components/establishment/WaiterAccessBlock';
 import { SalonSetupPanel } from '../../components/establishment/SalonSetupPanel';
 import { salonPermissions } from '../../components/establishment/salonSetup';
 
@@ -55,9 +56,6 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
   const enabled = useMemo(() => new Set(modules || []), [modules]);
   const shortcuts = useMemo(() => visibleToolShortcuts(modules, activeRole), [modules, activeRole]);
   const garcom = shortcuts.find(tool => tool.id === 'garcom');
-  const [copied, setCopied] = useState(false);
-  const waiterUrl = `${typeof window === 'undefined' ? '' : window.location.origin}/garcom`;
-  const copyWaiterUrl = async () => { try { await navigator.clipboard.writeText(waiterUrl); setCopied(true); window.setTimeout(() => setCopied(false), 1800); } catch { /* clipboard unavailable */ } };
   const openShortcut = (tool: (typeof shortcuts)[number]) => {
     if (tool.action.kind === 'path') window.location.assign(tool.action.path);
     else onNavigate?.(tool.action.tab);
@@ -144,9 +142,10 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
           </div>
           <ol className="mt-5 grid gap-3 text-sm sm:grid-cols-3" aria-label="Como adicionar garçons">
             <li className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10"><p className="flex items-center gap-2 font-bold"><span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-400 text-xs font-black text-slate-950">1</span>Convide o garçom</p><p className="mt-1 text-xs text-slate-300">Em <b>Equipe & Permissões</b> → <b>Convidar Colaborador</b>, escolha o cargo <b>Garçom</b> e informe o e-mail dele.</p>{onNavigate && <button type="button" onClick={() => onNavigate('est-team')} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20"><UserPlus className="h-3.5 w-3.5" />Convidar garçom</button>}</li>
-            <li className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10"><p className="flex items-center gap-2 font-bold"><span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-400 text-xs font-black text-slate-950">2</span>Ele entra no celular</p><p className="mt-1 text-xs text-slate-300">O garçom aceita o convite e abre o endereço abaixo no celular, entrando com a conta dele.</p><div className="mt-2 flex items-center gap-2"><code className="min-w-0 flex-1 truncate rounded-lg bg-black/30 px-2 py-1.5 text-xs" data-testid="waiter-url">{waiterUrl}</code><button type="button" onClick={() => void copyWaiterUrl()} className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-bold hover:bg-white/20" aria-label="Copiar endereço do Garçom">{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? 'Copiado' : 'Copiar'}</button></div></li>
+            <li className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10"><p className="flex items-center gap-2 font-bold"><span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-400 text-xs font-black text-slate-950">2</span>Ele entra no celular</p><p className="mt-1 text-xs text-slate-300">O garçom lê o QR abaixo no celular e entra (ou cria a conta) com o e-mail do convite.</p></li>
             <li className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10"><p className="flex items-center gap-2 font-bold"><span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-400 text-xs font-black text-slate-950">3</span>Instale como app</p><p className="mt-1 text-xs text-slate-300 flex items-start gap-1.5"><Smartphone className="mt-0.5 h-3.5 w-3.5 shrink-0" />Dentro do Garçom toque em <b>Instalar</b> (ou, no navegador, “Adicionar à tela inicial”). Fica com ícone próprio.</p></li>
           </ol>
+          <div className="mt-4"><WaiterAccessBlock storeName={activeTenant?.name} /></div>
         </section>
       )}
 
