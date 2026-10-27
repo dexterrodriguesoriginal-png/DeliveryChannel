@@ -2,25 +2,56 @@
 .orders-kanban-board { position: relative; display: grid; grid-template-columns: repeat(5, minmax(var(--orders-col-min, 150px), 1fr)); width: 100%; max-width: 1848px; /* com zoom baixo, colunas não passam de ~360px lógicos (cards continuam com formato de card) */ gap: 12px; flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; zoom: var(--oz, 1); transition: zoom 220ms cubic-bezier(.2,.7,.2,1); }
 .orders-kanban-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: 16px; overflow: hidden; }
 .orders-kanban-header { position: sticky; top: 0; z-index: 1; flex-shrink: 0; margin: 10px 10px 0; border-radius: 14px; padding: 12px 6px; color: white; }
-.orders-kanban-scroll { display: flex; flex-direction: column; gap: 10px; padding: 10px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: #9ca3af transparent; overscroll-behavior-y: contain; }
+.orders-kanban-scroll { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: #9ca3af transparent; overscroll-behavior-y: contain; }
 .orders-kanban-scroll::-webkit-scrollbar { width: 6px; }
 .orders-kanban-scroll::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 999px; }
 .orders-kanban-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 32px 4px; color: #9ca3af; text-align: center; }
 .orders-kanban-empty p { font-size: 11px; font-weight: 600; letter-spacing: .06em; }
 .orders-kanban-empty span { font-size: 12px; }
-.orders-kanban-card { flex-shrink: 0; animation: orders-card-in 200ms ease-out both; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.05); transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; cursor: pointer; min-width: 0; }
-.orders-kanban-card:hover { transform: translateY(-2px); box-shadow: 0 3px 6px rgba(0,0,0,.07), 0 8px 18px rgba(0,0,0,.08); }
-.orders-kanban-card:focus-visible { outline: 2px solid #dc2626; outline-offset: 2px; }
-.orders-kanban-card[data-selected="true"] { border-color: #dc2626; }
-.orders-card-strip { margin: -14px -14px 12px; padding: 9px 14px; border-radius: 14px 14px 0 0; background: #fee2e2; color: #dc2626; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+/* ===== Card compacto (estilo Pipedrive): ~54px, 2 linhas, ações só no hover/foco ===== */
+.orders-kanban-card { position: relative; flex-shrink: 0; container-type: inline-size; animation: orders-card-in 200ms ease-out both; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 7px 10px; box-shadow: 0 1px 1px rgba(15,23,42,.04); transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease; cursor: pointer; min-width: 0; }
+.orders-kanban-card:hover { transform: translateY(-1px); border-color: #d1d5db; box-shadow: 0 2px 6px rgba(15,23,42,.1); }
+.orders-kanban-card:focus-visible { outline: 2px solid #dc2626; outline-offset: 1px; }
+.orders-kanban-card[data-selected="true"] { border-color: #dc2626; box-shadow: 0 0 0 1px #dc2626, 0 3px 10px rgba(220,38,38,.18); background: #fffafa; }
+.orders-card-row { display: flex; align-items: center; gap: 8px; min-height: 38px; position: relative; }
+.orders-card-main { flex: 1; min-width: 0; }
+.orders-card-title { margin: 0; font-size: 13px; line-height: 1.25; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orders-card-title > span { font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; }
+.orders-card-sub { margin: 2px 0 0; display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11.5px; line-height: 1.25; color: #6b7280; }
+.orders-card-sub-text { min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orders-card-timer { display: inline-flex; flex-shrink: 0; align-items: center; gap: 2px; font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: #16a34a; }
+.orders-card-timer[data-urgency="near"] { color: #d97706; }
+.orders-card-timer[data-urgency="late"] { color: #dc2626; }
+.orders-card-meta { display: flex; flex-shrink: 0; flex-direction: column; align-items: flex-end; justify-content: center; gap: 4px; transition: opacity 120ms ease; }
+.orders-card-dot { width: 9px; height: 9px; border-radius: 999px; background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.18); }
+.orders-card-dot[data-urgency="near"] { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,.2); }
+.orders-card-dot[data-urgency="late"] { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.2); }
+.orders-card-dot[data-urgency="closed"] { background: #cbd5e1; box-shadow: none; }
+.orders-card-paid { border-radius: 999px; background: #dcfce7; color: #15803d; padding: 0 6px; font-size: 9px; line-height: 15px; font-weight: 800; letter-spacing: .02em; }
+.orders-card-unread { color: #dc2626; display: inline-flex; }
+/* Ações rápidas: aparecem ao passar o mouse / focar (sempre visíveis em telas de toque). */
+.orders-card-hover { position: absolute; top: 50%; right: -4px; transform: translateY(-50%); display: flex; align-items: center; gap: 4px; padding: 3px 4px 3px 18px; border-radius: 0 6px 6px 0; background: linear-gradient(90deg, rgba(255,255,255,0), #fff 16px); opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+.orders-kanban-card[data-selected="true"] .orders-card-hover { background: linear-gradient(90deg, rgba(255,250,250,0), #fffafa 16px); }
+.orders-kanban-card:hover .orders-card-hover, .orders-kanban-card:focus-within .orders-card-hover { opacity: 1; pointer-events: auto; }
+.orders-kanban-card:hover .orders-card-meta, .orders-kanban-card:focus-within .orders-card-meta { opacity: 0; }
+@media (hover: none) { .orders-card-hover { opacity: 1; pointer-events: auto; } .orders-card-meta { opacity: 0; } }
+.orders-card-strip { margin: -7px -10px 6px; padding: 4px 10px; border-radius: 7px 7px 0 0; background: #fee2e2; color: #dc2626; font-size: 9.5px; font-weight: 700; text-transform: uppercase; }
 .orders-card-strip[data-offer="true"] { background: #fef3c7; color: #b45309; }
-.orders-card-strip[data-offer="true"] > div { background: transparent; border: 0; border-radius: 0; padding: 0; color: inherit; font-size: 11px; }
-.orders-card-action { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 34px; border-radius: 10px; padding: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #fff; transition: filter 180ms ease; cursor: pointer; }
-.orders-card-action:hover { filter: brightness(.94); }
-.orders-card-icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: #fee2e2; color: #dc2626; position: relative; cursor: pointer; }
+.orders-card-strip[data-offer="true"] > div { background: transparent; border: 0; border-radius: 0; padding: 0; color: inherit; font-size: 10px; }
+.orders-card-action { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 24px; border-radius: 6px; padding: 0 8px; font-size: 10.5px; font-weight: 700; white-space: nowrap; color: #fff; transition: filter 150ms ease; cursor: pointer; }
+.orders-card-action:hover { filter: brightness(.92); }
+.orders-card-icon { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 24px; height: 24px; border-radius: 6px; background: #f1f5f9; color: #475569; position: relative; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; }
+.orders-card-icon:hover { background: #e2e8f0; color: #0f172a; }
+.orders-card-icon-danger { background: #fee2e2; color: #dc2626; }
+.orders-card-icon-danger:hover { background: #fecaca; color: #b91c1c; }
+.orders-card-icon > span { font-size: 10.5px; font-weight: 700; }
+.orders-card-refuse { padding: 0 7px 0 5px; }
+/* Cartão estreito: ações viram só ícones (o nome fica no tooltip / aria-label). */
+@container (max-width: 190px) { .orders-card-extra { display: none; } .orders-card-paid { width: 15px; padding: 0; text-align: center; font-size: 0; } .orders-card-paid::before { content: '✓'; font-size: 10px; } }
+@container (max-width: 250px) { .orders-card-action > span, .orders-card-refuse > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } .orders-card-action { width: 24px; padding: 0; } .orders-card-refuse { padding: 0; } }
 .orders-kanban-tabs { display: none; }
-.orders-kanban-skeleton { flex-shrink: 0; height: 170px; border-radius: 14px; padding: 14px; background: white; animation: orders-pulse 1.5s ease-in-out infinite; }
-.orders-kanban-skeleton div { height: 14px; border-radius: 6px; background: #e5e7eb; margin-bottom: 18px; }
+.orders-kanban-skeleton { flex-shrink: 0; height: 56px; border-radius: 8px; padding: 10px; background: white; animation: orders-pulse 1.5s ease-in-out infinite; }
+.orders-kanban-skeleton div { height: 10px; border-radius: 5px; background: #e5e7eb; margin-bottom: 8px; }
 .orders-kanban-skeleton div:nth-child(2) { width: 70%; }
 @keyframes orders-pulse { 50% { opacity: .5; } }
 /* Ao mudar de status o card remonta na nova coluna e entra com fade + deslize suave. */
@@ -62,3 +93,8 @@
 .orders-list .orders-list-total { font-weight: 800; font-size: 13px; color: #0f172a; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .orders-status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 10.5px; font-weight: 800; letter-spacing: .03em; white-space: nowrap; box-shadow: 0 1px 2px rgba(15,23,42,.18); }
 @media (prefers-reduced-motion: reduce) { .orders-kanban-board, .orders-list-wrap, .orders-list-row, .orders-list-row > td { transition: none; } .orders-list-row:hover { transform: none; } }
+
+/* ===== Painel lateral de detalhes: o conteúdo existente foi desenhado para ~200px; escala 1.5x para ~400px legíveis ===== */
+.orders-detail-panel { position: relative; min-width: 0; }
+.orders-detail-zoom { position: absolute; top: 0; left: 0; width: 66.6667%; height: 66.6667%; transform: scale(1.5); transform-origin: 0 0; display: flex; flex-direction: column; min-height: 0; }
+.orders-detail-zoom > * { flex: 1; min-height: 0; }

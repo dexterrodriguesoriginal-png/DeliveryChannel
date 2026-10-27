@@ -378,3 +378,53 @@ describe('arrastar no Kanban', () => {
     expect(rows.find(r => r.textContent?.includes('#44'))!.getAttribute('data-column')).toBe('delivered');
   });
 });
+
+describe('card compacto e painel lateral de detalhes', () => {
+  const props = { onUpdateStatus: vi.fn(), onAssignDriverClick: vi.fn(), onSelectOrder: vi.fn() };
+  it('mostra #número e cliente, valor · tipo · pagamento, semáforo e selo Pago, sem botão grande', async () => {
+    const paid = order('PENDING', { totalAmount: 1, paymentMethod: 'PIX', onlinePayment: { status: 'paid' } as Order['onlinePayment'] });
+    await act(async () => { root.render(<KanbanOrderCard order={paid} {...props} />); });
+    const card = container.querySelector('.orders-kanban-card')!;
+    expect(card.querySelector('.orders-card-title')?.textContent).toContain('#123 Cliente Teste');
+    expect(card.querySelector('.orders-card-sub-text')?.textContent).toMatch(/R\$\s*1,00 · Delivery · PIX/);
+    expect(card.querySelector('.orders-card-paid')?.textContent).toBe('Pago');
+    expect(card.querySelector('.orders-card-dot')?.getAttribute('data-urgency')).toBe('ok');
+    expect(card.textContent).not.toContain('Ver detalhes'); expect(card.textContent).not.toContain('Entregue ');
+  });
+  it('semáforo: âmbar perto de atrasar e vermelho atrasado; encerrado não tem timer', async () => {
+    const ago = (m: number) => new Date(Date.now() - m * 60000).toISOString();
+    for (const [min, level] of [[20, 'near'], [45, 'late']] as const) {
+      await act(async () => { root.render(<KanbanOrderCard order={order('PREPARING', { createdAt: ago(min) })} {...props} />); });
+      expect(container.querySelector('.orders-card-dot')?.getAttribute('data-urgency')).toBe(level);
+    }
+    await act(async () => { root.render(<KanbanOrderCard order={order('DELIVERED')} {...props} />); });
+    expect(container.querySelector('.orders-card-timer')).toBeNull();
+    expect(container.querySelector('.orders-card-action')).toBeNull();
+  });
+  it('cancelar fica nas ações rápidas e o clique no card abre os detalhes', async () => {
+    const onCancelClick = vi.fn(), onSelectOrder = vi.fn();
+    const preparing = order('PREPARING');
+    await act(async () => { root.render(<KanbanOrderCard order={preparing} {...props} onSelectOrder={onSelectOrder} onCancelClick={onCancelClick} />); });
+    await click(container.querySelector('[aria-label="Cancelar pedido"]')!);
+    expect(onCancelClick).toHaveBeenCalledWith(preparing); expect(onSelectOrder).not.toHaveBeenCalled();
+    await click(container.querySelector('.orders-card-hover')!);
+    expect(onSelectOrder).toHaveBeenCalledWith(preparing);
+  });
+  it('clicar no card abre o painel lateral com X/Esc, destaca o selecionado e troca o conteúdo', async () => {
+    mocks.getOrders.mockResolvedValue([order('PREPARING', { id: 'a', orderNumber: 10 }), order('PREPARING', { id: 'b', orderNumber: 11 })]);
+    await render();
+    expect(container.querySelector('[data-testid="order-detail-panel"]')).toBeNull();
+    await click(container.querySelector('[data-testid="order-card-a"]')!);
+    const panel = () => container.querySelector('[data-testid="order-detail-panel"]');
+    expect(panel()?.textContent).toContain('Pedido #10');
+    expect(container.querySelector('[data-testid="order-card-a"]')?.getAttribute('data-selected')).toBe('true');
+    await click(container.querySelector('[data-testid="order-card-b"]')!);
+    expect(panel()?.textContent).toContain('Pedido #11');
+    expect(container.querySelector('[data-testid="order-card-a"]')?.getAttribute('data-selected')).toBe('false');
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(panel()).toBeNull();
+    await click(container.querySelector('[data-testid="order-card-a"]')!);
+    await click(panel()!.querySelector('[title="Fechar painel de detalhes"]') as HTMLElement);
+    expect(panel()).toBeNull();
+  });
+});

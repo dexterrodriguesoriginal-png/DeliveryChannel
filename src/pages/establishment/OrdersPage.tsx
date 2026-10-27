@@ -154,6 +154,17 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
 
   // Pedido selecionado para Drawer lateral acoplado (como no print)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  // Esc fecha o painel lateral de detalhes (sem interferir em modais/campos abertos por cima).
+  useEffect(() => {
+    if (!selectedOrder) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      setSelectedOrder(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedOrder?.id]);
   const [drawerTab, setDrawerTab] = useState<'detalhes' | 'historico' | 'acoes'>('detalhes');
 
   const [unreadMessages, setUnreadMessages] = useState<OwnerNotification[]>([]);
@@ -1458,25 +1469,26 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       </div>
 
       {/* ========================================================================= */}
-      {/* REGIÃO 3: DRAWER STATUS-AWARE FIXO À DIREITA (LARGURA DO MENU: 200px)     */}
+      {/* REGIÃO 3: PAINEL LATERAL DE DETALHES (≈400px, encaixado ao lado do Kanban; gaveta sobreposta em telas estreitas) */}
       {/* ========================================================================= */}
       {selectedOrder && selectedOrderTheme && (
         <>
-          {/* Desktop: Fixo e colado no lado direito da tela (exatamente 200px como a coluna do menu) */}
-          <aside className="hidden lg:flex w-[200px] shrink-0 border-l border-slate-200/90 bg-white h-full flex-col shadow-lg z-20 overflow-hidden animate-in slide-in-from-right duration-200">
-            {renderDrawerContent()}
+          {/* Desktop: painel encaixado à direita; o Kanban continua visível ao lado */}
+          <aside data-testid="order-detail-panel" aria-label={`Detalhes do pedido ${selectedOrder.orderNumber || ''}`} className="orders-detail-panel hidden min-[1180px]:flex w-[400px] shrink-0 border-l border-slate-200/90 bg-white h-full flex-col shadow-lg z-20 overflow-hidden animate-in slide-in-from-right duration-200">
+            <div className="orders-detail-zoom">{renderDrawerContent()}</div>
           </aside>
 
-          {/* Mobile / Tablet: Drawer flutuante com backdrop */}
-          <div 
-            className="fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-xs lg:hidden animate-in fade-in"
+          {/* Telas estreitas: gaveta sobreposta */}
+          <div
+            className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 min-[1180px]:hidden animate-in fade-in"
             onClick={() => setSelectedOrder(null)}
           >
-            <aside 
-              className="w-full max-w-[200px] bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200"
+            <aside
+              data-testid="order-detail-drawer"
+              className="orders-detail-panel w-full max-w-[420px] bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200"
               onClick={(e) => e.stopPropagation()}
             >
-              {renderDrawerContent()}
+              <div className="orders-detail-zoom">{renderDrawerContent()}</div>
             </aside>
           </div>
         </>
