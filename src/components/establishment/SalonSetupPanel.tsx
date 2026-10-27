@@ -134,7 +134,7 @@ export const SalonSetupPanel: React.FC<Props> = ({
   const saveTable = async (table: DiningTable) => {
     setSavingTable(true);
     try {
-      const updated = await diningTableRepository.update(tenantId, table.id, editValues);
+      const updated = await diningTableRepository.update(tenantId, table.id, editValues, table.label);
       setTables(current => current.map(item => item.id === updated.id ? updated : item));
       setEditingId(null);
     } catch (error) {

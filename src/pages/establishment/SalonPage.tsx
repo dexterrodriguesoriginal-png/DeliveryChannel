@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, Clock, Plus, Receipt, RefreshCw, Utensils, X } from 'lucide-react';
+import { Bell, Check, Clock, PanelRightOpen, PauseCircle, PlayCircle, Plus, QrCode, Receipt, RefreshCw, Search, Utensils, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useModules } from '../../hooks/useModules';
 import { supabase } from '../../lib/supabase';
@@ -13,6 +13,15 @@ import { Modal } from '../../components/ui/Modal';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import { validateOptionSelection } from '../../lib/addons';
 import { dineInRoundItem } from '../../lib/customer/dineInCart';
+import {
+  CallLike, compareTables, deriveTableStatus, ELAPSED_REFRESH_MS, matchesFilter, matchesSearch, readLongStay, statusCounts,
+  STATUS_LABEL, TableFilter, tabTotals, writeLongStay, DEFAULT_LONG_STAY_MINUTES,
+} from '../../lib/salon/tableStatus';
+import { mesasQrRepository, MesasQrCapabilities, NO_CAPABILITIES } from '../../repositories/mesasQrRepository';
+import { TableCard } from '../../components/establishment/salon/TableCard';
+import { SalonSidebar, SidebarTab } from '../../components/establishment/salon/SalonSidebar';
+import { TabPixPanel } from '../../components/establishment/salon/TabPixPanel';
+import '../../components/establishment/salon/salon.css';
 
 type DiningTable = { id: string; label: string; area: string | null; seats: number; active: boolean };
 type DiningTab = {
@@ -44,7 +53,14 @@ const missingSchema = (error: { code?: string; message?: string }) =>
   ['PGRST202', 'PGRST205', '42P01', '42883'].includes(error.code || '') ||
   /could not find the (table|function)|does not exist/i.test(error.message || '');
 
-export const SalonPage: React.FC = () => {
+const LONG_STAY_OPTIONS = [30, 45, 60, 90, 120, 180];
+const FILTERS: Array<{ id: TableFilter; label: string }> = [
+  { id: 'ALL', label: 'Todas' }, { id: 'FREE', label: 'Livres' }, { id: 'OCCUPIED', label: 'Ocupadas' },
+  { id: 'LONG_STAY', label: 'Há muito tempo' }, { id: 'BILL', label: 'Conta pedida' }, { id: 'CALL', label: 'Chamando' },
+];
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString(); };
+
+export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ onNavigate }) => {
   const { activeTenant, activeRole, securityContext } = useAuth();
   const { available, isModuleEnabled } = useModules();
   const enabled = available && isModuleEnabled('dine_in');
@@ -71,6 +87,20 @@ export const SalonPage: React.FC = () => {
   const [closeOpen, setCloseOpen] = useState(false);
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: 'CAIXA', amount: '', tendered: '' }]);
   const seenCalls = useRef<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<TableFilter>('ALL');
+  const [now, setNow] = useState(() => Date.now());
+  const [longStay, setLongStay] = useState(() => DEFAULT_LONG_STAY_MINUTES);
+  const [sideOpen, setSideOpen] = useState(() => { try { const saved = localStorage.getItem('salon_sidebar_open'); return saved === null ? window.innerWidth >= 1280 : saved === 'true'; } catch { return true; } });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sideTab, setSideTab] = useState<SidebarTab>('OPEN');
+  const [closedToday, setClosedToday] = useState<Array<{ id: string; table_id: string; closed_at: string }>>([]);
+  const [paidByTab, setPaidByTab] = useState<Map<string, number>>(new Map());
+  const [reviews, setReviews] = useState<Set<string>>(new Set());
+  const [caps, setCaps] = useState<MesasQrCapabilities>(NO_CAPABILITIES);
+  const [storePaused, setStorePaused] = useState(false);
+  const [pauseBusy, setPauseBusy] = useState(false);
+  const [pixLive, setPixLive] = useState(false);
 
   const selectedTab = useMemo(() => tabs.find(tab => tab.table_id === selectedTableId), [tabs, selectedTableId]);
   const selectedTable = useMemo(() => tables.find(table => table.id === selectedTableId), [tables, selectedTableId]);
@@ -146,6 +176,50 @@ export const SalonPage: React.FC = () => {
     const timer = window.setInterval(() => { if (document.visibilityState !== 'hidden') void load(true); }, 10000);
     return () => window.clearInterval(timer);
   }, [activeTenant?.id, enabled, load]);
+
+  useEffect(() => {
+    if (!activeTenant?.id) return;
+    setLongStay(readLongStay(typeof window === 'undefined' ? undefined : window.localStorage, activeTenant.id));
+  }, [activeTenant?.id]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), ELAPSED_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Which new features the connected database supports (pre-migration => everything new stays hidden).
+  useEffect(() => {
+    if (!activeTenant?.id || !enabled) return;
+    let alive = true;
+    void mesasQrRepository.capabilities().then(next => { if (alive) setCaps(next); });
+    return () => { alive = false; };
+  }, [activeTenant?.id, enabled]);
+
+  // Read-only extras for the redesigned map. Any failure leaves the map working with what it already has.
+  useEffect(() => {
+    if (!activeTenant?.id || !enabled || !STAFF_ROLES.includes(activeRole || '')) return;
+    let alive = true;
+    const tenantId = activeTenant.id;
+    void (async () => {
+      const closedResult = await supabase.from('dining_tabs').select('id,table_id,closed_at').eq('tenant_id', tenantId).eq('status', 'CLOSED')
+        .gte('closed_at', startOfToday()).order('closed_at', { ascending: false }).limit(100);
+      const closed = closedResult.error ? [] : (closedResult.data || []) as Array<{ id: string; table_id: string; closed_at: string }>;
+      const ids = [...tabs.map(tab => tab.id), ...closed.map(tab => tab.id)];
+      const [paymentResult, reviewSet, pauses] = await Promise.all([
+        ids.length ? supabase.from('tab_payments').select('tab_id,amount_cents').eq('tenant_id', tenantId).in('tab_id', ids) : Promise.resolve({ data: [], error: null }),
+        caps.tabPix ? mesasQrRepository.pixReviews(tenantId, ids) : Promise.resolve(new Set<string>()),
+        caps.qrPause ? mesasQrRepository.pauses(tenantId).catch(() => ({ storeWide: false, tableIds: [] as string[] })) : Promise.resolve({ storeWide: false, tableIds: [] as string[] }),
+      ]);
+      if (!alive) return;
+      const paid = new Map<string, number>();
+      if (!paymentResult.error) for (const row of (paymentResult.data || []) as Array<{ tab_id: string; amount_cents: number }>) paid.set(row.tab_id, (paid.get(row.tab_id) || 0) + Number(row.amount_cents || 0));
+      setClosedToday(closed);
+      setPaidByTab(paid);
+      setReviews(reviewSet);
+      setStorePaused(pauses.storeWide);
+    })().catch(() => { /* extras are optional */ });
+    return () => { alive = false; };
+  }, [activeTenant?.id, activeRole, enabled, tabs, caps.tabPix, caps.qrPause]);
 
   useEffect(() => {
     let alive = true;
@@ -266,51 +340,118 @@ export const SalonPage: React.FC = () => {
     });
   };
 
-  const statusFor = (table: DiningTable) => {
-    const tab = tabs.find(item => item.table_id === table.id);
-    if (!tab) return { tone: 'bg-gray-100 border-gray-300 text-gray-700', label: 'Livre' };
-    if (tab.status === 'BILL_REQUESTED') return { tone: 'bg-green-100 border-green-500 text-green-900', label: 'Pediu a conta' };
-    const hasCall = calls.some(call => call.tab_id === tab.id && call.status === 'OPEN') ||
-      sessions.some(session => session.tab_id === tab.id && !session.approved_at);
-    if (hasCall) return { tone: 'bg-yellow-100 border-yellow-500 text-yellow-950', label: 'Chamando / aguardando liberação' };
-    const overdue = rounds.some(round => round.tab_id === tab.id &&
-      ['CONFIRMED', 'PREPARING'].includes(round.status) && Date.now() - new Date(round.created_at).getTime() > 25 * 60_000);
-    if (overdue) return { tone: 'bg-red-100 border-red-500 text-red-900', label: 'Rodada atrasada' };
-    return { tone: 'bg-blue-100 border-blue-500 text-blue-900', label: `Ocupada · ${Math.max(0, Math.floor((Date.now() - new Date(tab.opened_at).getTime()) / 60000))} min` };
+  const tableLabelById = useMemo(() => new Map(tables.map(table => [table.id, table.label])), [tables]);
+  const infoByTable = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof deriveTableStatus>>();
+    for (const table of tables) {
+      const tab = tabs.find(item => item.table_id === table.id);
+      map.set(table.id, deriveTableStatus({
+        tab, calls: calls as CallLike[], sessions, rounds, paidCents: tab ? paidByTab.get(tab.id) : 0,
+        needsReview: tab ? reviews.has(tab.id) : false, now, longStayMinutes: longStay,
+      }));
+    }
+    return map;
+  }, [tables, tabs, calls, sessions, rounds, paidByTab, reviews, now, longStay]);
+  const counts = useMemo(() => statusCounts(Array.from(infoByTable.values())), [infoByTable]);
+  const visibleTables = useMemo(
+    () => tables.filter(table => matchesSearch(table, search) && matchesFilter(infoByTable.get(table.id)!, filter)).sort(compareTables),
+    [tables, search, filter, infoByTable],
+  );
+  const sideOpenTabs = useMemo(() => tabs.map(tab => {
+    const info = infoByTable.get(tab.table_id);
+    return info ? { tabId: tab.id, tableId: tab.table_id, tableLabel: tableLabelById.get(tab.table_id) || 'Mesa', kind: info.kind,
+      elapsedMinutes: info.elapsedMinutes || 0, totalCents: info.totalCents, paidPercent: info.paidPercent, needsReview: info.needsReview } : null;
+  }).filter((item): item is NonNullable<typeof item> => !!item).sort((a, b) => b.elapsedMinutes - a.elapsedMinutes), [tabs, infoByTable, tableLabelById]);
+  const sideClosed = useMemo(() => closedToday.map(tab => ({
+    tabId: tab.id, tableLabel: tableLabelById.get(tab.table_id) || 'Mesa', totalCents: paidByTab.get(tab.id) || 0, closedAt: tab.closed_at, needsReview: reviews.has(tab.id),
+  })), [closedToday, tableLabelById, paidByTab, reviews]);
+  const tableIdByTab = useMemo(() => new Map(tabs.map(tab => [tab.id, tab.table_id])), [tabs]);
+  const sideOrders = useMemo(() => rounds.filter(round => ['CONFIRMED', 'PREPARING', 'READY'].includes(round.status)).map(round => {
+    const tableId = tableIdByTab.get(round.tab_id) || '';
+    return { id: round.id, tableId, tableLabel: tableLabelById.get(tableId) || 'Mesa', orderNumber: round.order_number, roundNo: round.round_no, status: round.status, subtotalCents: Math.round(Number(round.subtotal || 0) * 100), createdAt: round.created_at };
+  }).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)), [rounds, tableIdByTab, tableLabelById]);
+  const sideCalls = useMemo(() => calls.filter(call => call.status === 'OPEN').map(call => {
+    const tableId = tableIdByTab.get(call.tab_id) || '';
+    return { id: call.id, tableId, tableLabel: tableLabelById.get(tableId) || 'Mesa', type: call.type, createdAt: call.created_at };
+  }), [calls, tableIdByTab, tableLabelById]);
+  const openTable = useCallback((id: string) => { setSelectedTableId(id); setDrawerOpen(false); }, []);
+  const toggleSide = (next: boolean) => { setSideOpen(next); try { localStorage.setItem('salon_sidebar_open', String(next)); } catch { /* ignore */ } };
+  const canPause = activeRole === 'OWNER' || activeRole === 'MANAGER';
+  const toggleStorePause = async () => {
+    if (!activeTenant) return;
+    setPauseBusy(true);
+    try { await mesasQrRepository.setPause(activeTenant.id, null, !storePaused); setStorePaused(!storePaused); setMessage(null); }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível alterar o QR.'); }
+    finally { setPauseBusy(false); }
   };
+  const onPixSettled = useCallback(() => { setCloseOpen(false); setSelectedTableId(null); setPixLive(false); void load(true); }, [load]);
+  const onPixLive = useCallback((live: boolean) => setPixLive(live), []);
 
   if (!enabled) return <div className="rounded-2xl bg-white p-6 text-sm text-gray-600">O módulo Mesa/Comanda está desativado.</div>;
   if (!activeTenant) return null;
 
   return (
-    <div className="space-y-4" data-testid="salon-page">
+    <div className="salon-root space-y-4" data-testid="salon-page">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-xl font-black text-gray-950">Salão</h1><p className="text-sm text-gray-600">Mapa de mesas e comandas em andamento</p></div>
-        <button type="button" onClick={() => void load()} className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-bold"><RefreshCw className="h-4 w-4" />Atualizar</button>
+        <div className="flex flex-wrap items-center gap-2">
+          {onNavigate && <button type="button" onClick={() => onNavigate('est-mesas-qr')} className="salon-btn"><QrCode className="h-4 w-4" aria-hidden="true" />Mesas e QR Code</button>}
+          {caps.qrPause && canPause && <button type="button" onClick={() => void toggleStorePause()} disabled={pauseBusy} aria-pressed={storePaused} className={`salon-btn${storePaused ? ' salon-btn--warn' : ''}`}>
+            {storePaused ? <PlayCircle className="h-4 w-4" aria-hidden="true" /> : <PauseCircle className="h-4 w-4" aria-hidden="true" />}{storePaused ? 'Retomar pedidos por QR' : 'Pausar pedidos por QR'}</button>}
+          <button type="button" onClick={() => void load()} className="salon-btn"><RefreshCw className="h-4 w-4" aria-hidden="true" />Atualizar</button>
+        </div>
       </header>
       {message && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{message}</div>}
-      <div className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-white" role="status" data-testid="salon-alerts">
-        <Bell className="h-5 w-5" />
+      {storePaused && <div role="status" className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-950"><PauseCircle className="h-5 w-5" aria-hidden="true" />Pedidos pelo QR das mesas estão pausados. Os clientes veem um aviso e o garçom ainda pode lançar pedidos.</div>}
+      <div className="flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-white shadow-sm" role="status" data-testid="salon-alerts">
+        <Bell className="h-5 w-5" aria-hidden="true" />
         <span className="font-bold">{calls.filter(call => call.type !== 'BILL').length} chamados · {tabs.filter(tab => tab.status === 'BILL_REQUESTED').length} contas</span>
       </div>
-      {loading ? <p className="text-sm text-gray-500">Carregando o salão…</p> : tables.length === 0 ? (
-        <p className="rounded-xl bg-white p-6 text-sm text-gray-600">Nenhuma mesa ativa. Cadastre mesas em Módulos → Mesa/Comanda → Configurar.</p>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {tables.map(table => {
-            const status = statusFor(table);
-            const tab = tabs.find(item => item.table_id === table.id);
-            return <button key={table.id} type="button" onClick={() => setSelectedTableId(table.id)}
-              className={`min-h-32 rounded-2xl border-2 p-4 text-left shadow-sm transition hover:shadow-md ${status.tone}`}
-              data-testid={`salon-table-${table.id}`} aria-label={`${table.label}, ${status.label}`}>
-              <div className="flex items-start justify-between gap-2"><Utensils className="h-5 w-5" /><span className="text-xs font-bold">{tab ? sessions.filter(session => session.tab_id === tab.id).length : ''}</span></div>
-              <div className="mt-3 text-xl font-black">{table.label}</div>
-              <div className="text-xs font-semibold">{table.area || `${table.seats} lugares`}</div>
-              <div className="mt-2 text-xs font-bold">{status.label}</div>
-            </button>;
-          })}
+      <div className="salon-toolbar">
+        <label className="salon-search"><Search className="h-4 w-4 text-slate-500" aria-hidden="true" /><span className="sr-only">Buscar mesa</span>
+          <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar mesa (ex.: 12, varanda)" aria-label="Buscar mesa" autoComplete="off" /></label>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por status">
+          {FILTERS.map(item => <button key={item.id} type="button" aria-pressed={filter === item.id} className="salon-filter" onClick={() => setFilter(item.id)} data-testid={`salon-filter-${item.id}`}>
+            {item.label}<b>{counts[item.id]}</b></button>)}
         </div>
-      )}
+      </div>
+      <ul className="salon-legend" aria-label="Legenda das cores">
+        <li><i style={{ background: '#14b8a6' }} />Livre</li><li><i style={{ background: '#eab308' }} />Ocupada</li>
+        <li><i style={{ background: '#dc2626' }} />Ocupada há mais de {longStay} min</li><li><i style={{ background: '#7c3aed' }} />Conta pedida</li>
+        <li><i style={{ background: '#e11d48' }} />Sino = chamado ou liberação pendente</li>
+        <li className="ml-auto">
+<label className="salon-longstay"><span>Mesa longa após</span>
+          <select aria-label="Tempo para marcar mesa como ocupada há muito tempo" value={longStay} onChange={event => setLongStay(writeLongStay(window.localStorage, activeTenant.id, Number(event.target.value)))}>
+            {(LONG_STAY_OPTIONS.includes(longStay) ? LONG_STAY_OPTIONS : [...LONG_STAY_OPTIONS, longStay].sort((a, b) => a - b)).map(value => <option key={value} value={value}>{value} min</option>)}
+          </select></label>
+        </li>
+      </ul>
+      <div className="salon-layout">
+        <div className="min-w-0 flex-1">
+          {loading ? (
+            <div><p className="sr-only">Carregando o salão…</p><p className="mb-3 text-sm text-gray-500" aria-hidden="true">Carregando o salão…</p>
+              <div className="salon-grid" aria-hidden="true">{Array.from({ length: 8 }, (_, i) => <div key={i} className="salon-skeleton" />)}</div></div>
+          ) : tables.length === 0 ? (
+            <div className="rounded-2xl bg-white p-8 text-center shadow-sm"><span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-teal-50 text-teal-700"><Utensils className="h-7 w-7" aria-hidden="true" /></span>
+              <p className="mt-3 text-sm text-gray-600">Nenhuma mesa ativa. Cadastre mesas em Mesas e QR Code.</p>
+              {onNavigate && <button type="button" onClick={() => onNavigate('est-mesas-qr')} className="salon-btn mt-3"><QrCode className="h-4 w-4" aria-hidden="true" />Abrir Mesas e QR Code</button>}</div>
+          ) : visibleTables.length === 0 ? (
+            <p className="rounded-2xl bg-white p-8 text-center text-sm text-gray-600 shadow-sm">Nenhuma mesa encontrada com esse filtro. <button type="button" className="font-bold text-teal-800 underline" onClick={() => { setSearch(''); setFilter('ALL'); }}>Limpar filtros</button></p>
+          ) : (
+            <div className="salon-grid">
+              {visibleTables.map((table, index) => <TableCard key={table.id} id={table.id} label={table.label} area={table.area} seats={table.seats} info={infoByTable.get(table.id)!} index={index} onOpen={openTable} />)}
+            </div>
+          )}
+        </div>
+        {sideOpen
+          ? <div className="salon-side-wrap hidden lg:block"><SalonSidebar variant="panel" tab={sideTab} onTabChange={setSideTab} openTabs={sideOpenTabs} closedToday={sideClosed} orders={sideOrders} calls={sideCalls} now={now}
+              busyCallId={busy?.startsWith('call-') ? busy.slice(5) : null} onSelectTable={openTable} onHandleCall={id => void markCallHandled(id)} onClose={() => toggleSide(false)} /></div>
+          : <button type="button" onClick={() => toggleSide(true)} className="salon-rail hidden lg:flex" aria-label="Abrir painel lateral"><PanelRightOpen className="h-5 w-5" aria-hidden="true" /><b>{sideOpenTabs.length}</b></button>}
+      </div>
+      <button type="button" onClick={() => setDrawerOpen(true)} className="salon-fab lg:hidden" data-testid="salon-drawer-open"><PanelRightOpen className="h-5 w-5" aria-hidden="true" />Comandas<b>{sideOpenTabs.length}</b>{sideCalls.length > 0 && <span className="salon-fab-dot" aria-label={`${sideCalls.length} chamados`} />}</button>
+      {drawerOpen && <div className="salon-drawer-backdrop lg:hidden" role="presentation" onClick={event => { if (event.target === event.currentTarget) setDrawerOpen(false); }}>
+        <div className="salon-drawer" role="dialog" aria-modal="true" aria-label="Painel lateral do salão"><SalonSidebar variant="drawer" tab={sideTab} onTabChange={setSideTab} openTabs={sideOpenTabs} closedToday={sideClosed} orders={sideOrders} calls={sideCalls} now={now}
+          busyCallId={busy?.startsWith('call-') ? busy.slice(5) : null} onSelectTable={openTable} onHandleCall={id => void markCallHandled(id)} onClose={() => setDrawerOpen(false)} /></div></div>}
       {selectedTable && <div className="fixed inset-0 z-40 flex justify-end bg-black/40" role="presentation" onClick={event => { if (event.target === event.currentTarget) setSelectedTableId(null); }}>
         <section className="h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-xl" role="dialog" aria-label={`Comanda ${selectedTable.label}`}>
           <div className="flex items-start justify-between gap-3">
@@ -384,6 +525,11 @@ export const SalonPage: React.FC = () => {
       <Modal isOpen={closeOpen} onClose={() => setCloseOpen(false)} title="Revisar e fechar conta">
         <div className="space-y-3">
           <p className="text-lg font-black">Total: {money(totalCents / 100)}</p>
+          {caps.tabPix && canClose && selectedTab && <>
+            <TabPixPanel key={selectedTab.id} tabId={selectedTab.id} totalCents={totalCents} onLiveChange={onPixLive} onSettled={onPixSettled} />
+            <p className="text-center text-xs font-bold uppercase tracking-wide text-slate-500">ou feche manualmente (dinheiro, cartão ou caixa)</p>
+          </>}
+          {pixLive && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Há um PIX aguardando pagamento. Cancele o PIX para fechar manualmente e evitar cobrança em duplicidade.</p>}
           {payments.map((payment, index) => <div key={index} className="grid grid-cols-1 gap-2 rounded-xl border p-3 sm:grid-cols-3">
             <select aria-label={`Forma de pagamento ${index + 1}`} value={payment.method} onChange={event => setPayments(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, method: event.target.value as PaymentMethod } : row))} className="rounded-lg border px-2 py-2">
               <option value="CAIXA">Ir ao caixa</option><option value="CASH">Dinheiro</option><option value="CREDIT_CARD">Crédito</option><option value="DEBIT_CARD">Débito</option><option value="PIX">PIX na mesa</option>
@@ -396,7 +542,7 @@ export const SalonPage: React.FC = () => {
             {payments.length > 1 && <button type="button" onClick={() => setPayments(rows => rows.slice(0, -1))} className="rounded-lg border px-3 py-2 text-sm font-bold">Remover último</button>}
           </div>
           {payments.some(payment => payment.method === 'CASH' && payment.tendered && Number(payment.tendered.replace(',', '.')) * 100 < Number(payment.amount.replace(',', '.')) * 100) && <p role="alert" className="text-sm font-bold text-red-700">O valor precisa ser maior que a conta</p>}
-          <button type="button" disabled={!!busy} onClick={closeTab} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">Confirmar fechamento</button>
+          <button type="button" disabled={!!busy || pixLive} onClick={closeTab} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar fechamento</button>
         </div>
       </Modal>
     </div>

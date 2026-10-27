@@ -121,6 +121,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ...(modulesAvailable && isModuleEnabled('dine_in') && hasDiningTables
           ? [{ id: 'est-salon', label: 'Salão', icon: <Utensils className="w-4 h-4 shrink-0" /> }]
           : []),
+        ...(modulesAvailable && isModuleEnabled('dine_in') && (activeRole === 'OWNER' || activeRole === 'MANAGER')
+          ? [{ id: 'est-mesas-qr', label: 'Mesas e QR Code', icon: <QrCode className="w-4 h-4 shrink-0" /> }]
+          : []),
         { id: 'est-products', label: 'Cardápio / Produtos', icon: <Package className="w-4 h-4 shrink-0" /> },
         { id: 'est-quality', label: 'Qualidade do Cardápio', icon: <Gauge className="w-4 h-4 shrink-0" /> },
         { id: 'est-categories', label: 'Categorias', icon: <Layers className="w-4 h-4 shrink-0" /> },

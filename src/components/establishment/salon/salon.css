@@ -1,0 +1,102 @@
+/* Salão — mapa de mesas. Tokens por status; contraste AA (texto escuro sobre fundos claros). */
+.salon-root { --salon-ink:#0f172a; --salon-muted:#475569; --salon-line:#e2e8f0; }
+
+.salon-card {
+  --sc-bg:#f8fafc; --sc-border:#cbd5e1; --sc-text:#0f172a; --sc-accent:#475569; --sc-chip:#e2e8f0; --sc-shadow:rgba(71,85,105,.35);
+  position:relative; display:flex; flex-direction:column; justify-content:space-between; gap:10px; min-height:152px; width:100%;
+  padding:14px 14px 12px; border-radius:22px; border:1.5px solid var(--sc-border); color:var(--sc-text); text-align:left; cursor:pointer;
+  background:linear-gradient(165deg, var(--sc-bg) 0%, #ffffff 160%);
+  box-shadow:0 1px 2px rgba(15,23,42,.05), 0 8px 20px -12px var(--sc-shadow);
+  transition:transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s ease, border-color .2s ease;
+  animation:salon-rise .35s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i,0) * 14ms);
+}
+.salon-card:hover { transform:translateY(-3px); box-shadow:0 2px 4px rgba(15,23,42,.06), 0 16px 28px -14px var(--sc-shadow); border-color:var(--sc-accent); }
+.salon-card:active { transform:translateY(0) scale(.985); }
+.salon-card:focus-visible { outline:3px solid var(--sc-accent); outline-offset:3px; }
+.salon-card--FREE { --sc-bg:#f0fdfa; --sc-border:#99f6e4; --sc-text:#134e4a; --sc-accent:#0f766e; --sc-chip:#ccfbf1; --sc-shadow:rgba(13,148,136,.45); }
+.salon-card--OCCUPIED { --sc-bg:#fefce8; --sc-border:#fde047; --sc-text:#422006; --sc-accent:#a16207; --sc-chip:#fef08a; --sc-shadow:rgba(202,138,4,.45); }
+.salon-card--LONG_STAY { --sc-bg:#fef2f2; --sc-border:#fca5a5; --sc-text:#7f1d1d; --sc-accent:#b91c1c; --sc-chip:#fecaca; --sc-shadow:rgba(220,38,38,.45); }
+.salon-card--BILL { --sc-bg:#f5f3ff; --sc-border:#c4b5fd; --sc-text:#4c1d95; --sc-accent:#6d28d9; --sc-chip:#ddd6fe; --sc-shadow:rgba(124,58,237,.45); }
+.salon-card--CALL { box-shadow:0 0 0 0 rgba(239,68,68,.5), 0 8px 20px -12px var(--sc-shadow); animation:salon-rise .35s cubic-bezier(.2,.8,.2,1) both, salon-halo 2s ease-out infinite; animation-delay:calc(var(--i,0) * 14ms), 0s; }
+
+.salon-chip { display:inline-flex; align-items:center; gap:6px; padding:3px 9px 3px 7px; border-radius:999px; background:var(--sc-chip); color:var(--sc-text); font-size:11px; font-weight:800; letter-spacing:.01em; line-height:1.4; }
+.salon-dot { width:7px; height:7px; border-radius:50%; background:var(--sc-accent); }
+.salon-num { font-size:44px; line-height:1; font-weight:900; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
+.salon-name { font-size:12px; font-weight:700; opacity:.8; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.salon-meta { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; font-weight:800; font-variant-numeric:tabular-nums; }
+.salon-time { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,.75); border:1px solid var(--sc-border); font-weight:800; }
+.salon-bar { position:relative; height:6px; border-radius:999px; background:rgba(15,23,42,.08); overflow:hidden; }
+.salon-bar > i { position:absolute; inset:0 auto 0 0; border-radius:999px; background:var(--sc-accent); transition:width .5s cubic-bezier(.2,.8,.2,1); }
+
+.salon-bell { position:absolute; top:10px; right:10px; display:grid; place-items:center; width:30px; height:30px; border-radius:50%; background:#dc2626; color:#fff; box-shadow:0 4px 10px -2px rgba(220,38,38,.6); animation:salon-ring 1.8s ease-in-out infinite; transform-origin:50% 12%; }
+.salon-bell::after { content:''; position:absolute; inset:-4px; border-radius:50%; border:2px solid rgba(220,38,38,.55); animation:salon-ping 1.8s ease-out infinite; }
+.salon-bell--release { background:#d97706; box-shadow:0 4px 10px -2px rgba(217,119,6,.6); }
+.salon-bell--release::after { border-color:rgba(217,119,6,.55); }
+
+.salon-filter { display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; border:1.5px solid var(--salon-line); background:#fff; color:var(--salon-ink); font-size:13px; font-weight:700; cursor:pointer; transition:background .15s, border-color .15s, transform .15s; min-height:40px; }
+.salon-filter:hover { border-color:#94a3b8; transform:translateY(-1px); }
+.salon-filter[aria-pressed="true"] { background:#0f172a; border-color:#0f172a; color:#fff; }
+.salon-filter:focus-visible { outline:3px solid #0f766e; outline-offset:2px; }
+.salon-filter b { min-width:22px; padding:1px 6px; border-radius:999px; background:#e2e8f0; color:#0f172a; font-size:11px; text-align:center; font-variant-numeric:tabular-nums; }
+.salon-filter[aria-pressed="true"] b { background:rgba(255,255,255,.2); color:#fff; }
+
+.salon-side { background:#fff; border:1px solid var(--salon-line); border-radius:24px; box-shadow:0 12px 32px -20px rgba(15,23,42,.35); display:flex; flex-direction:column; overflow:hidden; }
+.salon-side-tab { flex:1; padding:10px 2px; font-size:11px; font-weight:800; color:#475569; border-bottom:3px solid transparent; transition:color .15s, border-color .15s, background .15s; white-space:nowrap; }
+.salon-side-tab:hover { background:#f8fafc; }
+.salon-side-tab[aria-selected="true"] { color:#0f172a; border-color:#0f172a; }
+.salon-side-tab:focus-visible { outline:3px solid #0f766e; outline-offset:-3px; }
+.salon-row { display:flex; align-items:center; gap:10px; width:100%; padding:10px 12px; border-radius:14px; border:1px solid var(--salon-line); background:#fff; text-align:left; transition:background .15s, border-color .15s, transform .15s; }
+.salon-row:hover { background:#f8fafc; border-color:#cbd5e1; transform:translateX(-2px); }
+.salon-row:focus-visible { outline:3px solid #0f766e; outline-offset:2px; }
+
+.salon-drawer-backdrop { position:fixed; inset:0; z-index:60; background:rgba(15,23,42,.45); backdrop-filter:blur(2px); animation:salon-fade .2s ease both; }
+.salon-drawer { position:fixed; z-index:61; top:0; right:0; bottom:0; width:min(92vw,400px); padding:12px; animation:salon-slide .28s cubic-bezier(.2,.8,.2,1) both; }
+.salon-drawer .salon-side { height:100%; border-radius:24px; }
+
+.salon-skeleton { border-radius:22px; min-height:152px; background:linear-gradient(100deg,#f1f5f9 30%,#f8fafc 50%,#f1f5f9 70%); background-size:200% 100%; animation:salon-shimmer 1.3s linear infinite; }
+
+.salon-btn { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:8px 14px; border-radius:12px; border:1.5px solid var(--salon-line); background:#fff; color:#0f172a; font-size:13px; font-weight:800; transition:background .15s, border-color .15s, transform .15s; cursor:pointer; }
+.salon-btn:hover { border-color:#94a3b8; background:#f8fafc; transform:translateY(-1px); }
+.salon-btn:focus-visible { outline:3px solid #0f766e; outline-offset:2px; }
+.salon-btn:disabled { opacity:.55; cursor:not-allowed; transform:none; }
+.salon-btn--warn { background:#fffbeb; border-color:#f59e0b; color:#78350f; }
+.salon-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; padding:12px; border-radius:20px; background:#fff; border:1px solid var(--salon-line); box-shadow:0 8px 24px -20px rgba(15,23,42,.4); }
+.salon-search { display:flex; align-items:center; gap:8px; flex:1 1 200px; max-width:300px; min-height:40px; padding:0 12px; border-radius:12px; border:1.5px solid var(--salon-line); background:#f8fafc; transition:border-color .15s, box-shadow .15s, background .15s; }
+.salon-search:focus-within { border-color:#0f766e; background:#fff; box-shadow:0 0 0 3px rgba(15,118,110,.18); }
+.salon-search input { flex:1; min-width:0; background:transparent; outline:none; font-size:14px; font-weight:600; color:#0f172a; }
+.salon-longstay { display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:700; color:#475569; }
+.salon-longstay select { min-height:36px; padding:0 8px; border-radius:10px; border:1.5px solid var(--salon-line); background:#fff; color:#0f172a; font-weight:700; }
+.salon-legend { display:flex; flex-wrap:wrap; align-items:center; gap:6px 16px; padding:0 4px; margin:0; list-style:none; font-size:12px; font-weight:700; color:#475569; }
+.salon-legend li { display:inline-flex; align-items:center; gap:6px; }
+.salon-legend i { width:10px; height:10px; border-radius:4px; display:inline-block; }
+.salon-layout { display:flex; align-items:flex-start; gap:16px; }
+.salon-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(164px, 1fr)); gap:14px; }
+@media (max-width: 420px) { .salon-grid { grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; } .salon-num { font-size:38px; } }
+.salon-side-wrap { width:360px; flex-shrink:0; position:sticky; top:12px; height:calc(100vh - 120px); min-height:420px; }
+.salon-rail { position:sticky; top:12px; flex-direction:column; align-items:center; gap:8px; padding:12px 10px; border-radius:16px; border:1.5px solid var(--salon-line); background:#fff; color:#0f172a; cursor:pointer; box-shadow:0 8px 24px -18px rgba(15,23,42,.4); }
+.salon-rail:hover { background:#f8fafc; }
+.salon-rail:focus-visible { outline:3px solid #0f766e; outline-offset:2px; }
+.salon-rail b { font-size:12px; padding:1px 7px; border-radius:999px; background:#0f172a; color:#fff; }
+.salon-avail { opacity:.7; }
+@media (max-width: 420px) { .salon-avail { display:none; } }
+@media (min-width: 1024px) { .salon-fab { display:none !important; } }
+.salon-meta > span { white-space:nowrap; }
+.salon-fab { position:fixed; z-index:50; right:16px; bottom:16px; display:inline-flex; align-items:center; gap:8px; min-height:48px; padding:0 18px; border-radius:999px; background:#0f172a; color:#fff; font-weight:800; font-size:14px; box-shadow:0 12px 28px -8px rgba(15,23,42,.65); transition:transform .15s; }
+.salon-fab:active { transform:scale(.96); }
+.salon-fab:focus-visible { outline:3px solid #5eead4; outline-offset:3px; }
+.salon-fab b { padding:1px 8px; border-radius:999px; background:#fff; color:#0f172a; font-size:12px; }
+.salon-fab-dot { position:absolute; top:-2px; right:-2px; width:14px; height:14px; border-radius:50%; background:#dc2626; border:2px solid #fff; }
+
+@keyframes salon-rise { from { opacity:0; transform:translateY(8px) scale(.98); } to { opacity:1; transform:none; } }
+@keyframes salon-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes salon-slide { from { transform:translateX(24px); opacity:0; } to { transform:none; opacity:1; } }
+@keyframes salon-shimmer { to { background-position:-200% 0; } }
+@keyframes salon-ring { 0%,60%,100% { transform:rotate(0); } 10% { transform:rotate(14deg); } 20% { transform:rotate(-12deg); } 30% { transform:rotate(9deg); } 40% { transform:rotate(-6deg); } 50% { transform:rotate(3deg); } }
+@keyframes salon-ping { 0% { transform:scale(.9); opacity:.9; } 100% { transform:scale(1.7); opacity:0; } }
+@keyframes salon-halo { 0% { box-shadow:0 0 0 0 rgba(239,68,68,.45), 0 8px 20px -12px var(--sc-shadow); } 70% { box-shadow:0 0 0 12px rgba(239,68,68,0), 0 8px 20px -12px var(--sc-shadow); } 100% { box-shadow:0 0 0 0 rgba(239,68,68,0), 0 8px 20px -12px var(--sc-shadow); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .salon-card, .salon-card--CALL, .salon-bell, .salon-bell::after, .salon-skeleton, .salon-drawer, .salon-drawer-backdrop { animation:none !important; }
+  .salon-card, .salon-row, .salon-filter, .salon-bar > i { transition:none !important; }
+  .salon-card:hover, .salon-row:hover, .salon-filter:hover { transform:none; }
+}

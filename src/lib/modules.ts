@@ -100,6 +100,7 @@ export const TAB_MODULES: Readonly<Record<string, ModuleKey>> = {
   'est-kitchen': 'kds',
   'est-drivers': 'delivery',
   'est-salon': 'dine_in',
+  'est-mesas-qr': 'dine_in',
 };
 
 export function tabRequiredModule(tab: string): ModuleKey | undefined {

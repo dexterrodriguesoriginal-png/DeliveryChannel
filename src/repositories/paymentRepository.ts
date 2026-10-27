@@ -10,6 +10,10 @@ export interface OnlinePayment {
   status: string; brcode: string | null; checkoutUrl: string | null; expiresAt: string | null;
   manualConfirmation: boolean; canConfirm: boolean;
 }
+export interface TabPix {
+  id: string; tabId: string; amountCents: number; status: 'creating' | 'pending' | 'paid' | 'expired' | 'cancelled' | 'failed';
+  brcode: string | null; expiresAt: string | null; needsReview: boolean; reviewReason: string | null; tabClosed: boolean;
+}
 export const PROVIDER_LABELS: Record<OnlineProvider, string> = {
   mercadopago: 'Mercado Pago', pagbank: 'PagBank', infinitepay: 'InfinitePay', manual_pix: 'Chave PIX (manual)',
 };
@@ -50,5 +54,9 @@ export const paymentRepository = {
   async configure(tenantId: string, provider: OnlineProvider, body: object) { return request(`/accounts/${provider}`, body, await membershipFor(tenantId)); },
   create: (id: string, choice: OnlineChoice, taxId?: string) => request<{ payment: OnlinePayment | null }>(`/orders/${encodeURIComponent(id)}`, { ...choice, taxId }),
   status: (id: string) => request<{ payment: OnlinePayment | null }>(`/orders/${encodeURIComponent(id)}`),
+  // PIX da conta da mesa (Mercado Pago da loja). O valor é calculado no servidor; o navegador só pede e consulta.
+  createTabPix: (tabId: string) => request<{ pix: TabPix | null }>(`/tabs/${encodeURIComponent(tabId)}/pix`, {}),
+  tabPixStatus: (tabId: string) => request<{ pix: TabPix | null }>(`/tabs/${encodeURIComponent(tabId)}/pix`),
+  cancelTabPix: (tabId: string) => request(`/tabs/${encodeURIComponent(tabId)}/pix/cancel`, {}),
   confirm: (id: string) => request(`/orders/${encodeURIComponent(id)}/confirm`, {}),
 };

@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { requireBackend, toBackendError } from '../lib/backend';
+import { validateTableName } from '../lib/salon/tableQr';
 
 export interface DiningTable {
   id: string;
@@ -43,6 +44,8 @@ export const diningTableRepository = {
 
   async create(tenantId: string, input: DiningTableInput): Promise<DiningTable> {
     requireBackend('mesas do salão');
+    const nameError = validateTableName(input.label);
+    if (nameError) throw new Error(nameError);
     const { data, error } = await supabase
       .from('dining_tables')
       .insert({
@@ -60,6 +63,8 @@ export const diningTableRepository = {
   async createMany(tenantId: string, inputs: DiningTableInput[]): Promise<DiningTable[]> {
     requireBackend('mesas do salão');
     if (!inputs.length) return [];
+    const invalid = inputs.map(input => validateTableName(input.label)).find(Boolean);
+    if (invalid) throw new Error(invalid);
     const { data, error } = await supabase
       .from('dining_tables')
       .insert(inputs.map(input => ({
@@ -73,8 +78,11 @@ export const diningTableRepository = {
     return (data || []).map(mapTable);
   },
 
-  async update(tenantId: string, tableId: string, input: DiningTableInput): Promise<DiningTable> {
+  /** `previousLabel`: the name is only validated (3–15) when it changes, so old short names stay editable. */
+  async update(tenantId: string, tableId: string, input: DiningTableInput, previousLabel?: string): Promise<DiningTable> {
     requireBackend('mesas do salão');
+    const nameError = input.label.trim() === previousLabel?.trim() ? null : validateTableName(input.label);
+    if (nameError) throw new Error(nameError);
     const { data, error } = await supabase
       .from('dining_tables')
       .update({

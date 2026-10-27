@@ -6,6 +6,7 @@ export const EST_TAB_PERMISSION: Record<string, Permission | null> = {
   'est-dashboard': null,
   'est-orders': 'view_orders',
   'est-salon': 'view_orders',
+  'est-mesas-qr': 'view_modules',
   'est-products': 'manage_products',
   'est-quality': 'manage_products',
   'est-categories': 'manage_categories',

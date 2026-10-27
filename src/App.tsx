@@ -50,6 +50,8 @@ import { TeamPage } from './pages/establishment/TeamPage';
 import { SettingsPage } from './pages/establishment/SettingsPage';
 import { ModulesPage } from './pages/establishment/ModulesPage';
 import { SalonPage } from './pages/establishment/SalonPage';
+import { MesasQrPage } from './pages/establishment/MesasQrPage';
+import { readMesaParam } from './lib/salon/tableQr';
 import { useModules } from './hooks/useModules';
 import { tabRequiredModule } from './lib/modules';
 import { ModuleDisabledScreen } from './components/establishment/ModuleDisabledScreen';
@@ -224,6 +226,12 @@ function AppContent() {
   const tableToken = pathname.match(/^\/mesa\/([^/]+)\/?$/)?.[1];
   if (tableToken) {
     return <DineInClientApp token={decodeURIComponent(tableToken)} />;
+  }
+
+  // QR fixo da mesa: /app/<slug>?mesa=<token>. O token opaco é a única autoridade; o slug é só estético.
+  if (pathname.startsWith('/app/')) {
+    const mesaToken = readMesaParam(window.location.search);
+    if (mesaToken) return <DineInClientApp token={mesaToken} />;
   }
 
   // 1. Catálogo Público PWA da Adega/Loja: /app/:slug
@@ -648,7 +656,9 @@ function AppContent() {
       case 'est-orders':
         return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
       case 'est-salon':
-        return <SalonPage />;
+        return <SalonPage onNavigate={setActiveTab} />;
+      case 'est-mesas-qr':
+        return <MesasQrPage />;
       case 'est-products':
         return <ProductsPage onNavigate={setActiveTab} />;
       case 'est-quality':

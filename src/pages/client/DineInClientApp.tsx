@@ -9,6 +9,7 @@ import { billSplitAmounts, BillSplitMode, DineInPaymentMethod, parseTenderCents,
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
 import { isModuleEnabled } from '../../lib/modules';
+import { friendlyTableError } from '../../lib/salon/tableQr';
 import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import {
@@ -23,6 +24,15 @@ import {
 type TableResolution = { available: boolean; tenantSlug?: string; storeName?: string; tableLabel?: string };
 type TabRound = { orderId: string; orderNumber: number; roundNo: number; status: string; customerName: string; subtotal: number; createdAt: string; items: Array<{ name: string; quantity: number; unitPrice: number; totalPrice: number }> };
 type MyTab = { tabId: string; status: 'OPEN' | 'BILL_REQUESTED' | 'CLOSED' | 'CANCELLED'; mode: 'TABLE' | 'INDIVIDUAL'; tableLabel: string; serviceFeePercent: number; serviceFeeRemoved: boolean; rounds: TabRound[]; subtotal: number };
+
+// LGPD: the name is optional and only a first name is ever sent; without one the tab shows "Cliente".
+export const guestDisplayName = (value: string): string => value.trim().split(/\s+/)[0]?.slice(0, 40) || 'Cliente';
+
+/** "Mesa 03" already carries the word; older numeric labels ("7") still read "Mesa 7". */
+export const mesaTitle = (label?: string): string => {
+  const value = (label || '').trim();
+  return /^mesa\b/i.test(value) ? value : `Mesa ${value}`.trim();
+};
 
 const DEVICE_KEY = 'dc_dine_in_device_id';
 const SESSION_KEY_PREFIX = 'dc_dine_in_session:';
@@ -99,6 +109,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [customShare, setCustomShare] = useState('');
   const [notice, setNotice] = useState('');
   const [tabClosed, setTabClosed] = useState(false);
+  const [qrPaused, setQrPaused] = useState(false);
   const deviceIdRef = useRef('');
   const submitKeyRef = useRef(uuid());
   const submitLockRef = useRef(false);
@@ -110,7 +121,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     : 0;
   const accountTotalCents = subtotalCents + serviceFeeCents;
   const cashTenderStatus = tenderStatus(accountTotalCents, parseTenderCents(tendered));
-  const orderingDisabled = pendingApproval || tabClosed || tab?.status === 'BILL_REQUESTED';
+  const orderingDisabled = qrPaused || pendingApproval || tabClosed || tab?.status === 'BILL_REQUESTED';
   const split = useMemo(() => {
     const customCents = parseTenderCents(customShare) || 0;
     try { return billSplitAmounts(accountTotalCents, splitMode, Number(splitParts), customCents); } catch { return []; }
@@ -139,6 +150,10 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         return;
       }
       setResolution(result);
+      // The store can pause QR ordering. Older databases do not have this function: then it is simply "not paused".
+      void Promise.resolve(supabase.rpc('get_table_qr_status', { p_qr_token: token }))
+        .then(({ data: status, error: statusError }) => { if (alive && !statusError && (status as { paused?: boolean } | null)?.paused === true) setQrPaused(true); })
+        .catch(() => { /* fail open */ });
       try {
         const store = await publicStoreRepository.loadPublicStore(result.tenantSlug);
         if (!alive) return;
@@ -172,19 +187,20 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   }, [token]);
 
   const openOrJoin = useCallback(async () => {
-    if (!supabaseUser || !resolution?.available || !firstName.trim() || !deviceIdRef.current) return;
+    if (!supabaseUser || !resolution?.available || !deviceIdRef.current) return;
     if (openedUserRef.current === supabaseUser.id) return;
     openedUserRef.current = supabaseUser.id;
     setBusy(true);
     setNotice('');
     const { data, error: openError } = await supabase.rpc('open_or_join_tab', {
       p_qr_token: token,
-      p_display_name: firstName.trim().split(/\s+/)[0],
+      p_display_name: guestDisplayName(firstName),
       p_device_id: deviceIdRef.current,
     });
     if (openError || !data?.sessionId) {
       openedUserRef.current = '';
-      setNotice(errorText(openError) || 'Não foi possível abrir sua comanda.');
+      if (/QR_PAUSED/i.test(errorText(openError))) setQrPaused(true);
+      setNotice(friendlyTableError(errorText(openError)) || 'Não foi possível abrir sua comanda.');
       setBusy(false);
       return;
     }
@@ -196,8 +212,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   }, [firstName, resolution?.available, supabaseUser, token]);
 
   useEffect(() => {
-    if (supabaseUser && resolution?.available && firstName.trim()) void openOrJoin();
-  }, [supabaseUser, resolution?.available, firstName, openOrJoin]);
+    if (supabaseUser && resolution?.available && !qrPaused) void openOrJoin();
+  }, [supabaseUser, resolution?.available, qrPaused, openOrJoin]);
 
   const loadAccount = useCallback(async (silent = false) => {
     if (!sessionId) return;
@@ -246,7 +262,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         setTabClosed(true);
         setNotice('Conta encerrada. Para pedir de novo, chame o garçom.');
       } else {
-        setNotice(message || 'Não foi possível enviar sua rodada. Tente novamente.');
+        if (/QR_PAUSED/i.test(message)) setQrPaused(true);
+        setNotice(friendlyTableError(message) || 'Não foi possível enviar sua rodada. Tente novamente.');
       }
       return;
     }
@@ -294,13 +311,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setCart(current => changeDineInCartLineQuantity(current, key, delta));
 
   const enterAsGuest = async () => {
-    const name = firstName.trim().split(/\s+/)[0];
-    if (!name) { setNotice('Informe seu primeiro nome para continuar.'); return; }
-    setFirstName(name);
-    try { localStorage.setItem('adegafood_cust_name', name); } catch { /* best effort */ }
+    const name = guestDisplayName(firstName);
+    setFirstName(firstName.trim() ? name : '');
     setAuthBusy(true);
     setNotice('');
-    const { error: authError } = await supabase.auth.signInAnonymously({ options: { data: { display_name: name, full_name: name } } });
+    const { error: authError } = await supabase.auth.signInAnonymously({ options: { data: { display_name: name } } });
     setAuthBusy(false);
     if (authError) {
       if (isProviderDisabled(authError)) {
@@ -322,13 +337,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const loginWithGoogle = async (link = false) => {
-    const name = firstName.trim().split(/\s+/)[0];
-    if (!name) {
-      setNotice('Informe seu primeiro nome para continuar.');
-      return;
-    }
-    setFirstName(name);
-    try { localStorage.setItem('adegafood_cust_name', name); } catch { /* best effort */ }
+    setFirstName(firstName.trim() ? guestDisplayName(firstName) : '');
     setAuthBusy(true);
     const redirectTo = window.location.href;
     const result = link
@@ -386,22 +395,26 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     return <main className="min-h-screen grid place-items-center bg-slate-50 p-6"><section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl"><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><h1 className="text-xl font-extrabold">Salão indisponível no momento</h1><p className="mt-2 text-sm text-slate-600">{error || 'Confira o QR Code ou chame um atendente.'}</p></section></main>;
   }
 
+  if (qrPaused && !sessionId) {
+    return <main className="min-h-screen grid place-items-center bg-slate-50 p-6" data-testid="dine-in-paused"><section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl"><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><h1 className="text-xl font-black">Pedidos pelo QR pausados</h1><p className="mt-2 text-sm text-slate-600">{storeName || 'O estabelecimento'} pausou os pedidos pelo celular por enquanto. Chame um atendente para pedir.</p></section></main>;
+  }
+
   if (!supabaseUser || !sessionId) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-8">
         <section className="mx-auto max-w-md rounded-3xl bg-white p-6 shadow-xl">
-          <div className="mb-5 flex items-center gap-3"><Utensils className="h-8 w-8 text-emerald-700" /><div><p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{storeName}</p><h1 className="text-xl font-black">Mesa {resolution?.tableLabel}</h1></div></div>
-          <h2 className="text-lg font-bold">Como podemos te chamar?</h2>
-          <p className="mb-4 mt-1 text-sm text-slate-600">Informe seu primeiro nome para abrir sua comanda.</p>
+          <div className="mb-5 flex items-center gap-3"><Utensils className="h-8 w-8 text-emerald-700" /><div><p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{storeName}</p><h1 className="text-xl font-black">{mesaTitle(resolution?.tableLabel)}</h1></div></div>
+          <h2 className="text-lg font-bold">Como podemos te chamar? <span className="text-sm font-semibold text-slate-500">(opcional)</span></h2>
+          <p className="mb-4 mt-1 text-sm text-slate-600">Seu nome ajuda o garçom a te encontrar. Pode pular: não guardamos dados que você não informar.</p>
           {!showLogin ? (
             <>
-              <input aria-label="Seu primeiro nome" value={firstName} onChange={event => setFirstName(event.target.value)} autoComplete="given-name" className="w-full rounded-xl border border-slate-300 px-4 py-3" placeholder="Primeiro nome" />
-              <button type="button" onClick={() => void enterAsGuest()} disabled={authBusy || !firstName.trim()} className="mt-3 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">{authBusy ? 'Conectando…' : 'Continuar como visitante'}</button>
+              <input aria-label="Seu primeiro nome" value={firstName} onChange={event => setFirstName(event.target.value)} autoComplete="given-name" className="w-full rounded-xl border border-slate-300 px-4 py-3" placeholder="Primeiro nome (opcional)" />
+              <button type="button" onClick={() => void enterAsGuest()} disabled={authBusy} className="mt-3 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">{authBusy ? 'Conectando…' : 'Continuar como visitante'}</button>
               <button type="button" onClick={() => setShowLogin(true)} className="mt-3 w-full py-2 text-sm font-semibold text-emerald-800">Já tenho uma conta</button>
             </>
           ) : (
             <form onSubmit={loginWithPassword} className="space-y-3">
-              <label className="block text-sm font-semibold">Seu primeiro nome<input aria-label="Seu primeiro nome" value={firstName} onChange={event => setFirstName(event.target.value)} required className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></label>
+              <label className="block text-sm font-semibold">Seu primeiro nome (opcional)<input aria-label="Seu primeiro nome" value={firstName} onChange={event => setFirstName(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></label>
               <label className="block text-sm font-semibold">E-mail<input type="email" value={email} onChange={event => setEmail(event.target.value)} required className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></label>
               <label className="block text-sm font-semibold">Senha<input type="password" value={password} onChange={event => setPassword(event.target.value)} required className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></label>
               <button disabled={authBusy} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">{authBusy ? 'Entrando…' : 'Entrar'}</button>
@@ -419,10 +432,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     <main className="min-h-screen bg-slate-50 pb-28">
       <header className="sticky top-0 z-20 border-b bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between">
-          <div><p className="font-extrabold">Você está na Mesa {tab?.tableLabel || resolution?.tableLabel} · {storeName}</p></div>
+          <div><p className="font-extrabold">Você está na {mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {storeName}</p></div>
           <button type="button" onClick={() => { setAccountOpen(true); void loadAccount(); }} aria-label="Ver minha conta" className="rounded-full bg-slate-100 p-2"><CircleUserRound className="h-6 w-6" /></button>
         </div>
       </header>
+      {qrPaused && <div role="status" className="mx-auto mt-3 max-w-2xl rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Pedidos pelo QR pausados no momento. Chame um atendente para pedir.</div>}
 
       <section className="mx-auto max-w-2xl px-4 py-5">
         <h2 className="mb-3 text-lg font-black">Cardápio</h2>
@@ -499,7 +513,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       {accountOpen && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setAccountOpen(false); }}>
         <section role="dialog" aria-modal="true" aria-label="Minha conta" className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl">
           <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-black">Minha conta</h2><button type="button" onClick={() => setAccountOpen(false)} aria-label="Fechar"><X /></button></div>
-          <p className="text-sm text-slate-600">Mesa {tab?.tableLabel || resolution?.tableLabel} · {tab?.status === 'BILL_REQUESTED' ? 'Conta solicitada' : tab?.status === 'CLOSED' ? 'Encerrada' : 'Aberta'}</p>
+          <p className="text-sm text-slate-600">{mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {tab?.status === 'BILL_REQUESTED' ? 'Conta solicitada' : tab?.status === 'CLOSED' ? 'Encerrada' : 'Aberta'}</p>
           <div className="my-4 space-y-3">{tab?.rounds?.length ? tab.rounds.map(round => <article key={round.orderId} className="rounded-xl bg-slate-50 p-3">
             <div className="mb-2 flex justify-between font-bold"><span>Rodada {round.roundNo}</span><span>{formatBRL(round.subtotal)}</span></div>
             <p className="mb-2 text-xs text-slate-500">{round.customerName} · {round.status === 'CONFIRMED' ? 'Recebido' : round.status === 'PREPARING' ? 'Preparando' : round.status === 'READY' ? 'Pronto' : round.status === 'DELIVERED' ? 'Entregue' : round.status}</p>

@@ -1,0 +1,36 @@
+.mq-root { --mq-line:#e2e8f0; --mq-ink:#0f172a; }
+.mq-card { position:relative; display:flex; flex-direction:column; gap:12px; padding:16px; border-radius:24px; background:#fff; border:1.5px solid var(--mq-line); box-shadow:0 1px 2px rgba(15,23,42,.05), 0 14px 30px -22px rgba(15,23,42,.5); transition:transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s, border-color .2s; animation:mq-rise .35s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i,0) * 18ms); }
+.mq-card:hover { transform:translateY(-3px); box-shadow:0 2px 4px rgba(15,23,42,.06), 0 22px 36px -22px rgba(15,23,42,.55); }
+.mq-card[data-selected="true"] { border-color:#0f766e; box-shadow:0 0 0 3px rgba(15,118,110,.18), 0 14px 30px -22px rgba(15,118,110,.6); }
+.mq-card[data-paused="true"] .mq-qr { filter:grayscale(1); opacity:.45; }
+.mq-qr { align-self:center; padding:12px; border-radius:20px; background:#fff; border:1px solid var(--mq-line); transition:filter .2s, opacity .2s; }
+.mq-actions { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px; }
+.mq-icon-btn { display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-height:52px; padding:6px 4px; border-radius:14px; border:1px solid var(--mq-line); background:#f8fafc; color:#0f172a; font-size:11px; font-weight:800; cursor:pointer; transition:background .15s, transform .15s, border-color .15s; }
+.mq-icon-btn:hover:not(:disabled) { background:#fff; border-color:#94a3b8; transform:translateY(-1px); }
+.mq-icon-btn:focus-visible, .mq-field:focus-visible { outline:3px solid #0f766e; outline-offset:2px; }
+.mq-icon-btn:disabled { opacity:.5; cursor:not-allowed; }
+.mq-icon-btn--danger { color:#9f1239; }
+.mq-field { min-height:42px; padding:0 12px; border-radius:12px; border:1.5px solid var(--mq-line); background:#fff; font-size:14px; font-weight:600; color:#0f172a; width:100%; }
+.mq-field[aria-invalid="true"] { border-color:#e11d48; }
+.mq-panel { padding:16px; border-radius:22px; background:#fff; border:1px solid var(--mq-line); box-shadow:0 10px 28px -22px rgba(15,23,42,.45); }
+.mq-primary { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:0 18px; border-radius:14px; background:#0f766e; color:#fff; font-weight:800; font-size:14px; box-shadow:0 8px 18px -10px rgba(15,118,110,.8); transition:background .15s, transform .15s; cursor:pointer; }
+.mq-primary:hover:not(:disabled) { background:#115e59; transform:translateY(-1px); }
+.mq-primary:disabled { opacity:.55; cursor:not-allowed; }
+.mq-primary:focus-visible { outline:3px solid #0f172a; outline-offset:2px; }
+.mq-ghost { display:inline-flex; align-items:center; gap:8px; min-height:44px; padding:0 14px; border-radius:14px; border:1.5px solid var(--mq-line); background:#fff; font-weight:800; font-size:13px; color:#0f172a; cursor:pointer; transition:background .15s, border-color .15s; }
+.mq-ghost:hover:not(:disabled) { background:#f8fafc; border-color:#94a3b8; }
+.mq-ghost:disabled { opacity:.5; cursor:not-allowed; }
+.mq-ghost:focus-visible { outline:3px solid #0f766e; outline-offset:2px; }
+.mq-badge { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:800; }
+@keyframes mq-rise { from { opacity:0; transform:translateY(8px) scale(.98); } to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce) { .mq-card { animation:none !important; } .mq-card, .mq-icon-btn, .mq-primary { transition:none !important; } .mq-card:hover { transform:none; } }
+
+.mq-print { display:none; }
+@media print {
+  @page { size:A6 portrait; margin:8mm; }
+  body * { visibility:hidden !important; }
+  .mq-print, .mq-print * { visibility:visible !important; }
+  .mq-print { display:block; position:absolute; left:0; top:0; width:100%; }
+  .mq-poster { break-after:page; page-break-after:always; display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; font-family:system-ui, sans-serif; color:#000; }
+  .mq-poster:last-child { break-after:auto; page-break-after:auto; }
+}

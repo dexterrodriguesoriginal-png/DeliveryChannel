@@ -10,6 +10,7 @@ const PANEL_PAGES = new Set([
   'est-dashboard',
   'est-orders',
   'est-salon',
+  'est-mesas-qr',
   'est-products',
   'est-quality',
   'est-categories',

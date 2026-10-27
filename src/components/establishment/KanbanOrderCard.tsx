@@ -86,7 +86,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
     <p className="mt-2 truncate text-[13px] text-slate-500" title={itemSummary}>{itemSummary}</p>
     <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] font-semibold">
       <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 ${isPickup ? 'bg-[#fef3c7] text-[#b45309]' : isDineIn ? 'bg-purple-100 text-purple-700' : 'bg-[#dbeafe] text-[#1d4ed8]'}`}>
-        <FulfillmentIcon size={12} />{isDineIn ? 'MESA' : isPickup ? 'RETIRADA' : 'DELIVERY'}
+        <FulfillmentIcon size={12} />{isDineIn ? (order.tableLabel?.trim() ? `MESA ${order.tableLabel.trim().replace(/^mesa\s+/i, '').slice(0, 15).toUpperCase()}` : 'MESA') : isPickup ? 'RETIRADA' : 'DELIVERY'}
       </span>
       <span className="rounded-md bg-slate-100 px-1.5 py-1 text-slate-600">{paymentMethodShortLabel(order.paymentMethod)}</span>
       {!isClosed && <span className={`inline-flex items-center gap-1 ${minutes < 15 ? 'text-green-600' : minutes <= 30 ? 'text-orange-600' : 'text-red-600'}`}><Clock size={12} />{elapsed}</span>}
