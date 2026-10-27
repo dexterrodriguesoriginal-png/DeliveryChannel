@@ -1,5 +1,5 @@
 .orders-kanban-layout { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
-.orders-kanban-board { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; flex: 1; min-height: 0; overflow: hidden; }
+.orders-kanban-board { position: relative; display: grid; grid-template-columns: repeat(5, minmax(var(--orders-col-min, 150px), 1fr)); gap: 12px; flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; zoom: var(--oz, 1); transition: zoom 220ms cubic-bezier(.2,.7,.2,1); }
 .orders-kanban-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: 16px; overflow: hidden; }
 .orders-kanban-header { position: sticky; top: 0; z-index: 1; flex-shrink: 0; margin: 10px 10px 0; border-radius: 14px; padding: 12px 6px; color: white; }
 .orders-kanban-scroll { display: flex; flex-direction: column; gap: 10px; padding: 10px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: #9ca3af transparent; overscroll-behavior-y: contain; }
@@ -34,3 +34,31 @@
 }
 @media (max-width: 639px) { .orders-kanban-column { flex-basis: max(280px, calc(100% - 24px)); } }
 @media (prefers-reduced-motion: reduce) { .orders-kanban-card, .orders-card-action { transition: none; animation: none; } .orders-kanban-card:hover { transform: none; } .orders-kanban-skeleton { animation: none; } }
+
+/* ===== Zoom da página de Pedidos (variável --oz = 0.7…1.3, definida pela página) ===== */
+.orders-zoom-control { display: inline-flex; align-items: center; height: 40px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; overflow: hidden; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+.orders-zoom-control button { display: inline-flex; align-items: center; justify-content: center; height: 100%; min-width: 30px; color: #475569; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; }
+.orders-zoom-control button:hover:not(:disabled) { background: #f1f5f9; color: #dc2626; }
+.orders-zoom-control button:disabled { opacity: .35; cursor: default; }
+.orders-zoom-control button:focus-visible { outline: 2px solid #dc2626; outline-offset: -2px; }
+.orders-zoom-control .orders-zoom-value { min-width: 46px; padding: 0 6px; border-left: 1px solid #eef2f7; border-right: 1px solid #eef2f7; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; color: #0f172a; }
+
+/* ===== Lista de Pedidos: linhas coloridas pelo status (mesmo mapa do Kanban) ===== */
+.orders-list-wrap { zoom: var(--oz, 1); transition: zoom 220ms cubic-bezier(.2,.7,.2,1); }
+.orders-list-scroll { overflow-x: auto; padding: 0 2px 16px; }
+.orders-list { width: 100%; border-collapse: separate; border-spacing: 0 8px; font-size: 12px; line-height: 1.35; color: #334155; }
+.orders-list thead th { padding: 2px 8px 0; text-align: left; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #64748b; white-space: nowrap; }
+.orders-list-row { cursor: pointer; transition: transform 170ms ease; }
+/* Sombras compostas por variáveis; o anel de .6px na cor da tinta cobre costuras de subpixel entre células (zoom fracionado). */
+.orders-list-row > td { --bar: 0 0 #0000; --sel: 0 0 #0000; --lift: 0 1px 2px rgba(15,23,42,.06); padding: 13px 8px; vertical-align: middle; background: var(--row-tint); box-shadow: var(--bar), var(--sel), 0 0 0 .6px var(--row-tint), var(--lift); transition: box-shadow 170ms ease, filter 170ms ease; }
+.orders-list-row > td:first-child { --bar: inset 5px 0 0 var(--row-color); padding-left: 14px; border-radius: 12px 0 0 12px; }
+.orders-list-row > td:last-child { border-radius: 0 12px 12px 0; }
+.orders-list-row:hover { transform: translateY(-2px); }
+.orders-list-row:hover > td { --lift: 0 12px 18px -12px rgba(15,23,42,.45); filter: saturate(1.08); }
+.orders-list-row[data-selected="true"] > td { --sel: inset 0 2px 0 var(--row-color), inset 0 -2px 0 var(--row-color); }
+.orders-list-row[data-selected="true"] > td:last-child { --sel: inset -2px 0 0 var(--row-color), inset 0 2px 0 var(--row-color), inset 0 -2px 0 var(--row-color); }
+.orders-list-row:focus-visible { outline: 2px solid #dc2626; outline-offset: 2px; }
+.orders-list .orders-list-num { font-weight: 800; font-size: 13px; color: #0f172a; font-variant-numeric: tabular-nums; }
+.orders-list .orders-list-total { font-weight: 800; font-size: 13px; color: #0f172a; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.orders-status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 10.5px; font-weight: 800; letter-spacing: .03em; white-space: nowrap; box-shadow: 0 1px 2px rgba(15,23,42,.18); }
+@media (prefers-reduced-motion: reduce) { .orders-kanban-board, .orders-list-wrap, .orders-list-row, .orders-list-row > td { transition: none; } .orders-list-row:hover { transform: none; } }

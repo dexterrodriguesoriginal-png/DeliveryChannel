@@ -342,4 +342,39 @@ describe('arrastar no Kanban', () => {
     await drop('ready', 'prep');
     expect(mocks.updateStatus).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'prep', 'READY', undefined, 'PREPARING');
   });
+
+  it('zoom 70–130% na toolbar: aplica no Kanban e na Lista, persiste (chave por usuário) e o % volta a 100', async () => {
+    await render();
+    const value = () => container.querySelector('[data-testid=orders-zoom-value]')!.textContent;
+    expect(value()).toBe('100%');
+    await click(container.querySelector('[data-testid=orders-zoom-out]') as HTMLElement);
+    await click(container.querySelector('[data-testid=orders-zoom-out]') as HTMLElement);
+    expect(value()).toBe('80%');
+    const kb = container.querySelector('[data-testid=orders-kanban-layout]') as HTMLElement;
+    expect(kb.style.getPropertyValue('--oz')).toBe('0.8');
+    expect(localStorage.getItem('dc:orders-zoom:v1:anon')).toBe('80');
+    await click(button('Lista'));
+    const list = container.querySelector('[data-testid=orders-list]') as HTMLElement;
+    expect(list.style.getPropertyValue('--oz')).toBe('0.8');
+    await click(container.querySelector('[data-testid=orders-zoom-in]') as HTMLElement);
+    expect(list.style.getPropertyValue('--oz')).toBe('0.9');
+    await click(container.querySelector('[data-testid=orders-zoom-value]') as HTMLElement);
+    expect(value()).toBe('100%');
+  });
+
+  it('Lista: cada linha usa a cor do status (Entregue verde, Cancelado cinza, Em preparo laranja)', async () => {
+    mocks.getOrders.mockResolvedValue([
+      order('DELIVERED', { id: 'd', orderNumber: 44 }), order('CANCELLED', { id: 'c', orderNumber: 43 }),
+      order('PREPARING', { id: 'p', orderNumber: 42 }), order('PENDING', { id: 'w', orderNumber: 41 }), order('READY', { id: 'r', orderNumber: 40 }),
+    ]);
+    await render('ALL'); await click(button('Lista'));
+    const rows = Array.from(container.querySelectorAll('[data-testid=orders-list-row]')) as HTMLElement[];
+    const colorOf = (n: string) => rows.find(r => r.textContent?.includes(`#${n}`))!.style.getPropertyValue('--row-color');
+    expect(colorOf('44')).toBe('#16a34a');
+    expect(colorOf('43')).toBe('#6b7280');
+    expect(colorOf('42')).toBe('#f97316');
+    expect(colorOf('41')).toBe('#ef4444');
+    expect(colorOf('40')).toBe('#a855f7');
+    expect(rows.find(r => r.textContent?.includes('#44'))!.getAttribute('data-column')).toBe('delivered');
+  });
 });

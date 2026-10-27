@@ -8,7 +8,7 @@ import { OrderChat } from '../../components/chat/OrderChat';
 import { dispatchChatRepository, QueueDriver, DispatchMode, type OwnerNotification } from '../../repositories/dispatchChatRepository';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { OrdersKanban } from '../../components/establishment/OrdersKanban';
-import { isDateInOrdersPeriod, matchesOrderSearch, KANBAN_COLUMNS, kanbanColumnForStatus, type OrdersPeriod } from '../../components/establishment/ordersKanban';
+import { isDateInOrdersPeriod, matchesOrderSearch, KANBAN_COLUMNS, kanbanColumnForStatus, orderStatusColors, type OrdersPeriod } from '../../components/establishment/ordersKanban';
 import { ArrivalQueuePanel } from '../../components/pickup/ArrivalQueuePanel';
 import { PickupHandoverModal } from '../../components/pickup/PickupHandoverModal';
 import { arrivalRepository } from '../../repositories/arrivalRepository';
@@ -31,6 +31,9 @@ import { ThermalReceiptModal } from '../../components/establishment/ThermalRecei
 import { PDVModal } from '../../components/establishment/PDVModal';
 import { KanbanOrderCard } from '../../components/establishment/KanbanOrderCard';
 import { OrderStatusChip } from '../../components/establishment/StatusIcon';
+import { OrderStatusPill } from '../../components/establishment/OrderStatusPill';
+import { OrdersZoomControl } from '../../components/establishment/OrdersZoomControl';
+import { useOrdersZoom } from '../../lib/orders/ordersZoom';
 import { SlaTimerChip } from '../../components/establishment/SlaTimerChip';
 import { useNewOrderAlarm } from '../../lib/orders/newOrderAlarm';
 import { ORDER_STATUS_THEME, DELAYED_PREPARING_THEME, checkIsPreparingDelayed, orderActionButtonStyle } from '../../utils/orderStatusTheme';
@@ -105,34 +108,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     } catch {}
   }, [viewMode]);
 
-  // Tamanho dos cards em porcentagem com botões (-) e (+) (50% a 150%)
-  const [cardScale, setCardScale] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('adegafood_card_scale');
-      if (saved) {
-        const parsed = parseInt(saved, 10);
-        if (!isNaN(parsed) && parsed >= 50 && parsed <= 150) return parsed;
-      }
-    } catch {}
-    return 100;
-  });
-
-  const handleStepCardScale = (delta: number) => {
-    setCardScale(prev => {
-      const next = Math.max(50, Math.min(150, prev + delta));
-      try {
-        localStorage.setItem('adegafood_card_scale', String(next));
-      } catch {}
-      return next;
-    });
-  };
-
-  const handleResetCardScale = () => {
-    setCardScale(100);
-    try {
-      localStorage.setItem('adegafood_card_scale', '100');
-    } catch {}
-  };
+  // Zoom de densidade (70–130%, de 10 em 10) para Kanban e Lista, salvo por usuário.
+  const ordersZoom = useOrdersZoom(supabaseUser?.id);
 
   // Som de alerta e Auto-aceitar
   const soundEnabled = !['OWNER','MANAGER'].includes(activeRole || '');
@@ -1203,13 +1180,13 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           <h1 className="sr-only">Pedidos</h1>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold tracking-wider text-slate-400">PERÍODO</span>
+              <span className="text-[10px] font-semibold tracking-wider text-slate-400 max-[1100px]:hidden">PERÍODO</span>
               <div className="flex items-center gap-1 rounded-xl bg-[#f1f5f9] p-1" aria-label="Período dos pedidos">
                 {([['TODAY', 'Hoje'], ['YESTERDAY', 'Ontem'], ['7D', '7 dias']] as const).map(([id, label]) => <button key={id} type="button"
                   aria-pressed={filterPeriod === id} onClick={() => setFilterPeriod(id)}
-                  className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors duration-150 ${filterPeriod === id ? 'bg-[#dc2626] text-white' : 'text-slate-500 hover:bg-white'}`}>{label}</button>)}
+                  className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors duration-150 ${filterPeriod === id ? 'bg-[#dc2626] text-white' : 'text-slate-500 hover:bg-white'}`}>{label}</button>)}
                 <details className="relative">
-                  <summary className={`flex cursor-pointer list-none items-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold ${filterPeriod === 'ALL' || filterPeriod === '30D' ? 'bg-[#dc2626] text-white' : 'text-slate-500'}`}>Mais <ChevronDown size={12} /></summary>
+                  <summary className={`flex cursor-pointer list-none items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold ${filterPeriod === 'ALL' || filterPeriod === '30D' ? 'bg-[#dc2626] text-white' : 'text-slate-500'}`}>Mais <ChevronDown size={12} /></summary>
                   <div className="absolute left-0 top-full z-30 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
                     <label className="text-xs font-medium text-slate-500">Período
                       <select aria-label="Selecionar período" value={filterPeriod} onChange={e => setFilterPeriod(e.target.value as OrdersPeriod)} className="mt-2 w-full rounded-lg border border-slate-200 p-2 text-xs text-slate-700">
@@ -1220,19 +1197,20 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 </details>
               </div>
             </div>
-            <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
-              <div className="relative min-w-[200px] flex-1 lg:max-w-[290px]">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input aria-label="Buscar pedidos" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Número, nome ou telefone"
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-8 text-xs outline-none focus:border-red-400" />
+            <div className="flex flex-1 flex-wrap items-center justify-end gap-1.5">
+              <div className="relative min-w-[132px] flex-1 lg:max-w-[290px]">
+                <Search size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input aria-label="Buscar pedidos" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar pedido" title="Busque por número, nome ou telefone"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-6 text-xs outline-none focus:border-red-400" />
                 {searchQuery && <button type="button" aria-label="Limpar busca" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"><X size={14} /></button>}
               </div>
               {([['kanban', 'Kanban', Layers], ['table', 'Lista', List]] as const).map(([id, label, Icon]) => <button key={id} type="button" aria-pressed={effectiveViewMode === id}
                 onClick={() => { setViewMode(id); if (activeTab === 'ARCHIVED' && id === 'kanban') changeActiveTab('ALL'); }}
-                className={`flex h-10 items-center gap-1.5 rounded-xl border bg-white px-3 text-xs font-semibold ${effectiveViewMode === id ? 'border-red-300 text-red-600' : 'border-slate-200 text-slate-600'}`}><Icon size={15} />{label}</button>)}
-              <button type="button" aria-label="Filtros e controles" aria-expanded={!isControlsCollapsed} onClick={toggleControlsCollapsed} className="flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600"><SlidersHorizontal size={15} />Filtros</button>
+                className={`flex h-10 items-center gap-1.5 rounded-xl border bg-white px-2.5 text-xs font-semibold ${effectiveViewMode === id ? 'border-red-300 text-red-600' : 'border-slate-200 text-slate-600'}`}><Icon size={15} />{label}</button>)}
+              <button type="button" aria-label="Filtros e controles" aria-expanded={!isControlsCollapsed} onClick={toggleControlsCollapsed} className="flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600"><SlidersHorizontal size={15} />Filtros</button>
+              <OrdersZoomControl zoom={ordersZoom.zoom} onZoomIn={ordersZoom.zoomIn} onZoomOut={ordersZoom.zoomOut} onReset={ordersZoom.reset} />
               {isModuleEnabled('pos') && <button type="button" data-testid="open-pdv" onClick={() => setIsPDVOpen(true)} disabled={!isN1N6Backend()} title={isN1N6Backend() ? undefined : N1N6_ONLY_MESSAGE}
-                className="flex h-10 items-center gap-1.5 rounded-xl bg-[#dc2626] px-4 text-xs font-bold text-white transition-colors hover:bg-red-700 disabled:opacity-50"><Plus size={16} />NOVO PEDIDO</button>}
+                className="flex h-10 items-center gap-1.5 rounded-xl bg-[#dc2626] px-3.5 text-xs font-bold text-white transition-colors hover:bg-red-700 disabled:opacity-50"><Plus size={16} />NOVO PEDIDO</button>}
             </div>
           </div>
           {!isControlsCollapsed && <div className="mt-3 max-h-[35vh] space-y-3 overflow-y-auto border-t border-slate-100 pt-3">
@@ -1243,7 +1221,6 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               <select aria-label="Filtrar entregador" value={filterDriver} onChange={e => setFilterDriver(e.target.value as typeof filterDriver)} className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600"><option value="ALL">Todos os entregadores</option><option value="WITH_DRIVER">Com entregador</option><option value="WITHOUT_DRIVER">Sem entregador</option></select>
               <button type="button" data-testid="orders-sound" onClick={newOrderAlarm.toggle} aria-pressed={newOrderAlarm.enabled && newOrderAlarm.unlocked} className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">{newOrderAlarm.enabled && newOrderAlarm.unlocked ? <Volume2 size={14} /> : <VolumeX size={14} />}{newOrderAlarm.enabled && newOrderAlarm.unlocked ? 'Som ligado' : 'Ativar som'}</button>
               <button type="button" onClick={() => fetchOrders()} disabled={isRefreshing} className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600"><RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />Atualizar</button>
-              <div className="flex items-center gap-2 text-xs text-slate-500"><span>Tamanho:</span><button type="button" aria-label="Diminuir tamanho" disabled={cardScale <= 50} onClick={() => handleStepCardScale(-5)}>−</button><button type="button" title="Redefinir tamanho" onClick={handleResetCardScale}>{cardScale}%</button><button type="button" aria-label="Aumentar tamanho" disabled={cardScale >= 150} onClick={() => handleStepCardScale(5)}>+</button></div>
               <button type="button" onClick={handleClearFilters} className="ml-auto text-xs font-semibold text-red-600">Limpar filtros</button>
             </div>
             <div className="flex flex-wrap items-center gap-1.5" data-testid="fulfillment-tabs" role="tablist" aria-label="Atendimento">
@@ -1335,7 +1312,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               {/* KANBAN: cinco colunas com rolagem independente. */}
               {/* ========================================================================= */}
               {effectiveViewMode === 'kanban' && <OrdersKanban orders={filteredOrders} loading={loading} onDrop={handleKanbanDrop}
-                renderOrder={order => <div key={order.id} style={{ zoom: `${cardScale}%` }}><KanbanOrderCard
+                scale={ordersZoom.scale}
+                renderOrder={order => <div key={order.id}><KanbanOrderCard
                   order={orderForCard(order)} isSelected={selectedOrder?.id === order.id} prepMinutes={prepMinutes}
                   onSelectOrder={setSelectedOrder} onUpdateStatus={handleUpdateStatus}
                   onPrint={setOrderToPrint} onOpenChat={openOrderChat} unreadChat={unreadMessages.some(n => n.ref_id === order.id)}
@@ -1348,132 +1326,92 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               {/* MODO LISTA POR STATUS    */}
               {/* ========================================================================= */}
               {effectiveViewMode === 'table' && (
-                <div className="bg-white border border-slate-200/90 rounded-lg shadow-xs overflow-hidden" style={{ zoom: `${cardScale}%` }}>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-[9.5px]">
-                      <thead className="bg-slate-50/90 text-slate-500 font-semibold border-b border-slate-200">
+                <div className="orders-list-wrap" data-testid="orders-list" data-zoom={ordersZoom.zoom} style={{ '--oz': ordersZoom.scale } as React.CSSProperties}>
+                  <div className="orders-list-scroll">
+                    <table className="orders-list">
+                      <thead>
                         <tr>
-                          <th className="py-1 px-1.5 pl-2 flex items-center gap-1 text-[8.5px]">
-                            <input type="checkbox" className="rounded text-emerald-600 focus:ring-emerald-500" readOnly />
-                            <span># Pedido</span>
-                          </th>
-                          <th className="py-1 px-1.5 text-[8.5px]">Cliente</th>
-                          <th className="py-1 px-1.5 text-[8.5px]">Hora</th>
-                          <th className="py-1 px-1.5 text-[8.5px]">Itens</th>
-                          <th className="py-1 px-1.5 text-[8.5px]">Tipo</th>
-                          <th className="py-1 px-1.5 text-[8.5px]">Pagamento</th>
-                          <th className="py-1 px-1.5 text-[8.5px]">Status</th>
-                          <th className="py-1 px-1.5 text-[8.5px]">Total</th>
-                          <th className="py-1 px-2 pr-2 text-right text-[8.5px]">Ação</th>
+                          <th className="pl-[14px]"># Pedido</th>
+                          <th>Cliente</th>
+                          <th>Hora</th>
+                          <th>Itens</th>
+                          <th>Tipo</th>
+                          <th>Pagamento</th>
+                          <th>Status</th>
+                          <th>Total</th>
+                          <th className="text-right">Ação</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody>
                         {filteredOrders.map(order => {
                           const totalItemsCount = order.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || order.items?.length || 0;
                           const orderTimeStr = new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                           const rowTheme = ORDER_STATUS_THEME[order.status] || ORDER_STATUS_THEME.PENDING;
+                          const statusColors = orderStatusColors(order.status);
                           const isSelected = selectedOrder?.id === order.id;
 
                           return (
                             <tr
                               key={order.id}
                               onClick={() => setSelectedOrder(order)}
-                              style={{ backgroundColor: rowTheme.bg }}
-                              className={`transition-colors cursor-pointer group relative ${
-                                isSelected ? 'ring-2 ring-emerald-500/60' : 'hover:opacity-90'
-                              }`}
+                              data-testid="orders-list-row"
+                              data-column={statusColors.column}
+                              data-selected={isSelected}
+                              style={{ '--row-color': statusColors.color, '--row-tint': statusColors.tint } as React.CSSProperties}
+                              className="orders-list-row"
                             >
-                              {/* # Pedido com Barra Lateral Colorida & Checkbox & Tempo */}
-                              <td className="py-1 px-1.5 pl-2 relative">
-                                <div 
-                                  className="absolute left-0 top-0 bottom-0 w-0.5" 
-                                  style={{ backgroundColor: rowTheme.accent }} 
-                                />
-                                <div className="flex items-center gap-1">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={isSelected} 
+                              <td>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
                                     onChange={() => setSelectedOrder(order)}
-                                    className="rounded text-emerald-600 focus:ring-emerald-500" 
+                                    onClick={e => e.stopPropagation()}
+                                    aria-label={`Selecionar pedido ${order.orderNumber || order.id.slice(0, 6)}`}
+                                    className="h-3.5 w-3.5 rounded"
                                   />
-                                  <span className="font-mono font-black text-slate-900 text-[10px]">
-                                    #{order.orderNumber || order.id.slice(0, 6)}
-                                  </span>
-                                  <span className="text-[8px] font-mono text-rose-600 font-bold flex items-center gap-0.5">
-                                    <Clock className="w-2 h-2" />
-                                    <span>{orderTimeStr}</span>
-                                  </span>
+                                  <span className="orders-list-num">#{order.orderNumber || order.id.slice(0, 6)}</span>
                                   <OrderAgeBadge order={order} />
                                 </div>
                               </td>
-
-                              {/* Cliente */}
-                              <td className="py-1 px-1.5">
-                                <div className="flex items-center gap-1">
-                                  <User className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                              <td>
+                                <div className="flex items-center gap-2">
                                   <div>
-                                    <div className="font-bold text-slate-900 text-[9.5px] leading-tight">{dineInOrderLabel(order)}</div>
-                                    <div className="text-[8px] text-slate-400 font-mono leading-none">{order.customerPhone}</div>
+                                    <div className="font-bold text-slate-900">{dineInOrderLabel(order)}</div>
+                                    <div className="font-mono text-[10.5px] leading-none text-slate-500">{order.customerPhone}</div>
                                   </div>
                                 </div>
                               </td>
-
-                              {/* Hora */}
-                              <td className="py-1 px-1.5 text-slate-500 font-mono text-[9px]">
-                                {orderTimeStr}
-                              </td>
-
-                              {/* Itens */}
-                              <td className="py-1 px-1.5 text-slate-700 font-medium text-[9px]">
-                                {totalItemsCount} {totalItemsCount === 1 ? 'item' : 'itens'}
-                              </td>
-
-                              {/* Tipo */}
-                              <td className="py-1 px-1.5 text-slate-700 text-[9px]">
-                                <span className="flex items-center gap-0.5">
+                              <td className="whitespace-nowrap font-mono text-slate-600">{orderTimeStr}</td>
+                              <td className="whitespace-nowrap font-medium text-slate-700">{totalItemsCount} {totalItemsCount === 1 ? 'item' : 'itens'}</td>
+                              <td className="text-slate-700">
+                                <span className="flex items-center gap-1.5">
                                   {order.fulfillmentType === 'DINE_IN' ? (
-                                    <>
-                                      <UtensilsCrossed className="w-2.5 h-2.5 text-slate-400" />
-                                      <span>Salão</span>
-                                    </>
+                                    <><UtensilsCrossed className="h-3.5 w-3.5 text-slate-400" /><span>Salão</span></>
                                   ) : order.fulfillmentType === 'PICKUP' ? (
-                                    <>
-                                      <Building2 className="w-2.5 h-2.5 text-slate-400" />
-                                      <span>Retirada</span>
-                                    </>
+                                    <><Building2 className="h-3.5 w-3.5 text-slate-400" /><span>Retirada</span></>
                                   ) : (
-                                    <>
-                                      <Bike className="w-2.5 h-2.5 text-slate-400" />
-                                      <span>Delivery</span>
-                                    </>
+                                    <><Bike className="h-3.5 w-3.5 text-slate-400" /><span>Delivery</span></>
                                   )}
                                 </span>
                               </td>
-
-                              {/* Pagamento */}
-                              <td className="py-1 px-1.5 text-slate-700 font-medium text-[9px]">
-                                <span className="flex items-center gap-0.5">
-                                  <DollarSign className="w-2.5 h-2.5 text-slate-400" />
+                              <td className="font-medium text-slate-700">
+                                <span className="flex items-center gap-1.5">
+                                  <DollarSign className="h-3.5 w-3.5 text-slate-400" />
                                   <span>{formatPaymentMethod(order.paymentMethod)}</span>
                                 </span>
                               </td>
-
-                              {/* Status Badge */}
-                              <td className="py-1 px-1.5">
-                                <span className="inline-flex items-center gap-1">
-                                  <DriverOfferStatus orderId={order.id} /><OrderStatusChip status={order.status} late={checkIsPreparingDelayed(order.createdAt, order.status, prepMinutes)} className="text-[7.5px] px-1 py-0" />
-                                  <SlaTimerChip status={order.status} createdAt={order.createdAt} prepMinutes={prepMinutes} className="text-[7.5px] px-1 py-0" />
+                              <td>
+                                <span className="inline-flex flex-wrap items-center gap-1.5">
+                                  <DriverOfferStatus orderId={order.id} />
+                                  <OrderStatusPill status={order.status} late={checkIsPreparingDelayed(order.createdAt, order.status, prepMinutes)} />
+                                  <SlaTimerChip status={order.status} createdAt={order.createdAt} prepMinutes={prepMinutes} className="text-[10px] px-1.5 py-0.5" />
                                 </span>
                               </td>
-
-                              {/* Total */}
-                              <td className="py-1 px-1.5 font-mono font-black text-slate-900 text-[10px]">
-                                {formatBRL(order.totalAmount)}
-                              </td>
-
+                              <td className="orders-list-total">{formatBRL(order.totalAmount)}</td>
                               {/* Ação */}
-                              <td className="py-1 px-1.5 pr-2 text-right">
-                                <div className="inline-flex items-center gap-0.5 justify-end">
+                              <td className="text-right">
+                                <div className="inline-flex items-center gap-1 justify-end">
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -1490,7 +1428,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                                       else setSelectedOrder(order);
                                     }}
                                     style={orderActionButtonStyle(rowTheme, order)}
-                                    className="py-0.2 px-1.5 rounded text-[8.5px] font-bold shadow-2xs hover:opacity-90 transition-all cursor-pointer"
+                                    className="py-1.5 px-2.5 rounded-lg text-[11px] font-bold shadow-xs hover:opacity-90 transition-all cursor-pointer whitespace-nowrap"
                                   >
                                     {liveOffer(order.id) || order.status === 'WAITING_FOR_DRIVER' ? 'Ver detalhes' : (order.fulfillmentType === 'PICKUP' && pickupActionLabel(order.status)) || (retryOffer(order.id) ? 'Chamar outro' : rowTheme.buttonLabel)}
                                   </button>
@@ -1500,9 +1438,9 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                                       e.stopPropagation();
                                       setSelectedOrder(order);
                                     }}
-                                    className="p-1 rounded text-slate-400 hover:text-slate-700"
+                                    aria-label="Abrir pedido" className="rounded-lg p-1.5 text-slate-500 hover:bg-white/70 hover:text-slate-800"
                                   >
-                                    <MoreVertical className="w-3 h-3" />
+                                    <MoreVertical className="h-4 w-4" />
                                   </button>
                                 </div>
                               </td>

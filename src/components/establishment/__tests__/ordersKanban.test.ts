@@ -52,3 +52,20 @@ describe('filtros exclusivos da tela de Pedidos', () => {
     expect(isDateInOrdersPeriod(at(1), 'ALL', now)).toBe(true);
   });
 });
+
+import { orderStatusColors, KANBAN_COLUMN_THEME } from '../ordersKanban';
+describe('mapa único de cor por status (Kanban e Lista)', () => {
+  it.each([
+    ['PENDING', '#ef4444'], ['CONFIRMED', '#ef4444'], ['PREPARING', '#f97316'],
+    ['READY', '#a855f7'], ['OUT_FOR_DELIVERY', '#a855f7'], ['DELIVERED', '#16a34a'], ['CANCELLED', '#6b7280'],
+  ])('%s usa a cor %s do cabeçalho da coluna', (status, color) => {
+    const c = orderStatusColors(status);
+    expect(c.color).toBe(color);
+    expect(c.color).toBe(KANBAN_COLUMN_THEME[c.column].color);
+    expect(c.tint).toBe(KANBAN_COLUMN_THEME[c.column].tint);
+  });
+  it('Entregue é verde e Cancelado é cinza (nunca neutro/rosado)', () => {
+    expect(orderStatusColors('DELIVERED').color).toBe('#16a34a');
+    expect(orderStatusColors('CANCELLED').color).toBe('#6b7280');
+  });
+});

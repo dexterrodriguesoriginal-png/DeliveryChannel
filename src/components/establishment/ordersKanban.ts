@@ -9,6 +9,10 @@ export const KANBAN_COLUMN_THEME = {
   cancelled: { label: 'CANCELADO', color: '#6b7280', tint: '#f0f1f2', dropStatus: 'CANCELLED' },
 } as const satisfies Record<string, { label: string; color: string; tint: string; dropStatus: OrderStatus }>;
 export type KanbanColumn = keyof typeof KANBAN_COLUMN_THEME;
+/** Tom escuro de cada cor (texto/ícones sobre o fundo suave), com contraste AA sobre a tinta da coluna. */
+export const KANBAN_COLUMN_INK: Record<KanbanColumn, string> = {
+  waiting: '#b91c1c', production: '#c2410c', ready: '#7e22ce', delivered: '#15803d', cancelled: '#374151',
+};
 export const KANBAN_COLUMNS = Object.keys(KANBAN_COLUMN_THEME) as KanbanColumn[];
 
 /**
@@ -28,6 +32,16 @@ export function kanbanColumnForStatus(status: string): KanbanColumn {
     case 'CANCELLED': case 'REJECTED': return 'cancelled';
     default: return 'waiting';
   }
+}
+
+/**
+ * Mapa ÚNICO de cor por status, usado pelo Kanban (cabeçalhos/cards) e pela Lista (linha, barra e selo):
+ * aguardando vermelho · em produção laranja · saiu/pronto roxo · entregue verde · cancelado cinza.
+ */
+export function orderStatusColors(status: string) {
+  const column = kanbanColumnForStatus(status);
+  const theme = KANBAN_COLUMN_THEME[column];
+  return { column, label: theme.label, color: theme.color, tint: theme.tint, ink: KANBAN_COLUMN_INK[column] };
 }
 
 export function groupKanbanOrders(orders: readonly Order[]) {

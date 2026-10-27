@@ -5,8 +5,8 @@ import { KanbanColumnHeader } from './KanbanColumnHeader';
 import { groupKanbanOrders, KANBAN_COLUMNS, KANBAN_COLUMN_THEME, type KanbanColumn } from './ordersKanban';
 import './ordersKanban.css';
 
-export function OrdersKanban({ orders, loading, renderOrder, onDrop }: {
-  orders: Order[]; loading?: boolean; renderOrder: (order: Order) => React.ReactNode;
+export function OrdersKanban({ orders, loading, renderOrder, onDrop, scale = 1 }: {
+  orders: Order[]; loading?: boolean; /** Zoom de densidade (0.7–1.3): escala cards, fontes, paddings e largura das colunas. */ scale?: number; renderOrder: (order: Order) => React.ReactNode;
   onDrop: (id: string, status: OrderStatus) => void;
 }) {
   const groups = groupKanbanOrders(orders);
@@ -17,7 +17,7 @@ export function OrdersKanban({ orders, loading, renderOrder, onDrop }: {
     const lane = board.current?.querySelector<HTMLElement>(`[data-column="${key}"]`);
     if (lane && board.current) board.current.scrollTo({ left: lane.offsetLeft, behavior: 'smooth' });
   };
-  return <div className="orders-kanban-layout" aria-busy={loading}>
+  return <div className="orders-kanban-layout" aria-busy={loading} data-testid="orders-kanban-layout" data-zoom={Math.round(scale * 100)} style={{ '--oz': scale } as React.CSSProperties}>
     <nav className="orders-kanban-tabs" aria-label="Colunas de pedidos">
       {KANBAN_COLUMNS.map(key => <button key={key} type="button" aria-pressed={activeColumn === key}
         onClick={() => selectColumn(key)} style={activeColumn === key ? { backgroundColor: KANBAN_COLUMN_THEME[key].color, color: '#ffffff' } : undefined}>
