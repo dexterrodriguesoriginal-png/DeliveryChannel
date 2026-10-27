@@ -1,4 +1,5 @@
 import type { Order, OrderStatus } from '../../types';
+import { inRange, type DateRange } from '../../lib/orders/periodRange';
 
 /** Visual exclusivo de Pedidos; não altera temas globais nem transições de status. */
 export const KANBAN_COLUMN_THEME = {
@@ -66,14 +67,25 @@ export function matchesOrderSearch(order: Order, search: string) {
     || (digits.length > 0 && /^[\d\s()+.\-]+$/.test(query) && (order.customerPhone || '').replace(/\D/g, '').includes(digits));
 }
 
-export type OrdersPeriod = 'ALL' | 'TODAY' | 'YESTERDAY' | '7D' | '30D';
-export function isDateInOrdersPeriod(dateStr: string, period: OrdersPeriod, now = new Date()) {
+export type OrdersPeriod = 'ALL' | 'TODAY' | 'YESTERDAY' | '7D' | '30D' | 'MONTH' | 'CUSTOM';
+export function isDateInOrdersPeriod(dateStr: string, period: OrdersPeriod, now = new Date(), range?: DateRange | null) {
   if (period === 'ALL') return true;
+  if (period === 'CUSTOM') return range ? inRange(dateStr, range) : true;
   const date = new Date(dateStr);
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const end = new Date(start); end.setDate(end.getDate() + 1);
   if (period === 'YESTERDAY') { end.setTime(start.getTime()); start.setDate(start.getDate() - 1); }
   if (period === '7D') start.setDate(start.getDate() - 6);
   if (period === '30D') start.setDate(start.getDate() - 29);
+  if (period === 'MONTH') start.setDate(1);
   return date >= start && date < end;
+}
+
+/** Resumo dos itens para o card: "2× Corona, 1× Whisky +1" (curto) e a lista completa para o tooltip. */
+export function itemsSummary(order: Pick<Order, 'items'>): { short: string; full: string } {
+  const items = order.items || [];
+  if (!items.length) return { short: 'Sem itens informados', full: 'Sem itens informados' };
+  const fmt = (i: { quantity: number; productName: string }) => `${i.quantity}× ${i.productName}`;
+  const rest = items.length - 2;
+  return { short: items.slice(0, 2).map(fmt).join(', ') + (rest > 0 ? ` +${rest}` : ''), full: items.map(fmt).join(', ') };
 }

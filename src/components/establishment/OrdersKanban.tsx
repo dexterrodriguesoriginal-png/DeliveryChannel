@@ -1,23 +1,36 @@
-import React, { useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Package } from 'lucide-react';
 import type { Order, OrderStatus } from '../../types';
 import { KanbanColumnHeader } from './KanbanColumnHeader';
 import { groupKanbanOrders, KANBAN_COLUMNS, KANBAN_COLUMN_THEME, type KanbanColumn } from './ordersKanban';
 import './ordersKanban.css';
 
-export function OrdersKanban({ orders, loading, renderOrder, onDrop, scale = 1 }: {
+export function OrdersKanban({ orders, loading, renderOrder, onDrop, scale = 1, lockColumns = false }: {
+  /** Com o painel de detalhes aberto, mantém a largura das colunas e deixa o quadro rolar na horizontal em vez de espremer. */ lockColumns?: boolean;
   orders: Order[]; loading?: boolean; /** Zoom de densidade (0.1–1.3): escala cards, fontes, paddings e largura das colunas. */ scale?: number; renderOrder: (order: Order) => React.ReactNode;
   onDrop: (id: string, status: OrderStatus) => void;
 }) {
   const groups = groupKanbanOrders(orders);
   const [activeColumn, setActiveColumn] = useState<KanbanColumn>('waiting');
   const board = useRef<HTMLDivElement>(null);
+  // Última largura de coluna medida com o quadro livre (sem painel); usada para travar as colunas quando o painel abre.
+  const freeColWidth = useRef(0);
+  const measureFree = () => {
+    const lane = board.current?.querySelector<HTMLElement>('.orders-kanban-column');
+    if (lane && lane.offsetWidth) freeColWidth.current = lane.offsetWidth;
+  };
+  useLayoutEffect(() => { if (!lockColumns) measureFree(); });
+  useLayoutEffect(() => {
+    if (lockColumns) return;
+    window.addEventListener('resize', measureFree);
+    return () => window.removeEventListener('resize', measureFree);
+  }, [lockColumns]);
   const selectColumn = (key: KanbanColumn) => {
     setActiveColumn(key);
     const lane = board.current?.querySelector<HTMLElement>(`[data-column="${key}"]`);
     if (lane && board.current) board.current.scrollTo({ left: lane.offsetLeft, behavior: 'smooth' });
   };
-  return <div className="orders-kanban-layout" aria-busy={loading} data-testid="orders-kanban-layout" data-zoom={Math.round(scale * 100)} style={{ '--oz': scale } as React.CSSProperties}>
+  return <div className="orders-kanban-layout" aria-busy={loading} data-testid="orders-kanban-layout" data-zoom={Math.round(scale * 100)} style={{ '--oz': scale, ...(lockColumns && freeColWidth.current ? { '--orders-col-min': `${freeColWidth.current}px` } : {}) } as React.CSSProperties}>
     <nav className="orders-kanban-tabs" aria-label="Colunas de pedidos">
       {KANBAN_COLUMNS.map(key => <button key={key} type="button" aria-pressed={activeColumn === key}
         onClick={() => selectColumn(key)} style={activeColumn === key ? { backgroundColor: KANBAN_COLUMN_THEME[key].color, color: '#ffffff' } : undefined}>

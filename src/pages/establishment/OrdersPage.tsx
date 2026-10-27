@@ -29,6 +29,8 @@ import { Order, OrderStatus, PaymentStatus, Driver, Product } from '../../types'
 import { playNewOrderSound } from '../../utils/audio';
 import { ThermalReceiptModal } from '../../components/establishment/ThermalReceiptModal';
 import { PDVModal } from '../../components/establishment/PDVModal';
+import { PeriodPicker } from '../../components/establishment/PeriodPicker';
+import type { DateRange } from '../../lib/orders/periodRange';
 import { KanbanOrderCard } from '../../components/establishment/KanbanOrderCard';
 import { OrderStatusChip } from '../../components/establishment/StatusIcon';
 import { OrderStatusPill } from '../../components/establishment/OrderStatusPill';
@@ -132,6 +134,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const [filterFulfillment, setFilterFulfillment] = useState<'ALL' | FulfillmentTab>('ALL');
   const [filterDriver, setFilterDriver] = useState<'ALL' | 'WITH_DRIVER' | 'WITHOUT_DRIVER'>('ALL');
   const [filterPeriod, setFilterPeriod] = useState<OrdersPeriod>('TODAY');
+  const [periodRange, setPeriodRange] = useState<DateRange | null>(null);
 
   // COMANDO 135: Painel de controles recolhível (Busca, filtros, abas, modos, legenda)
   const [isControlsCollapsed, setIsControlsCollapsed] = useState<boolean>(() => {
@@ -154,6 +157,14 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
 
   // Pedido selecionado para Drawer lateral acoplado (como no print)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  // Com o painel de detalhes encaixado à direita, o botão de notificações (posição padrão) sai da frente dele.
+  useEffect(() => {
+    if (!selectedOrder) return;
+    const root = document.documentElement;
+    const apply = () => { if (window.innerWidth >= 1180 && !root.style.getPropertyValue('--dc-float-left')) root.style.setProperty('--dc-float-right', '412px'); else root.style.removeProperty('--dc-float-right'); };
+    apply(); window.addEventListener('resize', apply);
+    return () => { window.removeEventListener('resize', apply); root.style.removeProperty('--dc-float-right'); };
+  }, [!!selectedOrder]);
   // Esc fecha o painel lateral de detalhes (sem interferir em modais/campos abertos por cima).
   useEffect(() => {
     if (!selectedOrder) return;
@@ -633,7 +644,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       }
 
       // 4. Filtro de Período
-      if (!isDateInOrdersPeriod(order.createdAt, filterPeriod)) {
+      if (!isDateInOrdersPeriod(order.createdAt, filterPeriod, new Date(), periodRange)) {
         return false;
       }
 
@@ -641,7 +652,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
 
       return true;
     });
-  }, [allOrders, filterFulfillment, filterDriver, filterPeriod, searchQuery]);
+  }, [allOrders, filterFulfillment, filterDriver, filterPeriod, periodRange, searchQuery]);
 
   // Contadores dos filtros de status.
   const fulfillmentOrders = scopedOrders.filter(order => !order.archivedAt);
@@ -676,7 +687,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     setSearchQuery('');
     setFilterFulfillment('ALL');
     setFilterDriver('ALL');
-    setFilterPeriod('ALL');
+    setFilterPeriod('ALL'); setPeriodRange(null);
     changeActiveTab('ALL');
   };
 
@@ -721,6 +732,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const renderDrawerContent = () => {
     if (!selectedOrder || !selectedOrderTheme) return null;
 
+    const statusColors = orderStatusColors(selectedOrder.status);
     const totalItemsCount = selectedOrder.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || selectedOrder.items?.length || 0;
     const createdAtDate = new Date(selectedOrder.createdAt);
     const orderTimeStr = createdAtDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -732,14 +744,14 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
         {/* Barra de Acento Superior do Status */}
         <div 
           className="h-1.5 w-full shrink-0 transition-colors" 
-          style={{ backgroundColor: selectedOrderTheme.accent }} 
+          style={{ backgroundColor: statusColors.color }} 
         />
 
         {/* Header do Drawer Status-Aware (Fundo e Borda Suave do Status) */}
         <div 
           style={{ 
-            backgroundColor: selectedOrderTheme.drawerBg || selectedOrderTheme.bg,
-            borderBottom: `1px solid ${selectedOrderTheme.border}`
+            backgroundColor: `color-mix(in srgb, ${statusColors.color} 14%, #ffffff)`,
+            borderBottom: `1px solid color-mix(in srgb, ${statusColors.color} 32%, #ffffff)`
           }}
           className="p-1.5 shrink-0 space-y-0.5 transition-colors"
         >
@@ -799,7 +811,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           <button
             type="button"
             onClick={() => setDrawerTab('detalhes')}
-            style={drawerTab === 'detalhes' ? { color: selectedOrderTheme.accent, borderBottomColor: selectedOrderTheme.accent } : {}}
+            style={drawerTab === 'detalhes' ? { color: statusColors.ink, borderBottomColor: statusColors.color } : {}}
             className={`flex-1 py-1 text-center cursor-pointer transition-colors border-b-2 ${
               drawerTab === 'detalhes' ? 'font-black border-current' : 'border-transparent hover:text-slate-800'
             }`}
@@ -809,7 +821,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           <button
             type="button"
             onClick={() => setDrawerTab('historico')}
-            style={drawerTab === 'historico' ? { color: selectedOrderTheme.accent, borderBottomColor: selectedOrderTheme.accent } : {}}
+            style={drawerTab === 'historico' ? { color: statusColors.ink, borderBottomColor: statusColors.color } : {}}
             className={`flex-1 py-1 text-center cursor-pointer transition-colors border-b-2 ${
               drawerTab === 'historico' ? 'font-black border-current' : 'border-transparent hover:text-slate-800'
             }`}
@@ -819,7 +831,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           <button
             type="button"
             onClick={() => setDrawerTab('acoes')}
-            style={drawerTab === 'acoes' ? { color: selectedOrderTheme.accent, borderBottomColor: selectedOrderTheme.accent } : {}}
+            style={drawerTab === 'acoes' ? { color: statusColors.ink, borderBottomColor: statusColors.color } : {}}
             className={`flex-1 py-1 text-center cursor-pointer transition-colors border-b-2 ${
               drawerTab === 'acoes' ? 'font-black border-current' : 'border-transparent hover:text-slate-800'
             }`}
@@ -1194,18 +1206,9 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               <span className="text-[10px] font-semibold tracking-wider text-slate-400 max-[1100px]:hidden">PERÍODO</span>
               <div className="flex items-center gap-1 rounded-xl bg-[#f1f5f9] p-1" aria-label="Período dos pedidos">
                 {([['TODAY', 'Hoje'], ['YESTERDAY', 'Ontem'], ['7D', '7 dias']] as const).map(([id, label]) => <button key={id} type="button"
-                  aria-pressed={filterPeriod === id} onClick={() => setFilterPeriod(id)}
+                  aria-pressed={filterPeriod === id} onClick={() => { setFilterPeriod(id); setPeriodRange(null); }}
                   className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors duration-150 ${filterPeriod === id ? 'bg-[#dc2626] text-white' : 'text-slate-500 hover:bg-white'}`}>{label}</button>)}
-                <details className="relative">
-                  <summary className={`flex cursor-pointer list-none items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold ${filterPeriod === 'ALL' || filterPeriod === '30D' ? 'bg-[#dc2626] text-white' : 'text-slate-500'}`}>Mais <ChevronDown size={12} /></summary>
-                  <div className="absolute left-0 top-full z-30 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
-                    <label className="text-xs font-medium text-slate-500">Período
-                      <select aria-label="Selecionar período" value={filterPeriod} onChange={e => setFilterPeriod(e.target.value as OrdersPeriod)} className="mt-2 w-full rounded-lg border border-slate-200 p-2 text-xs text-slate-700">
-                        <option value="ALL">Todos os períodos</option><option value="TODAY">Hoje</option><option value="YESTERDAY">Ontem</option><option value="7D">Últimos 7 dias</option><option value="30D">Últimos 30 dias</option>
-                      </select>
-                    </label>
-                  </div>
-                </details>
+                <PeriodPicker period={filterPeriod} range={periodRange} onApply={(p, r) => { setFilterPeriod(p); setPeriodRange(r); }} />
               </div>
             </div>
             <div className="flex flex-1 flex-wrap items-center justify-end gap-1.5">
@@ -1323,7 +1326,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               {/* KANBAN: cinco colunas com rolagem independente. */}
               {/* ========================================================================= */}
               {effectiveViewMode === 'kanban' && <OrdersKanban orders={filteredOrders} loading={loading} onDrop={handleKanbanDrop}
-                scale={ordersZoom.scale}
+                scale={ordersZoom.scale} lockColumns={!!selectedOrder}
                 renderOrder={order => <div key={order.id}><KanbanOrderCard
                   order={orderForCard(order)} isSelected={selectedOrder?.id === order.id} prepMinutes={prepMinutes}
                   onSelectOrder={setSelectedOrder} onUpdateStatus={handleUpdateStatus}

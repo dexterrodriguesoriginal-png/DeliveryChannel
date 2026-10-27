@@ -264,16 +264,27 @@ describe('novo visual do Kanban', () => {
     await click(container.querySelector('[aria-label="Limpar busca"]')!); expect(cards()).toHaveLength(2);
   });
 
-  it('filtra Hoje, Ontem, 7 dias e o seletor existente em Mais', async () => {
+  it('filtra Hoje, Ontem, 7 dias e o seletor de período em Mais', async () => {
     const today = new Date(); today.setHours(12, 0, 0, 0);
     const ago = (days: number) => { const date = new Date(today); date.setDate(date.getDate() - days); return date.toISOString(); };
     mocks.getOrders.mockResolvedValue([0, 1, 6, 8].map(days => order('PREPARING', { id: `day-${days}`, createdAt: ago(days) })));
     await render(); expect(cards()).toHaveLength(1);
     await click(button('Ontem')); expect(cards()).toHaveLength(1); expect(cards()[0].getAttribute('data-testid')).toBe('order-card-day-1');
     await click(button('7 dias')); expect(cards()).toHaveLength(3);
-    const period = container.querySelector<HTMLSelectElement>('[aria-label="Selecionar período"]')!;
-    await act(async () => { period.value = 'ALL'; period.dispatchEvent(new Event('change', { bubbles: true })); });
+    await click(container.querySelector('[data-testid="period-more"]')!);
+    const popover = container.querySelector('[data-testid="period-popover"]')!;
+    const inPopover = (label: string) => Array.from(popover.querySelectorAll('button')).find(b => b.textContent?.trim() === label)!;
+    await click(inPopover('Todos')); await click(inPopover('Aplicar'));
     expect(cards()).toHaveLength(4);
+    // intervalo escolhido no calendário: só o dia de 6 dias atrás
+    const d6 = new Date(today); d6.setDate(d6.getDate() - 6);
+    const iso = `${d6.getFullYear()}-${String(d6.getMonth() + 1).padStart(2, '0')}-${String(d6.getDate()).padStart(2, '0')}`;
+    await click(container.querySelector('[data-testid="period-more"]')!);
+    const dayBtn = () => container.querySelector<HTMLElement>(`[data-day="${iso}"]`);
+    if (dayBtn()) { // (se o dia cair no mês anterior, navega)
+      await click(dayBtn()!); await click(Array.from(container.querySelectorAll('[data-testid="period-popover"] button')).find(b => b.textContent?.trim() === 'Aplicar') as HTMLElement);
+      expect(cards()).toHaveLength(1); expect(cards()[0].getAttribute('data-testid')).toBe('order-card-day-6');
+    }
   });
 
   it('mantém o badge de aceite na coluna saiu/pronto e permite cancelar a chamada', async () => {
@@ -385,11 +396,23 @@ describe('card compacto e painel lateral de detalhes', () => {
     const paid = order('PENDING', { totalAmount: 1, paymentMethod: 'PIX', onlinePayment: { status: 'paid' } as Order['onlinePayment'] });
     await act(async () => { root.render(<KanbanOrderCard order={paid} {...props} />); });
     const card = container.querySelector('.orders-kanban-card')!;
-    expect(card.querySelector('.orders-card-title')?.textContent).toContain('#123 Cliente Teste');
-    expect(card.querySelector('.orders-card-sub-text')?.textContent).toMatch(/R\$\s*1,00 · Delivery · PIX/);
+    expect(card.querySelector('.orders-card-num')?.textContent).toBe('#123'); expect(card.querySelector('.orders-card-name')?.textContent).toBe('Cliente Teste');
+    expect(card.querySelector('.orders-card-total')?.textContent).toMatch(/R\$\s*1,00/);
+    expect(card.querySelector('.orders-card-chips')?.textContent).toMatch(/Delivery.*PIX.*Pago/);
     expect(card.querySelector('.orders-card-paid')?.textContent).toBe('Pago');
     expect(card.querySelector('.orders-card-dot')?.getAttribute('data-urgency')).toBe('ok');
-    expect(card.textContent).not.toContain('Ver detalhes'); expect(card.textContent).not.toContain('Entregue ');
+    expect(card.querySelector('.orders-card-origin')?.textContent).toMatch(/\d{2}\/\d{2}/); expect(card.querySelector('.orders-card-footer')).not.toBeNull();
+  });
+  it('linha 2 resume os itens ("2× Corona, 1× Whisky +1") e a linha 3 traz tipo com bairro, pagamento e timer', async () => {
+    const it = (productName: string, quantity: number) => ({ productName, quantity, unitPrice: 1 });
+    const o = order('PREPARING', { items: [it('Corona', 2), it('Whisky', 1), it('Gelo', 1)] as Order['items'], paymentMethod: 'CASH', paymentStatus: 'PENDING', addressDetails: { neighborhood: 'Centro' } as Order['addressDetails'] });
+    await act(async () => { root.render(<KanbanOrderCard order={o} {...props} />); });
+    expect(container.querySelector('.orders-card-items')?.textContent).toBe('2× Corona, 1× Whisky +1');
+    expect(container.querySelector('.orders-card-chips')?.textContent).toMatch(/Delivery.*Centro.*Dinheiro/);
+    expect(container.querySelector('.orders-card-paid')).toBeNull();
+    expect(container.querySelector('.orders-card-timer')).not.toBeNull();
+    await act(async () => { root.render(<KanbanOrderCard order={order('PREPARING', { origin: 'pos', fulfillmentType: 'PICKUP' })} {...props} />); });
+    expect(container.querySelector('.orders-card-chips')?.textContent).toContain('Balcão');
   });
   it('semáforo: âmbar perto de atrasar e vermelho atrasado; encerrado não tem timer', async () => {
     const ago = (m: number) => new Date(Date.now() - m * 60000).toISOString();
@@ -407,7 +430,7 @@ describe('card compacto e painel lateral de detalhes', () => {
     await act(async () => { root.render(<KanbanOrderCard order={preparing} {...props} onSelectOrder={onSelectOrder} onCancelClick={onCancelClick} />); });
     await click(container.querySelector('[aria-label="Cancelar pedido"]')!);
     expect(onCancelClick).toHaveBeenCalledWith(preparing); expect(onSelectOrder).not.toHaveBeenCalled();
-    await click(container.querySelector('.orders-card-hover')!);
+    await click(container.querySelector('.orders-card-footer')!);
     expect(onSelectOrder).toHaveBeenCalledWith(preparing);
   });
   it('clicar no card abre o painel lateral com X/Esc, destaca o selecionado e troca o conteúdo', async () => {

@@ -25,6 +25,13 @@ export const dispatchChatRepository = {
     if (error) throw new Error('Não foi possível carregar as notificações.');
     return dispatchChatRepository.visibleNotifications(tenantId, data || []);
   },
+  /** Dados curtos dos pedidos citados nas notificações (nº, cliente, total) para a linha de detalhe. Só leitura. */
+  async orderBriefs(tenantId: string, orderIds: string[]): Promise<Record<string, { orderNumber: number | string | null; customerName: string | null; total: number | null }>> {
+    if (!orderIds.length) return {};
+    const { data, error } = await supabase.from('orders').select('id,order_number,customer_name,total_amount').eq('tenant_id', tenantId).in('id', orderIds.slice(0, 100));
+    if (error) return {};
+    return Object.fromEntries((data || []).map((o: any) => [o.id, { orderNumber: o.order_number ?? null, customerName: o.customer_name ?? null, total: o.total_amount == null ? null : Number(o.total_amount) }]));
+  },
   async read(tenantId: string, id: string): Promise<void> {
     const { error } = await supabase.from('owner_notifications').update({ read_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', id);
     if (error) throw new Error('Não foi possível marcar como lida.');

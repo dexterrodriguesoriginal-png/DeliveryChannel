@@ -1,0 +1,14 @@
+.period-popover { animation: period-in 150ms cubic-bezier(.2,.8,.2,1) both; }
+@keyframes period-in { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+.period-cell { position: relative; display: flex; justify-content: center; padding: 1px 0; }
+.period-cell-in { background: #fee2e2; }
+.period-cell-first { border-radius: 999px 0 0 999px; }
+.period-cell-last { border-radius: 0 999px 999px 0; }
+.period-cell-first.period-cell-last { border-radius: 999px; }
+.period-day { position: relative; width: 34px; height: 34px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #334155; font-variant-numeric: tabular-nums; transition: background-color 120ms ease, color 120ms ease; cursor: pointer; }
+.period-day:hover:not(:disabled):not(.period-day-edge) { background: #fecaca; }
+.period-day:disabled { color: #cbd5e1; cursor: default; }
+.period-day-today:not(.period-day-edge) { box-shadow: inset 0 0 0 1.5px #dc2626; }
+.period-day-edge { background: #dc2626; color: #fff; }
+.period-day:focus-visible { outline: 2px solid #111827; outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .period-popover { animation: none; } }

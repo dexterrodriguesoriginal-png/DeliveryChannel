@@ -2,55 +2,67 @@
 .orders-kanban-board { position: relative; display: grid; grid-template-columns: repeat(5, minmax(var(--orders-col-min, 150px), 1fr)); width: 100%; max-width: 1848px; /* com zoom baixo, colunas não passam de ~360px lógicos (cards continuam com formato de card) */ gap: 12px; flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; zoom: var(--oz, 1); transition: zoom 220ms cubic-bezier(.2,.7,.2,1); }
 .orders-kanban-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: 16px; overflow: hidden; }
 .orders-kanban-header { position: sticky; top: 0; z-index: 1; flex-shrink: 0; margin: 10px 10px 0; border-radius: 14px; padding: 12px 6px; color: white; }
-.orders-kanban-scroll { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: #9ca3af transparent; overscroll-behavior-y: contain; }
+.orders-kanban-scroll { display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: #9ca3af transparent; overscroll-behavior-y: contain; }
 .orders-kanban-scroll::-webkit-scrollbar { width: 6px; }
 .orders-kanban-scroll::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 999px; }
 .orders-kanban-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 32px 4px; color: #9ca3af; text-align: center; }
 .orders-kanban-empty p { font-size: 11px; font-weight: 600; letter-spacing: .06em; }
 .orders-kanban-empty span { font-size: 12px; }
-/* ===== Card compacto (estilo Pipedrive): ~54px, 2 linhas, ações só no hover/foco ===== */
-.orders-kanban-card { position: relative; flex-shrink: 0; container-type: inline-size; animation: orders-card-in 200ms ease-out both; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 7px 10px; box-shadow: 0 1px 1px rgba(15,23,42,.04); transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease; cursor: pointer; min-width: 0; }
-.orders-kanban-card:hover { transform: translateY(-1px); border-color: #d1d5db; box-shadow: 0 2px 6px rgba(15,23,42,.1); }
-.orders-kanban-card:focus-visible { outline: 2px solid #dc2626; outline-offset: 1px; }
-.orders-kanban-card[data-selected="true"] { border-color: #dc2626; box-shadow: 0 0 0 1px #dc2626, 0 3px 10px rgba(220,38,38,.18); background: #fffafa; }
-.orders-card-row { display: flex; align-items: center; gap: 8px; min-height: 38px; position: relative; }
-.orders-card-main { flex: 1; min-width: 0; }
-.orders-card-title { margin: 0; font-size: 13px; line-height: 1.25; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.orders-card-title > span { font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; }
-.orders-card-sub { margin: 2px 0 0; display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11.5px; line-height: 1.25; color: #6b7280; }
-.orders-card-sub-text { min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.orders-card-timer { display: inline-flex; flex-shrink: 0; align-items: center; gap: 2px; font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: #16a34a; }
-.orders-card-timer[data-urgency="near"] { color: #d97706; }
-.orders-card-timer[data-urgency="late"] { color: #dc2626; }
-.orders-card-meta { display: flex; flex-shrink: 0; flex-direction: column; align-items: flex-end; justify-content: center; gap: 4px; transition: opacity 120ms ease; }
-.orders-card-dot { width: 9px; height: 9px; border-radius: 999px; background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.18); }
+/* ===== Card compacto: mesmas informações do card antigo em ~40% menos altura; ações sempre à mão ===== */
+.orders-kanban-card { --kc: #94a3b8; position: relative; flex-shrink: 0; container-type: inline-size; animation: orders-card-in 200ms ease-out both; background: color-mix(in srgb, var(--kc) 15%, #fff); border: 1px solid color-mix(in srgb, var(--kc) 36%, #fff); border-radius: 10px; padding: 11px 10px 10px; box-shadow: 0 1px 1px rgba(15,23,42,.04); transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease, background-color 150ms ease; cursor: pointer; min-width: 0; }
+.orders-kanban-card:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--kc) 22%, #fff); border-color: color-mix(in srgb, var(--kc) 55%, #fff); box-shadow: 0 2px 6px rgba(15,23,42,.1); }
+.orders-kanban-card:focus-visible { outline: 2px solid var(--kc); outline-offset: 1px; }
+.orders-kanban-card[data-selected="true"] { background: color-mix(in srgb, var(--kc) 28%, #fff); border-color: var(--kc); box-shadow: 0 0 0 1px var(--kc), 0 3px 10px color-mix(in srgb, var(--kc) 30%, transparent); }
+.orders-card-row { display: flex; flex-direction: column; gap: 4px; }
+.orders-card-l1 { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.orders-card-title { flex: 1; min-width: 0; margin: 0; font-size: 14px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orders-card-num { font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; }
+.orders-card-total { flex-shrink: 0; font-size: 14px; line-height: 1.25; font-weight: 800; color: #111827; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.orders-card-name { margin: 0; font-size: 13px; line-height: 1.3; font-weight: 600; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orders-card-items { margin: 0; font-size: 11.5px; line-height: 1.3; color: #4b5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orders-card-l3 { display: flex; align-items: center; gap: 4px; min-width: 0; margin-top: 5px; }
+/* Chips da linha de tipo/pagamento: nunca quebram; no cartão estreito vão sumindo (bairro → pagamento já Pago → rótulos). Larguras = área interna do cartão. */
+.orders-card-chips { display: flex; flex: 1; flex-wrap: wrap; align-items: center; align-content: flex-start; gap: 8px 3px; height: 21px; min-width: 0; overflow: hidden; }
+.orders-card-chip { display: inline-flex; flex-shrink: 0; align-items: center; gap: 2px; height: 21px; padding: 0 4px; border-radius: 6px; background: rgba(255,255,255,.7); border: 1px solid color-mix(in srgb, var(--kc) 24%, #fff); font-size: 10px; line-height: 1; font-weight: 600; color: #374151; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.orders-card-hood { overflow: hidden; text-overflow: ellipsis; color: #6b7280; font-weight: 500; }
+.orders-card-timer { color: #15803d; }
+.orders-card-timer[data-urgency="near"] { color: #b45309; }
+.orders-card-timer[data-urgency="late"] { color: #b91c1c; }
+.orders-card-paid { background: #dcfce7; border-color: #86efac; color: #166534; font-weight: 800; }
+.orders-card-meta { display: flex; flex-shrink: 0; align-items: center; gap: 6px; }
+.orders-card-dot { flex-shrink: 0; width: 10px; height: 10px; border-radius: 999px; background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.18); }
 .orders-card-dot[data-urgency="near"] { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,.2); }
 .orders-card-dot[data-urgency="late"] { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.2); }
 .orders-card-dot[data-urgency="closed"] { background: #cbd5e1; box-shadow: none; }
-.orders-card-paid { border-radius: 999px; background: #dcfce7; color: #15803d; padding: 0 6px; font-size: 9px; line-height: 15px; font-weight: 800; letter-spacing: .02em; }
 .orders-card-unread { color: #dc2626; display: inline-flex; }
-/* Ações rápidas: aparecem ao passar o mouse / focar (sempre visíveis em telas de toque). */
-.orders-card-hover { position: absolute; top: 50%; right: -4px; transform: translateY(-50%); display: flex; align-items: center; gap: 4px; padding: 3px 4px 3px 18px; border-radius: 0 6px 6px 0; background: linear-gradient(90deg, rgba(255,255,255,0), #fff 16px); opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
-.orders-kanban-card[data-selected="true"] .orders-card-hover { background: linear-gradient(90deg, rgba(255,250,250,0), #fffafa 16px); }
-.orders-kanban-card:hover .orders-card-hover, .orders-kanban-card:focus-within .orders-card-hover { opacity: 1; pointer-events: auto; }
-.orders-kanban-card:hover .orders-card-meta, .orders-kanban-card:focus-within .orders-card-meta { opacity: 0; }
-@media (hover: none) { .orders-card-hover { opacity: 1; pointer-events: auto; } .orders-card-meta { opacity: 0; } }
-.orders-card-strip { margin: -7px -10px 6px; padding: 4px 10px; border-radius: 7px 7px 0 0; background: #fee2e2; color: #dc2626; font-size: 9.5px; font-weight: 700; text-transform: uppercase; }
+.orders-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; margin-top: 6px; }
+.orders-card-origin { display: flex; align-items: center; gap: 3px; min-width: 0; flex: 1; font-size: 9px; line-height: 1.2; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; color: #6b7280; white-space: nowrap; overflow: hidden; }
+.orders-card-origin > svg { flex-shrink: 0; }
+.orders-card-origin-label { overflow: hidden; text-overflow: ellipsis; }
+.orders-card-origin time { flex-shrink: 0; }
+.orders-card-actions { display: flex; flex-shrink: 0; align-items: center; gap: 3px; }
+.orders-card-strip { margin: -11px -10px 8px; padding: 5px 10px; border-radius: 9px 9px 0 0; background: #fee2e2; color: #dc2626; font-size: 9.5px; font-weight: 700; text-transform: uppercase; }
 .orders-card-strip[data-offer="true"] { background: #fef3c7; color: #b45309; }
 .orders-card-strip[data-offer="true"] > div { background: transparent; border: 0; border-radius: 0; padding: 0; color: inherit; font-size: 10px; }
-.orders-card-action { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 24px; border-radius: 6px; padding: 0 8px; font-size: 10.5px; font-weight: 700; white-space: nowrap; color: #fff; transition: filter 150ms ease; cursor: pointer; }
+.orders-card-action { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 26px; border-radius: 7px; padding: 0 8px; font-size: 10.5px; font-weight: 700; white-space: nowrap; color: #fff; transition: filter 150ms ease; cursor: pointer; }
 .orders-card-action:hover { filter: brightness(.92); }
-.orders-card-icon { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 24px; height: 24px; border-radius: 6px; background: #f1f5f9; color: #475569; position: relative; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; }
-.orders-card-icon:hover { background: #e2e8f0; color: #0f172a; }
-.orders-card-icon-danger { background: #fee2e2; color: #dc2626; }
-.orders-card-icon-danger:hover { background: #fecaca; color: #b91c1c; }
+.orders-card-details { height: 26px; padding: 0 6px; border-radius: 7px; font-size: 10.5px; font-weight: 700; color: #475569; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.orders-card-details:hover { color: #0f172a; }
+.orders-card-icon { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 26px; height: 26px; border-radius: 7px; background: rgba(255,255,255,.75); color: #475569; position: relative; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; }
+.orders-card-icon:hover { background: #fff; color: #0f172a; }
+.orders-card-icon-danger { color: #dc2626; }
+.orders-card-icon-danger:hover { background: #fee2e2; color: #b91c1c; }
 .orders-card-icon > span { font-size: 10.5px; font-weight: 700; }
 .orders-card-refuse { padding: 0 7px 0 5px; }
-/* Cartão estreito: ações viram só ícones (o nome fica no tooltip / aria-label). */
-@container (max-width: 190px) { .orders-card-extra { display: none; } .orders-card-paid { width: 15px; padding: 0; text-align: center; font-size: 0; } .orders-card-paid::before { content: '✓'; font-size: 10px; } }
-@container (max-width: 250px) { .orders-card-action > span, .orders-card-refuse > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } .orders-card-action { width: 24px; padding: 0; } .orders-card-refuse { padding: 0; } }
+@container (max-width: 295px) { .orders-card-hood { display: none; } }
+@container (max-width: 232px) { .orders-card-paychip[data-paid="true"] { display: none; } }
+@container (max-width: 189px) { .orders-card-paychip[data-paid="false"] > span { display: none; } }
+@container (max-width: 171px) { .orders-card-chip[data-kind="type"] .orders-card-chip-label { display: none; } }
+/* Cartão estreito: botões com texto viram só ícones (o nome fica no tooltip / aria-label). */
+@container (max-width: 250px) { .orders-card-action > span, .orders-card-refuse > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } .orders-card-action { width: 26px; padding: 0; } .orders-card-refuse { padding: 0; } .orders-card-origin-label { display: none; } }
+@container (max-width: 150px) { .orders-card-origin { display: none; } }
 .orders-kanban-tabs { display: none; }
-.orders-kanban-skeleton { flex-shrink: 0; height: 56px; border-radius: 8px; padding: 10px; background: white; animation: orders-pulse 1.5s ease-in-out infinite; }
+.orders-kanban-skeleton { flex-shrink: 0; height: 120px; border-radius: 8px; padding: 10px; background: white; animation: orders-pulse 1.5s ease-in-out infinite; }
 .orders-kanban-skeleton div { height: 10px; border-radius: 5px; background: #e5e7eb; margin-bottom: 8px; }
 .orders-kanban-skeleton div:nth-child(2) { width: 70%; }
 @keyframes orders-pulse { 50% { opacity: .5; } }

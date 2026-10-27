@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import React, { useRef } from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup, waitFor } from '@testing-library/react';
+import { render, cleanup, waitFor, fireEvent } from '@testing-library/react';
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: () => ({ activeTenant: { id: 'T1' }, supabaseUser: { id: 'U1' }, activeRole: 'OWNER' }),
 }));
@@ -60,5 +60,52 @@ describe('Botão de notificações x barra Salvar do Design do App', () => {
     const st = aside.getAttribute('style') || '';
     expect(st).toContain(`var(${FLOAT_RIGHT_VAR}, 12px)`);
     expect(st).toContain(`var(${FLOAT_LEFT_VAR}, auto)`);
+  });
+});
+
+describe('Botão arrastável: posição salva por usuário', () => {
+  const POS_KEY = 'dc:notifications:pos:U1';
+  const setup = () => { Object.defineProperty(window, 'innerWidth', { value: 1366, configurable: true }); Object.defineProperty(window, 'innerHeight', { value: 768, configurable: true }); };
+  afterEach(() => { localStorage.removeItem(POS_KEY); });
+  it('usa a posição salva (encaixada na borda) no lugar do canto padrão e mantém dentro da tela', async () => {
+    setup(); localStorage.setItem(POS_KEY, JSON.stringify({ edge: 'left', t: 0 }));
+    const ui = render(<OwnerNotifications onOpen={vi.fn()} />);
+    const aside = await waitFor(() => ui.getByTestId('owner-notifications'));
+    expect(aside.getAttribute('data-custom-position')).toBe('true');
+    expect(aside.style.left).toBe('12px'); expect(aside.style.top).toBe('12px');
+    expect(aside.getAttribute('style')).not.toContain('--dc-float');
+  });
+  it('arrastar salva a borda mais próxima e não abre o painel; Restaurar posição volta ao canto padrão', async () => {
+    setup();
+    const ui = render(<OwnerNotifications onOpen={vi.fn()} />);
+    const pill = await waitFor(() => ui.getByTestId('notifications-pill'));
+    pill.getBoundingClientRect = () => ({ left: 1158, top: 704, width: 196, height: 52, right: 1354, bottom: 756, x: 1158, y: 704, toJSON() {} } as DOMRect);
+    (pill as any).setPointerCapture = () => {};
+    fireEvent.pointerDown(pill, { pointerId: 1, clientX: 1200, clientY: 720, button: 0 });
+    fireEvent.pointerMove(pill, { pointerId: 1, clientX: 300, clientY: 400 });
+    fireEvent.pointerUp(pill, { pointerId: 1, clientX: 300, clientY: 400 });
+    const saved = JSON.parse(localStorage.getItem(POS_KEY)!);
+    expect(['left', 'top']).toContain(saved.edge); expect(saved.t).toBeGreaterThanOrEqual(0); expect(saved.t).toBeLessThanOrEqual(1);
+    const aside = ui.getByTestId('owner-notifications');
+    expect(aside.getAttribute('data-custom-position')).toBe('true');
+    expect(ui.queryByTestId('notification-panel')).toBeNull();
+    // o clique logo após soltar é ignorado; um clique normal depois abre o painel
+    fireEvent.click(ui.getByRole('button', { name: /Notificações, 0 não lidas/ })); expect(ui.queryByTestId('notification-panel')).toBeNull();
+    await new Promise(r => setTimeout(r, 5));
+    fireEvent.click(ui.getByRole('button', { name: /Notificações, 0 não lidas/ }));
+    const panel = await waitFor(() => ui.getByTestId('notification-panel'));
+    fireEvent.click(ui.getByText('Restaurar posição'));
+    expect(localStorage.getItem(POS_KEY)).toBeNull();
+    expect(ui.getByTestId('owner-notifications').getAttribute('data-custom-position')).toBeNull();
+    expect(panel).toBeTruthy();
+  });
+  it('o painel nunca invade a barra Salvar: altura máxima respeita o espaço acima dela', async () => {
+    setup(); document.documentElement.style.setProperty(BOTTOM_ACTIONS_VAR, '64px');
+    localStorage.setItem(POS_KEY, JSON.stringify({ edge: 'left', t: 0 }));
+    const ui = render(<OwnerNotifications onOpen={vi.fn()} />);
+    fireEvent.click(await waitFor(() => ui.getByRole('button', { name: /Notificações,/ })));
+    const panel = await waitFor(() => ui.getByTestId('notification-panel'));
+    const top = parseFloat(panel.style.top), maxH = parseFloat(panel.style.maxHeight);
+    expect(top + maxH).toBeLessThanOrEqual(768 - 64 - 12);
   });
 });

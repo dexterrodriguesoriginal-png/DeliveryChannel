@@ -1,6 +1,8 @@
+// @vitest-environment happy-dom
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { render, cleanup, fireEvent } from '@testing-library/react';
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({}) }));
 vi.mock('../../../lib/supabase', () => ({ supabase: {} }));
 import { NotificationList } from '../OwnerNotifications';
@@ -13,18 +15,19 @@ function elements(node: any): any[] {
   return [node, ...elements(node.props?.children)];
 }
 describe('PR B notification and dispatch UI', () => {
-  it('shows unread notifications with Ver and mark-read actions', () => {
+  it('shows unread notifications with open (whole card) and mark-read actions', () => {
     const onOpen = vi.fn(), onRead = vi.fn();
-    const view = NotificationList({ rows: [n], onOpen, onRead });
-    const markup = renderToStaticMarkup(view);
-    expect(markup).toContain('Notificações'); expect(markup).toContain('Novo pedido');
-    const buttons = elements(view).filter(el => el.type === 'button');
-    buttons.find(b => b.props.children === 'Ver').props.onClick(); expect(onOpen).toHaveBeenCalledWith(n);
-    buttons.find(b => b.props.children === 'Marcar como lida').props.onClick(); expect(onRead).toHaveBeenCalledWith(n);
+    const ui = render(<NotificationList rows={[n]} onOpen={onOpen} onRead={onRead} />);
+    expect(ui.container.textContent).toContain('Notificações'); expect(ui.container.textContent).toContain('Novo pedido');
+    fireEvent.click(ui.container.querySelector('.dcn-main')!); expect(onOpen).toHaveBeenCalledWith(n);
+    fireEvent.click(ui.getByLabelText('Marcar como lida')); expect(onRead).toHaveBeenCalledWith(n);
+    cleanup();
   });
   it('hides mark-read on read items, keeps history and handles empty lists', () => {
-    expect(renderToStaticMarkup(<NotificationList rows={[{ ...n, read_at: 'now' }]} onOpen={vi.fn()} onRead={vi.fn()} />)).not.toContain('Marcar como lida');
-    expect(renderToStaticMarkup(<NotificationList rows={[]} onOpen={vi.fn()} onRead={vi.fn()} />)).toContain('Nenhuma notificação.');
+    const read = render(<NotificationList rows={[{ ...n, read_at: 'now' }]} onOpen={vi.fn()} onRead={vi.fn()} />);
+    expect(read.queryByLabelText('Marcar como lida')).toBeNull(); expect(read.container.textContent).toContain('Novo pedido'); cleanup();
+    const empty = render(<NotificationList rows={[]} onOpen={vi.fn()} onRead={vi.fn()} />);
+    expect(empty.container.textContent).toContain('Nenhuma notificação.'); cleanup();
   });
   it('offers exactly two dispatch modes and describes owner confirmation', () => {
     const onChange = vi.fn();
