@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { paymentMethodLabel, paymentMethodShortLabel, paymentStatusLabel, fulfillmentLabel, orderStatusLabel } from '../labels';
+import { paymentMethodLabel, paymentMethodShortLabel, paymentStatusLabel, fulfillmentLabel, orderStatusLabel, formatTableLabel, orderTypeLabel } from '../labels';
 
 describe('rótulos pt-BR de pedido', () => {
   it('forma de pagamento nunca aparece como enum cru', () => {
@@ -21,5 +21,24 @@ describe('rótulos pt-BR de pedido', () => {
     expect(fulfillmentLabel('DINE_IN')).toBe('Salão');
     expect(orderStatusLabel('OUT_FOR_DELIVERY')).toBe('Saiu para entrega');
     expect(orderStatusLabel('CANCELLED')).toBe('Cancelado');
+  });
+  it('formatTableLabel não duplica "Mesa" quando o rótulo já começa com Mesa', () => {
+    expect(formatTableLabel('04')).toBe('Mesa 04');
+    expect(formatTableLabel('Mesa 04')).toBe('Mesa 04');
+    expect(formatTableLabel('Mesa Mesa 04')).toBe('Mesa 04');
+    expect(formatTableLabel('mesa 3')).toBe('mesa 3');
+    expect(formatTableLabel(undefined)).toBe('Mesa');
+    expect(formatTableLabel('', 'Mesa —')).toBe('Mesa —');
+  });
+  it('orderTypeLabel retorna Entrega, Retirada ou Mesa (com o nome da mesa)', () => {
+    expect(orderTypeLabel({ fulfillmentType: 'DELIVERY' })).toBe('Entrega');
+    expect(orderTypeLabel({ fulfillmentType: 'PICKUP' })).toBe('Retirada');
+    expect(orderTypeLabel({ fulfillmentType: 'DINE_IN', tableLabel: 'Mesa 04' })).toBe('Mesa 04');
+    expect(orderTypeLabel({ fulfillmentType: 'DINE_IN', tableLabel: '04' })).toBe('Mesa 04');
+    expect(orderTypeLabel({ fulfillmentType: 'DINE_IN', tableLabel: 'Mesa Mesa 04' })).toBe('Mesa 04');
+    expect(orderTypeLabel({ fulfillmentType: 'DINE_IN', tableLabel: undefined })).toBe('Mesa');
+    expect(orderTypeLabel('DELIVERY')).toBe('Entrega');
+    expect(orderTypeLabel('PICKUP')).toBe('Retirada');
+    expect(orderTypeLabel('DINE_IN', 'Mesa 04')).toBe('Mesa 04');
   });
 });

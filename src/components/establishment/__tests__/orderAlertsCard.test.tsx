@@ -68,4 +68,14 @@ describe('OrderAlertsCard (Dashboard, faixa compacta)', () => {
     expect(html).toContain('NOVO');
     expect(html).toContain('Vila Silviânia');
   });
+  it('pedido de mesa (DINE_IN) exibe badge "Mesa 04 · Salão" e ação "Abrir mesa", nunca "Chamar entregador"', () => {
+    const html = render([
+      o('o46', 'READY', 5, { orderNumber: 46, fulfillmentType: 'DINE_IN', tableLabel: 'Mesa 04', deliveryAddress: '' }),
+    ], 'OWNER');
+    expect(html).toContain('Mesa 04 · Salão');
+    expect(html).toContain('Abrir mesa');
+    expect(html).toContain('data-step="open_table"');
+    expect(html).not.toContain('Chamar entregador');
+    expect(html).not.toContain('Entrega');
+  });
 });

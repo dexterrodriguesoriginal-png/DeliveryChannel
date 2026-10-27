@@ -388,6 +388,25 @@ describe('arrastar no Kanban', () => {
     expect(colorOf('40')).toBe('#a855f7');
     expect(rows.find(r => r.textContent?.includes('#44'))!.getAttribute('data-column')).toBe('delivered');
   });
+
+  it('Lista: mostra o tipo correto (Entrega, Retirada ou Mesa com o nome) e nunca mostra Chamar entregador para mesa ou retirada', async () => {
+    mocks.getOrders.mockResolvedValue([
+      order('READY', { id: 'del', orderNumber: 1, fulfillmentType: 'DELIVERY' }),
+      order('READY', { id: 'pic', orderNumber: 2, fulfillmentType: 'PICKUP' }),
+      order('READY', { id: 'din', orderNumber: 46, fulfillmentType: 'DINE_IN', tableLabel: 'Mesa 04' }),
+    ]);
+    await render('ALL'); await click(button('Lista'));
+    const rows = Array.from(container.querySelectorAll('[data-testid=orders-list-row]')) as HTMLElement[];
+    const rowOf = (n: string) => rows.find(r => r.textContent?.includes(`#${n}`))!;
+    expect(rowOf('1').textContent).toContain('Entrega');
+    expect(rowOf('1').textContent).toContain('Chamar entregador');
+    expect(rowOf('2').textContent).toContain('Retirada');
+    expect(rowOf('2').textContent).toContain('Confirmar retirada');
+    expect(rowOf('2').textContent).not.toContain('Chamar entregador');
+    expect(rowOf('46').textContent).toContain('Mesa 04');
+    expect(rowOf('46').textContent).toContain('Servir');
+    expect(rowOf('46').textContent).not.toContain('Chamar entregador');
+  });
 });
 
 describe('card compacto e painel lateral de detalhes', () => {
@@ -398,7 +417,7 @@ describe('card compacto e painel lateral de detalhes', () => {
     const card = container.querySelector('.orders-kanban-card')!;
     expect(card.querySelector('.orders-card-num')?.textContent).toBe('#123'); expect(card.querySelector('.orders-card-name')?.textContent).toBe('Cliente Teste');
     expect(card.querySelector('.orders-card-total')?.textContent).toMatch(/R\$\s*1,00/);
-    expect(card.querySelector('.orders-card-chips')?.textContent).toMatch(/Delivery.*PIX.*Pago/);
+    expect(card.querySelector('.orders-card-chips')?.textContent).toMatch(/Entrega.*PIX.*Pago/);
     expect(card.querySelector('.orders-card-paid')?.textContent).toBe('Pago');
     expect(card.querySelector('.orders-card-dot')?.getAttribute('data-urgency')).toBe('ok');
     expect(card.querySelector('.orders-card-origin')?.textContent).toMatch(/\d{2}\/\d{2}/); expect(card.querySelector('.orders-card-footer')).not.toBeNull();
@@ -408,11 +427,14 @@ describe('card compacto e painel lateral de detalhes', () => {
     const o = order('PREPARING', { items: [it('Corona', 2), it('Whisky', 1), it('Gelo', 1)] as Order['items'], paymentMethod: 'CASH', paymentStatus: 'PENDING', addressDetails: { neighborhood: 'Centro' } as Order['addressDetails'] });
     await act(async () => { root.render(<KanbanOrderCard order={o} {...props} />); });
     expect(container.querySelector('.orders-card-items')?.textContent).toBe('2× Corona, 1× Whisky +1');
-    expect(container.querySelector('.orders-card-chips')?.textContent).toMatch(/Delivery.*Centro.*Dinheiro/);
+    expect(container.querySelector('.orders-card-chips')?.textContent).toMatch(/Entrega.*Centro.*Dinheiro/);
     expect(container.querySelector('.orders-card-paid')).toBeNull();
     expect(container.querySelector('.orders-card-timer')).not.toBeNull();
     await act(async () => { root.render(<KanbanOrderCard order={order('PREPARING', { origin: 'pos', fulfillmentType: 'PICKUP' })} {...props} />); });
-    expect(container.querySelector('.orders-card-chips')?.textContent).toContain('Balcão');
+    expect(container.querySelector('.orders-card-chips')?.textContent).toContain('Retirada');
+    expect(container.querySelector('.orders-card-origin')?.textContent).toContain('Balcão');
+    await act(async () => { root.render(<KanbanOrderCard order={order('PREPARING', { fulfillmentType: 'DINE_IN', tableLabel: 'Mesa 04' })} {...props} />); });
+    expect(container.querySelector('.orders-card-chips')?.textContent).toContain('Mesa 04');
   });
   it('semáforo: âmbar perto de atrasar e vermelho atrasado; encerrado não tem timer', async () => {
     const ago = (m: number) => new Date(Date.now() - m * 60000).toISOString();

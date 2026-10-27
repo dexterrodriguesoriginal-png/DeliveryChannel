@@ -27,12 +27,18 @@ export function notificationType(n: Pick<OwnerNotification, 'kind' | 'title'>): 
 }
 
 export interface OrderBrief { orderNumber: number | string | null; customerName: string | null; total: number | null }
+
+/** Remove duplicação acidental de "Mesa Mesa ..." em títulos ou nomes de notificação. */
+export function cleanMesaDuplication(text?: string | null): string {
+  return String(text || '').replace(/\b(mesa)(?:\s+mesa)+\b/gi, '$1').trim();
+}
+
 /** "#45 · Cliente · R$ 13,00" (partes ausentes são omitidas). */
 export function notificationDetail(brief?: OrderBrief | null): string {
   if (!brief) return '';
   const parts: string[] = [];
   if (brief.orderNumber != null && brief.orderNumber !== '') parts.push(`#${brief.orderNumber}`);
-  if (brief.customerName) parts.push(brief.customerName);
+  if (brief.customerName) parts.push(cleanMesaDuplication(brief.customerName));
   if (brief.total != null && Number.isFinite(brief.total)) parts.push(formatBRL(brief.total));
   return parts.join(' · ');
 }

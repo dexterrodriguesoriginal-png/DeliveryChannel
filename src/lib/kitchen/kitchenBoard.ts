@@ -1,3 +1,5 @@
+import { formatTableLabel } from '../orders/labels';
+
 /** 19/10: regras puras da Tela da Cozinha (sem preço nem dado pessoal além do 1º nome na retirada). */
 export type KitchenStatus = 'CONFIRMED' | 'PREPARING';
 export interface KitchenItem {
@@ -50,7 +52,7 @@ export function kitchenOrderLabel(o: Pick<KitchenOrder, 'fulfillment_type' | 'cu
   if (o.fulfillment_type === 'DINE_IN') {
     const guest = o.customer_first_name ? ` · ${o.customer_first_name}` : '';
     const round = o.round_no ? ` · rodada ${o.round_no}` : '';
-    return `Mesa ${o.table_label || '—'}${guest}${round}`;
+    return `${formatTableLabel(o.table_label, 'Mesa —')}${guest}${round}`;
   }
   return o.fulfillment_type === 'PICKUP' ? `Retirada${o.customer_first_name ? ` · ${o.customer_first_name}` : ''}` : 'Entrega';
 }

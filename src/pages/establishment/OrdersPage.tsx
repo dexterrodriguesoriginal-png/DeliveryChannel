@@ -43,7 +43,7 @@ import { ShoppingBag, Bike, Clock, Phone, FileText, User, RefreshCw, Search, X, 
 import { useToast } from '../../context/ToastContext';
 import { assignableDrivers, canAssignDrivers } from '../../lib/driverAdmin';
 import { useModules } from '../../hooks/useModules';
-import { paymentMethodLabel, ownerStatusToastMessage } from '../../lib/orders/labels';
+import { paymentMethodLabel, ownerStatusToastMessage, orderTypeLabel } from '../../lib/orders/labels';
 import { applyOrderUpdate } from '../../lib/orders/applyOrderUpdate';
 import { OrderTotalsLines } from '../../components/establishment/OrderTotalsLines';
 import { formatBRL } from '../../lib/pricing/money';
@@ -282,7 +282,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       const missingTableLabelOrderIds = [...new Set(orderData
         .filter(order => order.fulfillmentType === 'DINE_IN' && !order.tableLabel)
         .map(order => order.id))];
-      if (missingTableLabelOrderIds.length) {
+      if (missingTableLabelOrderIds.length && typeof supabase?.rpc === 'function') {
         const { data: labels, error: labelsError } = await supabase.rpc('get_dine_in_order_table_labels', {
           p_tenant_id: activeTenant.id,
           p_order_ids: missingTableLabelOrderIds,
@@ -888,19 +888,21 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 <div className="text-[7.5px] font-bold uppercase tracking-wider text-slate-400">Atendimento & Entrega</div>
                 <div className="flex items-start gap-1.5">
                   <div className="w-5.5 h-5.5 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
-                    {selectedOrder.fulfillmentType === 'PICKUP' ? <Building2 className="w-2.5 h-2.5" /> : <Bike className="w-2.5 h-2.5" />}
+                    {selectedOrder.fulfillmentType === 'DINE_IN' ? <UtensilsCrossed className="w-2.5 h-2.5" /> : selectedOrder.fulfillmentType === 'PICKUP' ? <Building2 className="w-2.5 h-2.5" /> : <Bike className="w-2.5 h-2.5" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-extrabold text-[10px] text-slate-900 leading-tight">
-                      {selectedOrder.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : 'Entrega Delivery'}
+                      {selectedOrder.fulfillmentType === 'DINE_IN' ? `${orderTypeLabel(selectedOrder)} · Salão` : selectedOrder.fulfillmentType === 'PICKUP' ? 'Retirada no Balcão' : 'Entrega Delivery'}
                     </div>
                     <div className="text-[8px] text-slate-600 leading-snug break-words mt-0.5">
-                      {selectedOrder.deliveryAddress || 'Retirada presencial pelo cliente no estabelecimento'}
+                      {selectedOrder.fulfillmentType === 'DINE_IN'
+                        ? `Consumo na mesa${selectedOrder.roundNo ? ` · Rodada ${selectedOrder.roundNo}` : ''}`
+                        : (selectedOrder.deliveryAddress || 'Retirada presencial pelo cliente no estabelecimento')}
                     </div>
                   </div>
                 </div>
               </div>
-              {selectedOrder.fulfillmentType !== 'PICKUP' && selectedOrder.status !== 'DELIVERED' && selectedOrder.status !== 'CANCELLED' && (
+              {selectedOrder.fulfillmentType === 'DELIVERY' && selectedOrder.status !== 'DELIVERED' && selectedOrder.status !== 'CANCELLED' && (
                 <PickupCodeBadge key={selectedOrder.id} orderId={selectedOrder.id} status={selectedOrder.status} onDone={() => fetchOrders(true)} />
               )}
 
@@ -1174,7 +1176,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 if (selectedOrder.status === 'PENDING') handleUpdateStatus(selectedOrder.id, 'CONFIRMED');
                 else if (selectedOrder.status === 'CONFIRMED') handleUpdateStatus(selectedOrder.id, 'PREPARING');
                 else if (selectedOrder.status === 'PREPARING') handleUpdateStatus(selectedOrder.id, 'READY');
-                else if (selectedOrder.status === 'READY') {
+                else if (selectedOrder.status === 'READY' && (selectedOrder.fulfillmentType === 'PICKUP' || selectedOrder.fulfillmentType === 'DINE_IN')) handleUpdateStatus(selectedOrder.id, 'DELIVERED');
+                else if (selectedOrder.status === 'READY' && selectedOrder.fulfillmentType === 'DELIVERY') {
                   setAssigningOrder(selectedOrder);
                   const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                   setSelectedDriverUserId(firstAvail);
@@ -1184,7 +1187,12 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               className="w-full py-1.5 px-1.5 rounded-md font-bold text-[9px] uppercase tracking-wide flex items-center justify-center gap-1 shadow-2xs hover:opacity-90 transition-all cursor-pointer active:scale-98 min-h-[30px] leading-tight text-center"
             >
               <Check className="w-2.5 h-2.5 stroke-[3] shrink-0" />
-              <span className="truncate">{selectedOrder.status === 'READY' && retryOffer(selectedOrder.id) ? 'Chamar outro' : selectedOrderTheme.buttonLabel}</span>
+              <span className="truncate">
+                {selectedOrder.fulfillmentType === 'DINE_IN' && selectedOrder.status === 'READY'
+                  ? 'Servir'
+                  : (selectedOrder.fulfillmentType === 'PICKUP' && pickupActionLabel(selectedOrder.status))
+                    || (selectedOrder.status === 'READY' && retryOffer(selectedOrder.id) ? 'Chamar outro' : selectedOrderTheme.buttonLabel)}
+              </span>
             </button>
           )}
         </div>
@@ -1401,12 +1409,13 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                               <td className="text-slate-700">
                                 <span className="flex items-center gap-1.5">
                                   {order.fulfillmentType === 'DINE_IN' ? (
-                                    <><UtensilsCrossed className="h-3.5 w-3.5 text-slate-400" /><span>Salão</span></>
+                                    <UtensilsCrossed className="h-3.5 w-3.5 text-slate-400" />
                                   ) : order.fulfillmentType === 'PICKUP' ? (
-                                    <><Building2 className="h-3.5 w-3.5 text-slate-400" /><span>Retirada</span></>
+                                    <Building2 className="h-3.5 w-3.5 text-slate-400" />
                                   ) : (
-                                    <><Bike className="h-3.5 w-3.5 text-slate-400" /><span>Delivery</span></>
+                                    <Bike className="h-3.5 w-3.5 text-slate-400" />
                                   )}
+                                  <span>{orderTypeLabel(order)}</span>
                                 </span>
                               </td>
                               <td className="font-medium text-slate-700">
@@ -1433,8 +1442,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                                       if (order.status === 'PENDING') handleUpdateStatus(order.id, 'CONFIRMED');
                                       else if (order.status === 'CONFIRMED') handleUpdateStatus(order.id, 'PREPARING');
                                       else if (order.status === 'PREPARING') handleUpdateStatus(order.id, 'READY');
-                                      else if (order.status === 'READY' && order.fulfillmentType === 'PICKUP') handleUpdateStatus(order.id, 'DELIVERED');
-                                      else if (order.status === 'READY' && !liveOffer(order.id)) {
+                                      else if (order.status === 'READY' && (order.fulfillmentType === 'PICKUP' || order.fulfillmentType === 'DINE_IN')) handleUpdateStatus(order.id, 'DELIVERED');
+                                      else if (order.status === 'READY' && order.fulfillmentType === 'DELIVERY' && !liveOffer(order.id)) {
                                         setAssigningOrder(order);
                                         const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
                                         setSelectedDriverUserId(firstAvail);
@@ -1444,7 +1453,11 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                                     style={orderActionButtonStyle(rowTheme, order)}
                                     className="py-1.5 px-2.5 rounded-lg text-[11px] font-bold shadow-xs hover:opacity-90 transition-all cursor-pointer whitespace-nowrap"
                                   >
-                                    {liveOffer(order.id) || order.status === 'WAITING_FOR_DRIVER' ? 'Ver detalhes' : (order.fulfillmentType === 'PICKUP' && pickupActionLabel(order.status)) || (retryOffer(order.id) ? 'Chamar outro' : rowTheme.buttonLabel)}
+                                    {liveOffer(order.id) || order.status === 'WAITING_FOR_DRIVER'
+                                      ? 'Ver detalhes'
+                                      : order.fulfillmentType === 'DINE_IN' && order.status === 'READY'
+                                        ? 'Servir'
+                                        : (order.fulfillmentType === 'PICKUP' && pickupActionLabel(order.status)) || (retryOffer(order.id) ? 'Chamar outro' : rowTheme.buttonLabel)}
                                   </button>
                                   <button
                                     type="button"

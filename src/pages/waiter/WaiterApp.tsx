@@ -12,6 +12,7 @@ import { usePendingApprovals } from '../../hooks/usePendingApprovals';
 import { newIdempotencyKey } from '../../lib/backend';
 import { dineInRoundItems, type DineInCartLine } from '../../lib/customer/dineInCart';
 import { deriveTableStatus, compareTables, matchesFilter, matchesSearch, statusCounts, ELAPSED_REFRESH_MS, type CallLike, type TableFilter } from '../../lib/salon/tableStatus';
+import { formatTableLabel } from '../../lib/orders/labels';
 import { mesasQrRepository, NO_CAPABILITIES, type MesasQrCapabilities } from '../../repositories/mesasQrRepository';
 import { salonStaffRepository, type SalonAccessExtras, type SalonSnapshot, type WaiterCallRow, type WaiterSession } from '../../repositories/salonStaffRepository';
 import { ApprovalRow } from '../../components/establishment/salon/ApprovalsAlert';
@@ -191,7 +192,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           setOrderAlert({
             id: latest.id,
             tableId: tableRow?.id || '',
-            tableLabel: tableRow?.label || 'Mesa',
+            tableLabel: formatTableLabel(tableRow?.label, 'Mesa'),
             customerName: latest.customer_name || 'Cliente',
             orderNumber: latest.order_number,
             roundNo: latest.round_no,
@@ -280,7 +281,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   const selected = tables.find(t => t.id === selectedId) || null;
   const selectedTab = selected ? tabs.find(t => t.table_id === selected.id) : undefined;
-  const labelByTab = useMemo(() => { const m = new Map<string, string>(); for (const t of tabs) m.set(t.id, tables.find(x => x.id === t.table_id)?.label || 'Mesa'); return m; }, [tabs, tables]);
+  const labelByTab = useMemo(() => { const m = new Map<string, string>(); for (const t of tabs) m.set(t.id, formatTableLabel(tables.find(x => x.id === t.table_id)?.label, 'Mesa')); return m; }, [tabs, tables]);
 
   const run = async (key: string, action: () => Promise<unknown>, ok?: string) => {
     setBusy(key); setMessage('');

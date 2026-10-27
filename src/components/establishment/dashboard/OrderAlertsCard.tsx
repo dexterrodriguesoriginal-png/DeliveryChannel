@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, Clock, Bike, Package, MessageCircle, Eye, CheckCircle2, ChefHat, ShoppingBag, ArrowRight, X, Flame, ClockAlert, Boxes, Volume2, VolumeX } from 'lucide-react';
+import { Bell, Clock, Bike, Package, MessageCircle, Eye, CheckCircle2, ChefHat, ShoppingBag, ArrowRight, X, Flame, ClockAlert, Boxes, Volume2, VolumeX, UtensilsCrossed } from 'lucide-react';
 import type { Order, RoleId } from '../../../types';
 import { formatBRL } from '../../../lib/pricing/money';
 import { paymentMethodLabel } from '../../../lib/orders/labels';
@@ -45,10 +45,11 @@ const STEP_STYLE: Record<NextStep['kind'], string> = {
   ready: 'bg-[#15803d] hover:bg-[#166534] text-white',
   call_driver: 'bg-[#15803d] hover:bg-[#166534] text-white',
   pickup_done: 'bg-[#15803d] hover:bg-[#166534] text-white',
+  open_table: 'bg-[#15803d] hover:bg-[#166534] text-white',
 };
 const STEP_ICON: Record<NextStep['kind'], React.ReactNode> = {
   accept: <CheckCircle2 className="w-3.5 h-3.5" />, start: <ChefHat className="w-3.5 h-3.5" />, ready: <Package className="w-3.5 h-3.5" />,
-  call_driver: <Bike className="w-3.5 h-3.5" />, pickup_done: <ShoppingBag className="w-3.5 h-3.5" />,
+  call_driver: <Bike className="w-3.5 h-3.5" />, pickup_done: <ShoppingBag className="w-3.5 h-3.5" />, open_table: <UtensilsCrossed className="w-3.5 h-3.5" />,
 };
 
 interface ChipDef { key: AlertFilter | 'estoque'; label: string; count: number; on: string; icon: React.ReactNode }
@@ -103,6 +104,9 @@ export const OrderAlertsCard: React.FC<Props> = ({
     const wait = step ? '' : waitingLabel(o);
     const late = alerts.atrasados.some(x => x.id === o.id);
     const pickup = o.fulfillmentType === 'PICKUP';
+    const dineIn = o.fulfillmentType === 'DINE_IN';
+    const placeIcon = pickup ? '🛍️ ' : dineIn ? '🍽️ ' : '🛵 ';
+    const placeClass = pickup || dineIn ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-600';
     return (
       <li key={o.id} data-testid="alert-order" data-order-id={o.id} data-status={o.status}
         title={itemsSummary(o) || undefined}
@@ -124,16 +128,14 @@ export const OrderAlertsCard: React.FC<Props> = ({
               <MessageCircle className="w-3.5 h-3.5" />
             </a>
           )}
-          <span title={addressLine(o)} data-testid="alert-place" className={`hidden sm:inline-block shrink-0 max-w-[9rem] truncate text-[10px] font-bold px-1.5 py-0.5 rounded ${
-            pickup ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
-            {pickup ? '🛍️ ' : '🛵 '}{shortPlace(o)}
+          <span title={addressLine(o)} data-testid="alert-place" className={`hidden sm:inline-block shrink-0 max-w-[10rem] truncate text-[10px] font-bold px-1.5 py-0.5 rounded ${placeClass}`}>
+            {placeIcon}{shortPlace(o)}
           </span>
         </div>
         </div>
         <div className="flex items-center justify-end gap-2 min-w-0 sm:shrink-0">
-          <span title={addressLine(o)} className={`sm:hidden mr-auto min-w-0 max-w-[9rem] truncate text-[10px] font-bold px-1.5 py-0.5 rounded ${
-            pickup ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
-            {pickup ? '🛍️ ' : '🛵 '}{shortPlace(o)}
+          <span title={addressLine(o)} className={`sm:hidden mr-auto min-w-0 max-w-[10rem] truncate text-[10px] font-bold px-1.5 py-0.5 rounded ${placeClass}`}>
+            {placeIcon}{shortPlace(o)}
           </span>
           <div className="text-right leading-tight whitespace-nowrap shrink-0">
             <div className="font-mono font-black text-slate-900 text-[13px]">{formatBRL(o.totalAmount)}</div>

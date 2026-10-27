@@ -18,6 +18,7 @@ describe('fulfillmentTabs', () => {
     expect(matchesFulfillmentTab(dineIn, 'DINE_IN')).toBe(true);
     expect(matchesFulfillmentTab(dineIn, 'ALL')).toBe(true);
     expect(dineInOrderLabel(dineIn)).toBe('Mesa N – Ana · rodada 3');
+    expect(dineInOrderLabel({ ...dineIn, tableLabel: 'Mesa 04' })).toBe('Mesa 04 – Ana · rodada 3');
     expect(dineInOrderLabel({ ...dineIn, tableLabel: undefined, roundNo: undefined })).toBe('Mesa — – Ana');
     const orders = [o({ id: 'tabbed', fulfillmentType: 'DINE_IN', tabId: 'tab-1' }), o({ id: 'existing', fulfillmentType: 'DINE_IN', tabId: 'tab-2', tableLabel: 'Sala 2' })] as any;
     expect(resolveDineInTableLabels(orders, new Map([['tabbed', 'Mesa 1'], ['existing', 'ignored']])).map(order => order.tableLabel))

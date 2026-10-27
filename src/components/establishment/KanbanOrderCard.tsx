@@ -5,7 +5,7 @@ import type { Order, OrderStatus } from '../../types';
 import { ORDER_STATUS_THEME } from '../../utils/orderStatusTheme';
 import { orderAgeInfo } from '../../lib/orders/orderAge';
 import { pickupActionLabel, pickupWaitingMinutes, waitingText } from '../../lib/orders/fulfillmentTabs';
-import { paymentMethodShortLabel } from '../../lib/orders/labels';
+import { orderTypeLabel, paymentMethodShortLabel } from '../../lib/orders/labels';
 import { formatBRL } from '../../lib/pricing/money';
 import { KANBAN_COLUMN_THEME, kanbanColumnForStatus, itemsSummary } from './ordersKanban';
 import './ordersKanban.css';
@@ -51,7 +51,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
   // Semáforo do prazo: verde < 15 min, âmbar até 30 min (perto de atrasar), vermelho acima (atrasado) ou pedido envelhecido.
   const urgency = isClosed ? 'closed' : stale || minutes > 30 ? 'late' : minutes >= 15 ? 'near' : 'ok';
   const TypeIcon = isDineIn ? UtensilsCrossed : order.origin === 'pos' ? Store : isPickup ? ShoppingBag : Bike;
-  const typeLabel = isDineIn ? (order.tableLabel?.trim() ? `Mesa ${order.tableLabel.trim().replace(/^mesa\s+/i, '').slice(0, 15)}` : 'Mesa') : order.origin === 'pos' ? 'Balcão' : isPickup ? 'Retirada' : 'Delivery';
+  const typeLabel = orderTypeLabel(order);
   const hood = !isDineIn && !isPickup && order.origin !== 'pos' ? (order.addressDetails?.neighborhood || '').trim() : '';
   const PayIcon = /CARD/i.test(String(order.paymentMethod)) ? CreditCard : Wallet;
   const { short: itemSummary, full: itemSummaryFull } = itemsSummary(order);

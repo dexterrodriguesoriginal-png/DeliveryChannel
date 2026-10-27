@@ -71,6 +71,15 @@ describe('orderAlerts: fluxo inteiro pelo Dashboard (um botão por etapa)', () =
   it('retirada: pronto -> Confirmar retirada (DELIVERED, sem motivo)', () => {
     expect(nextStepFor(d('READY', { fulfillmentType: 'PICKUP' }), 'CASHIER')).toMatchObject({ label: 'Confirmar retirada', to: 'DELIVERED' });
   });
+  it('mesa (DINE_IN): mostra Abrir mesa e nunca Chamar entregador', () => {
+    for (const st of ['PENDING', 'CONFIRMED', 'PREPARING', 'READY']) {
+      expect(nextStepFor(d(st, { fulfillmentType: 'DINE_IN', tableLabel: 'Mesa 04' }), 'OWNER')).toMatchObject({
+        kind: 'open_table',
+        label: 'Abrir mesa',
+      });
+    }
+    expect(nextStepFor(d('DELIVERED', { fulfillmentType: 'DINE_IN' }), 'OWNER')).toBeNull();
+  });
   it('papel sem permissão não vê botão', () => {
     expect(nextStepFor(d('PENDING'), 'DELIVERY_MANAGER')).toBeNull();
     expect(nextStepFor(d('PENDING'), 'DRIVER')).toBeNull();
@@ -108,7 +117,11 @@ describe('orderAlerts: faixa compacta (chips, lista, bairro)', () => {
     expect(alertList(a, 'novos').map(o => o.id)).toEqual([novo.id]);
     expect(alertList(a, 'emPreparo').map(o => o.id)).toEqual([prep.id]);
   });
-  it('local curto: Retirada, bairro do endereço estruturado ou do texto', () => {
+  it('local curto: Mesa · Salão, Retirada, bairro do endereço estruturado ou do texto', () => {
+    expect(shortPlace({ fulfillmentType: 'DINE_IN', tableLabel: 'Mesa 04', deliveryAddress: '' } as any)).toBe('Mesa 04 · Salão');
+    expect(shortPlace({ fulfillmentType: 'DINE_IN', tableLabel: '04', deliveryAddress: '' } as any)).toBe('Mesa 04 · Salão');
+    expect(shortPlace({ fulfillmentType: 'DINE_IN', deliveryAddress: '' } as any)).toBe('Mesa · Salão');
+    expect(addressLine({ fulfillmentType: 'DINE_IN', tableLabel: 'Mesa 04', deliveryAddress: '' } as any)).toBe('Mesa 04 · Salão');
     expect(shortPlace({ fulfillmentType: 'PICKUP', deliveryAddress: 'x' } as any)).toBe('Retirada');
     expect(shortPlace({ fulfillmentType: 'DELIVERY', deliveryAddress: 'Rua X, 1', addressDetails: { neighborhood: 'Centro' } } as any)).toBe('Centro');
     expect(shortPlace({ fulfillmentType: 'DELIVERY', deliveryAddress: 'Rua Italo Martinelli, 138 - Vila Silviânia, Carapicuíba' } as any)).toBe('Vila Silviânia');

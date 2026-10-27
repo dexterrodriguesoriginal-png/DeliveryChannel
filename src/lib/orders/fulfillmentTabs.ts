@@ -1,5 +1,6 @@
 import type { Order } from '../../types';
 import { checkIsPreparingDelayed } from '../../utils/orderStatusTheme';
+import { formatTableLabel } from './labels';
 
 /** Abas operacionais Entrega | Retirada | Salão no gestor de pedidos. */
 export type FulfillmentTab = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
@@ -16,7 +17,7 @@ export function dineInOrderLabel(order: Pick<Order, 'fulfillmentType' | 'tableLa
   if (order.fulfillmentType !== 'DINE_IN') return order.customerName;
   const guest = order.customerName?.trim();
   const round = order.roundNo ? ` · rodada ${order.roundNo}` : '';
-  return `Mesa ${order.tableLabel?.trim() || '—'}${guest ? ` – ${guest}` : ''}${round}`;
+  return `${formatTableLabel(order.tableLabel, 'Mesa —')}${guest ? ` – ${guest}` : ''}${round}`;
 }
 
 export function resolveDineInTableLabels(orders: Order[], labelsByOrderId: ReadonlyMap<string, string>): Order[] {

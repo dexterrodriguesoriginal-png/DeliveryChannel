@@ -36,6 +36,9 @@ describe('kitchenBoard', () => {
     expect(kitchenOrderLabel({
       fulfillment_type: 'DINE_IN', customer_first_name: 'Ana', table_label: '12', round_no: 2,
     })).toBe('Mesa 12 · Ana · rodada 2');
+    expect(kitchenOrderLabel({
+      fulfillment_type: 'DINE_IN', customer_first_name: 'Ana', table_label: 'Mesa 04', round_no: 1,
+    })).toBe('Mesa 04 · Ana · rodada 1');
   });
   it('código de pareamento', () => {
     expect(normalizePairCode('ab cd-ef9h!x')).toBe('ABCDEF9H'); expect(formatPairCode('abcdefgh')).toBe('ABCD-EFGH');

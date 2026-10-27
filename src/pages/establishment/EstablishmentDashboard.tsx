@@ -53,7 +53,9 @@ import { arrivalRepository } from '../../repositories/arrivalRepository';
 import { PickupHandoverModal } from '../../components/pickup/PickupHandoverModal';
 import { OpenDiningTabsWarning } from '../../components/establishment/dashboard/OpenDiningTabsWarning';
 import { DemoPackBanner } from '../../components/establishment/dashboard/DemoPackBanner';
-import { isSupabaseConfigured } from '../../lib/supabase';
+import { FOCUS_TABLE_KEY } from '../../components/establishment/salon/ApprovalsAlert';
+import { resolveDineInTableLabels } from '../../lib/orders/fulfillmentTabs';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 interface EstablishmentDashboardProps {
   onNavigate?: (tab: string) => void;
@@ -115,7 +117,26 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
           : Promise.resolve([] as Driver[]),
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);
-      const fetchedOrders = visibleStaffOrders(receivedOrders);
+      let fetchedOrders = visibleStaffOrders(receivedOrders);
+      const missingTableLabelOrderIds = [...new Set(fetchedOrders
+        .filter(order => order.fulfillmentType === 'DINE_IN' && !order.tableLabel)
+        .map(order => order.id))];
+      if (missingTableLabelOrderIds.length && typeof supabase?.rpc === 'function') {
+        try {
+          const { data: labels, error: labelsError } = await supabase.rpc('get_dine_in_order_table_labels', {
+            p_tenant_id: activeTenant.id,
+            p_order_ids: missingTableLabelOrderIds,
+          });
+          if (!labelsError && labels) {
+            const labelsByOrderId = new Map<string, string>(
+              (labels as Array<{ order_id: string; table_label: string }>).map(row => [row.order_id, row.table_label]),
+            );
+            fetchedOrders = resolveDineInTableLabels(fetchedOrders, labelsByOrderId);
+          }
+        } catch {
+          /* mantém pedidos mesmo se a RPC de rótulos de mesa falhar */
+        }
+      }
       setRemoteOrders(fetchedOrders);
       // Pedido novo desde a última leitura: som existente + destaque por 15 s (a 1ª leitura não toca).
       const fresh = newPendingIds(prevPendingIdsRef.current, fetchedOrders);
@@ -132,7 +153,20 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
       if (ready.length > 0) {
         playReadySound();
         setReadyAlertIds(prev => [...new Set([...prev, ...ready])]);
-        ready.forEach(id => { const o = fetchedOrders.find(x => x.id === id); if (o) showToast({ type: 'success', title: `Pedido #${o.orderNumber} pronto`, message: o.fulfillmentType === 'PICKUP' ? 'Chame o cliente pela fila de chegada.' : 'Chame o entregador.' }); });
+        ready.forEach(id => {
+          const o = fetchedOrders.find(x => x.id === id);
+          if (o) {
+            showToast({
+              type: 'success',
+              title: `Pedido #${o.orderNumber} pronto`,
+              message: o.fulfillmentType === 'PICKUP'
+                ? 'Chame o cliente pela fila de chegada.'
+                : o.fulfillmentType === 'DINE_IN'
+                  ? 'Sirva na mesa.'
+                  : 'Chame o entregador.',
+            });
+          }
+        });
       }
       setRemoteCustomers(fetchedCustomers);
       setRemoteDrivers(fetchedDrivers);
@@ -161,9 +195,24 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
     return () => { unsubscribe(); window.clearInterval(poll); };
   }, [fetchRealData, activeTenant?.id]);
 
+  const handleOpenOrderTable = (order: Order) => {
+    const focusTarget = order.tabId || order.tableLabel || '';
+    if (focusTarget) {
+      try { sessionStorage.setItem(FOCUS_TABLE_KEY, focusTarget); } catch { /* sem storage */ }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('dc:focus-table', { detail: focusTarget }));
+      }
+    }
+    onNavigate?.('est-salon');
+  };
+
   // 19/10: próxima etapa pelo Dashboard — mesma ação (update_order_status) e regras da tela Pedidos.
   const handleAlertStep = async (order: Order, step: NextStep) => {
     if (!activeTenant?.id) return;
+    if (step.kind === 'open_table') {
+      handleOpenOrderTable(order);
+      return;
+    }
     if (step.kind === 'call_driver' && shouldBlockCallDriver({ canListDrivers, driversLoaded, approvedCount: (remoteDrivers || []).length })) {
       showToast({ type: 'warning', title: NO_APPROVED_DRIVER_TITLE, message: noApprovedDriverMessage() });
       return;
@@ -388,6 +437,10 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
     else if (currentStatus === 'PREPARING') nextStatus = 'READY';
     else if (currentStatus === 'READY') {
       const order = orders.find(o => o.id === orderId);
+      if (order?.fulfillmentType === 'DINE_IN') {
+        handleOpenOrderTable(order);
+        return;
+      }
       if (order?.fulfillmentType === 'DELIVERY') {
         if (!ownerOffers.offers.some(f => f.order_id === orderId && f.status === 'OFFERED')) {
           sessionStorage.setItem(FOCUS_ORDER_KEY, orderId);
@@ -498,6 +551,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         busyId={busyOrderId}
         onCallDriver={(o) => { const st = nextStepFor(o, activeRole); if (st) handleAlertStep(o, st); }}
         onOpenPickup={(o) => handleAlertView(o)}
+        onOpenTable={(o) => handleOpenOrderTable(o)}
         onDismiss={(id) => setReadyAlertIds(prev => prev.filter(x => x !== id))}
       />}
       <OrderAlertsCard
@@ -959,7 +1013,27 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
                           </Button>
                         )}
                         <DriverOfferStatus orderId={order.id} />
-                        {order.status === 'READY' && !ownerOffers.offers.some(f => f.order_id === order.id && f.status === 'OFFERED') && (
+                        {order.status === 'READY' && order.fulfillmentType === 'DINE_IN' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenOrderTable(order)}
+                            className="text-xs"
+                          >
+                            Abrir mesa
+                          </Button>
+                        )}
+                        {order.status === 'READY' && order.fulfillmentType === 'PICKUP' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleAdvanceStatus(order.id, order.status)}
+                            className="text-xs"
+                          >
+                            Confirmar retirada
+                          </Button>
+                        )}
+                        {order.status === 'READY' && order.fulfillmentType === 'DELIVERY' && !ownerOffers.offers.some(f => f.order_id === order.id && f.status === 'OFFERED') && (
                           <Button
                             size="sm"
                             variant="outline"

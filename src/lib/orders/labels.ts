@@ -43,6 +43,46 @@ export function fulfillmentLabel(type: string | null | undefined): string {
   return '—';
 }
 
+/**
+ * Formata o rótulo da mesa sem duplicar a palavra "Mesa".
+ * Ex.: "Mesa 04" -> "Mesa 04", "04" -> "Mesa 04", "Mesa Mesa 04" -> "Mesa 04", "" -> fallback ("Mesa").
+ */
+export function formatTableLabel(label?: string | null, fallback = 'Mesa'): string {
+  const raw = String(label ?? '').trim();
+  if (!raw || raw === '—') return fallback;
+  const deduped = raw.replace(/^(mesa)(?:\s+mesa)+\b/i, '$1');
+  return /^mesa\b/i.test(deduped) ? deduped : `Mesa ${deduped}`;
+}
+
+export interface OrderTypeInput {
+  fulfillmentType?: string | null;
+  fulfillment_type?: string | null;
+  tableLabel?: string | null;
+  table_label?: string | null;
+}
+
+/**
+ * Rótulo unificado do tipo do pedido para Kanban, Lista de Pedidos e alertas:
+ * - DELIVERY -> "Entrega"
+ * - PICKUP   -> "Retirada"
+ * - DINE_IN  -> "Mesa 04" (com o nome real da mesa, ou "Mesa" quando ausente)
+ */
+export function orderTypeLabel(
+  orderOrType: OrderTypeInput | string | null | undefined,
+  tableLabel?: string | null,
+): string {
+  const type = typeof orderOrType === 'string' || !orderOrType
+    ? orderOrType
+    : (orderOrType.fulfillmentType ?? orderOrType.fulfillment_type);
+  const resolvedTable = typeof orderOrType === 'object' && orderOrType !== null
+    ? (orderOrType.tableLabel ?? orderOrType.table_label ?? tableLabel)
+    : tableLabel;
+  const key = String(type || '').trim().toUpperCase();
+  if (key === 'DINE_IN') return formatTableLabel(resolvedTable, 'Mesa');
+  if (key === 'PICKUP') return 'Retirada';
+  return 'Entrega';
+}
+
 const ORDER_STATUS_LABELS: Record<string, string> = {
   PENDING: 'Recebido',
   CONFIRMED: 'Aceito pela loja',

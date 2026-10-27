@@ -7,6 +7,7 @@ import { newIdempotencyKey } from '../../lib/backend';
 import { Category, Product, SelectedProductOption } from '../../types';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
 import { formatBRL } from '../../lib/pricing/money';
+import { formatTableLabel } from '../../lib/orders/labels';
 import { playNewOrderSound, playShortBeep } from '../../utils/audio';
 import { newRoundIds } from '../waiter/waiterLogic';
 import { Modal } from '../../components/ui/Modal';
@@ -111,8 +112,19 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const [confirmReject, setConfirmReject] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
 
-  const selectedTab = useMemo(() => tabs.find(tab => tab.table_id === selectedTableId), [tabs, selectedTableId]);
-  const selectedTable = useMemo(() => tables.find(table => table.id === selectedTableId), [tables, selectedTableId]);
+  const resolvedTableId = useMemo(() => {
+    if (!selectedTableId) return null;
+    if (tables.some(table => table.id === selectedTableId)) return selectedTableId;
+    const byTab = tabs.find(tab => tab.id === selectedTableId);
+    if (byTab) return byTab.table_id;
+    const targetLabel = formatTableLabel(selectedTableId, '').toLowerCase();
+    const byLabel = tables.find(
+      table => table.label === selectedTableId || (targetLabel && formatTableLabel(table.label, '').toLowerCase() === targetLabel),
+    );
+    return byLabel ? byLabel.id : selectedTableId;
+  }, [selectedTableId, tables, tabs]);
+  const selectedTab = useMemo(() => tabs.find(tab => tab.table_id === resolvedTableId), [tabs, resolvedTableId]);
+  const selectedTable = useMemo(() => tables.find(table => table.id === resolvedTableId), [tables, resolvedTableId]);
   const selectedProduct = useMemo(() => catalogProducts.find(product => product.id === productId), [catalogProducts, productId]);
   const derivedCategories = useMemo<Array<{ id: string; name: string }>>(() => {
     if (categories.length > 0) return categories.map(cat => ({ id: cat.id, name: cat.name }));
@@ -431,7 +443,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     });
   };
 
-  const tableLabelById = useMemo(() => new Map(tables.map(table => [table.id, table.label])), [tables]);
+  const tableLabelById = useMemo(() => new Map(tables.map(table => [table.id, formatTableLabel(table.label, 'Mesa')])), [tables]);
   const infoByTable = useMemo(() => {
     const map = new Map<string, ReturnType<typeof deriveTableStatus>>();
     for (const table of tables) {

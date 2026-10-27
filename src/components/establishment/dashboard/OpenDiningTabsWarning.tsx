@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useModules } from '../../../hooks/useModules';
+import { formatTableLabel } from '../../../lib/orders/labels';
 import { supabase } from '../../../lib/supabase';
 
 type DiningTabRow = { id: string; table_id: string; opened_at: string; status: string };
@@ -15,7 +16,7 @@ export function openDiningTabLabels(
   const labels = new Map(tables.map(table => [table.id, table.label]));
   return tabs.map(tab => {
     const hours = Math.max(0, Math.floor((now - new Date(tab.opened_at).getTime()) / 3_600_000));
-    return `Mesa ${labels.get(tab.table_id) || '—'} aberta há ${hours} h`;
+    return `${formatTableLabel(labels.get(tab.table_id), 'Mesa —')} aberta há ${hours} h`;
   });
 }
 

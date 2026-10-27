@@ -3,6 +3,7 @@ import { BellRing, Check, X } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useModules } from '../../../hooks/useModules';
 import { usePendingApprovals } from '../../../hooks/usePendingApprovals';
+import { formatTableLabel } from '../../../lib/orders/labels';
 import { mesasQrRepository } from '../../../repositories/mesasQrRepository';
 import type { PendingApproval } from '../../../repositories/salonStaffRepository';
 
@@ -15,18 +16,21 @@ export const ApprovalRow: React.FC<{
   onReject: (id: string) => void;
   onOpenTable?: (tableId: string) => void;
   large?: boolean;
-}> = ({ item, busy, canReject, onApprove, onReject, onOpenTable, large }) => (
-  <div data-testid={`approval-${item.sessionId}`} className={`flex items-center gap-3 rounded-2xl border border-amber-200 bg-white ${large ? 'p-4' : 'p-3'} shadow-sm`}>
-    <button type="button" onClick={() => onOpenTable?.(item.tableId)} className="min-w-0 flex-1 text-left" aria-label={`Abrir ${item.tableLabel}`}>
-      <p className={`truncate font-black text-slate-900 ${large ? 'text-base' : 'text-sm'}`}>{item.tableLabel}</p>
-      <p className="truncate text-xs text-slate-600">{item.displayName} quer pedir</p>
-    </button>
-    <div className="flex shrink-0 gap-2">
-      {canReject && <button type="button" disabled={busy} onClick={() => onReject(item.sessionId)} aria-label={`Recusar ${item.displayName}`} className={`inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-white font-bold text-rose-700 disabled:opacity-50 ${large ? 'px-4 py-3 text-sm' : 'px-2.5 py-2 text-xs'}`}><X className="h-4 w-4" aria-hidden="true" />Recusar</button>}
-      <button type="button" disabled={busy} onClick={() => onApprove(item.sessionId)} aria-label={`Aprovar ${item.displayName}`} className={`inline-flex items-center gap-1 rounded-xl bg-emerald-600 font-bold text-white disabled:opacity-50 ${large ? 'px-4 py-3 text-sm' : 'px-3 py-2 text-xs'}`}><Check className="h-4 w-4" aria-hidden="true" />Aprovar</button>
+}> = ({ item, busy, canReject, onApprove, onReject, onOpenTable, large }) => {
+  const tableTitle = formatTableLabel(item.tableLabel, 'Mesa');
+  return (
+    <div data-testid={`approval-${item.sessionId}`} className={`flex items-center gap-3 rounded-2xl border border-amber-200 bg-white ${large ? 'p-4' : 'p-3'} shadow-sm`}>
+      <button type="button" onClick={() => onOpenTable?.(item.tableId)} className="min-w-0 flex-1 text-left" aria-label={`Abrir ${tableTitle}`}>
+        <p className={`truncate font-black text-slate-900 ${large ? 'text-base' : 'text-sm'}`}>{tableTitle}</p>
+        <p className="truncate text-xs text-slate-600">{item.displayName} quer pedir</p>
+      </button>
+      <div className="flex shrink-0 gap-2">
+        {canReject && <button type="button" disabled={busy} onClick={() => onReject(item.sessionId)} aria-label={`Recusar ${item.displayName}`} className={`inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-white font-bold text-rose-700 disabled:opacity-50 ${large ? 'px-4 py-3 text-sm' : 'px-2.5 py-2 text-xs'}`}><X className="h-4 w-4" aria-hidden="true" />Recusar</button>}
+        <button type="button" disabled={busy} onClick={() => onApprove(item.sessionId)} aria-label={`Aprovar ${item.displayName}`} className={`inline-flex items-center gap-1 rounded-xl bg-emerald-600 font-bold text-white disabled:opacity-50 ${large ? 'px-4 py-3 text-sm' : 'px-3 py-2 text-xs'}`}><Check className="h-4 w-4" aria-hidden="true" />Aprovar</button>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 /**
  * Floating alert in the owner panel: a person scanned a table QR and waits for release. Beeps on arrival,

@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import type { Category, Product } from '../types';
 import type { SecurityContext } from '../services/securityEngine';
+import { formatTableLabel } from '../lib/orders/labels';
 import { productRepository } from './productRepository';
 import { categoryRepository } from './categoryRepository';
 import { productOptionRepository } from './productOptionRepository';
@@ -48,7 +49,7 @@ export const salonStaffRepository = {
     const labelById = new Map(tables.map(t => [t.id, t.label]));
     return unapproved.filter(s => tabById.has(s.tab_id)).map(s => {
       const tab = tabById.get(s.tab_id)!;
-      return { sessionId: s.id, tabId: s.tab_id, tableId: tab.table_id, tableLabel: labelById.get(tab.table_id) || 'Mesa', displayName: s.display_name || 'Cliente', expiresAt: s.expires_at };
+      return { sessionId: s.id, tabId: s.tab_id, tableId: tab.table_id, tableLabel: formatTableLabel(labelById.get(tab.table_id), 'Mesa'), displayName: s.display_name || 'Cliente', expiresAt: s.expires_at };
     }).sort((a, b) => a.tableLabel.localeCompare(b.tableLabel, 'pt-BR', { numeric: true }));
   },
 

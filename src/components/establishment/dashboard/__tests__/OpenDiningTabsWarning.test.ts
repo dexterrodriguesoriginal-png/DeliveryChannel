@@ -19,4 +19,12 @@ describe('open dining tab warning', () => {
       { id: 't1', table_id: 'missing', opened_at: '2026-10-19T23:00:00.000Z', status: 'OPEN' },
     ], [], Date.parse('2026-10-19T23:41:00.000Z'))).toEqual(['Mesa — aberta há 0 h']);
   });
+
+  it('does not duplicate "Mesa" when the table label already starts with "Mesa"', () => {
+    expect(openDiningTabLabels([
+      { id: 't4', table_id: 'table-4', opened_at: '2026-10-19T21:00:00.000Z', status: 'OPEN' },
+    ], [
+      { id: 'table-4', label: 'Mesa 04' },
+    ], Date.parse('2026-10-19T23:41:00.000Z'))).toEqual(['Mesa 04 aberta há 2 h']);
+  });
 });

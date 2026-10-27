@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { dispatchChatRepository as repo, OwnerNotification } from '../../repositories/dispatchChatRepository';
 import { readPreferences, savePreferences, type NotificationPreferences } from '../../lib/notifications/preferences';
-import { notificationDetail, notificationType, relativeTime, type NotificationType, type OrderBrief } from '../../lib/notifications/notificationView';
+import { cleanMesaDuplication, notificationDetail, notificationType, relativeTime, type NotificationType, type OrderBrief } from '../../lib/notifications/notificationView';
 import { playNewOrderSound } from '../../utils/audio';
 import { BOTTOM_ACTIONS_VAR, floatingAboveActionsStyle, floatingSideStyle } from '../../lib/ui/bottomActionsOffset';
 import { clampPoint, loadPosition, placePanel, pointFromSaved, savePosition, snapToEdge, type Point, type SavedPosition, type Size, type Viewport } from '../../lib/ui/floatingPosition';
@@ -72,7 +72,7 @@ export function NotificationList({ rows, onRead, onOpen, briefs = {}, now = Date
               <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full" title={label} style={{ background: `color-mix(in srgb, ${fg} 14%, #ffffff)`, color: fg }}><Icon size={17} /></span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline gap-2">
-                  <span className={`min-w-0 flex-1 truncate text-[13.5px] ${isUnread ? 'font-semibold text-slate-900' : 'font-medium text-slate-600'}`}>{n.title}</span>
+                  <span className={`min-w-0 flex-1 truncate text-[13.5px] ${isUnread ? 'font-semibold text-slate-900' : 'font-medium text-slate-600'}`}>{cleanMesaDuplication(n.title)}</span>
                   <time dateTime={n.created_at} className="shrink-0 text-[11px] font-medium text-slate-400">{relativeTime(n.created_at, now)}</time>
                   {isUnread && <span aria-label="Não lida" className="h-2 w-2 shrink-0 translate-y-[-1px] self-center rounded-full bg-blue-500 ring-2 ring-blue-100" />}
                 </span>
@@ -288,7 +288,7 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
       <div className="flex items-start gap-3 py-3 pl-5 pr-3">
         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: `color-mix(in srgb, ${toastMeta.fg} 14%, #ffffff)`, color: toastMeta.fg }}><toastMeta.Icon size={17} /></span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-900">{balloon.title}</p>
+          <p className="truncate text-sm font-semibold text-slate-900">{cleanMesaDuplication(balloon.title)}</p>
           {toastDetail && <p className="truncate text-xs text-slate-500">{toastDetail}</p>}
           <button type="button" onClick={() => view(balloon)} className="mt-2 rounded-lg bg-[#16a34a] px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-green-700">{orderToast ? 'Ver pedido' : 'Ver solicitação'}</button>
         </div>

@@ -10,6 +10,7 @@ import { isOrderVisibleToStaff, visibleStaffOrders } from './onlinePaymentGate';
  * Permissões espelham update_order_status (o servidor continua sendo quem decide).
  */
 import type { Order, RoleId } from '../../types';
+import { formatTableLabel } from './labels';
 import { sortOrdersNewestFirst } from './orderAge';
 import { DEFAULT_PREP_MINUTES } from './sla';
 
@@ -65,8 +66,9 @@ export function itemsSummary(order: Pick<Order, 'items'>, maxChars = 90): string
   return s.length > maxChars ? s.slice(0, maxChars - 1).trimEnd() + '…' : s;
 }
 
-/** Endereço curto ou "Retirada no local". */
-export function addressLine(order: Pick<Order, 'fulfillmentType' | 'deliveryAddress'>): string {
+/** Endereço curto, "Retirada no local" ou "Mesa 04 · Salão". */
+export function addressLine(order: Pick<Order, 'fulfillmentType' | 'deliveryAddress' | 'tableLabel'>): string {
+  if (order.fulfillmentType === 'DINE_IN') return `${formatTableLabel(order.tableLabel, 'Mesa')} · Salão`;
   if (order.fulfillmentType === 'PICKUP') return 'Retirada no local';
   return (order.deliveryAddress || '').trim() || 'Endereço não informado';
 }
@@ -87,7 +89,7 @@ export function newPendingIds(prevIds: ReadonlySet<string> | null, orders: reado
 /** Pedido que a tela Pedidos deve abrir selecionado ao vir do Dashboard ("Ver pedido"). */
 export const FOCUS_ORDER_KEY = 'dc_focus_order_id';
 
-export type NextStepKind = 'accept' | 'start' | 'ready' | 'call_driver' | 'pickup_done';
+export type NextStepKind = 'accept' | 'start' | 'ready' | 'call_driver' | 'pickup_done' | 'open_table';
 export interface NextStep {
   kind: NextStepKind;
   label: string;
@@ -99,10 +101,17 @@ export interface NextStep {
 /**
  * Único botão de próxima etapa para o estado atual (fluxo inteiro pelo Dashboard):
  * Aceitar -> Iniciar preparo -> Marcar como pronto -> Chamar entregador (entrega) / Confirmar retirada (retirada).
+ * Pedidos de mesa (DINE_IN) exibem sempre "Abrir mesa" e nunca "Chamar entregador".
  * null = nada a fazer pela loja agora (aguardando entregador, em rota, final) ou papel sem permissão.
  */
 export function nextStepFor(order: Pick<Order, 'status' | 'fulfillmentType' | 'driverId' | 'awaitingOnlinePayment'>, role: RoleId | string | null | undefined): NextStep | null {
   if (!isOrderVisibleToStaff(order) || !canAcceptOrders(role)) return null;
+  if (order.fulfillmentType === 'DINE_IN') {
+    if (order.status === 'PENDING' || order.status === 'CONFIRMED' || order.status === 'PREPARING' || order.status === 'READY') {
+      return { kind: 'open_table', label: 'Abrir mesa', to: 'CONFIRMED' };
+    }
+    return null;
+  }
   const pickup = order.fulfillmentType === 'PICKUP';
   switch (order.status) {
     case 'PENDING': return { kind: 'accept', label: 'Aceitar', to: 'CONFIRMED' };
@@ -110,6 +119,7 @@ export function nextStepFor(order: Pick<Order, 'status' | 'fulfillmentType' | 'd
     case 'PREPARING': return { kind: 'ready', label: 'Marcar como pronto', to: 'READY' };
     case 'READY':
       if (pickup) return { kind: 'pickup_done', label: 'Confirmar retirada', to: 'DELIVERED' };
+      if (order.fulfillmentType !== 'DELIVERY') return null;
       if (order.driverId) return null;
       return { kind: 'call_driver', label: 'Chamar entregador', to: 'WAITING_FOR_DRIVER', note: 'Chamando motoboy' };
     default: return null;
@@ -174,10 +184,11 @@ export function alertList(a: OrderAlerts, filter: AlertFilter | null = null): Or
 }
 
 /**
- * Local curto da linha: "Retirada" ou o bairro (addressDetails.neighborhood; senão o trecho
+ * Local curto da linha: "Mesa 04 · Salão" (mesa), "Retirada" ou o bairro (addressDetails.neighborhood; senão o trecho
  * depois de " - " em "Rua X, 138 - Vila Silviânia, Carapicuíba"; senão o endereço cortado).
  */
-export function shortPlace(order: Pick<Order, 'fulfillmentType' | 'deliveryAddress' | 'addressDetails'>, maxChars = 24): string {
+export function shortPlace(order: Pick<Order, 'fulfillmentType' | 'deliveryAddress' | 'addressDetails' | 'tableLabel'>, maxChars = 24): string {
+  if (order.fulfillmentType === 'DINE_IN') return `${formatTableLabel(order.tableLabel, 'Mesa')} · Salão`;
   if (order.fulfillmentType === 'PICKUP') return 'Retirada';
   const nb = order.addressDetails?.neighborhood?.trim();
   let s = nb || '';
