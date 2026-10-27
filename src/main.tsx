@@ -1,6 +1,8 @@
 import { driverAuthReturnPath } from './lib/driverInviteFlow';
 import { DRIVER_MANIFEST_PATH, isDriverRoute } from './lib/pwa/driverManifest';
 import { INVITE_TOKEN_SESSION_KEY } from './utils/inviteUrl';
+import { WAITER_MANIFEST_PATH, isWaiterRoute } from './lib/pwa/waiterManifest';
+import { toolsPathRedirect } from './lib/panelRoute';
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
@@ -20,6 +22,15 @@ if (isDriverRoute(window.location.pathname)) {
   manifest.rel = 'manifest'; manifest.href = DRIVER_MANIFEST_PATH;
   document.head.appendChild(manifest);
 }
+
+if (isWaiterRoute(window.location.pathname)) {
+  const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]') || document.createElement('link');
+  manifest.rel = 'manifest'; manifest.href = WAITER_MANIFEST_PATH;
+  document.head.appendChild(manifest);
+}
+// /modulos e /ferramentas abrem a página Ferramentas do painel (o endereço antigo continua funcionando).
+const toolsTarget = toolsPathRedirect(window.location.pathname);
+if (toolsTarget) window.history.replaceState(null, '', toolsTarget);
 
 // Captura beforeinstallprompt/appinstalled antes do React montar.
 captureInstallEvents(window);

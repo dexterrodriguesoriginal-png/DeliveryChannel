@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPanelPathname, panelRouteHash, readPanelRoute } from '../panelRoute';
+import { isPanelPathname, panelRouteHash, readPanelRoute, toolsPathRedirect } from '../panelRoute';
 
 describe('panel routes', () => {
   it('reads pages and sub-tabs from the panel hash', () => {
@@ -37,3 +37,20 @@ describe('panel routes', () => {
     }
   });
 });
+
+describe('Ferramentas (antigo Módulos)', () => {
+  it('endereço novo e antigos abrem a mesma página; o hash escrito é o novo', () => {
+    expect(readPanelRoute('#/painel/ferramentas')).toEqual({ page: 'est-modules', tab: undefined });
+    expect(readPanelRoute('#/painel/modulos')).toEqual({ page: 'est-modules', tab: undefined });
+    expect(readPanelRoute('#/painel/est-modules')).toEqual({ page: 'est-modules', tab: undefined });
+    expect(panelRouteHash({ page: 'est-modules' })).toBe('#/painel/ferramentas');
+  });
+  it('/modulos e /ferramentas redirecionam para dentro do painel; outros caminhos não', () => {
+    expect(toolsPathRedirect('/modulos')).toBe('/#/painel/ferramentas');
+    expect(toolsPathRedirect('/ferramentas/')).toBe('/#/painel/ferramentas');
+    expect(toolsPathRedirect('/app/modulos')).toBeNull();
+    expect(toolsPathRedirect('/')).toBeNull();
+    expect(toolsPathRedirect('/garcom')).toBeNull();
+  });
+});
+

@@ -21,6 +21,8 @@ import { mesasQrRepository, MesasQrCapabilities, NO_CAPABILITIES } from '../../r
 import { TableCard } from '../../components/establishment/salon/TableCard';
 import { SalonSidebar, SidebarTab } from '../../components/establishment/salon/SalonSidebar';
 import { TabPixPanel } from '../../components/establishment/salon/TabPixPanel';
+import { FOCUS_TABLE_KEY } from '../../components/establishment/salon/ApprovalsAlert';
+import { salonStaffRepository, type SalonAccessExtras } from '../../repositories/salonStaffRepository';
 import '../../components/establishment/salon/salon.css';
 
 type DiningTable = { id: string; label: string; area: string | null; seats: number; active: boolean };
@@ -101,6 +103,9 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const [storePaused, setStorePaused] = useState(false);
   const [pauseBusy, setPauseBusy] = useState(false);
   const [pixLive, setPixLive] = useState(false);
+  const [access, setAccess] = useState<SalonAccessExtras | null>(null);
+  const [confirmReject, setConfirmReject] = useState<string | null>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   const selectedTab = useMemo(() => tabs.find(tab => tab.table_id === selectedTableId), [tabs, selectedTableId]);
   const selectedTable = useMemo(() => tables.find(table => table.id === selectedTableId), [tables, selectedTableId]);
@@ -247,6 +252,23 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     setOptionChoices([]);
   }, [productId]);
 
+  // Responsável pela mesa (só com o modelo de acesso novo; antes dele nada disso existe no banco).
+  useEffect(() => {
+    if (!activeTenant?.id || !enabled || !caps.tableAccess || !tabs.length) { setAccess(null); return; }
+    let alive = true;
+    void salonStaffRepository.accessExtras(activeTenant.id, tabs.map(tab => tab.id)).then(next => { if (alive) setAccess(next); }).catch(() => { if (alive) setAccess(null); });
+    return () => { alive = false; };
+  }, [activeTenant?.id, enabled, caps.tableAccess, tabs, sessions]);
+
+  // Vindo do alerta "aguardando liberação": abre a mesa certa.
+  useEffect(() => {
+    const focus = (tableId: string) => { setSelectedTableId(tableId); setDrawerOpen(false); setConfirmReject(null); setTransferOpen(false); };
+    try { const saved = sessionStorage.getItem(FOCUS_TABLE_KEY); if (saved) { sessionStorage.removeItem(FOCUS_TABLE_KEY); focus(saved); } } catch { /* ignore */ }
+    const onFocus = (event: Event) => { const id = (event as CustomEvent<string>).detail; if (id) { try { sessionStorage.removeItem(FOCUS_TABLE_KEY); } catch { /* ignore */ } focus(id); } };
+    window.addEventListener('dc:focus-table', onFocus);
+    return () => window.removeEventListener('dc:focus-table', onFocus);
+  }, []);
+
   const run = async (key: string, action: () => Promise<unknown>) => {
     setBusy(key);
     setMessage(null);
@@ -265,6 +287,16 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     const { error } = await supabase.rpc('approve_session', { p_session_id: sessionId });
     if (error) throw error;
   });
+
+  const reject = (sessionId: string) => run(`reject-${sessionId}`, async () => {
+    await salonStaffRepository.reject(sessionId);
+    setConfirmReject(null);
+  });
+  const resetHolder = () => { if (selectedTab) void run('reset-holder', () => salonStaffRepository.resetHolder(selectedTab.id)); };
+  const transferHolder = (sessionId: string) => {
+    if (!selectedTab) return;
+    void run('transfer-holder', async () => { await salonStaffRepository.transferHolder(selectedTab.id, sessionId, true); setTransferOpen(false); });
+  };
 
   const removeFee = () => {
     if (!selectedTab) return;
@@ -387,7 +419,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const onPixSettled = useCallback(() => { setCloseOpen(false); setSelectedTableId(null); setPixLive(false); void load(true); }, [load]);
   const onPixLive = useCallback((live: boolean) => setPixLive(live), []);
 
-  if (!enabled) return <div className="rounded-2xl bg-white p-6 text-sm text-gray-600">O módulo Mesa/Comanda está desativado.</div>;
+  if (!enabled) return <div className="rounded-2xl bg-white p-6 text-sm text-gray-600">A ferramenta Mesa/Comanda está desativada. Ative em Ferramentas.</div>;
   if (!activeTenant) return null;
 
   return (
@@ -458,14 +490,33 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
             <div><h2 className="text-xl font-black">{selectedTable.label} · {selectedTable.area || 'Salão'}</h2><p className="text-sm text-gray-500">{selectedTable.seats} lugares</p></div>
             <button type="button" onClick={() => setSelectedTableId(null)} aria-label="Fechar detalhes"><X className="h-5 w-5" /></button>
           </div>
-          {!selectedTab ? <p className="mt-6 rounded-xl bg-gray-50 p-4 text-sm text-gray-600">Mesa livre, sem comanda aberta.</p> : <>
-            <div className="mt-5 space-y-3">
+          {!selectedTab ? <div className="mt-6 rounded-xl bg-gray-50 p-4 text-sm text-gray-600"><p>Mesa livre, sem comanda aberta.</p>{caps.tableAccess && <button type="button" disabled={!!busy} onClick={() => selectedTableId && void run('open-table', () => salonStaffRepository.openTab(selectedTableId))} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-bold text-white"><Plus className="h-4 w-4" />Abrir mesa para o cliente</button>}</div> : <>
+            <div className="mt-5 space-y-3" data-testid="salon-people">
               <h3 className="font-black">Pessoas e liberação</h3>
-              {activeSessions.map(session => <div key={session.id} className="flex items-center justify-between gap-2 rounded-xl border p-3">
-                <div><div className="font-bold">{session.display_name}</div><div className="text-xs text-gray-500">{session.approved_at ? 'Liberada' : 'Aguardando liberação'}</div></div>
-                {!session.approved_at && <button type="button" disabled={busy === `approve-${session.id}`} onClick={() => void approve(session.id)} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white">Liberar</button>}
-              </div>)}
+              {activeSessions.some(session => !session.approved_at) && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-950">Há pessoas aguardando liberação nesta mesa. Aprove para elas poderem pedir.</p>}
+              {activeSessions.map(session => {
+                const isHolder = !!access && access.responsibleSessionByTab.get(selectedTab.id) === session.id;
+                return <div key={session.id} className={`rounded-xl border p-3 ${session.approved_at ? '' : 'border-amber-300 bg-amber-50/60'}`} data-testid={`salon-session-${session.id}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div><div className="font-bold">{session.display_name}{isHolder && <span className="ml-2 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-white">Responsável</span>}</div><div className="text-xs text-gray-500">{session.approved_at ? 'Liberada' : 'Aguardando liberação'}</div></div>
+                    {!session.approved_at && <div className="flex gap-2">
+                      {caps.tableAccess && <button type="button" disabled={!!busy} onClick={() => setConfirmReject(session.id)} className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-bold text-rose-700">Recusar</button>}
+                      <button type="button" disabled={busy === `approve-${session.id}`} onClick={() => void approve(session.id)} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white">{caps.tableAccess ? 'Aprovar' : 'Liberar'}</button>
+                    </div>}
+                  </div>
+                  {confirmReject === session.id && <div role="alertdialog" aria-label="Confirmar recusa" className="mt-2 rounded-lg bg-rose-50 p-3 text-sm"><p className="font-semibold">Recusar {session.display_name}? Ele perde o acesso a esta mesa.</p><div className="mt-2 flex gap-2"><button type="button" disabled={!!busy} onClick={() => void reject(session.id)} className="rounded-lg bg-rose-600 px-3 py-2 font-bold text-white">Recusar</button><button type="button" onClick={() => setConfirmReject(null)} className="rounded-lg border bg-white px-3 py-2 font-bold">Voltar</button></div></div>}
+                </div>;
+              })}
               {activeSessions.length === 0 && <p className="text-sm text-gray-500">Sem sessões ativas.</p>}
+              {caps.tableAccess && access && <div className="rounded-xl bg-slate-50 p-3 text-sm" data-testid="salon-holder">
+                <p className="font-bold">Responsável pela mesa</p>
+                <p className="text-xs text-gray-600">{access.responsibleSessionByTab.get(selectedTab.id) ? (activeSessions.find(item => item.id === access.responsibleSessionByTab.get(selectedTab.id))?.display_name || 'Cliente') : access.claimableTabs.has(selectedTab.id) ? 'Sem responsável: o próximo cliente que ler o QR assume a mesa.' : 'Mesa aberta pela equipe: o cliente entra com convite ou você passa o responsável.'}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(access.responsibleSessionByTab.get(selectedTab.id) || !access.claimableTabs.has(selectedTab.id)) && <button type="button" disabled={!!busy} onClick={resetHolder} className="rounded-lg border bg-white px-3 py-2 font-bold" title="Para quando o responsável perdeu o celular: a mesa fica livre para o próximo QR.">Liberar responsável (celular perdido)</button>}
+                  {activeSessions.some(item => item.approved_at && item.id !== access.responsibleSessionByTab.get(selectedTab.id)) && <button type="button" disabled={!!busy} onClick={() => setTransferOpen(open => !open)} className="rounded-lg border bg-white px-3 py-2 font-bold">Passar responsável</button>}
+                </div>
+                {transferOpen && <div className="mt-2 space-y-1" role="group" aria-label="Passar responsável para">{activeSessions.filter(item => item.approved_at && item.id !== access.responsibleSessionByTab.get(selectedTab.id)).map(item => <button key={item.id} type="button" disabled={!!busy} onClick={() => transferHolder(item.id)} className="block w-full rounded-lg border bg-white px-3 py-2 text-left font-semibold">{item.display_name}</button>)}</div>}
+              </div>}
             </div>
             <div className="mt-5 space-y-2">
               <h3 className="font-black">Chamados</h3>

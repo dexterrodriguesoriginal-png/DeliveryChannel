@@ -1,5 +1,6 @@
 import { startDispatchRetention, startDriverOfferExpiry } from './server/dispatch/retention';
 import { injectDriverHead, isDriverRoute } from './src/lib/pwa/driverManifest';
+import { injectWaiterHead, isWaiterRoute } from './src/lib/pwa/waiterManifest';
 /**
  * Servidor do app (convenção full-stack do Google AI Studio: Express em server.ts,
  * `npm run dev` => tsx server.ts; build => dist/server.cjs; `npm start` => node dist/server.cjs).
@@ -58,6 +59,14 @@ async function start() {
         res.type('html').send(injectDriverHead(raw));
       } catch (e) { next(e); }
     });
+    app.get(['/garcom', '/garcom/*'], async (req, res, next) => {
+      if (!isHtmlNav(req)) return next();
+      try {
+        const raw = await vite.transformIndexHtml(req.originalUrl, await fs.readFile(path.resolve(process.cwd(), 'index.html'), 'utf8'));
+        res.setHeader('Cache-Control', 'no-cache');
+        res.type('html').send(injectWaiterHead(raw));
+      } catch (e) { next(e); }
+    });
     app.get('/app/*', async (req, res, next) => {
       const slug = storeSlugFromPath(req.path);
       if (!slug || !isHtmlNav(req)) return next();
@@ -82,6 +91,11 @@ async function start() {
       if (isDriverRoute(req.path)) {
         indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
         indexHtml.then(raw => res.type('html').send(injectDriverHead(raw)), next);
+        return;
+      }
+      if (isWaiterRoute(req.path)) {
+        indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
+        indexHtml.then(raw => res.type('html').send(injectWaiterHead(raw)), next);
         return;
       }
       if (!slug) { res.sendFile(path.join(distDir, 'index.html')); return; }

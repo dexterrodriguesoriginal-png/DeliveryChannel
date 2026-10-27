@@ -14,7 +14,7 @@ export const WaiterPhonePairingCard: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="flex items-center gap-2 font-bold text-gray-900"><Smartphone className="h-4 w-4" />Acesso do garçom pelo celular</h3>
-          <p className="mt-1 text-xs text-gray-600">Leia o QR no celular do colaborador. Depois de entrar com a conta convidada como Garçom, o painel abre direto no Salão.</p>
+          <p className="mt-1 text-xs text-gray-600">Leia o QR no celular do colaborador. Depois de entrar com a conta convidada como Garçom, abre o Aplicativo do Garçom: mapa do salão, liberações, chamados e pedidos.</p>
         </div>
         <button type="button" onClick={() => setExpanded(value => !value)} className="rounded-xl border px-3 py-2 text-sm font-bold">
           {expanded ? 'Ocultar QR' : 'Conectar celular'}

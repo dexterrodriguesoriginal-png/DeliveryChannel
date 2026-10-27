@@ -153,7 +153,7 @@ export const MesasQrPage: React.FC = () => {
   const onSelect = useCallback((id: string, on: boolean) => setSelected(current => { const next = new Set(current); if (on) next.add(id); else next.delete(id); return next; }), []);
   const confirmTable = confirm ? tables.find(table => table.id === confirm.id) : null;
 
-  if (!enabled) return <div className="rounded-2xl bg-white p-6 text-sm text-gray-600">O módulo Mesa/Comanda está desativado. Ative em Módulos para criar os QR Codes das mesas.</div>;
+  if (!enabled) return <div className="rounded-2xl bg-white p-6 text-sm text-gray-600">A ferramenta Mesa/Comanda está desativada. Ative em Ferramentas para criar os QR Codes das mesas.</div>;
   if (!canManage) return <div className="rounded-2xl bg-white p-6 text-sm text-gray-600">Somente o proprietário ou o gerente podem gerenciar as mesas e os QR Codes.</div>;
 
   return (

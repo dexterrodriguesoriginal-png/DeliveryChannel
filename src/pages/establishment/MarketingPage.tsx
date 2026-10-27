@@ -156,7 +156,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
   const canManageCampaigns = isN1N6Backend() && (activeRole === 'OWNER' || activeRole === 'MANAGER');
   const canManage = activeRole === 'OWNER' || activeRole === 'MANAGER' || activeRole === 'SUPER_ADMIN' || activeRole === 'CEO';
 
-  // Navegação Interna do Módulo
+  // Navegação interna da ferramenta
   const [internalActiveTab, setInternalActiveTab] = useState<MarketingTab>('creatives');
   const selectedTab = requestedTab === null ? 'creatives' : requestedTab ?? internalActiveTab;
   const activeTab = selectedTab === 'campaigns' && !canManageCampaigns ? 'creatives' : selectedTab;
@@ -1196,7 +1196,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* Header do Módulo */}
+      {/* Cabeçalho da ferramenta */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">

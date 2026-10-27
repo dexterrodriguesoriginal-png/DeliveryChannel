@@ -775,6 +775,8 @@ CREATE OR REPLACE FUNCTION public.mesas_qr_capabilities() RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $$ SELECT jsonb_build_object('version', 2, 'qr_pause', true, 'tab_pix', true, 'table_name_rule', true,
                                 'table_access', true, 'waiter_app', true); $$;
+-- The customer screen must know whether the new access model exists BEFORE the person logs in; the answer is only a version number.
+GRANT EXECUTE ON FUNCTION public.mesas_qr_capabilities() TO anon;
 
 
 -- submit_round: identical to the audited function except (1) a released session stays released while it is live (the old fixed

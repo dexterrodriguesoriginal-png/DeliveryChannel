@@ -23,34 +23,55 @@ export type ModuleKey =
   | 'variants' | 'reserve_exchange' | 'scheduling' | 'quotes'
   | 'street_vendor' | 'pos' | 'loyalty' | 'credit_tab';
 
+/** Grupos da página Ferramentas. */
+export type ToolCategory = 'Vendas' | 'Salão' | 'Cozinha' | 'Marketing' | 'Operação';
+export const TOOL_CATEGORIES: readonly ToolCategory[] = ['Salão', 'Vendas', 'Cozinha', 'Marketing', 'Operação'];
+/** Planos (reservado: nada é cobrado nem bloqueado por plano hoje). */
+export type ToolPlan = 'basico' | 'pro' | 'premium';
+
 export interface ModuleDefinition {
   key: ModuleKey;
   label: string;
   description: string;
   changes: string;
   implemented: boolean;
+  /** Grupo do card na página Ferramentas. */
+  category?: ToolCategory | null;
+  /** Nome do ícone (lucide) usado no card; resolvido pela página. */
+  icon?: string | null;
+  /** Reservado para planos: null = sem regra (todas as ferramentas valem para todos hoje). */
+  plan?: ToolPlan | null;
+  /** Reservado para ferramenta paga à parte, em centavos; null = sem preço. Sem cobrança implementada. */
+  addonPriceCents?: number | null;
+}
+
+/** Selo de plano. Fica oculto (null) enquanto plan e addonPriceCents forem null — só reserva o espaço. */
+export function toolPlanBadge(tool: Pick<ModuleDefinition, 'plan' | 'addonPriceCents'>): 'Incluído no plano' | 'Adicional' | null {
+  if (typeof tool.addonPriceCents === 'number' && tool.addonPriceCents > 0) return 'Adicional';
+  if (tool.plan) return 'Incluído no plano';
+  return null;
 }
 
 export const MODULES: ModuleDefinition[] = [
-  { key: 'delivery', label: 'Entrega', description: 'Receba pedidos para entregar no endereço do cliente.', changes: 'Exibe Entregadores e a opção de entrega no catálogo.', implemented: true },
-  { key: 'pickup', label: 'Retirada', description: 'Permita que clientes retirem pedidos no estabelecimento.', changes: 'Exibe a opção de retirada no catálogo.', implemented: true },
-  { key: 'addons', label: 'Adicionais', description: 'Ofereça complementos e personalizações nos produtos.', changes: 'Adiciona escolhas de complementos ao cardápio.', implemented: true },
-  { key: 'kds', label: 'Tela da Cozinha', description: 'Organize os pedidos em uma tela de preparo para a cozinha.', changes: 'Exibe Tela da Cozinha, alertas de pedido pronto e Tempo de Preparo no painel.', implemented: true },
-  { key: 'dine_in', label: 'Mesa/Comanda', description: 'Atenda clientes em mesas ou comandas individuais.', changes: 'Adiciona atendimento e acompanhamento por mesa/comanda.', implemented: true },
-  { key: 'counter', label: 'Balcão', description: 'Registre pedidos feitos diretamente no balcão.', changes: 'Adiciona o fluxo de atendimento no balcão.', implemented: false },
-  { key: 'service_fee', label: 'Taxa de serviço', description: 'Configure a taxa opcional do atendimento no salão.', changes: 'Aplica a taxa configurada somente às comandas de salão.', implemented: true },
-  { key: 'printing', label: 'Impressão', description: 'Imprima pedidos e documentos operacionais.', changes: 'Adiciona opções de impressão ao painel.', implemented: true },
-  { key: 'weight', label: 'Venda por peso', description: 'Venda produtos com preço calculado por peso.', changes: 'Exibe unidades e campos de peso no catálogo.', implemented: false },
-  { key: 'barcode', label: 'Código de barras', description: 'Identifique produtos pelo código de barras.', changes: 'Adiciona leitura e busca por código de barras.', implemented: false },
-  { key: 'substitution', label: 'Substituição', description: 'Permita substituir itens indisponíveis.', changes: 'Adiciona opções de substituição aos pedidos.', implemented: false },
-  { key: 'variants', label: 'Variações', description: 'Cadastre tamanhos, cores e outras variações.', changes: 'Adiciona variações às opções de produtos.', implemented: false },
-  { key: 'reserve_exchange', label: 'Reserva e troca', description: 'Gerencie reservas e trocas de produtos.', changes: 'Adiciona os fluxos de reserva e troca.', implemented: false },
-  { key: 'scheduling', label: 'Agendamento', description: 'Organize horários e serviços agendados.', changes: 'Adiciona agenda e horários ao painel.', implemented: false },
-  { key: 'quotes', label: 'Orçamentos', description: 'Prepare e acompanhe orçamentos.', changes: 'Adiciona o fluxo de orçamento ao painel.', implemented: false },
-  { key: 'street_vendor', label: 'Ambulante', description: 'Organize vendas realizadas na rua.', changes: 'Adiciona ferramentas para operação ambulante.', implemented: false },
-  { key: 'pos', label: 'PDV', description: 'Registre vendas presenciais no ponto de venda.', changes: 'Exibe o acesso ao ponto de venda.', implemented: true },
-  { key: 'loyalty', label: 'Fidelidade', description: 'Recompense clientes recorrentes.', changes: 'Adiciona recursos de fidelidade ao painel.', implemented: false },
-  { key: 'credit_tab', label: 'Fiado', description: 'Acompanhe vendas a prazo e saldos de clientes.', changes: 'Adiciona controle de conta e fiado.', implemented: false },
+  { key: 'delivery', label: 'Entrega', description: 'Receba pedidos para entregar no endereço do cliente.', changes: 'Exibe Entregadores e a opção de entrega no catálogo.', implemented: true, category: 'Vendas', icon: 'Bike', plan: null, addonPriceCents: null },
+  { key: 'pickup', label: 'Retirada', description: 'Permita que clientes retirem pedidos no estabelecimento.', changes: 'Exibe a opção de retirada no catálogo.', implemented: true, category: 'Vendas', icon: 'Store', plan: null, addonPriceCents: null },
+  { key: 'addons', label: 'Adicionais', description: 'Ofereça complementos e personalizações nos produtos.', changes: 'Adiciona escolhas de complementos ao cardápio.', implemented: true, category: 'Vendas', icon: 'PlusCircle', plan: null, addonPriceCents: null },
+  { key: 'kds', label: 'Tela da Cozinha', description: 'Organize os pedidos em uma tela de preparo para a cozinha.', changes: 'Exibe Tela da Cozinha, alertas de pedido pronto e Tempo de Preparo no painel.', implemented: true, category: 'Cozinha', icon: 'ChefHat', plan: null, addonPriceCents: null },
+  { key: 'dine_in', label: 'Mesa/Comanda', description: 'Atenda clientes em mesas ou comandas individuais.', changes: 'Adiciona atendimento e acompanhamento por mesa/comanda.', implemented: true, category: 'Salão', icon: 'Utensils', plan: null, addonPriceCents: null },
+  { key: 'counter', label: 'Balcão', description: 'Registre pedidos feitos diretamente no balcão.', changes: 'Adiciona o fluxo de atendimento no balcão.', implemented: false, category: 'Vendas', icon: 'Store', plan: null, addonPriceCents: null },
+  { key: 'service_fee', label: 'Taxa de serviço', description: 'Configure a taxa opcional do atendimento no salão.', changes: 'Aplica a taxa configurada somente às comandas de salão.', implemented: true, category: 'Salão', icon: 'Percent', plan: null, addonPriceCents: null },
+  { key: 'printing', label: 'Impressão', description: 'Imprima pedidos e documentos operacionais.', changes: 'Adiciona opções de impressão ao painel.', implemented: true, category: 'Operação', icon: 'Printer', plan: null, addonPriceCents: null },
+  { key: 'weight', label: 'Venda por peso', description: 'Venda produtos com preço calculado por peso.', changes: 'Exibe unidades e campos de peso no catálogo.', implemented: false, category: 'Vendas', icon: 'Scale', plan: null, addonPriceCents: null },
+  { key: 'barcode', label: 'Código de barras', description: 'Identifique produtos pelo código de barras.', changes: 'Adiciona leitura e busca por código de barras.', implemented: false, category: 'Operação', icon: 'ScanBarcode', plan: null, addonPriceCents: null },
+  { key: 'substitution', label: 'Substituição', description: 'Permita substituir itens indisponíveis.', changes: 'Adiciona opções de substituição aos pedidos.', implemented: false, category: 'Vendas', icon: 'Repeat', plan: null, addonPriceCents: null },
+  { key: 'variants', label: 'Variações', description: 'Cadastre tamanhos, cores e outras variações.', changes: 'Adiciona variações às opções de produtos.', implemented: false, category: 'Vendas', icon: 'Shirt', plan: null, addonPriceCents: null },
+  { key: 'reserve_exchange', label: 'Reserva e troca', description: 'Gerencie reservas e trocas de produtos.', changes: 'Adiciona os fluxos de reserva e troca.', implemented: false, category: 'Operação', icon: 'Repeat', plan: null, addonPriceCents: null },
+  { key: 'scheduling', label: 'Agendamento', description: 'Organize horários e serviços agendados.', changes: 'Adiciona agenda e horários ao painel.', implemented: false, category: 'Operação', icon: 'CalendarClock', plan: null, addonPriceCents: null },
+  { key: 'quotes', label: 'Orçamentos', description: 'Prepare e acompanhe orçamentos.', changes: 'Adiciona o fluxo de orçamento ao painel.', implemented: false, category: 'Vendas', icon: 'FileText', plan: null, addonPriceCents: null },
+  { key: 'street_vendor', label: 'Ambulante', description: 'Organize vendas realizadas na rua.', changes: 'Adiciona ferramentas para operação ambulante.', implemented: false, category: 'Operação', icon: 'Bike', plan: null, addonPriceCents: null },
+  { key: 'pos', label: 'PDV', description: 'Registre vendas presenciais no ponto de venda.', changes: 'Exibe o acesso ao ponto de venda.', implemented: true, category: 'Vendas', icon: 'CreditCard', plan: null, addonPriceCents: null },
+  { key: 'loyalty', label: 'Fidelidade', description: 'Recompense clientes recorrentes.', changes: 'Adiciona recursos de fidelidade ao painel.', implemented: false, category: 'Marketing', icon: 'Gift', plan: null, addonPriceCents: null },
+  { key: 'credit_tab', label: 'Fiado', description: 'Acompanhe vendas a prazo e saldos de clientes.', changes: 'Adiciona controle de conta e fiado.', implemented: false, category: 'Operação', icon: 'Wallet', plan: null, addonPriceCents: null },
 ];
 
 export type ModulePreset = Partial<Record<ModuleKey, Record<string, unknown>>>;
@@ -114,4 +135,31 @@ export function isTabModuleEnabled(modules: ReadonlySet<ModuleKey> | null | unde
 
 export function moduleLabel(key: ModuleKey): string {
   return MODULES.find(module => module.key === key)?.label || key;
+}
+
+/** Ferramentas que não são liga/desliga próprio: atalhos de telas do painel (ou de apps) que aparecem como cards. */
+export interface ToolShortcut {
+  id: 'garcom' | 'salon' | 'mesas-qr' | 'menu-quality';
+  label: string;
+  description: string;
+  category: ToolCategory;
+  icon: string;
+  /** Só aparece (e funciona) com esta ferramenta ligada. */
+  requiresModule?: ModuleKey;
+  /** Quem enxerga o card. */
+  roles: readonly string[];
+  action: { kind: 'path'; path: string; cta: string } | { kind: 'tab'; tab: string; cta: string };
+  plan?: ToolPlan | null;
+  addonPriceCents?: number | null;
+}
+
+export const TOOL_SHORTCUTS: readonly ToolShortcut[] = [
+  { id: 'garcom', label: 'Garçom', description: 'Aplicativo do Garçom no celular: mapa do salão, liberações com som, chamados, abrir mesa e lançar pedidos.', category: 'Salão', icon: 'ConciergeBell', requiresModule: 'dine_in', roles: ['OWNER', 'MANAGER'], action: { kind: 'path', path: '/garcom', cta: 'Acessar Garçom' }, plan: null, addonPriceCents: null },
+  { id: 'salon', label: 'Salão', description: 'Mapa de mesas, comandas, liberações e fechamento de conta.', category: 'Salão', icon: 'LayoutGrid', requiresModule: 'dine_in', roles: ['OWNER', 'MANAGER', 'CASHIER', 'WAITER'], action: { kind: 'tab', tab: 'est-salon', cta: 'Abrir Salão' }, plan: null, addonPriceCents: null },
+  { id: 'mesas-qr', label: 'Mesas e QR Code', description: 'Cadastre mesas, imprima os QR Codes e pause os pedidos por QR.', category: 'Salão', icon: 'QrCode', requiresModule: 'dine_in', roles: ['OWNER', 'MANAGER'], action: { kind: 'tab', tab: 'est-mesas-qr', cta: 'Abrir' }, plan: null, addonPriceCents: null },
+  { id: 'menu-quality', label: 'Qualidade do Cardápio', description: 'Veja o que melhorar no cardápio (fotos, descrições, preços) para vender mais.', category: 'Vendas', icon: 'Gauge', roles: ['OWNER', 'MANAGER'], action: { kind: 'tab', tab: 'est-quality', cta: 'Abrir' }, plan: null, addonPriceCents: null },
+];
+
+export function visibleToolShortcuts(modules: ReadonlySet<ModuleKey> | null | undefined, role: string | null | undefined): ToolShortcut[] {
+  return TOOL_SHORTCUTS.filter(tool => (!tool.requiresModule || isModuleEnabled(modules, tool.requiresModule)) && !!role && tool.roles.includes(role));
 }

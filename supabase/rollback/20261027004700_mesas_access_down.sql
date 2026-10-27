@@ -300,6 +300,7 @@ CREATE OR REPLACE FUNCTION public.mesas_qr_capabilities()
  SET search_path TO ''
 AS $function$ SELECT jsonb_build_object('version', 1, 'qr_pause', true, 'tab_pix', true, 'table_name_rule', true); $function$
 ;
+REVOKE EXECUTE ON FUNCTION public.mesas_qr_capabilities() FROM anon;
 
 DROP FUNCTION IF EXISTS public.ping_pending_approval(uuid);
 DROP FUNCTION IF EXISTS public.staff_request_bill(uuid);

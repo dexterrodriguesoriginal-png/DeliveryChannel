@@ -159,7 +159,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       groupTitle: 'GESTÃO',
       items: [
         ...(modulesAvailable && (activeRole === 'OWNER' || activeRole === 'MANAGER')
-          ? [{ id: 'est-modules', label: 'Módulos', icon: <SlidersHorizontal className="w-4 h-4 shrink-0" /> }]
+          ? [{ id: 'est-modules', label: 'Ferramentas', icon: <SlidersHorizontal className="w-4 h-4 shrink-0" /> }]
           : []),
         { id: 'est-team', label: 'Equipe & Permissões', icon: <UserPlus className="w-4 h-4 shrink-0" /> },
         ...(modulesAvailable && isModuleEnabled('kds')

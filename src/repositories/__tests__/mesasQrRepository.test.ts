@@ -12,8 +12,12 @@ describe('mesasQrRepository — degrada sem a migração', () => {
   it('parseCapabilities só liga o que o banco declara', () => {
     expect(parseCapabilities(null)).toEqual(NO_CAPABILITIES);
     expect(parseCapabilities({ version: 0, qr_pause: true })).toEqual(NO_CAPABILITIES);
-    expect(parseCapabilities({ version: 1, qr_pause: true, tab_pix: false })).toEqual({ available: true, qrPause: true, tabPix: false });
-    expect(parseCapabilities({ version: 1, qr_pause: 'yes', tab_pix: 1 })).toEqual({ available: true, qrPause: false, tabPix: false });
+    expect(parseCapabilities({ version: 1, qr_pause: true, tab_pix: false })).toEqual({ available: true, version: 1, qrPause: true, tabPix: false, tableAccess: false, waiterApp: false });
+    // v2: só liga acesso por Responsável/App do Garçom quando o banco declara E a versão é >= 2
+    expect(parseCapabilities({ version: 2, qr_pause: true, tab_pix: true, table_access: true, waiter_app: true })).toMatchObject({ version: 2, tableAccess: true, waiterApp: true });
+    expect(parseCapabilities({ version: 1, table_access: true, waiter_app: true })).toMatchObject({ tableAccess: false, waiterApp: false });
+    expect(parseCapabilities({ version: 2, table_access: 'yes' })).toMatchObject({ tableAccess: false, waiterApp: false });
+    expect(parseCapabilities({ version: 1, qr_pause: 'yes', tab_pix: 1 })).toEqual({ available: true, version: 1, qrPause: false, tabPix: false, tableAccess: false, waiterApp: false });
   });
   it('capabilities() nunca lança: função ausente, erro de rede ou exceção = recurso desligado', async () => {
     rpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } });
@@ -21,7 +25,7 @@ describe('mesasQrRepository — degrada sem a migração', () => {
     rpc.mockRejectedValueOnce(new Error('network'));
     expect(await mesasQrRepository.capabilities()).toEqual(NO_CAPABILITIES);
     rpc.mockResolvedValueOnce({ data: { version: 1, qr_pause: true, tab_pix: true }, error: null });
-    expect(await mesasQrRepository.capabilities()).toEqual({ available: true, qrPause: true, tabPix: true });
+    expect(await mesasQrRepository.capabilities()).toEqual({ available: true, version: 1, qrPause: true, tabPix: true, tableAccess: false, waiterApp: false });
   });
   it('pauses() devolve vazio quando a tabela ainda não existe e propaga outros erros', async () => {
     const chain = (result: unknown) => ({ select: () => ({ eq: () => Promise.resolve(result) }) });

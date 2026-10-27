@@ -1,9 +1,10 @@
 import { supabase } from '../lib/supabase';
 import { toBackendError } from '../lib/backend';
 
-/** What the connected database supports. Everything new is hidden until the migration 20261027004600 is applied. */
-export interface MesasQrCapabilities { available: boolean; qrPause: boolean; tabPix: boolean }
-export const NO_CAPABILITIES: MesasQrCapabilities = { available: false, qrPause: false, tabPix: false };
+/** What the connected database supports. Everything new is hidden until the migrations 20261027004600 (v1) and 20261027004700 (v2) are applied. */
+/** `tableAccess` (Responsável/convites/aprovação) and `waiterApp` need migration 20261027004700 (capabilities version >= 2). */
+export interface MesasQrCapabilities { available: boolean; version: number; qrPause: boolean; tabPix: boolean; tableAccess: boolean; waiterApp: boolean }
+export const NO_CAPABILITIES: MesasQrCapabilities = { available: false, version: 0, qrPause: false, tabPix: false, tableAccess: false, waiterApp: false };
 
 export const isMissingSchemaError = (error: { code?: string; message?: string } | null | undefined) =>
   !!error && (['PGRST202', 'PGRST205', '42P01', '42883'].includes(error.code || '') ||
@@ -13,7 +14,15 @@ export function parseCapabilities(data: unknown): MesasQrCapabilities {
   if (!data || typeof data !== 'object') return NO_CAPABILITIES;
   const d = data as Record<string, unknown>;
   if (Number(d.version) < 1) return NO_CAPABILITIES;
-  return { available: true, qrPause: d.qr_pause === true, tabPix: d.tab_pix === true };
+  const version = Number(d.version);
+  return {
+    available: true,
+    version,
+    qrPause: d.qr_pause === true,
+    tabPix: d.tab_pix === true,
+    tableAccess: version >= 2 && d.table_access === true,
+    waiterApp: version >= 2 && d.waiter_app === true,
+  };
 }
 
 export interface QrPauses { storeWide: boolean; tableIds: string[] }

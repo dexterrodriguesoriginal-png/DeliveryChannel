@@ -44,7 +44,7 @@ export const tenantModuleRepository = {
       supabase.from('tenants').select('business_type').eq('id', tenantId).maybeSingle(),
     ]);
     if (isMissingModuleSchema(moduleResult.error) || isMissingModuleSchema(tenantResult.error)) return legacySnapshot();
-    if (moduleResult.error) throw toBackendError(moduleResult.error, 'Falha ao carregar os módulos.');
+    if (moduleResult.error) throw toBackendError(moduleResult.error, 'Falha ao carregar as ferramentas.');
     if (tenantResult.error) throw toBackendError(tenantResult.error, 'Falha ao carregar o segmento do estabelecimento.');
     const validTypes = new Set<string>(BUSINESS_TYPES.map(type => type.key));
     const rows = moduleResult.data || [];
@@ -66,7 +66,7 @@ export const tenantModuleRepository = {
     if (!isSupabaseConfigured || !isValidUuid(tenantId)) return null;
     const { data, error } = await supabase.rpc('get_public_modules', { p_tenant_id: tenantId });
     if (isMissingModuleSchema(error)) return null;
-    if (error) throw toBackendError(error, 'Falha ao carregar os módulos públicos da loja.');
+    if (error) throw toBackendError(error, 'Falha ao carregar as ferramentas públicas da loja.');
     const validKeys = new Set<string>(MODULES.map(module => module.key));
     return new Set((Array.isArray(data) ? data : []).filter((key): key is ModuleKey =>
       typeof key === 'string' && validKeys.has(key)
@@ -74,7 +74,7 @@ export const tenantModuleRepository = {
   },
 
   async setEnabled(tenantId: string, key: ModuleKey, enabled: boolean, config: Record<string, unknown> = {}): Promise<void> {
-    requireBackend('módulos do estabelecimento');
+    requireBackend('ferramentas do estabelecimento');
     const { error } = await supabase.rpc('set_tenant_module', {
       p_tenant: tenantId,
       p_key: key,
@@ -82,15 +82,15 @@ export const tenantModuleRepository = {
       p_config: config,
     });
     if (error) {
-      if (isMissingModuleSchema(error)) throw new BackendError('MODULES_UNAVAILABLE', 'A configuração de módulos ainda não está disponível neste ambiente.');
-      throw toBackendError(error, 'Falha ao atualizar o módulo.');
+      if (isMissingModuleSchema(error)) throw new BackendError('MODULES_UNAVAILABLE', 'A configuração de ferramentas ainda não está disponível neste ambiente.');
+      throw toBackendError(error, 'Falha ao atualizar a ferramenta.');
     }
   },
 
   async updateConfig(tenantId: string, key: ModuleKey, config: Record<string, unknown>): Promise<void> {
     const snapshot = await this.getForTenant(tenantId);
     const module = snapshot.modules.find(item => item.key === key);
-    if (!module?.enabled) throw new BackendError('MODULE_DISABLED', 'Ative o módulo antes de configurar este recurso.');
+    if (!module?.enabled) throw new BackendError('MODULE_DISABLED', 'Ative a ferramenta antes de configurar este recurso.');
     await this.setEnabled(tenantId, key, true, config);
   },
 
@@ -114,13 +114,13 @@ export const tenantModuleRepository = {
   },
 
   async applyPreset(tenantId: string, type: BusinessType): Promise<void> {
-    requireBackend('predefinição de módulos');
+    requireBackend('predefinição de ferramentas');
     const { error } = await supabase.rpc('apply_business_preset', {
       p_tenant: tenantId,
       p_type: type,
     });
     if (error) {
-      if (isMissingModuleSchema(error)) throw new BackendError('MODULES_UNAVAILABLE', 'A configuração de módulos ainda não está disponível neste ambiente.');
+      if (isMissingModuleSchema(error)) throw new BackendError('MODULES_UNAVAILABLE', 'A configuração de ferramentas ainda não está disponível neste ambiente.');
       throw toBackendError(error, 'Falha ao aplicar a predefinição.');
     }
   },

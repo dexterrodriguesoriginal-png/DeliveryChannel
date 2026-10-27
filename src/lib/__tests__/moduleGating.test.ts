@@ -60,9 +60,9 @@ describe('Orders fulfillment tabs by module', () => {
 });
 
 describe('ModuleDisabledScreen', () => {
-  it('owner sees the Módulos button', () => {
+  it('owner sees the Ferramentas button', () => {
     const html = renderToStaticMarkup(React.createElement(ModuleDisabledScreen, { moduleKey: 'kds', canManageModules: true, onOpenModules: () => {} }));
-    expect(html).toContain('Módulo desligado — ative em Módulos');
+    expect(html).toContain('Ferramenta desligada — ative em Ferramentas');
     expect(html).toContain('Tela da Cozinha');
     expect(html).toContain('open-modules');
   });

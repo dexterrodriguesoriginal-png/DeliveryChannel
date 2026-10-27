@@ -9,6 +9,7 @@ import { KitchenSettingsPage } from './pages/establishment/KitchenSettingsPage';
 import { chegadaCodeFromPath } from './lib/pickup/arrival';
 import { MenuQualityPage } from './pages/establishment/MenuQualityPage';
 import { OwnerNotifications } from './components/notifications/OwnerNotifications';
+import { PanelApprovalsAlert, FOCUS_TABLE_KEY } from './components/establishment/salon/ApprovalsAlert';
 import { FOCUS_ORDER_KEY } from './lib/orders/orderAlerts';
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -59,6 +60,9 @@ import { ModuleDisabledScreen } from './components/establishment/ModuleDisabledS
 // Mobile / Apps
 import { ClientApp } from './pages/client/ClientApp';
 import { DineInClientApp } from './pages/client/DineInClientApp';
+import { WaiterApp } from './pages/waiter/WaiterApp';
+import { PendingMesaBanner } from './components/client/dinein/PendingMesaBanner';
+import { isWaiterRoute } from './lib/pwa/waiterManifest';
 import { DriverApp } from './pages/driver/DriverApp';
 import { DriverStatusScreen } from './pages/driver/DriverStatusScreen';
 import { DriverInvitePage } from './pages/driver/DriverInvitePage';
@@ -228,6 +232,9 @@ function AppContent() {
     return <DineInClientApp token={decodeURIComponent(tableToken)} />;
   }
 
+  // App do Garçom (PWA próprio): /garcom — login com a conta da equipe, Salão, liberações, chamados e pedidos.
+  if (isWaiterRoute(pathname)) return <WaiterApp />;
+
   // QR fixo da mesa: /app/<slug>?mesa=<token>. O token opaco é a única autoridade; o slug é só estético.
   if (pathname.startsWith('/app/')) {
     const mesaToken = readMesaParam(window.location.search);
@@ -237,7 +244,7 @@ function AppContent() {
   // 1. Catálogo Público PWA da Adega/Loja: /app/:slug
   if (pathname.startsWith('/app/')) {
     const slug = pathname.replace('/app/', '').split('/')[0];
-    return <ClientApp forcedSlug={slug} />;
+    return <><ClientApp forcedSlug={slug} /><PendingMesaBanner slug={slug} /></>;
   }
 
   // 19/10: QR de chegada lido pela câmera comum: /chegada/<código>
@@ -695,7 +702,7 @@ function AppContent() {
       case 'est-settings':
         return <SettingsPage />;
       case 'est-modules':
-        return <ModulesPage />;
+        return <ModulesPage onNavigate={setActiveTab} />;
       case 'est-kitchen':
         if (!isModuleEnabled('kds')) {
           const fallback = getDefaultAllowedTab(activeRole);
@@ -736,6 +743,13 @@ function AppContent() {
           window.dispatchEvent(new CustomEvent('dc:focus-order', { detail: n.ref_id }));
           if (n.kind === 'ORDER_MESSAGE') window.dispatchEvent(new CustomEvent('dc:open-chat', { detail: n.ref_id }));
         }
+      }} />
+
+      {/* Mesas: alguém leu o QR e espera liberação (som + Aprovar/Recusar em um clique) */}
+      <PanelApprovalsAlert onOpenTable={tableId => {
+        try { sessionStorage.setItem(FOCUS_TABLE_KEY, tableId); } catch { /* ignore */ }
+        setActiveTab('est-salon');
+        window.dispatchEvent(new CustomEvent('dc:focus-table', { detail: tableId }));
       }} />
 
       {/* AppShell Global: Header Fixo + Menu Fixo à Esquerda + Conteúdo Flexível (COMANDO 131: 100% da altura da janela) */}

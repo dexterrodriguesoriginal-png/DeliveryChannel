@@ -8,6 +8,10 @@ import {
   canDisableModule,
   isModuleEnabled,
   presetModuleKeys,
+  TOOL_CATEGORIES,
+  TOOL_SHORTCUTS,
+  toolPlanBadge,
+  visibleToolShortcuts,
 } from '../modules';
 
 const expectedPresets: Record<string, Array<[ModuleKey, Record<string, unknown>]>> = {
@@ -58,5 +62,32 @@ describe('business module presets', () => {
       if (original) MODULE_DISABLE_CHECKS.dine_in = original;
       else delete MODULE_DISABLE_CHECKS.dine_in;
     }
+  });
+});
+
+describe('Ferramentas: categorias, selo de plano reservado e atalhos', () => {
+  it('toda ferramenta tem categoria e ícone; plano e preço seguem nulos (nada é cobrado)', () => {
+    for (const module of MODULES) {
+      expect(TOOL_CATEGORIES).toContain(module.category);
+      expect(module.icon).toBeTruthy();
+      expect(module.plan).toBeNull();
+      expect(module.addonPriceCents).toBeNull();
+      expect(toolPlanBadge(module)).toBeNull();
+    }
+  });
+  it('selo só aparece quando houver regra de plano ou preço', () => {
+    expect(toolPlanBadge({ plan: 'pro', addonPriceCents: null })).toBe('Incluído no plano');
+    expect(toolPlanBadge({ plan: null, addonPriceCents: 1990 })).toBe('Adicional');
+    expect(toolPlanBadge({ plan: 'pro', addonPriceCents: 1990 })).toBe('Adicional');
+    expect(toolPlanBadge({ plan: null, addonPriceCents: 0 })).toBeNull();
+  });
+  it('Garçom, Salão, Mesas e QR Code e Qualidade do Cardápio são cards; Mesa/Comanda liga os de salão', () => {
+    expect(TOOL_SHORTCUTS.map(t => t.id)).toEqual(['garcom', 'salon', 'mesas-qr', 'menu-quality']);
+    const on = new Set<ModuleKey>(['dine_in']);
+    expect(visibleToolShortcuts(on, 'OWNER').map(t => t.id)).toEqual(['garcom', 'salon', 'mesas-qr', 'menu-quality']);
+    expect(visibleToolShortcuts(new Set<ModuleKey>(), 'OWNER').map(t => t.id)).toEqual(['menu-quality']);
+    expect(visibleToolShortcuts(on, 'WAITER').map(t => t.id)).toEqual(['salon']);
+    expect(visibleToolShortcuts(on, null)).toEqual([]);
+    expect(TOOL_SHORTCUTS.find(t => t.id === 'garcom')?.action).toEqual({ kind: 'path', path: '/garcom', cta: 'Acessar Garçom' });
   });
 });

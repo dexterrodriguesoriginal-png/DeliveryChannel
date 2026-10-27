@@ -37,7 +37,8 @@ export const TableCard: React.FC<TableCardProps> = React.memo(({ id, label, area
     <button
       type="button"
       onClick={() => onOpen(id)}
-      className={`salon-card salon-card--${info.kind}${info.hasActiveCall ? ' salon-card--CALL' : ''}`}
+      className={`salon-card salon-card--${info.kind}${info.hasActiveCall ? ' salon-card--CALL' : ''}${info.pendingRelease ? ' salon-card--PENDING' : ''}`}
+      data-pending={info.pendingRelease ? 'true' : undefined}
       style={{ ['--i' as string]: Math.min(index, 30) } as React.CSSProperties}
       data-testid={`salon-table-${id}`}
       data-status={info.kind}
@@ -48,8 +49,9 @@ export const TableCard: React.FC<TableCardProps> = React.memo(({ id, label, area
           {info.hasActiveCall ? <BellRing className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
         </span>
       )}
-      <div className="flex items-start justify-between gap-2 pr-9">
+      <div className="flex flex-wrap items-start justify-between gap-1.5 pr-9">
         <span className="salon-chip"><i className="salon-dot" />{info.kind === 'LONG_STAY' ? 'Muito tempo' : info.label}</span>
+        {info.pendingRelease && <span className="salon-pending" data-testid={`salon-pending-${id}`}>Aguardando liberação</span>}
       </div>
       <div className="min-w-0">
         <div className="salon-num" aria-hidden="true">{tableDisplayNumber(label)}</div>

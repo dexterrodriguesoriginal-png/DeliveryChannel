@@ -8,7 +8,7 @@ describe('waiter phone access', () => {
     expect(waiterEntryUrl('https://shop.example/')).toBe('https://shop.example/garcom');
     const html = renderToStaticMarkup(<WaiterPhonePairingCard />);
     expect(html).toContain('Acesso do garçom pelo celular');
-    expect(html).toContain('painel abre direto no Salão');
+    expect(html).toContain('abre o Aplicativo do Garçom');
     expect(html).toContain('Conectar celular');
   });
 });

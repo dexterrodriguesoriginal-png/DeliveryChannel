@@ -213,9 +213,12 @@ export const SalonSetupPanel: React.FC<Props> = ({
           </label>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          <label className="flex items-center gap-2 text-xs text-gray-700">
-            <input type="checkbox" checked={config.release_required} disabled={!canConfigure || savingConfig} onChange={e => setConfig({ ...config, release_required: e.target.checked })} />
-            Exigir liberação do atendimento
+          <label className="flex items-start gap-2 text-xs text-gray-700">
+            <input type="checkbox" className="mt-0.5" checked={config.release_required} disabled={!canConfigure || savingConfig} onChange={e => setConfig({ ...config, release_required: e.target.checked })} />
+            <span>
+              <b>Exigir aprovação do garçom</b>
+              <span className="block text-gray-500">Ligado (recomendado para bares e baladas): ninguém pede pela mesa até um atendente aprovar em Salão ou no App do Garçom. Desligado: o cliente pede assim que escanear o QR.</span>
+            </span>
           </label>
           <label className="flex items-center gap-2 text-xs text-gray-700">
             <input type="checkbox" checked={config.salon_open} disabled={!canConfigure || savingConfig} onChange={e => setConfig({ ...config, salon_open: e.target.checked })} />
@@ -247,7 +250,7 @@ export const SalonSetupPanel: React.FC<Props> = ({
             Ativar taxa de serviço opcional
           </label>
           {!canManageServiceFeeModule && (
-            <p className="mt-1 text-[11px] text-gray-500">A ativação ou desativação de módulos continua restrita ao proprietário.</p>
+            <p className="mt-1 text-[11px] text-gray-500">A ativação ou desativação de ferramentas continua restrita ao proprietário.</p>
           )}
           {feeEnabled && (
             <label className="mt-2 block max-w-xs text-xs font-medium text-gray-700">

@@ -46,6 +46,9 @@ s = s.replace(b, b.replace("IF SQLERRM LIKE 'RATE_LIMITED%' THEN", "IF SQLERRM L
 c = "SELECT t.login('e0000000-0000-0000-0000-000000000003');\nSELECT set_config('t.s3'"
 assert c in s
 s = s.replace(c, "RESET ROLE;\nUPDATE public.dining_tabs SET status = 'CANCELLED', closed_at = now() WHERE table_id = (SELECT id FROM public.dining_tables WHERE qr_token = 'mesas-a3-token-0003') AND status = 'OPEN';\nSET ROLE authenticated;\n" + c)
+g = "AND NOT has_function_privilege('anon', 'public.mesas_qr_capabilities()', 'EXECUTE'), 'capabilities: só autenticado');"
+assert g in s
+s = s.replace(g, "AND has_function_privilege('anon', 'public.mesas_qr_capabilities()', 'EXECUTE'), 'capabilities: legíveis antes do login (v2)');")
 open('/tmp/mesas_qr_post4700.sql', 'w').write(s)
 PY
 suite acc_post /tmp/mesas_qr_post4700.sql || STATUS=1

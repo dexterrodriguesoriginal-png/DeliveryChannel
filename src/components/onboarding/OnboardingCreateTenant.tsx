@@ -57,7 +57,7 @@ function presetSummary(type: BusinessType): string {
   const labels = MODULES
     .filter(module => Object.hasOwn(BUSINESS_PRESETS[type], module.key))
     .map(module => module.label);
-  if (labels.length < 2) return labels[0] || 'nenhum módulo';
+  if (labels.length < 2) return labels[0] || 'nenhuma ferramenta';
   if (labels.length === 2) return `${labels[0]} e ${labels[1]}`;
   return `${labels.slice(0, -1).join(', ')} e ${labels[labels.length - 1]}`;
 }
@@ -469,7 +469,7 @@ export const OnboardingCreateTenant: React.FC<OnboardingCreateTenantProps> = ({
                   Que tipo de negócio você tem?
                 </h2>
                 <p className="text-xs text-gray-500 mt-1">
-                  Vamos sugerir os módulos mais usados no seu segmento.
+                  Vamos sugerir as ferramentas mais usadas no seu segmento.
                 </p>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

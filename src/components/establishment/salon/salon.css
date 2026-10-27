@@ -100,3 +100,9 @@
   .salon-card, .salon-row, .salon-filter, .salon-bar > i { transition:none !important; }
   .salon-card:hover, .salon-row:hover, .salon-filter:hover { transform:none; }
 }
+
+/* Aguardando liberação: alguém leu o QR e espera o garçom. Âmbar pulsante, impossível de ignorar. */
+.salon-card--PENDING { --sc-border:#f59e0b; --sc-accent:#b45309; border-width:2.5px; animation:salon-rise .35s cubic-bezier(.2,.8,.2,1) both, salon-amber 1.6s ease-out infinite; animation-delay:calc(var(--i,0) * 14ms), 0s; }
+.salon-pending { display:inline-flex; align-items:center; padding:3px 9px; border-radius:999px; background:#d97706; color:#fff; font-size:11px; font-weight:900; letter-spacing:.01em; line-height:1.4; box-shadow:0 4px 10px -3px rgba(217,119,6,.7); }
+@keyframes salon-amber { 0% { box-shadow:0 0 0 0 rgba(245,158,11,.6), 0 8px 20px -12px var(--sc-shadow); } 70% { box-shadow:0 0 0 14px rgba(245,158,11,0), 0 8px 20px -12px var(--sc-shadow); } 100% { box-shadow:0 0 0 0 rgba(245,158,11,0), 0 8px 20px -12px var(--sc-shadow); } }
+@media (prefers-reduced-motion: reduce) { .salon-card--PENDING { animation:none; } }

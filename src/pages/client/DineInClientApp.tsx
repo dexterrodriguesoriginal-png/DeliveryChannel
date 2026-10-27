@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CircleUserRound, Loader2, Minus, Plus, ReceiptText, Utensils, UserRound, Users, X } from 'lucide-react';
+import { AlertCircle, CircleUserRound, Crown, Loader2, Minus, Plus, ReceiptText, Utensils, UserRound, Users, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
@@ -9,7 +9,15 @@ import { billSplitAmounts, BillSplitMode, DineInPaymentMethod, parseTenderCents,
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
 import { isModuleEnabled } from '../../lib/modules';
-import { friendlyTableError } from '../../lib/salon/tableQr';
+import { friendlyTableError, tableAppUrl } from '../../lib/salon/tableQr';
+import { mesasQrRepository } from '../../repositories/mesasQrRepository';
+import { tableAccessRepository } from '../../repositories/tableAccessRepository';
+import {
+  clearPendingMesa, endedMessage, friendlyAccessError, inviteUrl, readInviteParam, rememberPendingMesa,
+  PENDING_APPROVAL_TEXT, PENDING_APPROVAL_TITLE, PENDING_TABLE_TEXT,
+  type TabInvite, type TabMember,
+} from '../../lib/customer/tableAccess';
+import { IdentityGate, InvitePanel, MembersPanel, TableInUseScreen } from '../../components/client/dinein/TableAccessPanels';
 import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import {
@@ -22,8 +30,11 @@ import {
 } from '../../lib/customer/dineInCart';
 
 type TableResolution = { available: boolean; tenantSlug?: string; storeName?: string; tableLabel?: string };
-type TabRound = { orderId: string; orderNumber: number; roundNo: number; status: string; customerName: string; subtotal: number; createdAt: string; items: Array<{ name: string; quantity: number; unitPrice: number; totalPrice: number }> };
-type MyTab = { tabId: string; status: 'OPEN' | 'BILL_REQUESTED' | 'CLOSED' | 'CANCELLED'; mode: 'TABLE' | 'INDIVIDUAL'; tableLabel: string; serviceFeePercent: number; serviceFeeRemoved: boolean; rounds: TabRound[]; subtotal: number };
+type TabRound = { orderId: string; orderNumber: number; roundNo: number; status: string; customerName: string; mine?: boolean; subtotal: number; createdAt: string; items: Array<{ name: string; quantity: number; unitPrice: number; totalPrice: number }> };
+type MyTab = { tabId: string; status: 'OPEN' | 'BILL_REQUESTED' | 'CLOSED' | 'CANCELLED'; mode: 'TABLE' | 'INDIVIDUAL'; tableLabel: string; serviceFeePercent: number; serviceFeeRemoved: boolean; rounds: TabRound[]; subtotal: number;
+  /** Only with the table-access model (capabilities v2). */
+  me?: { sessionId: string; role: 'RESPONSIBLE' | 'GUEST'; approved: boolean; displayName?: string; ended?: boolean; endedReason?: string | null };
+  responsibleName?: string | null; members?: TabMember[]; ended?: boolean; endedReason?: string | null };
 
 // LGPD: the name is optional and only a first name is ever sent; without one the tab shows "Cliente".
 export const guestDisplayName = (value: string): string => value.trim().split(/\s+/)[0]?.slice(0, 40) || 'Cliente';
@@ -110,10 +121,25 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [notice, setNotice] = useState('');
   const [tabClosed, setTabClosed] = useState(false);
   const [qrPaused, setQrPaused] = useState(false);
+  // Modelo de acesso (Responsável / convidado): só liga quando o banco declara capabilities v2.
+  const [access, setAccess] = useState(false);
+  const [entered, setEntered] = useState(false);
+  const [entryDone, setEntryDone] = useState(false);
+  const [inUse, setInUse] = useState(false);
+  const [entryApproved, setEntryApproved] = useState<boolean | null>(null);
+  const [entryRole, setEntryRole] = useState<'RESPONSIBLE' | 'GUEST' | null>(null);
+  const [endedReason, setEndedReason] = useState<string | null>(null);
+  const [joinBusy, setJoinBusy] = useState(false);
+  const [joinMessage, setJoinMessage] = useState('');
+  const [invite, setInvite] = useState<TabInvite | null>(null);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [membersBusy, setMembersBusy] = useState(false);
+  const inviteParamRef = useRef<string | null>(null);
   const deviceIdRef = useRef('');
   const submitKeyRef = useRef(uuid());
   const submitLockRef = useRef(false);
   const openedUserRef = useRef('');
+  const pingedRef = useRef('');
 
   const subtotalCents = Math.round((tab?.subtotal || 0) * 100);
   const serviceFeeCents = tab && !tab.serviceFeeRemoved
@@ -121,7 +147,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     : 0;
   const accountTotalCents = subtotalCents + serviceFeeCents;
   const cashTenderStatus = tenderStatus(accountTotalCents, parseTenderCents(tendered));
-  const orderingDisabled = qrPaused || pendingApproval || tabClosed || tab?.status === 'BILL_REQUESTED';
+  const needsIdentity = access && (!supabaseUser || supabaseUser.is_anonymous === true);
+  const myRole = tab?.me?.role || entryRole;
+  const approvedNow = tab?.me ? tab.me.approved : entryApproved;
+  const awaitingRelease = access ? approvedNow === false : pendingApproval;
+  const orderingDisabled = qrPaused || (!access && pendingApproval) || tabClosed || tab?.status === 'BILL_REQUESTED';
   const split = useMemo(() => {
     const customCents = parseTenderCents(customShare) || 0;
     try { return billSplitAmounts(accountTotalCents, splitMode, Number(splitParts), customCents); } catch { return []; }
@@ -150,6 +180,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         return;
       }
       setResolution(result);
+      // Qual modelo de acesso o banco entende? Falha = modelo antigo (nunca bloqueia o salão).
+      const caps = await mesasQrRepository.capabilities();
+      if (!alive) return;
+      setAccess(caps.tableAccess);
+      inviteParamRef.current = caps.tableAccess ? readInviteParam(window.location.search) : null;
       // The store can pause QR ordering. Older databases do not have this function: then it is simply "not paused".
       void Promise.resolve(supabase.rpc('get_table_qr_status', { p_qr_token: token }))
         .then(({ data: status, error: statusError }) => { if (alive && !statusError && (status as { paused?: boolean } | null)?.paused === true) setQrPaused(true); })
@@ -186,12 +221,61 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     } catch { /* storage may be unavailable */ }
   }, [token]);
 
+  const displayNameForEntry = useCallback(() => {
+    const meta = (supabaseUser?.user_metadata || {}) as { name?: unknown; full_name?: unknown };
+    const fromAccount = typeof meta.name === 'string' ? meta.name : typeof meta.full_name === 'string' ? meta.full_name : '';
+    return guestDisplayName(firstName || fromAccount);
+  }, [firstName, supabaseUser]);
+
+  const applyEntry = useCallback((entry: { state: string; sessionId?: string; approved?: boolean }) => {
+    if (entry.state === 'IN_USE' || !entry.sessionId) {
+      setInUse(true);
+      return;
+    }
+    setInUse(false);
+    setEntryRole(entry.state === 'RESPONSIBLE' ? 'RESPONSIBLE' : 'GUEST');
+    setEntryApproved(entry.approved === true);
+    setEndedReason(null);
+    setSessionId(entry.sessionId);
+    setEntered(true);
+    clearPendingMesa(typeof localStorage !== 'undefined' ? localStorage : null);
+    try { sessionStorage.setItem(`${SESSION_KEY_PREFIX}${token}`, entry.sessionId); } catch { /* best effort */ }
+    // Tira o código de convite do endereço: ele já foi usado.
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('convite')) { url.searchParams.delete('convite'); window.history.replaceState(null, '', url.pathname + url.search + url.hash); }
+    } catch { /* ignore */ }
+  }, [token]);
+
   const openOrJoin = useCallback(async () => {
     if (!supabaseUser || !resolution?.available || !deviceIdRef.current) return;
+    if (access && supabaseUser.is_anonymous) return;
     if (openedUserRef.current === supabaseUser.id) return;
     openedUserRef.current = supabaseUser.id;
     setBusy(true);
     setNotice('');
+    if (access) {
+      try {
+        const entry = await tableAccessRepository.enterTable(token, displayNameForEntry(), deviceIdRef.current);
+        applyEntry(entry);
+        // Veio por link/QR de convite: tenta o código já.
+        if (entry.state === 'IN_USE' && inviteParamRef.current) {
+          const code = inviteParamRef.current; inviteParamRef.current = null;
+          const joined = await tableAccessRepository.joinWithCode(token, code, displayNameForEntry(), deviceIdRef.current);
+          if (joined.entry) applyEntry(joined.entry);
+          else if (joined.invalid) setJoinMessage('Código inválido ou expirado. Peça um novo convite a quem abriu a mesa.');
+        }
+      } catch (openError) {
+        openedUserRef.current = '';
+        const message = errorText(openError);
+        if (/QR_PAUSED/i.test(message)) setQrPaused(true);
+        setNotice(friendlyAccessError(message));
+      } finally {
+        setEntryDone(true);
+        setBusy(false);
+      }
+      return;
+    }
     const { data, error: openError } = await supabase.rpc('open_or_join_tab', {
       p_qr_token: token,
       p_display_name: guestDisplayName(firstName),
@@ -209,11 +293,30 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     try { sessionStorage.setItem(`${SESSION_KEY_PREFIX}${token}`, id); } catch { /* best effort */ }
     setNotice('');
     setBusy(false);
-  }, [firstName, resolution?.available, supabaseUser, token]);
+  }, [access, applyEntry, displayNameForEntry, firstName, resolution?.available, supabaseUser, token]);
 
   useEffect(() => {
-    if (supabaseUser && resolution?.available && !qrPaused) void openOrJoin();
-  }, [supabaseUser, resolution?.available, qrPaused, openOrJoin]);
+    if (supabaseUser && resolution?.available && (access || !qrPaused)) void openOrJoin();
+  }, [supabaseUser, resolution?.available, qrPaused, access, openOrJoin]);
+
+  const submitInviteCode = useCallback(async (code: string) => {
+    if (!supabaseUser || !deviceIdRef.current) return;
+    setJoinBusy(true);
+    setJoinMessage('');
+    try {
+      const result = await tableAccessRepository.joinWithCode(token, code, displayNameForEntry(), deviceIdRef.current);
+      if (result.entry) applyEntry(result.entry);
+      else if (result.free) { openedUserRef.current = ''; setInUse(false); void openOrJoin(); }
+      else setJoinMessage('Código inválido ou expirado. Confira com quem abriu a mesa ou peça um novo convite.');
+    } catch (joinError) {
+      setJoinMessage(friendlyAccessError(errorText(joinError)));
+    } finally { setJoinBusy(false); }
+  }, [applyEntry, displayNameForEntry, openOrJoin, supabaseUser, token]);
+
+  // Cadastro novo: lembra a mesa para voltar a ela depois do e-mail de confirmação.
+  useEffect(() => {
+    if (needsIdentity) rememberPendingMesa(typeof localStorage !== 'undefined' ? localStorage : null, token);
+  }, [needsIdentity, token]);
 
   const loadAccount = useCallback(async (silent = false) => {
     if (!sessionId) return;
@@ -224,20 +327,42 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       if (/TAB_CLOSED|comanda encerrada/i.test(message)) {
         setTabClosed(true);
         setTab(current => current ? { ...current, status: 'CLOSED' } : current);
+      } else if (access && /TAB_NOT_FOUND/i.test(message)) {
+        // Sessão antiga/expirada: o servidor decide de novo (a conta do cliente restaura a mesa).
+        setSessionId(''); setEntered(false); setTab(null); openedUserRef.current = '';
+        try { sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${token}`); } catch { /* ignore */ }
       } else if (!silent) setNotice(message || 'Não foi possível atualizar a conta.');
     } else if (data) {
-      setTab(data as MyTab);
-      if ((data as MyTab).status === 'CLOSED' || (data as MyTab).status === 'CANCELLED') setTabClosed(true);
+      const next = data as MyTab;
+      if (next.ended && next.endedReason !== 'TAB_CLOSED') {
+        // Removido / recusado / reiniciado pela equipe: explica e permite entrar de novo.
+        setEndedReason(next.endedReason || 'ENDED');
+        setTab(null);
+        setSessionId('');
+        setEntered(false);
+        try { sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${token}`); } catch { /* ignore */ }
+      } else {
+        setTab(next);
+        if (next.me) { setEntryRole(next.me.role); setEntryApproved(next.me.approved); }
+        if (next.status === 'CLOSED' || next.status === 'CANCELLED') setTabClosed(true);
+      }
     }
     if (!silent) setBusy(false);
-  }, [sessionId]);
+  }, [access, sessionId, token]);
 
   useEffect(() => {
     if (!sessionId) return;
     void loadAccount(true);
-    const interval = window.setInterval(() => void loadAccount(true), 15000);
+    // Enquanto a mesa aguarda liberação, confere com mais frequência para liberar a tela assim que o garçom aprovar.
+    const interval = window.setInterval(() => void loadAccount(true), access && awaitingRelease ? 4000 : 15000);
     return () => window.clearInterval(interval);
-  }, [sessionId, loadAccount]);
+  }, [sessionId, loadAccount, access, awaitingRelease]);
+
+  useEffect(() => {
+    if (!access || !sessionId || approvedNow !== false || pingedRef.current === sessionId) return;
+    pingedRef.current = sessionId;
+    void tableAccessRepository.pingPending(sessionId);
+  }, [access, sessionId, approvedNow]);
 
   const submitRound = useCallback(async () => {
     if (!sessionId || cart.length === 0 || submitLockRef.current || tabClosed) return;
@@ -257,7 +382,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       const message = errorText(submitError);
       if (/SESSION_NOT_APPROVED/i.test(message)) {
         setPendingApproval(true);
-        setNotice('Aguardando o garçom liberar sua mesa. Tentaremos enviar novamente em 5 segundos.');
+        setNotice(`${PENDING_APPROVAL_TITLE}. ${PENDING_APPROVAL_TEXT}`);
+        if (access) { setEntryApproved(false); void tableAccessRepository.pingPending(sessionId); }
       } else if (/TAB_CLOSED/i.test(message)) {
         setTabClosed(true);
         setNotice('Conta encerrada. Para pedir de novo, chame o garçom.');
@@ -269,12 +395,13 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     }
     if (data) {
       setPendingApproval(false);
+      if (access) setEntryApproved(true);
       setCart([]);
       submitKeyRef.current = uuid();
-      setNotice('Pedido enviado para a cozinha!');
+      setNotice('Pedido feito! A cozinha já recebeu.');
       await loadAccount(true);
     }
-  }, [cart, loadAccount, sessionId, tabClosed]);
+  }, [access, cart, loadAccount, sessionId, tabClosed]);
 
   useEffect(() => {
     if (!pendingApproval || tabClosed) return;
@@ -386,6 +513,41 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       : `Garçom chamado para fechar a conta. Preferência: ${paymentChoices.find(choice => choice.value === paymentMethod)?.label}.`);
   };
 
+  // Convite (só o Responsável): código curto que expira, revogável.
+  const createInvite = async () => {
+    if (!sessionId) return;
+    setInviteBusy(true);
+    try { setInvite(await tableAccessRepository.createInvite(sessionId, 15)); setNotice(''); }
+    catch (inviteError) { setNotice(friendlyAccessError(errorText(inviteError))); }
+    finally { setInviteBusy(false); }
+  };
+  const revokeInvite = async () => {
+    if (!sessionId) return;
+    setInviteBusy(true);
+    try { await tableAccessRepository.revokeInvite(sessionId); setInvite(null); }
+    catch (inviteError) { setNotice(friendlyAccessError(errorText(inviteError))); }
+    finally { setInviteBusy(false); }
+  };
+  const removeMember = async (member: TabMember) => {
+    setMembersBusy(true);
+    try { await tableAccessRepository.removeGuest(sessionId, member.sessionId); setNotice(`${member.displayName} foi removido da mesa.`); await loadAccount(true); }
+    catch (memberError) { setNotice(friendlyAccessError(errorText(memberError))); }
+    finally { setMembersBusy(false); }
+  };
+  const transferTo = async (member: TabMember) => {
+    setMembersBusy(true);
+    try { await tableAccessRepository.transferResponsibility(sessionId, member.sessionId); setNotice(`${member.displayName} agora é o responsável pela mesa.`); setInvite(null); await loadAccount(true); }
+    catch (memberError) { setNotice(friendlyAccessError(errorText(memberError))); }
+    finally { setMembersBusy(false); }
+  };
+
+  useEffect(() => {
+    if (!access || !accountOpen || myRole !== 'RESPONSIBLE' || !sessionId) return;
+    let alive = true;
+    void tableAccessRepository.getInvite(sessionId).then(current => { if (alive) setInvite(current); }).catch(() => { /* optional */ });
+    return () => { alive = false; };
+  }, [access, accountOpen, myRole, sessionId]);
+
   const unavailable = !loading && (!resolution?.available || Boolean(error));
   const totalCartCents = cart.reduce((sum, line) => sum + dineInCartLineUnitPriceCents(line) * line.quantity, 0);
   const totalCart = totalCartCents / 100;
@@ -395,8 +557,55 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     return <main className="min-h-screen grid place-items-center bg-slate-50 p-6"><section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl"><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><h1 className="text-xl font-extrabold">Salão indisponível no momento</h1><p className="mt-2 text-sm text-slate-600">{error || 'Confira o QR Code ou chame um atendente.'}</p></section></main>;
   }
 
-  if (qrPaused && !sessionId) {
+  if (qrPaused && !sessionId && (!access || needsIdentity || entryDone)) {
     return <main className="min-h-screen grid place-items-center bg-slate-50 p-6" data-testid="dine-in-paused"><section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl"><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><h1 className="text-xl font-black">Pedidos pelo QR pausados</h1><p className="mt-2 text-sm text-slate-600">{storeName || 'O estabelecimento'} pausou os pedidos pelo celular por enquanto. Chame um atendente para pedir.</p></section></main>;
+  }
+
+  const tableName = mesaTitle(resolution?.tableLabel);
+  if (access && endedReason && !sessionId) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-8" data-testid="dine-in-ended">
+        <section className="mx-auto max-w-md rounded-3xl bg-white p-6 text-center shadow-xl">
+          <AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" />
+          <h1 className="text-xl font-black">{tableName}</h1>
+          <p className="mt-2 text-sm text-slate-600">{endedMessage(endedReason)}</p>
+          <button type="button" onClick={() => { setEndedReason(null); setInUse(false); setEntryDone(false); openedUserRef.current = ''; void openOrJoin(); }} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">Entrar na mesa de novo</button>
+        </section>
+      </main>
+    );
+  }
+  if (needsIdentity) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-8">
+        <IdentityGate
+          storeName={storeName || resolution?.storeName || ''}
+          tableLabel={tableName}
+          initialName={firstName}
+          intro="A primeira pessoa a abrir a mesa fica como responsável. Pedimos seus dados para a loja saber quem está na mesa."
+          onGoogle={() => void loginWithGoogle(false)}
+          onSignedUp={info => { if (info.name) setFirstName(guestDisplayName(info.name)); }}
+        />
+        {notice && <p role="alert" className="mx-auto mt-4 max-w-md rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
+      </main>
+    );
+  }
+  if (access && inUse && !sessionId) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-8">
+        <TableInUseScreen storeName={storeName || resolution?.storeName || ''} tableLabel={tableName} busy={joinBusy} message={joinMessage} onSubmitCode={code => void submitInviteCode(code)} />
+      </main>
+    );
+  }
+  if (access && !sessionId) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-50 p-6" data-testid="dine-in-entering">
+        <section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl">
+          {notice
+            ? <><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><p role="alert" className="text-sm text-slate-700">{notice}</p><button type="button" onClick={() => { openedUserRef.current = ''; void openOrJoin(); }} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">Tentar de novo</button></>
+            : <><Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-emerald-700" /><p className="text-sm font-semibold text-slate-700">Abrindo a {tableName}…</p></>}
+        </section>
+      </main>
+    );
   }
 
   if (!supabaseUser || !sessionId) {
@@ -432,10 +641,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     <main className="min-h-screen bg-slate-50 pb-28">
       <header className="sticky top-0 z-20 border-b bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between">
-          <div><p className="font-extrabold">Você está na {mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {storeName}</p></div>
+          <div><p className="font-extrabold">Você está na {mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {storeName}</p>{access && myRole && <p data-testid="role-chip" className="mt-0.5 flex items-center gap-1 text-xs font-bold text-slate-500">{myRole === 'RESPONSIBLE' ? <><Crown className="h-3.5 w-3.5 text-amber-500" />Você é o responsável pela mesa</> : <>Convidado{tab?.responsibleName ? ` de ${tab.responsibleName}` : ''}</>}</p>}</div>
           <button type="button" onClick={() => { setAccountOpen(true); void loadAccount(); }} aria-label="Ver minha conta" className="rounded-full bg-slate-100 p-2"><CircleUserRound className="h-6 w-6" /></button>
         </div>
       </header>
+      {access && awaitingRelease && !qrPaused && <div role="status" data-testid="awaiting-release" className="mx-auto mt-3 max-w-2xl rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-extrabold">{PENDING_APPROVAL_TITLE}</p><p>{cart.length ? PENDING_APPROVAL_TEXT : PENDING_TABLE_TEXT}</p></div>}
       {qrPaused && <div role="status" className="mx-auto mt-3 max-w-2xl rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Pedidos pelo QR pausados no momento. Chame um atendente para pedir.</div>}
 
       <section className="mx-auto max-w-2xl px-4 py-5">
@@ -470,8 +680,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             </div>;
           })}
           <div className="flex justify-between border-t pt-3 font-bold"><span>Subtotal estimado</span><span>{formatBRL(totalCart)}</span></div>
-          <button type="button" onClick={() => void submitRound()} disabled={busy || orderingDisabled} className="mt-3 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Enviar para a cozinha'}</button>
-          {pendingApproval && <p className="mt-2 text-xs font-semibold text-amber-800">Aguardando aprovação do garçom. A rodada será enviada automaticamente quando a mesa for liberada.</p>}
+          <button type="button" onClick={() => void submitRound()} disabled={busy || orderingDisabled} className="mt-3 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Fazer pedido'}</button>
+          {pendingApproval && <p className="mt-2 text-xs font-semibold text-amber-800">{PENDING_APPROVAL_TITLE}. {PENDING_APPROVAL_TEXT}</p>}
           {tab?.status === 'BILL_REQUESTED' && <p className="mt-2 text-xs font-semibold text-amber-800">A conta já foi solicitada. Chame o garçom se precisar reabrir a comanda.</p>}
         </section>}
         {optionsProduct && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOptionsProduct(null); }}>
@@ -514,9 +724,13 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         <section role="dialog" aria-modal="true" aria-label="Minha conta" className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl">
           <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-black">Minha conta</h2><button type="button" onClick={() => setAccountOpen(false)} aria-label="Fechar"><X /></button></div>
           <p className="text-sm text-slate-600">{mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {tab?.status === 'BILL_REQUESTED' ? 'Conta solicitada' : tab?.status === 'CLOSED' ? 'Encerrada' : 'Aberta'}</p>
+          {access && myRole === 'RESPONSIBLE' && !tabClosed && tab?.status !== 'CLOSED' && <div className="mt-4 space-y-3">
+            <InvitePanel invite={invite} busy={inviteBusy} link={invite && resolution?.tenantSlug ? inviteUrl(window.location.origin, resolution.tenantSlug, token, invite.code) : ''} onCreate={() => void createInvite()} onRevoke={() => void revokeInvite()} />
+            <MembersPanel members={tab?.members || []} mySessionId={sessionId} busy={membersBusy} onRemove={member => void removeMember(member)} onTransfer={member => void transferTo(member)} />
+          </div>}
           <div className="my-4 space-y-3">{tab?.rounds?.length ? tab.rounds.map(round => <article key={round.orderId} className="rounded-xl bg-slate-50 p-3">
             <div className="mb-2 flex justify-between font-bold"><span>Rodada {round.roundNo}</span><span>{formatBRL(round.subtotal)}</span></div>
-            <p className="mb-2 text-xs text-slate-500">{round.customerName} · {round.status === 'CONFIRMED' ? 'Recebido' : round.status === 'PREPARING' ? 'Preparando' : round.status === 'READY' ? 'Pronto' : round.status === 'DELIVERED' ? 'Entregue' : round.status}</p>
+            <p className="mb-2 text-xs text-slate-500">{access ? `Pedido de ${round.mine ? 'você' : round.customerName}` : round.customerName} · {round.status === 'CONFIRMED' ? 'Recebido' : round.status === 'PREPARING' ? 'Preparando' : round.status === 'READY' ? 'Pronto' : round.status === 'DELIVERED' ? 'Entregue' : round.status}</p>
             {round.items.map((item, index) => <p key={`${round.orderId}-${index}`} className="text-sm text-slate-600">{item.quantity}× {item.name}</p>)}
           </article>) : <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Ainda não há pedidos nesta conta.</p>}</div>
           <div className="space-y-2 border-t pt-3 text-sm">
@@ -524,7 +738,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             {tab && tab.serviceFeePercent > 0 && !tab.serviceFeeRemoved && <div className="flex justify-between"><span>Taxa de serviço (opcional, {tab.serviceFeePercent}%)</span><b>{formatBRL(serviceFeeCents / 100)}</b></div>}
             <div className="flex justify-between text-base font-black"><span>Total</span><span>{formatBRL(accountTotalCents / 100)}</span></div>
           </div>
-          {tabClosed && supabaseUser.is_anonymous && <>
+          {tabClosed && supabaseUser.is_anonymous && !access && <>
             <button type="button" onClick={() => void loginWithGoogle(true)} disabled={authBusy} className="mt-5 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold">Salvar seus pontos e histórico: entrar com Google</button>
             <p className="mt-2 text-center text-xs text-slate-500">Vincule sua identidade Google para guardar seus pontos e histórico.</p>
           </>}

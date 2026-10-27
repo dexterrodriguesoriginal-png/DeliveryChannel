@@ -127,7 +127,7 @@ describe('MesasQrPage', () => {
     expect(sheet.textContent).toContain('Mesa 02');
     await waitFor(() => expect(print).toHaveBeenCalled(), { timeout: 1500 });
   });
-  it('equipe sem permissão e módulo desligado não veem a ferramenta nem tokens', async () => {
+  it('equipe sem permissão e ferramenta desligada não veem a ferramenta nem tokens', async () => {
     h.role.value = 'WAITER';
     const { container } = render(<MesasQrPage />);
     expect(container.textContent).toContain('Somente o proprietário ou o gerente');
@@ -135,7 +135,7 @@ describe('MesasQrPage', () => {
     cleanup();
     h.role.value = 'OWNER'; h.modules.enabled = false;
     const second = render(<MesasQrPage />);
-    expect(second.container.textContent).toContain('desativado');
+    expect(second.container.textContent).toContain('desativada');
     expect(h.repo.list).not.toHaveBeenCalled();
   });
 });

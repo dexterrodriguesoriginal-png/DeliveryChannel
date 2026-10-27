@@ -56,6 +56,7 @@ SELECT t.ok(NOT has_table_privilege('authenticated', 'public.dining_tab_invites'
         AND NOT has_table_privilege('authenticated', 'public.dining_tab_invites', 'INSERT') AND NOT has_table_privilege('authenticated', 'public.tab_access_events', 'INSERT'), 'códigos de convite: sem acesso direto');
 SET ROLE authenticated; SELECT t.as_user(1);
 SELECT t.is((public.mesas_qr_capabilities() ->> 'version')::int, 2, 'capacidades: versão 2');
+SELECT t.ok(has_function_privilege('anon', 'public.mesas_qr_capabilities()', 'execute'), 'capacidades legíveis antes do login (só um número de versão)');
 SELECT t.ok((public.mesas_qr_capabilities() ->> 'table_access')::boolean AND (public.mesas_qr_capabilities() ->> 'waiter_app')::boolean, 'capacidades: table_access e waiter_app');
 RESET ROLE;
 SELECT t.is((SELECT provolatile::text FROM pg_proc WHERE proname = 'resolve_table_qr'), 'v', 'resolve_table_qr agora é VOLATILE (limite de taxa)');
