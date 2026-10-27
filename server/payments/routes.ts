@@ -5,12 +5,15 @@ import { createPaymentStore } from './store';
 import { PaymentError, PROVIDERS, providerName } from './types';
 import { hasCardDetails } from './privacy';
 import { RateLimiter } from './security';
+import { TabPixService } from './tabPix';
 
 const uuid = (v: unknown) => typeof v === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(v);
 export function createPaymentsRouter(env = process.env, service?: PaymentService) {
   const router = express.Router();
   const store = service?.store || createPaymentStore(env);
   const payments = service || (store ? new PaymentService(store, env) : null);
+  const tabs = payments ? new TabPixService(payments) : null;
+  const requireTabs = () => { requirePayments(); return tabs!; };
   const ingress = new RateLimiter(180); const mutations = new RateLimiter(20);
   const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) => { void fn(req, res).catch(next); };
   const requirePayments = () => { if (!payments) throw new PaymentError('PAYMENTS_UNAVAILABLE', 503, 'Pagamentos online em breve.'); return payments; };
@@ -36,6 +39,13 @@ export function createPaymentsRouter(env = process.env, service?: PaymentService
   router.post('/webhooks/:provider/:id', express.raw({ type: 'application/json', limit: '64kb' }), asyncRoute(async (req, res) => {
     if (!uuid(req.params.id) || !Buffer.isBuffer(req.body)) throw new PaymentError('INVALID_WEBHOOK', 401);
     try { await requirePayments().webhook(providerName(req.params.provider), req.params.id, { rawBody: req.body, query: req.query,
+      headers: { 'x-signature': req.get('x-signature'), 'x-request-id': req.get('x-request-id'), 'x-authenticity-token': req.get('x-authenticity-token') } }); } finally { if (Buffer.isBuffer(req.body)) req.body.fill(0); req.body = undefined; }
+    res.json({ ok: true });
+  }));
+  // Mercado Pago notifications for per-tab PIX charges. Signature + provider API are the only proof of payment.
+  router.post('/tab-webhooks/:provider/:id', express.raw({ type: 'application/json', limit: '64kb' }), asyncRoute(async (req, res) => {
+    if (req.params.provider !== 'mercadopago' || !uuid(req.params.id) || !Buffer.isBuffer(req.body)) throw new PaymentError('INVALID_WEBHOOK', 401);
+    try { await requireTabs().webhook(req.params.id, { rawBody: req.body, query: req.query,
       headers: { 'x-signature': req.get('x-signature'), 'x-request-id': req.get('x-request-id'), 'x-authenticity-token': req.get('x-authenticity-token') } }); } finally { if (Buffer.isBuffer(req.body)) req.body.fill(0); req.body = undefined; }
     res.json({ ok: true });
   }));
@@ -97,6 +107,24 @@ export function createPaymentsRouter(env = process.env, service?: PaymentService
     if (!mutations.allow(user.id)) throw new PaymentError('RATE_LIMITED', 429);
     if (!uuid(req.params.id)) throw new PaymentError('INVALID_ORDER');
     await requirePayments().manualConfirm(user.id, req.params.id); res.json({ ok: true });
+  }));
+  // Per-tab PIX (staff only; the SQL layer re-checks role, tenant and close permission for the verified user id).
+  router.post('/tabs/:id/pix', asyncRoute(async (req, res) => {
+    const user = await authenticate(req);
+    if (!mutations.allow(user.id)) throw new PaymentError('RATE_LIMITED', 429);
+    if (!uuid(req.params.id)) throw new PaymentError('INVALID_TAB');
+    res.json({ pix: await requireTabs().create(user.id, user.email || '', req.params.id) });
+  }));
+  router.get('/tabs/:id/pix', asyncRoute(async (req, res) => {
+    const user = await authenticate(req);
+    if (!uuid(req.params.id)) throw new PaymentError('INVALID_TAB');
+    res.json({ pix: await requireTabs().status(user.id, req.params.id) });
+  }));
+  router.post('/tabs/:id/pix/cancel', asyncRoute(async (req, res) => {
+    const user = await authenticate(req);
+    if (!mutations.allow(user.id)) throw new PaymentError('RATE_LIMITED', 429);
+    if (!uuid(req.params.id)) throw new PaymentError('INVALID_TAB');
+    await requireTabs().cancel(user.id, req.params.id); res.json({ ok: true });
   }));
   router.use((_req, res) => res.status(404).json({ error: 'Recurso não encontrado.' }));
   router.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {

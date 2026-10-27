@@ -18,6 +18,13 @@ const databaseErrors: Record<string, [string, string, number?]> = {
   'Confira o pagamento com a loja antes de tentar novamente.': ['PAYMENT_IN_PROGRESS', 'Confira o recebimento na InfinitePay antes de tentar cobrar novamente.'],
   'Forma de pagamento indisponível.': ['METHOD_UNAVAILABLE', 'Esta forma de pagamento está desativada. Confira a conta conectada e os meios aceitos.'],
   'Forma de pagamento incompatível com o pedido.': ['METHOD_MISMATCH', 'Escolha uma forma de pagamento compatível com o pedido.'],
+  'Comanda indisponível.': ['TAB_NOT_FOUND', 'Esta comanda não está disponível.', 404],
+  'Comanda encerrada.': ['TAB_CLOSED', 'Esta conta já foi encerrada.'],
+  'Salão indisponível.': ['MODULE_DISABLED', 'O salão está desativado nesta loja.'],
+  'Comanda sem itens para cobrar.': ['TAB_EMPTY', 'A comanda ainda não tem itens para cobrar.'],
+  'Comanda com pagamento registrado.': ['TAB_HAS_PAYMENT', 'Esta comanda já tem um pagamento registrado. Feche a conta no caixa.'],
+  'Muitas tentativas de gerar o PIX. Aguarde.': ['RATE_LIMITED', 'Muitas tentativas de gerar o PIX. Aguarde alguns minutos.', 429],
+  'Confirmação não corresponde à cobrança.': ['PAYMENT_MISMATCH', 'O pagamento recebido não corresponde à cobrança da conta. Confira no Mercado Pago.'],
 };
 export function paymentStorageError(error: { code?: string; message?: string }) {
   const known = databaseErrors[error.message ?? ''];

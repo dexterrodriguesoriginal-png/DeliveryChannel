@@ -3,6 +3,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { resolveServerPublicConfig } from '../config/publicConfig';
 import { chargeRecord, confirmationRecord } from './privacy';
 import { Charge, Confirmation, PaymentError, Provider, Method } from './types';
+import type { TabChargeRow } from './tabPix';
 
 export interface PaymentRow {
   id: string; order_id: string | null; tenant_id: string | null; anonymized_at?: string | null; provider: Provider; provider_payment_id?: string;
@@ -70,6 +71,18 @@ export class PaymentStore {
   }
   completeConnection(userId: string, membership: string, provider: Provider, ciphertext: string | null, version: number) {
     return this.rpc('complete_store_payment_connection', { p_user:userId, p_membership:membership, p_provider:provider, p_ciphertext:ciphertext, p_version:version });
+  }
+  // --- PIX por comanda (Mesas e QR Code). Every call is a service-role RPC that re-checks staff access in SQL.
+  reserveTabPix(tabId: string, userId: string) { return this.rpc<{ charge: TabChargeRow; claimed: boolean; slug: string; table_label: string }>('reserve_tab_pix', { p_tab: tabId, p_user: userId }); }
+  saveTabCharge(id: string, charge: Charge) { return this.rpc('save_tab_pix_charge', { p_id: id, p_charge: chargeRecord(charge) }); }
+  failTabCharge(id: string) { return this.rpc('fail_tab_pix_charge', { p_id: id }); }
+  confirmTab(id: string, confirmation: Confirmation) { return this.rpc('confirm_tab_pix', { p_id: id, p_confirmation: confirmationRecord(confirmation) }); }
+  tabCharge(tabId: string, userId: string) { return this.rpc<{ charge: TabChargeRow; tab_status: string; slug: string } | null>('get_tab_pix_charge', { p_tab: tabId, p_user: userId }); }
+  cancelTabCharge(tabId: string, userId: string) { return this.rpc('cancel_tab_pix', { p_tab: tabId, p_user: userId }); }
+  async tabChargeById(id: string): Promise<TabChargeRow | null> {
+    const { data, error } = await this.db.from('tab_pix_charges').select('id,tenant_id,tab_id,provider,provider_payment_id,amount_cents,status,raw_status,brcode,expires_at,paid_at,needs_review,review_reason').eq('id', id).maybeSingle();
+    if (error) throw new PaymentError('PAYMENTS_UNAVAILABLE', 503);
+    return data as TabChargeRow | null;
   }
   async manualBrcode(orderId: string) { return this.rpc<string>('manual_order_payment_brcode', { p_order: orderId }); }
 }
