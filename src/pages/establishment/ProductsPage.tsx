@@ -31,9 +31,10 @@ import {
 import { useToast } from '../../context/ToastContext';
 import { formatBRL } from '../../lib/pricing/money';
 import { useModules } from '../../hooks/useModules';
+import { QualityBadge } from '../../components/establishment/quality/QualityScoreCard';
 import { ProductOptionGroupsPanel } from '../../components/establishment/ProductOptionGroupsPanel';
 
-export const ProductsPage: React.FC = () => {
+export const ProductsPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ onNavigate }) => {
   const { activeTenant, securityContext } = useAuth();
   const { isModuleEnabled } = useModules();
   const { showToast } = useToast();
@@ -299,6 +300,7 @@ export const ProductsPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <QualityBadge products={products} categories={categories} onOpen={onNavigate ? () => onNavigate('est-quality') : undefined} />
           <Button
             variant="outline"
             size="sm"

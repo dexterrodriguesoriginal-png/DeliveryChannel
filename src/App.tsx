@@ -7,6 +7,7 @@ import { ChegadaPage } from './components/pickup/ChegadaPage';
 import { KitchenPage, KitchenPairPage } from './components/kitchen/KitchenPages';
 import { KitchenSettingsPage } from './pages/establishment/KitchenSettingsPage';
 import { chegadaCodeFromPath } from './lib/pickup/arrival';
+import { MenuQualityPage } from './pages/establishment/MenuQualityPage';
 import { OwnerNotifications } from './components/notifications/OwnerNotifications';
 import { FOCUS_ORDER_KEY } from './lib/orders/orderAlerts';
 import React, { useState, useEffect } from 'react';
@@ -649,7 +650,9 @@ function AppContent() {
       case 'est-salon':
         return <SalonPage />;
       case 'est-products':
-        return <ProductsPage />;
+        return <ProductsPage onNavigate={setActiveTab} />;
+      case 'est-quality':
+        return <MenuQualityPage />;
       case 'est-categories':
         return <CategoriesPage />;
       case 'est-promotions':

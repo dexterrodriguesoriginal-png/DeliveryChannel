@@ -4,6 +4,7 @@ import { visibleStaffOrders } from '../../lib/orders/onlinePaymentGate';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { productRepository } from '../../repositories/productRepository';
+import { QualityScoreCard } from '../../components/establishment/quality/QualityScoreCard';
 import { tenantRepository } from '../../repositories/tenantRepository';
 import { orderRepository } from '../../repositories/orderRepository';
 import { customerRepository } from '../../repositories/customerRepository';
@@ -688,6 +689,11 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
           isEmpty={customersCount === 0}
         />
       </div>
+
+      {/* Qualidade do Cardápio: nota e atalho (só para quem pode editar produtos) */}
+      {onNavigate && canAccessEstTab(activeRole, 'est-quality') && (
+        <QualityScoreCard products={products} loading={isLoading && products.length === 0} onOpen={() => onNavigate('est-quality')} />
+      )}
 
       {/* ========================================================================= */}
       {/* 5. ÁREA DE VENDAS & PRODUTOS MAIS VENDIDOS (COMANDO 49 SEÇÃO 7)            */}

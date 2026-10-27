@@ -11,6 +11,7 @@ const PANEL_PAGES = new Set([
   'est-orders',
   'est-salon',
   'est-products',
+  'est-quality',
   'est-categories',
   'est-promotions',
   'est-offers',

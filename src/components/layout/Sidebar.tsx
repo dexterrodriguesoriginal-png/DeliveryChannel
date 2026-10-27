@@ -26,6 +26,7 @@ import {
   ChevronRight,
   SlidersHorizontal,
   Utensils,
+  Gauge,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { getPublicStorePath, isValidStoreSlug } from '../../utils/publicStoreUrl';
@@ -121,6 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ? [{ id: 'est-salon', label: 'Salão', icon: <Utensils className="w-4 h-4 shrink-0" /> }]
           : []),
         { id: 'est-products', label: 'Cardápio / Produtos', icon: <Package className="w-4 h-4 shrink-0" /> },
+        { id: 'est-quality', label: 'Qualidade do Cardápio', icon: <Gauge className="w-4 h-4 shrink-0" /> },
         { id: 'est-categories', label: 'Categorias', icon: <Layers className="w-4 h-4 shrink-0" /> },
         { id: 'est-marketing', label: 'Marketing', icon: <QrCode className="w-4 h-4 shrink-0" /> },
       ],
