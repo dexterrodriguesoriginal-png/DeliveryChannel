@@ -126,6 +126,11 @@ export function createPaymentsRouter(env = process.env, service?: PaymentService
     if (!uuid(req.params.id)) throw new PaymentError('INVALID_TAB');
     await requireTabs().cancel(user.id, req.params.id); res.json({ ok: true });
   }));
+  router.get('/tabs/rounds/:tenantId', asyncRoute(async (req, res) => {
+    const user = await authenticate(req);
+    if (!uuid(req.params.tenantId)) throw new PaymentError('INVALID_TAB');
+    res.json({ rounds: await requirePayments().store.salonRounds(user.id, req.params.tenantId) });
+  }));
   router.use((_req, res) => res.status(404).json({ error: 'Recurso não encontrado.' }));
   router.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     // Provider response bodies, authorization codes, credentials and raw exceptions are never logged/reflected.

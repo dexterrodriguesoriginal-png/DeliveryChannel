@@ -19,11 +19,11 @@ describe('menu por papel (matriz de permissões)', () => {
     ]);
   });
 
-  it('WAITER = Pedidos, Salão', () => {
+  it('WAITER = só Salão (sem Pedidos do dono)', () => {
     expect(visible('WAITER')).toEqual([
-      'est-orders',
       'est-salon',
     ]);
+    expect(canAccessEstTab('WAITER', 'est-orders')).toBe(false);
   });
 
   it('KITCHEN = só Pedidos/Cozinha', () => {
@@ -69,7 +69,7 @@ describe('menu por papel (matriz de permissões)', () => {
     expect(getDefaultAllowedTab('OWNER')).toBe('est-dashboard');
     expect(getDefaultAllowedTab('MANAGER')).toBe('est-dashboard');
     expect(getDefaultAllowedTab('CASHIER')).toBe('est-dashboard');
-    expect(getDefaultAllowedTab('WAITER')).toBe('est-orders');
+    expect(getDefaultAllowedTab('WAITER')).toBe('est-salon');
     expect(getDefaultAllowedTab('KITCHEN')).toBe('est-orders');
   });
 });

@@ -118,7 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       groupTitle: 'VENDAS',
       items: [
         { id: 'est-orders', label: 'Pedidos', icon: <ShoppingBag className="w-4 h-4 shrink-0" /> },
-        ...(modulesAvailable && isModuleEnabled('dine_in') && hasDiningTables
+        ...(modulesAvailable && isModuleEnabled('dine_in') && (hasDiningTables || activeRole === 'WAITER')
           ? [{ id: 'est-salon', label: 'Salão', icon: <Utensils className="w-4 h-4 shrink-0" /> }]
           : []),
         ...(modulesAvailable && isModuleEnabled('dine_in') && (activeRole === 'OWNER' || activeRole === 'MANAGER')
@@ -328,7 +328,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
             'p-2 border-t border-gray-100 bg-white shrink-0 space-y-1 mt-auto',
             isCollapsed ? 'lg:p-1.5' : ''
           )}>
-            {activeTenant && (
+            {activeRole === 'WAITER' && (
+              <a
+                href="/garcom"
+                data-testid="sidebar-waiter-app-link"
+                className={cn(
+                  'w-full flex items-center rounded-lg border border-amber-200/80 bg-amber-50/70 hover:bg-amber-100/80 text-[11px] font-bold text-amber-900 transition-colors cursor-pointer',
+                  isCollapsed ? 'lg:justify-center lg:p-1.5 p-1.5 justify-between' : 'p-1.5 justify-between'
+                )}
+                title="Abrir App do Garçom"
+              >
+                <span className={cn('truncate', isCollapsed ? 'lg:hidden' : '')}>App do Garçom</span>
+                <Utensils className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              </a>
+            )}
+            {activeTenant && activeRole !== 'WAITER' && (
               <button
                 type="button"
                 onClick={() => {

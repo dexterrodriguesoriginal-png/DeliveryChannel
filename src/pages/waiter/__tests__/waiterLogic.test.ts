@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: {} }));
-import { badgeText, callTitle, canUseWaiterApp, greeting, openCalls, waiterFeatures } from '../waiterLogic';
+import { badgeText, callTitle, canUseWaiterApp, greeting, newRoundIds, openCalls, waiterFeatures } from '../waiterLogic';
 import { injectWaiterHead, isWaiterRoute, WAITER_MANIFEST_PATH } from '../../../lib/pwa/waiterManifest';
 import { newApprovalIds } from '../../../hooks/usePendingApprovals';
 
@@ -27,6 +27,11 @@ describe('App do Garçom — regras', () => {
     expect(newApprovalIds(null, [item('a')])).toEqual([]);
     expect(newApprovalIds(new Set(['a']), [item('a'), item('b')])).toEqual(['b']);
     expect(newApprovalIds(new Set(['a']), [])).toEqual([]);
+  });
+  it('aviso sonoro para novas rodadas na mesa (a primeira leitura nunca toca)', () => {
+    expect(newRoundIds(null, [{ id: 'r1' }])).toEqual([]);
+    expect(newRoundIds(new Set(['r1']), [{ id: 'r1' }, { id: 'r2' }])).toEqual(['r2']);
+    expect(newRoundIds(new Set(['r1']), [])).toEqual([]);
   });
 });
 

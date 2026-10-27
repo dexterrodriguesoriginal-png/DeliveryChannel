@@ -84,6 +84,24 @@ export class PaymentStore {
     if (error) throw new PaymentError('PAYMENTS_UNAVAILABLE', 503);
     return data as TabChargeRow | null;
   }
+  async salonRounds(userId: string, tenantId: string) {
+    if (!/^[\da-f-]{36}$/i.test(tenantId)) throw new PaymentError('FORBIDDEN', 403);
+    const { data: member, error: memberErr } = await this.db.from('tenant_users')
+      .select('id,role_id,tenants!inner(status)')
+      .eq('tenant_id', tenantId).eq('user_id', userId).eq('status', 'ACTIVE').eq('tenants.status', 'ACTIVE')
+      .in('role_id', ['OWNER', 'MANAGER', 'CASHIER', 'WAITER', 'OPERATOR']).maybeSingle();
+    if (memberErr || !member) throw new PaymentError('FORBIDDEN', 403, 'Acesso negado ao salão.');
+    const { data: tabs } = await this.db.from('dining_tabs')
+      .select('id').eq('tenant_id', tenantId).in('status', ['OPEN', 'BILL_REQUESTED']);
+    const tabIds = (tabs || []).map((t: { id: string }) => t.id);
+    if (!tabIds.length) return [];
+    const { data: rounds, error } = await this.db.from('orders')
+      .select('id,tab_id,order_number,customer_name,status,subtotal,created_at,round_no')
+      .eq('tenant_id', tenantId).eq('fulfillment_type', 'DINE_IN')
+      .in('tab_id', tabIds).neq('status', 'CANCELLED').order('round_no');
+    if (error) return [];
+    return rounds || [];
+  }
   async manualBrcode(orderId: string) { return this.rpc<string>('manual_order_payment_brcode', { p_order: orderId }); }
 }
 export function createPaymentStore(env: NodeJS.ProcessEnv): PaymentStore | null {

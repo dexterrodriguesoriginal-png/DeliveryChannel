@@ -184,7 +184,9 @@ function AppContent() {
     if ((activeRole === 'CEO' || activeRole === 'SUPER_ADMIN') && !activeTab.startsWith('ceo-') && activeTab !== 'security-lab') {
       setActiveTab('ceo-dashboard');
     } else if (activeRole && activeRole !== 'CEO' && activeRole !== 'SUPER_ADMIN' && activeTab.startsWith('ceo-')) {
-      setActiveTab('est-dashboard');
+      setActiveTab(getDefaultAllowedTab(activeRole));
+    } else if (activeRole === 'WAITER' && !canAccessEstTab('WAITER', activeTab)) {
+      setActiveTab('est-salon');
     }
   }, [activeRole, activeTab]);
 
@@ -597,9 +599,15 @@ function AppContent() {
     // Guard de UI por papel (RLS continua sendo a autorização real)
     const isCeoRole = activeRole === 'CEO' || activeRole === 'SUPER_ADMIN';
     if (!isCeoRole && activeTab === 'est-modules' && !modulesAvailable) {
+      const fallback = getDefaultAllowedTab(activeRole);
+      if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
+      if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
     if (!isCeoRole && activeTab === 'est-modules' && activeRole !== 'OWNER' && activeRole !== 'MANAGER') {
+      const fallback = getDefaultAllowedTab(activeRole);
+      if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
+      if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
     const requiredModule = tabRequiredModule(activeTab) || (
@@ -618,6 +626,7 @@ function AppContent() {
     }
     if (!isCeoRole && activeTab.startsWith('est-') && activeTab !== 'est-modules' && !canAccessEstTab(activeRole, activeTab)) {
       const fallback = getDefaultAllowedTab(activeRole);
+      if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
       if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
@@ -627,6 +636,7 @@ function AppContent() {
         const isLabAllowed = activeRole === 'CEO' || activeRole === 'SUPER_ADMIN';
         if (!isLabAllowed) {
           const fallback = getDefaultAllowedTab(activeRole);
+          if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
           if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
           return <EstablishmentDashboard onNavigate={setActiveTab} />;
         }
@@ -706,15 +716,21 @@ function AppContent() {
       case 'est-kitchen':
         if (!isModuleEnabled('kds')) {
           const fallback = getDefaultAllowedTab(activeRole);
+          if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
           if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
           return <EstablishmentDashboard onNavigate={setActiveTab} />;
         }
         return <KitchenSettingsPage />;
 
-      default:
-        return (activeRole === 'CEO' || activeRole === 'SUPER_ADMIN') 
-          ? <CeoDashboard onNavigate={setActiveTab} /> 
-          : <EstablishmentDashboard onNavigate={setActiveTab} />;
+      default: {
+        if (activeRole === 'CEO' || activeRole === 'SUPER_ADMIN') {
+          return <CeoDashboard onNavigate={setActiveTab} />;
+        }
+        const fallback = getDefaultAllowedTab(activeRole);
+        if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
+        if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
+        return <EstablishmentDashboard onNavigate={setActiveTab} />;
+      }
     }
   };
 

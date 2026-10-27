@@ -63,8 +63,8 @@ describe('Sidebar — isolamento de módulos e matriz de permissões', () => {
     expect(canAccessEstTab('CASHIER', 'est-finance')).toBe(false);
     expect(canAccessEstTab('CASHIER', 'est-team')).toBe(false);
 
-    // WAITER: Pedidos, Salão (sem Dashboard nem Configurações)
-    expect(canAccessEstTab('WAITER', 'est-orders')).toBe(true);
+    // WAITER: somente Salão (sem Pedidos do dono, Dashboard nem Configurações)
+    expect(canAccessEstTab('WAITER', 'est-orders')).toBe(false);
     expect(canAccessEstTab('WAITER', 'est-salon')).toBe(true);
     expect(canAccessEstTab('WAITER', 'est-dashboard')).toBe(false);
     expect(canAccessEstTab('WAITER', 'est-finance')).toBe(false);

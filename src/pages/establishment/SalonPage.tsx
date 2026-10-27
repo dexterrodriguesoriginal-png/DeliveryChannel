@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, Clock, PanelRightOpen, PauseCircle, PlayCircle, Plus, QrCode, Receipt, RefreshCw, Search, Utensils, X } from 'lucide-react';
+import { Bell, Check, Clock, PanelRightOpen, PauseCircle, PlayCircle, Plus, QrCode, Receipt, RefreshCw, Search, ShoppingBag, Utensils, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useModules } from '../../hooks/useModules';
 import { supabase } from '../../lib/supabase';
 import { newIdempotencyKey } from '../../lib/backend';
-import { Product, SelectedProductOption } from '../../types';
-import { productRepository } from '../../repositories/productRepository';
+import { Category, Product, SelectedProductOption } from '../../types';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
 import { formatBRL } from '../../lib/pricing/money';
-import { playShortBeep } from '../../utils/audio';
+import { playNewOrderSound, playShortBeep } from '../../utils/audio';
+import { newRoundIds } from '../waiter/waiterLogic';
 import { Modal } from '../../components/ui/Modal';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import { validateOptionSelection } from '../../lib/addons';
@@ -72,7 +72,10 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const [calls, setCalls] = useState<WaiterCall[]>([]);
   const [rounds, setRounds] = useState<DiningRound[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
+  const [productSearch, setProductSearch] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('ALL');
   const [optionChoices, setOptionChoices] = useState<SelectedProductOption[]>([]);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [optionsLoading, setOptionsLoading] = useState(false);
@@ -89,6 +92,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const [closeOpen, setCloseOpen] = useState(false);
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: 'CAIXA', amount: '', tendered: '' }]);
   const seenCalls = useRef<Set<string>>(new Set());
+  const seenRounds = useRef<Set<string> | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<TableFilter>('ALL');
   const [now, setNow] = useState(() => Date.now());
@@ -110,6 +114,22 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const selectedTab = useMemo(() => tabs.find(tab => tab.table_id === selectedTableId), [tabs, selectedTableId]);
   const selectedTable = useMemo(() => tables.find(table => table.id === selectedTableId), [tables, selectedTableId]);
   const selectedProduct = useMemo(() => catalogProducts.find(product => product.id === productId), [catalogProducts, productId]);
+  const derivedCategories = useMemo<Array<{ id: string; name: string }>>(() => {
+    if (categories.length > 0) return categories.map(cat => ({ id: cat.id, name: cat.name }));
+    const seen = new Map<string, string>();
+    for (const product of catalogProducts) {
+      if (product.categoryId && !seen.has(product.categoryId)) seen.set(product.categoryId, product.categoryId);
+    }
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+  }, [categories, catalogProducts]);
+  const filteredCatalogProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    return catalogProducts.filter(product => {
+      if (selectedCategoryId !== 'ALL' && product.categoryId !== selectedCategoryId) return false;
+      if (!q) return true;
+      return product.name.toLowerCase().includes(q) || (product.description || '').toLowerCase().includes(q);
+    });
+  }, [catalogProducts, productSearch, selectedCategoryId]);
   const activeRounds = useMemo(
     () => (selectedTab ? rounds.filter(round => round.tab_id === selectedTab.id) : []),
     [rounds, selectedTab],
@@ -124,11 +144,11 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     }
     if (!quiet) setLoading(true);
     try {
-      const [tableResult, tabResult, configResult, productList] = await Promise.all([
+      const [tableResult, tabResult, configResult, menuResult] = await Promise.all([
         supabase.from('dining_tables').select('id,label,area,seats,active').eq('tenant_id', activeTenant.id).eq('active', true).order('label'),
         supabase.from('dining_tabs').select('id,table_id,status,opened_at,service_fee_percent,service_fee_removed').eq('tenant_id', activeTenant.id).in('status', ['OPEN', 'BILL_REQUESTED']).order('opened_at'),
         supabase.from('tenant_modules').select('config').eq('tenant_id', activeTenant.id).eq('module_key', 'dine_in').maybeSingle(),
-        productRepository.getProducts(securityContext, activeTenant.id),
+        salonStaffRepository.loadMenu(activeTenant.id, activeTenant.slug || null, securityContext),
       ]);
       if (tableResult.error) throw tableResult.error;
       if (tabResult.error) throw tabResult.error;
@@ -137,13 +157,15 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
       const loadedTabs = (tabResult.data || []) as DiningTab[];
       setTables(loadedTables);
       setTabs(loadedTabs);
-      setProducts(productList.filter(product => product.isActive));
+      setProducts(menuResult.products);
+      setCategories(menuResult.categories);
       const config = configResult.data?.config as { close_roles?: string[] } | null;
       setCloseRoles(Array.isArray(config?.close_roles) ? config.close_roles : ['OWNER', 'MANAGER', 'CASHIER']);
       if (!loadedTabs.length) {
         setSessions([]);
         setCalls([]);
         setRounds([]);
+        if (seenRounds.current === null) seenRounds.current = new Set();
       } else {
         const tabIds = loadedTabs.map(tab => tab.id);
         const [sessionResult, callResult, roundResult] = await Promise.all([
@@ -160,7 +182,14 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
         if (seenCalls.current.size && newCalls.length) playShortBeep();
         seenCalls.current = new Set(nextCalls.map(call => call.id));
         setCalls(nextCalls);
-        setRounds((roundResult.data || []) as DiningRound[]);
+        const directRounds = (roundResult.data || []) as DiningRound[];
+        const nextRounds = (directRounds.length > 0
+          ? directRounds
+          : await salonStaffRepository.fetchRoundsForTabs(activeTenant.id, tabIds)) as DiningRound[];
+        const freshRoundIds = newRoundIds(seenRounds.current, nextRounds);
+        seenRounds.current = new Set(nextRounds.map(round => round.id));
+        if (freshRoundIds.length > 0) (playNewOrderSound ?? playShortBeep)?.();
+        setRounds(nextRounds);
       }
       setMessage(null);
     } catch (error) {
@@ -173,13 +202,43 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     } finally {
       setLoading(false);
     }
-  }, [activeTenant?.id, activeRole, enabled, securityContext]);
+  }, [activeTenant?.id, activeTenant?.slug, activeRole, enabled, securityContext]);
 
   useEffect(() => {
     void load();
     if (!activeTenant?.id || !enabled) return;
+    const tenantId = activeTenant.id;
     const timer = window.setInterval(() => { if (document.visibilityState !== 'hidden') void load(true); }, 10000);
-    return () => window.clearInterval(timer);
+    const onFocusOrVisible = () => { if (document.visibilityState !== 'hidden') void load(true); };
+    window.addEventListener('focus', onFocusOrVisible);
+    window.addEventListener('online', onFocusOrVisible);
+    document.addEventListener('visibilitychange', onFocusOrVisible);
+
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    if (typeof supabase.channel === 'function') {
+      try {
+        channel = supabase
+          .channel(`salon_live_${tenantId}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `tenant_id=eq.${tenantId}` }, () => { void load(true); })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_sessions', filter: `tenant_id=eq.${tenantId}` }, () => { void load(true); })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'dining_tabs', filter: `tenant_id=eq.${tenantId}` }, () => { void load(true); })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'waiter_calls', filter: `tenant_id=eq.${tenantId}` }, () => { void load(true); })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_events', filter: `tenant_id=eq.${tenantId}` }, () => { void load(true); })
+          .subscribe();
+      } catch {
+        channel = null;
+      }
+    }
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocusOrVisible);
+      window.removeEventListener('online', onFocusOrVisible);
+      document.removeEventListener('visibilitychange', onFocusOrVisible);
+      if (channel && typeof supabase.removeChannel === 'function') {
+        void supabase.removeChannel(channel);
+      }
+    };
   }, [activeTenant?.id, enabled, load]);
 
   useEffect(() => {
@@ -237,7 +296,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     setOptionsLoading(true);
     void productOptionRepository.getPublicForProducts(activeTenant?.id || '', products.map(product => product.id))
       .then(groups => {
-        if (alive) setCatalogProducts(products.map(product => ({ ...product, optionGroups: groups.get(product.id) || [] })));
+        if (alive) setCatalogProducts(products.map(product => ({ ...product, optionGroups: groups.get(product.id) || product.optionGroups || [] })));
       })
       .catch(error => {
         if (alive) setOptionsError(error instanceof Error ? error.message : 'Não foi possível carregar os adicionais.');
@@ -545,7 +604,25 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
               <div className="mt-2 flex justify-between border-t pt-2 text-base font-black"><span>Total</span><span>{money(subtotal + fee)}</span></div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" onClick={() => { setOptionChoices([]); setProductId(''); setOrderOpen(true); }} className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-bold text-white"><Plus className="h-4 w-4" />Lançar pedido</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOptionChoices([]);
+                  setProductId('');
+                  setProductSearch('');
+                  setSelectedCategoryId('ALL');
+                  setOrderOpen(true);
+                  if (!products.length && activeTenant?.id) {
+                    void salonStaffRepository.loadMenu(activeTenant.id, activeTenant.slug || null, securityContext).then(menu => {
+                      setProducts(menu.products);
+                      setCategories(menu.categories);
+                    });
+                  }
+                }}
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-bold text-white"
+              >
+                <Plus className="h-4 w-4" />Lançar pedido
+              </button>
               {canClose && <button type="button" disabled={totalCents <= 0} onClick={() => {
                 setPayments([{ method: 'CAIXA', amount: (totalCents / 100).toFixed(2), tendered: '' }]);
                 setCloseOpen(true);
@@ -556,11 +633,72 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
       </div>}
       <Modal isOpen={orderOpen} onClose={() => setOrderOpen(false)} title="Lançar pedido na mesa">
         <div className="space-y-3">
-          <label className="block text-sm font-semibold">Produto
-            <select aria-label="Produto" value={productId} onChange={event => { setOptionChoices([]); setProductId(event.target.value); }} className="mt-1 w-full rounded-lg border px-3 py-2">
-              <option value="">Selecione um produto</option>{catalogProducts.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
-            </select>
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <Search className="h-4 w-4 text-slate-500" aria-hidden="true" />
+            <input
+              type="search"
+              aria-label="Buscar produto"
+              placeholder="Buscar produto"
+              value={productSearch}
+              onChange={event => setProductSearch(event.target.value)}
+              className="w-full bg-transparent text-sm outline-none"
+            />
           </label>
+          {derivedCategories.length > 0 && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Categorias">
+              <button
+                type="button"
+                aria-pressed={selectedCategoryId === 'ALL'}
+                onClick={() => setSelectedCategoryId('ALL')}
+                className={` shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${selectedCategoryId === 'ALL' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700'}`}
+              >
+                Todas
+              </button>
+              {derivedCategories.map(cat => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  aria-pressed={selectedCategoryId === cat.id}
+                  onClick={() => setSelectedCategoryId(cat.id)}
+                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${selectedCategoryId === cat.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700'}`}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="max-h-60 space-y-2 overflow-y-auto pr-1" role="listbox" aria-label="Cardápio da loja">
+            {filteredCatalogProducts.map(product => {
+              const selected = productId === product.id;
+              return (
+                <button
+                  key={product.id}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  data-testid={`salon-order-product-${product.id}`}
+                  onClick={() => { setOptionChoices([]); setProductId(product.id); }}
+                  className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition ${selected ? 'border-slate-900 bg-slate-50 ring-2 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                >
+                  {product.imageUrl ? (
+                    <img src={product.imageUrl} alt={product.name} className="h-12 w-12 shrink-0 rounded-lg object-cover" loading="lazy" />
+                  ) : (
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500" aria-hidden="true">
+                      <ShoppingBag className="h-5 w-5" />
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold text-slate-900">{product.name}</span>
+                    {product.description && <span className="block truncate text-xs text-slate-500">{product.description}</span>}
+                    <span className="mt-0.5 block text-xs font-extrabold text-teal-800">{money(product.price)}</span>
+                  </span>
+                </button>
+              );
+            })}
+            {filteredCatalogProducts.length === 0 && (
+              <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-gray-500">Nenhum produto encontrado.</p>
+            )}
+          </div>
           {optionsError && <p role="alert" className="text-sm text-rose-700">{optionsError}</p>}
           {optionsLoading && <p role="status" className="text-sm text-gray-500">Carregando adicionais…</p>}
           {selectedProduct?.optionGroups?.some(group => group.active) && <ProductOptionsSelector
@@ -570,7 +708,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
           />}
           <label className="block text-sm font-semibold">Quantidade<input aria-label="Quantidade" type="number" min={1} value={quantity} onChange={event => setQuantity(Math.max(1, Number(event.target.value)))} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
           <label className="block text-sm font-semibold">Observação<input aria-label="Observação" value={notes} onChange={event => setNotes(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-          <button type="button" disabled={!productId || !!busy || optionsLoading || !!optionsError || !validateOptionSelection(selectedProduct?.optionGroups?.filter(group => group.active) || [], optionChoices).valid} onClick={submitStaffRound} className="w-full rounded-xl bg-slate-900 px-4 py-3 font-bold text-white">Enviar para a cozinha</button>
+          <button type="button" data-testid="salon-order-submit" disabled={!productId || !!busy || optionsLoading || !!optionsError || !validateOptionSelection(selectedProduct?.optionGroups?.filter(group => group.active) || [], optionChoices).valid} onClick={submitStaffRound} className="w-full rounded-xl bg-slate-900 px-4 py-3 font-bold text-white disabled:opacity-50">Fazer pedido</button>
         </div>
       </Modal>
       <Modal isOpen={closeOpen} onClose={() => setCloseOpen(false)} title="Revisar e fechar conta">

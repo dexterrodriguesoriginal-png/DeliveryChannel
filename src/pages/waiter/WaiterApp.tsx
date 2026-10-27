@@ -1,26 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BellRing, ChevronRight, LayoutGrid, LogOut, Loader2, MoreHorizontal, Search, ShieldAlert, UserCheck, Volume2, WifiOff } from 'lucide-react';
+import { BellRing, ChevronRight, LayoutGrid, LogOut, Loader2, MoreHorizontal, Search, ShieldAlert, ShoppingBag, UserCheck, Volume2, WifiOff, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 import { LegalCheckbox } from '../../components/legal/LegalUI';
 import { legalSignupMetadata } from '../../lib/legal/documents';
 import { teamRepository } from '../../repositories/teamRepository';
 import { readWaiterEmailParam } from '../../lib/waiter/waiterAccess';
-import type { TeamInvite } from '../../types';
+import type { Category, Product, TeamInvite } from '../../types';
 import { useModules } from '../../hooks/useModules';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals';
 import { newIdempotencyKey } from '../../lib/backend';
 import { dineInRoundItems, type DineInCartLine } from '../../lib/customer/dineInCart';
 import { deriveTableStatus, compareTables, matchesFilter, matchesSearch, statusCounts, ELAPSED_REFRESH_MS, type CallLike, type TableFilter } from '../../lib/salon/tableStatus';
 import { mesasQrRepository, NO_CAPABILITIES, type MesasQrCapabilities } from '../../repositories/mesasQrRepository';
-import { salonStaffRepository, type SalonAccessExtras, type SalonSnapshot, type WaiterCallRow } from '../../repositories/salonStaffRepository';
-import { productRepository } from '../../repositories/productRepository';
-import { productOptionRepository } from '../../repositories/productOptionRepository';
-import type { Product } from '../../types';
+import { salonStaffRepository, type SalonAccessExtras, type SalonSnapshot, type WaiterCallRow, type WaiterSession } from '../../repositories/salonStaffRepository';
 import { ApprovalRow } from '../../components/establishment/salon/ApprovalsAlert';
 import { TableCard } from '../../components/establishment/salon/TableCard';
 import '../../components/establishment/salon/salon.css';
 import { playShortBeep, playNewOrderSound, unlockAudio } from '../../utils/audio';
-import { badgeText, callTitle, canUseWaiterApp, greeting, openCalls, waiterFeatures, type WaiterTab } from './waiterLogic';
+import { badgeText, callTitle, canUseWaiterApp, greeting, newRoundIds, openCalls, waiterFeatures, type WaiterTab } from './waiterLogic';
 import { WaiterInstallCard } from './WaiterInstallCard';
 import { WaiterOrderSheet } from './WaiterOrderSheet';
 import { WaiterTableSheet } from './WaiterTableSheet';
@@ -164,11 +162,14 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [toast, setToast] = useState('');
   const [orderTarget, setOrderTarget] = useState<{ tabId: string; label: string } | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [productsError, setProductsError] = useState('');
   const [sending, setSending] = useState(false);
   const [wake, setWake] = useState(false);
+  const [orderAlert, setOrderAlert] = useState<{ id: string; tableId: string; tableLabel: string; customerName: string; orderNumber: number; roundNo: number } | null>(null);
   const seenCalls = useRef<Set<string> | null>(null);
+  const seenRounds = useRef<Set<string> | null>(null);
   const wakeRef = useRef<{ release: () => Promise<void> } | null>(null);
   const features = waiterFeatures(caps.tableAccess);
 
@@ -178,8 +179,26 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     try {
       const next = await salonStaffRepository.snapshot(tenantId);
       const calls = next.calls.filter(c => c.status === 'OPEN');
-      if (seenCalls.current && calls.some(c => !seenCalls.current!.has(c.id))) playShortBeep();
+      if (seenCalls.current && calls.some(c => !seenCalls.current!.has(c.id))) (playShortBeep ?? playNewOrderSound)?.();
       seenCalls.current = new Set(calls.map(c => c.id));
+      const freshRoundIds = newRoundIds(seenRounds.current, next.rounds);
+      if (freshRoundIds.length > 0) {
+        (playNewOrderSound ?? playShortBeep)?.();
+        const latest = next.rounds.find(r => r.id === freshRoundIds[freshRoundIds.length - 1]) || next.rounds[next.rounds.length - 1];
+        if (latest) {
+          const tabRow = next.tabs.find(t => t.id === latest.tab_id);
+          const tableRow = next.tables.find(t => t.id === tabRow?.table_id);
+          setOrderAlert({
+            id: latest.id,
+            tableId: tableRow?.id || '',
+            tableLabel: tableRow?.label || 'Mesa',
+            customerName: latest.customer_name || 'Cliente',
+            orderNumber: latest.order_number,
+            roundNo: latest.round_no,
+          });
+        }
+      }
+      seenRounds.current = new Set(next.rounds.map(r => r.id));
       setSnap(next); setOffline(false); setLoadError('');
     } catch (error) {
       setOffline(typeof navigator !== 'undefined' && navigator.onLine === false);
@@ -188,14 +207,31 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   }, [tenantId]);
 
   useEffect(() => {
-    seenCalls.current = null; setSnap(null);
+    seenCalls.current = null; seenRounds.current = null; setOrderAlert(null); setSnap(null);
     void load();
-    const timer = window.setInterval(() => { if (document.visibilityState !== 'hidden') void load(); }, 8000);
-    const onVisible = () => { if (document.visibilityState === 'visible') void load(); };
+    const timer = window.setInterval(() => { if (document.visibilityState !== 'hidden') void load(); }, 5000);
+    const onVisible = () => { if (document.visibilityState === 'visible') { void load(); void approvals.refresh(); } };
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
     window.addEventListener('online', onVisible);
-    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('online', onVisible); };
-  }, [load]);
+    const channel = typeof supabase?.channel === 'function'
+      ? supabase
+          .channel(`waiter-salon:${tenantId}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `tenant_id=eq.${tenantId}` }, () => { void load(); })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_sessions', filter: `tenant_id=eq.${tenantId}` }, () => { void load(); void approvals.refresh(); })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'dining_tabs', filter: `tenant_id=eq.${tenantId}` }, () => { void load(); void approvals.refresh(); })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'waiter_calls', filter: `tenant_id=eq.${tenantId}` }, () => { void load(); })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_events', filter: `tenant_id=eq.${tenantId}` }, () => { void load(); void approvals.refresh(); })
+          .subscribe()
+      : null;
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+      window.removeEventListener('online', onVisible);
+      if (channel && typeof supabase?.removeChannel === 'function') void supabase.removeChannel(channel);
+    };
+  }, [load, tenantId, approvals.refresh]);
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), ELAPSED_REFRESH_MS); return () => window.clearInterval(t); }, []);
   useEffect(() => { let alive = true; void mesasQrRepository.capabilities().then(c => { if (alive) setCaps(c); }); return () => { alive = false; }; }, [tenantId]);
   useEffect(() => {
@@ -218,7 +254,14 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   const tables = snap?.tables || [];
   const tabs = snap?.tabs || [];
-  const sessions = snap?.sessions || [];
+  const sessions = useMemo(() => {
+    const base = snap?.sessions || [];
+    const seen = new Set(base.map(s => s.id));
+    const fromApprovals: WaiterSession[] = approvals.pending
+      .filter(a => !seen.has(a.sessionId))
+      .map(a => ({ id: a.sessionId, tab_id: a.tabId, display_name: a.displayName, approved_at: null, expires_at: a.expiresAt }));
+    return fromApprovals.length ? [...base, ...fromApprovals] : base;
+  }, [snap?.sessions, approvals.pending]);
   const calls = useMemo(() => openCalls((snap?.calls || []) as CallLike[]), [snap?.calls]);
   const rounds = snap?.rounds || [];
   const infoByTable = useMemo(() => {
@@ -246,15 +289,23 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     finally { setBusy(null); }
   };
 
+  const handleApproveSession = async (sessionId: string) => {
+    await approvals.approve(sessionId);
+    await load();
+  };
+  const handleRejectSession = async (sessionId: string) => {
+    await approvals.reject(sessionId);
+    await load();
+  };
+
   const openOrder = async (tabId: string, label: string) => {
     setOrderTarget({ tabId, label }); setProductsError('');
     if (products.length || productsLoading) return;
     setProductsLoading(true);
     try {
-      const list = (await productRepository.getProducts(securityContext, tenantId)).filter(p => p.isActive && p.isAvailable !== false);
-      let groups = new Map<string, Product['optionGroups']>();
-      try { groups = await productOptionRepository.getPublicForProducts(tenantId, list.map(p => p.id)) as Map<string, Product['optionGroups']>; } catch { /* sem adicionais */ }
-      setProducts(list.map(p => ({ ...p, optionGroups: groups.get(p.id) || [] })));
+      const menu = await salonStaffRepository.loadMenu(tenantId, activeTenant?.slug, securityContext);
+      setProducts(menu.products.filter(p => p.isAvailable !== false));
+      setCategories(menu.categories);
     } catch (error) { setProductsError(error instanceof Error ? error.message : 'Não foi possível carregar o cardápio.'); }
     finally { setProductsLoading(false); }
   };
@@ -263,7 +314,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setSending(true); setProductsError('');
     try {
       await salonStaffRepository.submitRound(orderTarget.tabId, dineInRoundItems(cart), newIdempotencyKey());
-      setOrderTarget(null); setToast('Pedido enviado para a cozinha.'); await load();
+      setOrderTarget(null); setToast('Pedido feito!'); await load();
     } catch (error) { setProductsError(error instanceof Error ? error.message : 'Não foi possível enviar o pedido.'); }
     finally { setSending(false); }
   };
@@ -299,6 +350,57 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       {!caps.tableAccess && snap && <p role="status" className="mx-auto mt-3 w-full max-w-2xl px-4 text-xs text-slate-400">Algumas funções (recusar, abrir mesa, pedir a conta) chegam com a próxima atualização do sistema.</p>}
 
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-32 pt-4">
+        {orderAlert && (
+          <div role="alert" data-testid="waiter-order-alert" className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-emerald-400/50 bg-emerald-500/15 p-3.5 text-white shadow-lg">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-500 text-slate-950"><ShoppingBag className="h-5 w-5" /></span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-emerald-200">Novo pedido na {orderAlert.tableLabel}</p>
+                <p className="truncate text-xs text-slate-200">Rodada {orderAlert.roundNo} (#{orderAlert.orderNumber}) · {orderAlert.customerName}</p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {orderAlert.tableId && (
+                <button
+                  type="button"
+                  onClick={() => { setTab('MESAS'); setSelectedId(orderAlert.tableId); setOrderAlert(null); }}
+                  className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-black text-slate-950"
+                >
+                  Ver mesa
+                </button>
+              )}
+              <button type="button" aria-label="Fechar alerta de pedido" onClick={() => setOrderAlert(null)} className="grid h-8 w-8 place-items-center rounded-lg text-slate-300 hover:bg-white/10">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab !== 'LIBERAR' && approvals.pending.length > 0 && (
+          <section role="alert" aria-live="polite" data-testid="waiter-approvals-banner" className="mb-3 space-y-2 rounded-2xl border border-amber-400/50 bg-amber-500/15 p-3 text-slate-900">
+            <div className="flex items-center justify-between gap-2 text-amber-200">
+              <span className="flex items-center gap-2 text-xs font-black uppercase tracking-wide">
+                <UserCheck className="h-4 w-4 shrink-0" />
+                {approvals.pending.length === 1 ? '1 mesa aguardando liberação' : `${approvals.pending.length} mesas aguardando liberação`}
+              </span>
+              <button type="button" onClick={() => setTab('LIBERAR')} className="text-xs font-bold underline">Ver todas</button>
+            </div>
+            <div className="space-y-2">
+              {approvals.pending.map(item => (
+                <ApprovalRow
+                  key={item.sessionId}
+                  item={item}
+                  busy={approvals.busyId === item.sessionId}
+                  canReject={features.reject}
+                  onApprove={id => void handleApproveSession(id)}
+                  onReject={id => void handleRejectSession(id)}
+                  onOpenTable={id => { setTab('MESAS'); setSelectedId(id); }}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
         {tab === 'MESAS' && (<>
           <div className="mb-3 grid grid-cols-3 gap-2 text-center text-xs font-bold">
             <div className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10"><p className="text-2xl font-black text-emerald-300">{counts.FREE}</p>Livres</div>
@@ -321,7 +423,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <p className="mb-4 text-sm text-slate-400">Quem leu o QR e quer pedir. Aprove em um toque; você é avisado com som.</p>
             {approvals.pending.length === 0
               ? <div className="rounded-3xl bg-white/5 p-8 text-center ring-1 ring-white/10"><UserCheck className="mx-auto mb-2 h-8 w-8 text-emerald-300" /><p className="font-bold">Tudo liberado</p><p className="mt-1 text-sm text-slate-400">Quando alguém ler o QR de uma mesa, aparece aqui na hora.</p></div>
-              : <div className="space-y-3">{approvals.pending.map(item => <ApprovalRow key={item.sessionId} large item={item} busy={approvals.busyId === item.sessionId} canReject={features.reject} onApprove={id => void approvals.approve(id)} onReject={id => void approvals.reject(id)} onOpenTable={id => { setTab('MESAS'); setSelectedId(id); }} />)}</div>}
+              : <div className="space-y-3">{approvals.pending.map(item => <ApprovalRow key={item.sessionId} large item={item} busy={approvals.busyId === item.sessionId} canReject={features.reject} onApprove={id => void handleApproveSession(id)} onReject={id => void handleRejectSession(id)} onOpenTable={id => { setTab('MESAS'); setSelectedId(id); }} />)}</div>}
             {approvals.error && <p role="alert" className="mt-3 text-sm text-rose-300">{approvals.error}</p>}
           </section>
         )}
@@ -347,6 +449,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <button type="button" onClick={() => { unlockAudio(); playNewOrderSound(); }} className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10"><span className="flex items-center gap-2"><Volume2 className="h-5 w-5 text-emerald-300" />Testar o som dos avisos</span><ChevronRight className="h-4 w-4 text-slate-500" /></button>
             <button type="button" onClick={() => void toggleWake()} aria-pressed={wake} className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10"><span>Manter a tela ligada</span><span className={`rounded-full px-3 py-1 text-xs ${wake ? 'bg-emerald-500 text-slate-950' : 'bg-white/10 text-slate-300'}`}>{wake ? 'Ligado' : 'Desligado'}</span></button>
             {(activeRole === 'OWNER' || activeRole === 'MANAGER') && <a href="/" className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10">Abrir o painel completo<ChevronRight className="h-4 w-4 text-slate-500" /></a>}
+            {activeRole === 'WAITER' && <a href="/#/painel/est-salon" className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10">Abrir o Salão<ChevronRight className="h-4 w-4 text-slate-500" /></a>}
             <button type="button" onClick={() => void signOut()} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border border-white/15 text-sm font-bold text-slate-200"><LogOut className="h-4 w-4" />Sair</button>
           </section>
         )}
@@ -381,7 +484,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           onTransferHolder={id => selectedTab && void run('transfer-holder', () => salonStaffRepository.transferHolder(selectedTab.id, id, true), 'Responsável alterado.')}
         />
       )}
-      {orderTarget && <WaiterOrderSheet tableLabel={orderTarget.label} products={products} loading={productsLoading} error={productsError} sending={sending} onClose={() => setOrderTarget(null)} onSubmit={cart => void sendOrder(cart)} />}
+      {orderTarget && <WaiterOrderSheet tableLabel={orderTarget.label} products={products} categories={categories} loading={productsLoading} error={productsError} sending={sending} onClose={() => setOrderTarget(null)} onSubmit={cart => void sendOrder(cart)} />}
     </div>
   );
 };

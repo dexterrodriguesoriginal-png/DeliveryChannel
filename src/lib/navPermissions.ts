@@ -35,7 +35,6 @@ export const CASHIER_ALLOWED_TABS: ReadonlySet<string> = new Set([
 ]);
 
 export const WAITER_ALLOWED_TABS: ReadonlySet<string> = new Set([
-  'est-orders',
   'est-salon',
 ]);
 
@@ -46,7 +45,8 @@ export const KITCHEN_ALLOWED_TABS: ReadonlySet<string> = new Set([
 
 /** Aba padrão permitida para redirecionamento quando o usuário tenta acessar uma aba proibida. */
 export function getDefaultAllowedTab(role: RoleId | null | undefined): string {
-  if (role === 'WAITER' || role === 'KITCHEN') return 'est-orders';
+  if (role === 'WAITER') return 'est-salon';
+  if (role === 'KITCHEN') return 'est-orders';
   return 'est-dashboard';
 }
 
@@ -55,7 +55,7 @@ export function getDefaultAllowedTab(role: RoleId | null | undefined): string {
  * Matriz estrita:
  * - DRIVER: nunca vê o painel do estabelecimento (vai para DriverApp)
  * - CASHIER: Dashboard, Pedidos, Salão, Clientes
- * - WAITER: Pedidos, Salão
+ * - WAITER: Salão (e o app dedicado /garcom)
  * - KITCHEN: Pedidos, Cozinha
  * - security-lab: estritamente restrito a CEO e SUPER_ADMIN
  */

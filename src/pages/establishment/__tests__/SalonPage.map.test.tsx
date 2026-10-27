@@ -159,5 +159,55 @@ describe('SalonPage — mapa de mesas', () => {
       fireEvent.click(screen.getByTestId('salon-table-t2'));
       expect(screen.queryByRole('button', { name: /Fechar conta/ })).toBeNull();
     });
+    it('modal Lançar pedido na mesa carrega o cardápio da loja (com busca, categorias e foto) e o botão diz Fazer pedido', async () => {
+      h.role.value = 'WAITER';
+      h.rpc.mockImplementation(async (name: string) => {
+        if (name === 'mesas_qr_capabilities') return { data: { version: 1, qr_pause: true, tab_pix: true }, error: null };
+        if (name === 'get_public_store') {
+          return {
+            data: {
+              tenant: { id: 'tenant-1', name: 'Loja', slug: 'loja' },
+              categories: [
+                { id: 'cat-1', tenantId: 'tenant-1', name: 'Lanches', order: 1, isActive: true },
+                { id: 'cat-2', tenantId: 'tenant-1', name: 'Bebidas', order: 2, isActive: true },
+              ],
+              products: [
+                { id: 'p-burger', tenantId: 'tenant-1', categoryId: 'cat-1', name: 'Smash Duplo', description: 'Pão brioche', price: 32, imageUrl: 'https://cdn.example.com/burger.jpg', isActive: true, isAvailable: false },
+                { id: 'p-soda', tenantId: 'tenant-1', categoryId: 'cat-2', name: 'Guaraná Lata', description: '350ml', price: 8, imageUrl: '', isActive: true, isAvailable: true },
+              ],
+            },
+            error: null,
+          };
+        }
+        return { data: null, error: null };
+      });
+      render(<SalonPage />);
+      await waitFor(() => expect(screen.getByTestId('salon-table-t2')).toBeTruthy());
+      fireEvent.click(screen.getByTestId('salon-table-t2'));
+      fireEvent.click(await screen.findByRole('button', { name: /Lançar pedido/ }));
+
+      expect(await screen.findByText('Lançar pedido na mesa')).toBeTruthy();
+      expect(screen.queryByText('Enviar para a cozinha')).toBeNull();
+      const submitBtn = screen.getByRole('button', { name: 'Fazer pedido' });
+      expect(submitBtn.hasAttribute('disabled')).toBe(true);
+
+      expect(await screen.findByTestId('salon-order-product-p-burger')).toBeTruthy();
+      expect(screen.getByTestId('salon-order-product-p-soda')).toBeTruthy();
+      const img = screen.getByAltText('Smash Duplo') as HTMLImageElement;
+      expect(img.getAttribute('src')).toBe('https://cdn.example.com/burger.jpg');
+
+      const categoriesGroup = screen.getByRole('group', { name: 'Categorias' });
+      fireEvent.click(within(categoriesGroup).getByRole('button', { name: 'Bebidas' }));
+      expect(screen.queryByTestId('salon-order-product-p-burger')).toBeNull();
+      expect(screen.getByTestId('salon-order-product-p-soda')).toBeTruthy();
+
+      fireEvent.click(within(categoriesGroup).getByRole('button', { name: 'Todas' }));
+      fireEvent.change(screen.getByLabelText('Buscar produto'), { target: { value: 'smash' } });
+      expect(screen.getByTestId('salon-order-product-p-burger')).toBeTruthy();
+      expect(screen.queryByTestId('salon-order-product-p-soda')).toBeNull();
+
+      fireEvent.click(screen.getByTestId('salon-order-product-p-burger'));
+      expect(submitBtn.hasAttribute('disabled')).toBe(false);
+    });
   });
 });

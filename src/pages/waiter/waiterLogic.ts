@@ -28,3 +28,9 @@ export function greeting(date: Date): string {
   const h = date.getHours();
   return h < 5 ? 'Boa madrugada' : h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
 }
+
+/** Ids de rodadas/pedidos da mesa que chegaram depois da leitura anterior (a primeira leitura nunca toca som). */
+export function newRoundIds(previous: ReadonlySet<string> | null, current: readonly { id: string }[]): string[] {
+  if (!previous) return [];
+  return current.filter(round => !previous.has(round.id)).map(round => round.id);
+}
