@@ -1,5 +1,5 @@
 .orders-kanban-layout { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
-.orders-kanban-board { position: relative; display: grid; grid-template-columns: repeat(5, minmax(var(--orders-col-min, 150px), 1fr)); gap: 12px; flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; zoom: var(--oz, 1); transition: zoom 220ms cubic-bezier(.2,.7,.2,1); }
+.orders-kanban-board { position: relative; display: grid; grid-template-columns: repeat(5, minmax(var(--orders-col-min, 150px), 1fr)); width: 100%; max-width: 1848px; /* com zoom baixo, colunas não passam de ~360px lógicos (cards continuam com formato de card) */ gap: 12px; flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; zoom: var(--oz, 1); transition: zoom 220ms cubic-bezier(.2,.7,.2,1); }
 .orders-kanban-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: 16px; overflow: hidden; }
 .orders-kanban-header { position: sticky; top: 0; z-index: 1; flex-shrink: 0; margin: 10px 10px 0; border-radius: 14px; padding: 12px 6px; color: white; }
 .orders-kanban-scroll { display: flex; flex-direction: column; gap: 10px; padding: 10px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: #9ca3af transparent; overscroll-behavior-y: contain; }
@@ -46,7 +46,7 @@
 /* ===== Lista de Pedidos: linhas coloridas pelo status (mesmo mapa do Kanban) ===== */
 .orders-list-wrap { zoom: var(--oz, 1); transition: zoom 220ms cubic-bezier(.2,.7,.2,1); }
 .orders-list-scroll { overflow-x: auto; padding: 0 2px 16px; }
-.orders-list { width: 100%; border-collapse: separate; border-spacing: 0 8px; font-size: 12px; line-height: 1.35; color: #334155; }
+.orders-list { width: 100%; max-width: 1600px; border-collapse: separate; border-spacing: 0 8px; font-size: 12px; line-height: 1.35; color: #334155; }
 .orders-list thead th { padding: 2px 8px 0; text-align: left; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #64748b; white-space: nowrap; }
 .orders-list-row { cursor: pointer; transition: transform 170ms ease; }
 /* Sombras compostas por variáveis; o anel de .6px na cor da tinta cobre costuras de subpixel entre células (zoom fracionado). */

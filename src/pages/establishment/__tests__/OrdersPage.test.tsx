@@ -343,7 +343,7 @@ describe('arrastar no Kanban', () => {
     expect(mocks.updateStatus).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'prep', 'READY', undefined, 'PREPARING');
   });
 
-  it('zoom 70–130% na toolbar: aplica no Kanban e na Lista, persiste (chave por usuário) e o % volta a 100', async () => {
+  it('zoom 10–130% na toolbar: aplica no Kanban e na Lista, persiste (chave por usuário) e o % volta a 100', async () => {
     await render();
     const value = () => container.querySelector('[data-testid=orders-zoom-value]')!.textContent;
     expect(value()).toBe('100%');

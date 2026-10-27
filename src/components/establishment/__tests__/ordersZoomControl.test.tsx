@@ -9,11 +9,11 @@ afterEach(cleanup);
 describe('controle de zoom', () => {
   it('− / % / + chamam os callbacks e desabilitam nos limites', () => {
     const f = { in: vi.fn(), out: vi.fn(), reset: vi.fn() };
-    const ui = render(<OrdersZoomControl zoom={70} onZoomIn={f.in} onZoomOut={f.out} onReset={f.reset} />);
+    const ui = render(<OrdersZoomControl zoom={10} onZoomIn={f.in} onZoomOut={f.out} onReset={f.reset} />);
     expect((ui.getByTestId('orders-zoom-out') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(ui.getByTestId('orders-zoom-in')); fireEvent.click(ui.getByTestId('orders-zoom-value'));
     expect(f.in).toHaveBeenCalledTimes(1); expect(f.reset).toHaveBeenCalledTimes(1); expect(f.out).not.toHaveBeenCalled();
-    expect(ui.getByTestId('orders-zoom-value').textContent).toBe('70%');
+    expect(ui.getByTestId('orders-zoom-value').textContent).toBe('10%');
     ui.rerender(<OrdersZoomControl zoom={130} onZoomIn={f.in} onZoomOut={f.out} onReset={f.reset} />);
     expect((ui.getByTestId('orders-zoom-in') as HTMLButtonElement).disabled).toBe(true);
   });

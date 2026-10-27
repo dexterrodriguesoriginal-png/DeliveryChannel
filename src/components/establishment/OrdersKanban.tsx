@@ -6,7 +6,7 @@ import { groupKanbanOrders, KANBAN_COLUMNS, KANBAN_COLUMN_THEME, type KanbanColu
 import './ordersKanban.css';
 
 export function OrdersKanban({ orders, loading, renderOrder, onDrop, scale = 1 }: {
-  orders: Order[]; loading?: boolean; /** Zoom de densidade (0.7–1.3): escala cards, fontes, paddings e largura das colunas. */ scale?: number; renderOrder: (order: Order) => React.ReactNode;
+  orders: Order[]; loading?: boolean; /** Zoom de densidade (0.1–1.3): escala cards, fontes, paddings e largura das colunas. */ scale?: number; renderOrder: (order: Order) => React.ReactNode;
   onDrop: (id: string, status: OrderStatus) => void;
 }) {
   const groups = groupKanbanOrders(orders);

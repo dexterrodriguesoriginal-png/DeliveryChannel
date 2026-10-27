@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
-/** Zoom de densidade da página de Pedidos (Kanban e Lista): 70% a 130%, de 10 em 10, por usuário. */
-export const ZOOM_MIN = 70;
+/** Zoom de densidade da página de Pedidos (Kanban e Lista): 10% a 130%, de 10 em 10, por usuário. */
+export const ZOOM_MIN = 10;
 export const ZOOM_MAX = 130;
 export const ZOOM_STEP = 10;
 export const ZOOM_DEFAULT = 100;
