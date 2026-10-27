@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { dispatchChatRepository as repo, OwnerNotification } from '../../repositories/dispatchChatRepository';
 import { readPreferences } from '../../lib/notifications/preferences';
 import { playNewOrderSound } from '../../utils/audio';
-import { floatingAboveActionsStyle } from '../../lib/ui/bottomActionsOffset';
+import { floatingAboveActionsStyle, floatingSideStyle, floatingButtonAlignStyle } from '../../lib/ui/bottomActionsOffset';
 
 export function NotificationList({ rows, onRead, onOpen }: { rows: OwnerNotification[]; onRead: (n: OwnerNotification) => void; onOpen: (n: OwnerNotification) => void }) {
   return <section aria-label="Notificações" className="max-h-80 overflow-auto bg-white border rounded-xl p-3 shadow-lg">
@@ -57,10 +57,10 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
   };
   const view = (n: OwnerNotification) => { void read(n); setBalloon(null); setOpen(false); onOpen(n); };
   // Container não captura cliques (só os próprios controles) e sobe acima de barras fixas de ação.
-  return <aside data-testid="owner-notifications" className="pointer-events-none fixed right-3 z-[60] w-80 max-w-[calc(100vw-24px)] space-y-2 [&>*]:pointer-events-auto" style={floatingAboveActionsStyle}>
+  return <aside data-testid="owner-notifications" className="pointer-events-none fixed z-[60] flex w-80 max-w-[calc(100vw-24px)] flex-col gap-2 [&>*]:pointer-events-auto" style={{ ...floatingAboveActionsStyle, ...floatingSideStyle }}>
     {balloon && <div role="status" className="bg-slate-900 text-white p-3 rounded-xl shadow-lg"><button aria-label="Fechar aviso" className="float-right" onClick={() => setBalloon(null)}>×</button><p>{balloon.title}</p><button className="underline" onClick={() => view(balloon)}>Ver</button></div>}
     {open && <NotificationList rows={rows} onRead={n => { void read(n); }} onOpen={view} />}
     {error && open && <p role="alert" className="bg-white p-2 text-red-700">{error}</p>}
-    <button className="bg-white border rounded-full shadow px-4 py-2 float-right text-sm" onClick={() => setOpen(v => !v)}>Notificações ({rows.filter(n => !n.read_at).length})</button>
+    <button className="bg-white border rounded-full shadow px-4 py-2 text-sm" style={floatingButtonAlignStyle} onClick={() => setOpen(v => !v)}>Notificações ({rows.filter(n => !n.read_at).length})</button>
   </aside>;
 }

@@ -20,7 +20,7 @@ import { themeService } from '../../../services/themeService';
 import { productRepository } from '../../../repositories/productRepository';
 import { safeImageUrl, validateHexColor } from '../../../lib/theme/themeEngine';
 import { announceThemeSaved } from '../../../lib/theme/themeLiveUpdate';
-import { useBottomActionsOffset } from '../../../lib/ui/bottomActionsOffset';
+import { useBottomActionsOffset, useFloatingLeftOf } from '../../../lib/ui/bottomActionsOffset';
 import { LiveStorePreview } from '../../../components/establishment/theme/LiveStorePreview';
 import { ThemedProductItem } from '../../../components/storefront/ThemedProductList';
 import { useThemeDraft } from './useThemeDraft';
@@ -61,6 +61,8 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
   const actionsRef = useRef<HTMLElement>(null);
   useBottomActionsOffset(actionsRef);
   const scrollRef = useRef<HTMLElement>(null);
+  // Notificações saem da coluna do celular: ficam no canto inferior esquerdo da área de conteúdo.
+  useFloatingLeftOf(scrollRef);
   useEffect(() => {
     let active = true;
     productRepository
@@ -229,6 +231,7 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
         </header>
         <div className="theme-editor-body">
           <nav className="theme-desktop-nav" aria-label="Seções do editor">
+            <p className="theme-nav-title">Design do App</p>
             <p className="theme-eyebrow mb-4 px-3">SUA VITRINE</p>
             {navItems()}
             <div className="mt-auto px-3 pb-3 pt-8 text-[11px] leading-relaxed text-slate-400">

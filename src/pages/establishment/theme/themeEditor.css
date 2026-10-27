@@ -215,14 +215,18 @@
   position: sticky;
   top: 0;
   align-self: stretch;
-  flex: 0 0 clamp(230px, 30vw, 404px);
-  width: clamp(230px, 30vw, 404px);
-  /* embaixo: espaço para o botão flutuante de Notificações não cobrir o celular */
-  padding: 14px 12px 58px;
+  /* Coluna larga: o celular (414px de moldura) nunca é limitado pela largura em 1280/1366. */
+  flex: 0 0 clamp(260px, 34vw, 460px);
+  width: clamp(260px, 34vw, 460px);
+  /* Sem reserva embaixo: as Notificações saíram desta coluna (ficam à esquerda do conteúdo). */
+  padding: 10px 12px 12px;
   border-left: 1px solid var(--theme-line);
   background: #edf0eb;
   min-height: 0;
-  overflow: hidden;
+  /* Se a altura não bastar, a coluna rola em vez de encolher o celular até virar brinquedo. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .theme-phone {
   position: relative;
@@ -262,8 +266,9 @@
   border-radius: 13px;
 }
 .theme-editor-preview > [data-testid='live-store-preview'] {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
+  /* rótulo (~28px) + celular com no mínimo 560px de altura */
+  min-height: 586px;
 }
 .theme-editor-preview .theme-phone-screen {
   height: min(500px, calc(100dvh - 320px));
@@ -320,6 +325,49 @@
 }
 .theme-mobile-nav {
   display: none;
+}
+.theme-nav-title {
+  display: none;
+  margin: 0 0 14px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #0f2a1f;
+}
+/* Telas baixas (1366x768, 1280x720, 1024x576): o título vai para a coluna lateral e a barra Salvar fica
+   mais fina, para o celular ganhar altura. O <h1> continua no DOM (leitores de tela). */
+@media (max-height: 820px) and (min-width: 768px) {
+  .theme-editor-header {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    border: 0;
+    white-space: nowrap;
+  }
+  .theme-editor {
+    position: relative;
+  }
+  .theme-nav-title {
+    display: block;
+  }
+  .theme-desktop-nav {
+    padding-top: 16px;
+  }
+  .theme-editor-actions {
+    padding: 6px 20px;
+  }
+  .theme-editor-actions .theme-primary,
+  .theme-editor-actions .theme-secondary {
+    padding-block: 7px;
+  }
+  .theme-editor-preview {
+    padding: 6px 12px 8px;
+  }
 }
 .theme-dialog-backdrop {
   position: fixed;

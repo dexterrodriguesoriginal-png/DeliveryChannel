@@ -160,7 +160,7 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
   return (
     <div data-testid="live-store-preview" className={`w-full min-w-0 ${fill ? 'flex h-full min-h-0 flex-col' : ''}`}>
       {!compact && (
-        <div className="mb-2 flex flex-none flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <div className="mb-1 flex flex-none flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
           <span className="font-semibold">Sua loja, ao vivo</span>
           <div className="flex gap-1">
             {(['mobile', 'desktop'] as const).map((value) => (
@@ -170,7 +170,7 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
                 data-testid={`preview-mode-${value}`}
                 aria-pressed={mode === value}
                 onClick={() => setMode(value)}
-                className={`rounded-lg p-2 ${mode === value ? 'bg-white text-emerald-800 shadow-sm' : ''}`}
+                className={`rounded-lg p-1 ${mode === value ? 'bg-white text-emerald-800 shadow-sm' : ''}`}
               >
                 {value === 'mobile' ? (
                   <Smartphone size={15} aria-label="Celular" />
