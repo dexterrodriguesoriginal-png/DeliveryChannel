@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { orderStatusLabel, paymentMethodLabel } from '../../lib/orders/labels';
 import { formatBRL } from '../../lib/pricing/money';
+import { WaiterPerformanceReport } from '../../components/establishment/waiter/WaiterPerformanceReport';
 
 type PeriodFilter = 'today' | '7d' | 'this_month' | '30d';
 
@@ -436,6 +437,14 @@ export const ReportsPage: React.FC = () => {
           )}
         </Card>
       </div>
+
+      {activeTenant?.id && (
+        <WaiterPerformanceReport
+          tenantId={activeTenant.id}
+          startDate={startDate}
+          endDate={endDate}
+        />
+      )}
     </div>
   );
 };

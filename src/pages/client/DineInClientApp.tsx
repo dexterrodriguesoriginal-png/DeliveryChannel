@@ -5,6 +5,8 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
 import { formatBRL } from '../../lib/pricing/money';
 import type { Product, SelectedProductOption } from '../../types';
+import { waiterV2Repository, type TableWaiter } from '../../repositories/waiterV2Repository';
+import { initials } from '../../lib/waiter/waiterRouting';
 import { billSplitAmounts, BillSplitMode, DineInPaymentMethod, parseTenderCents, tenderStatus } from '../../lib/customer/dineIn';
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
@@ -150,6 +152,16 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [bagBounce, setBagBounce] = useState(false);
   const [confirmOrderOpen, setConfirmOrderOpen] = useState(false);
   const [awaitingReleaseModalOpen, setAwaitingReleaseModalOpen] = useState(false);
+  const [tableWaiter, setTableWaiter] = useState<TableWaiter | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) { setTableWaiter(null); return; }
+    let alive = true;
+    waiterV2Repository.myTableWaiter(sessionId)
+      .then(res => { if (alive) setTableWaiter(res); })
+      .catch(() => { if (alive) setTableWaiter(null); });
+    return () => { alive = false; };
+  }, [sessionId, tab?.status]);
   const inviteParamRef = useRef<string | null>(inviteCode);
   const deviceIdRef = useRef('');
   const submitKeyRef = useRef(uuid());
@@ -862,7 +874,23 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     <main className="min-h-screen bg-slate-50 pb-28">
       <header className="sticky top-0 z-20 border-b bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-2">
-          <div><p className="font-extrabold">Você está na {mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {storeName}</p>{access && myRole && <p data-testid="role-chip" className="mt-0.5 flex items-center gap-1 text-xs font-bold text-slate-500">{myRole === 'RESPONSIBLE' ? <><Crown className="h-3.5 w-3.5 text-amber-500" />Você é o responsável pela mesa</> : <>Convidado{tab?.responsibleName ? ` de ${tab.responsibleName}` : ''}</>}</p>}</div>
+          <div>
+            <p className="font-extrabold">Você está na {mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {storeName}</p>
+            {access && myRole && <p data-testid="role-chip" className="mt-0.5 flex items-center gap-1 text-xs font-bold text-slate-500">{myRole === 'RESPONSIBLE' ? <><Crown className="h-3.5 w-3.5 text-amber-500" />Você é o responsável pela mesa</> : <>Convidado{tab?.responsibleName ? ` de ${tab.responsibleName}` : ''}</>}</p>}
+            {tableWaiter && (
+              <div data-testid="my-table-waiter" className="mt-1 flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+                <span>Seu garçom:</span>
+                {tableWaiter.photoUrl ? (
+                  <img src={tableWaiter.photoUrl} alt={tableWaiter.name} className="h-5 w-5 rounded-full object-cover" />
+                ) : (
+                  <span className="grid h-5 w-5 place-items-center rounded-full bg-emerald-100 text-[10px] font-black text-emerald-800">
+                    {initials(tableWaiter.name)}
+                  </span>
+                )}
+                <span className="font-bold text-slate-900">{tableWaiter.name}</span>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <div
               data-testid="dinein-bag-counter"

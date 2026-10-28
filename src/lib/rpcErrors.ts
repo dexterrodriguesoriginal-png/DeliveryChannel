@@ -6,7 +6,8 @@
  */
 export const RPC_ERROR_MESSAGES: Record<string, string> = {
   P0410: 'Conflito de papel: esta conta já faz parte da equipe da loja e não pode ser entregador.',
-  P0412: 'Este usuário já faz parte da equipe.',
+  P0409: 'Outro garçom já assumiu este chamado.',
+  P0412: 'Este usuário já faz parte da equipe. Se o acesso estiver inativo, você pode reativá-lo na lista de colaboradores abaixo.',
   P0413: 'Já existe um convite pendente para este e-mail.',
   P0414: 'Entregador não aprovado.',
   P0416: 'Vínculo inconsistente. Fale com a loja.',

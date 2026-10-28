@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, Clock, PanelRightOpen, PauseCircle, PlayCircle, Plus, QrCode, Receipt, RefreshCw, Search, ShoppingBag, Utensils, X } from 'lucide-react';
+import { Bell, Check, Clock, PanelRightOpen, PauseCircle, PlayCircle, Plus, QrCode, Receipt, RefreshCw, Search, ShoppingBag, Users, Utensils, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useModules } from '../../hooks/useModules';
 import { supabase } from '../../lib/supabase';
@@ -26,6 +26,10 @@ import { FOCUS_TABLE_KEY } from '../../components/establishment/salon/ApprovalsA
 import { salonStaffRepository, type SalonAccessExtras, type StaffHolderCode } from '../../repositories/salonStaffRepository';
 import { QRCodeSVG } from 'qrcode.react';
 import { inviteUrl } from '../../lib/customer/tableAccess';
+import { WaiterModesModal } from '../../components/establishment/waiter/WaiterModesModal';
+import { CentralDispatchModal } from '../../components/establishment/waiter/CentralDispatchModal';
+import { waiterV2Repository } from '../../repositories/waiterV2Repository';
+import type { ServiceSettings } from '../../lib/waiter/waiterRouting';
 import '../../components/establishment/salon/salon.css';
 
 type DiningTable = { id: string; label: string; area: string | null; seats: number; active: boolean };
@@ -38,7 +42,17 @@ type DiningTab = {
   service_fee_removed: boolean;
 };
 type TabSession = { id: string; tab_id: string; display_name: string; approved_at: string | null; expires_at: string };
-type WaiterCall = { id: string; tab_id: string; type: 'CALL' | 'BILL' | 'HELP'; status: string; created_at: string };
+type WaiterCall = {
+  id: string;
+  tab_id: string;
+  type: 'CALL' | 'BILL' | 'HELP';
+  status: string;
+  created_at: string;
+  route?: string;
+  assigned_to?: string | null;
+  accepted_by?: string | null;
+  escalated_at?: string | null;
+};
 type DiningRound = {
   id: string;
   tab_id: string;
@@ -117,6 +131,12 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const [releaseEmptyOpen, setReleaseEmptyOpen] = useState(false);
   const [releaseEmptyReason, setReleaseEmptyReason] = useState('Cliente desistiu');
   const [releaseEmptyCustomReason, setReleaseEmptyCustomReason] = useState('');
+  const [modesOpen, setModesOpen] = useState(false);
+  const [dispatchCall, setDispatchCall] = useState<{ id: string; tableLabel: string; type: string; createdAt: string; route: string } | null>(null);
+
+  const centralCallsWaiting = useMemo(() => {
+    return calls.filter(call => call.status === 'OPEN' && call.route === 'CENTRAL' && !call.assigned_to && !call.accepted_by);
+  }, [calls]);
 
   const resolvedTableId = useMemo(() => {
     if (!selectedTableId) return null;
@@ -526,6 +546,15 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-xl font-black text-gray-950">Salão</h1><p className="text-sm text-gray-600">Mapa de mesas e comandas em andamento</p></div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setModesOpen(true)}
+            className="salon-btn"
+            data-testid="salon-waiter-modes-btn"
+          >
+            <Users className="h-4 w-4" aria-hidden="true" />
+            Modo de atendimento
+          </button>
           {onNavigate && <button type="button" onClick={() => onNavigate('est-mesas-qr')} className="salon-btn"><QrCode className="h-4 w-4" aria-hidden="true" />Mesas e QR Code</button>}
           {caps.qrPause && canPause && <button type="button" onClick={() => void toggleStorePause()} disabled={pauseBusy} aria-pressed={storePaused} className={`salon-btn${storePaused ? ' salon-btn--warn' : ''}`}>
             {storePaused ? <PlayCircle className="h-4 w-4" aria-hidden="true" /> : <PauseCircle className="h-4 w-4" aria-hidden="true" />}{storePaused ? 'Retomar pedidos por QR' : 'Pausar pedidos por QR'}</button>}
@@ -534,6 +563,44 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
       </header>
       {message && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{message}</div>}
       {storePaused && <div role="status" className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-950"><PauseCircle className="h-5 w-5" aria-hidden="true" />Pedidos pelo QR das mesas estão pausados. Os clientes veem um aviso e o garçom ainda pode lançar pedidos.</div>}
+      {centralCallsWaiting.length > 0 && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-500/15 border border-amber-400 p-3 text-amber-950 shadow-sm"
+          data-testid="central-dispatch-alert"
+        >
+          <div className="flex items-center gap-2.5">
+            <Bell className="h-5 w-5 text-amber-600 animate-bounce" />
+            <div>
+              <p className="font-extrabold text-sm">
+                {centralCallsWaiting.length === 1
+                  ? '1 chamado aguardando despacho para garçom'
+                  : `${centralCallsWaiting.length} chamados aguardando despacho`}
+              </p>
+              <p className="text-xs text-amber-800">
+                Modo Central: toque em "Despachar" para escolher qual garçom atenderá a mesa.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const c = centralCallsWaiting[0];
+              const tableId = tableIdByTab.get(c.tab_id) || '';
+              setDispatchCall({
+                id: c.id,
+                tableLabel: tableLabelById.get(tableId) || 'Mesa',
+                type: c.type,
+                createdAt: c.created_at,
+                route: c.route || 'CENTRAL',
+              });
+            }}
+            className="rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-black text-slate-950 hover:bg-amber-400 shadow-sm cursor-pointer"
+          >
+            Despachar garçom
+          </button>
+        </div>
+      )}
       <div className="flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-white shadow-sm" role="status" data-testid="salon-alerts">
         <Bell className="h-5 w-5" aria-hidden="true" />
         <span className="font-bold">{calls.filter(call => call.type !== 'BILL').length} chamados · {tabs.filter(tab => tab.status === 'BILL_REQUESTED').length} contas</span>
@@ -875,6 +942,23 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
           <button type="button" disabled={!!busy || pixLive} onClick={closeTab} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar fechamento</button>
         </div>
       </Modal>
+
+      <WaiterModesModal
+        isOpen={modesOpen}
+        onClose={() => setModesOpen(false)}
+        tenantId={activeTenant.id}
+        tables={tables}
+        onSaved={() => void load()}
+      />
+      {dispatchCall && (
+        <CentralDispatchModal
+          isOpen={!!dispatchCall}
+          onClose={() => setDispatchCall(null)}
+          tenantId={activeTenant.id}
+          call={dispatchCall}
+          onDispatched={() => void load()}
+        />
+      )}
     </div>
   );
 };

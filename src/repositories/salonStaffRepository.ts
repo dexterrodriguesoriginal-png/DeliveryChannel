@@ -20,7 +20,20 @@ export interface PendingApproval {
 export interface WaiterTable { id: string; label: string; area: string | null; seats: number }
 export interface WaiterTab { id: string; table_id: string; status: 'OPEN' | 'BILL_REQUESTED' | 'CLOSED' | 'CANCELLED'; opened_at: string; service_fee_percent: number; service_fee_removed: boolean }
 export interface WaiterSession { id: string; tab_id: string; display_name: string; approved_at: string | null; expires_at: string }
-export interface WaiterCallRow { id: string; tab_id: string; type: 'CALL' | 'BILL' | 'HELP'; status: string; created_at: string }
+export interface WaiterCallRow {
+  id: string;
+  tab_id: string;
+  type: 'CALL' | 'BILL' | 'HELP';
+  status: string;
+  created_at: string;
+  route?: 'ALL' | 'ASSIGNED' | 'CENTRAL';
+  assigned_to?: string | null;
+  accepted_by?: string | null;
+  accepted_at?: string | null;
+  dispatched_by?: string | null;
+  dispatched_at?: string | null;
+  escalated_at?: string | null;
+}
 export interface WaiterRound { id: string; tab_id: string; order_number: number; customer_name: string; status: string; subtotal: number; created_at: string; round_no: number }
 export interface SalonSnapshot { tables: WaiterTable[]; tabs: WaiterTab[]; sessions: WaiterSession[]; calls: WaiterCallRow[]; rounds: WaiterRound[]; releaseRequired: boolean | null }
 
@@ -101,9 +114,14 @@ export const salonStaffRepository = {
     const releaseRequired = typeof cfg?.release_required === 'boolean' ? cfg.release_required : null;
     if (!tabs.length) return { tables, tabs, sessions: [], calls: [], rounds: [], releaseRequired };
     const tabIds = tabs.map(t => t.id);
+    const loadCalls = async () => {
+      const resV2 = await supabase.from('waiter_calls').select('id,tab_id,type,status,created_at,route,assigned_to,accepted_by,accepted_at,dispatched_by,dispatched_at,escalated_at').eq('tenant_id', tenantId).in('tab_id', tabIds).eq('status', 'OPEN').order('created_at');
+      if (!resV2.error) return resV2;
+      return supabase.from('waiter_calls').select('id,tab_id,type,status,created_at').eq('tenant_id', tenantId).in('tab_id', tabIds).eq('status', 'OPEN').order('created_at');
+    };
     const [sessR, callR, rounds] = await Promise.all([
       supabase.from('tab_sessions').select('id,tab_id,display_name,approved_at,expires_at').eq('tenant_id', tenantId).in('tab_id', tabIds).gt('expires_at', new Date().toISOString()),
-      supabase.from('waiter_calls').select('id,tab_id,type,status,created_at').eq('tenant_id', tenantId).in('tab_id', tabIds).eq('status', 'OPEN').order('created_at'),
+      loadCalls(),
       salonStaffRepository.fetchRoundsForTabs(tenantId, tabIds),
     ]);
     return { tables, tabs, sessions: must(sessR) as WaiterSession[], calls: must(callR) as WaiterCallRow[], rounds, releaseRequired };

@@ -7,8 +7,13 @@ export function cleanWaiterEmail(value: unknown): string | null {
   return email.length <= 254 && EMAIL_RE.test(email) ? email : null;
 }
 
-/** https://site/garcom, com ?email=<convidado> quando o e-mail é válido (só pré-preenche o campo; nunca entra sozinho). */
-export function waiterEntryUrl(origin: string, email?: string | null): string {
+/**
+ * https://site/garcom, com ?email=<convidado> quando o e-mail é válido (só pré-preenche o campo; nunca entra sozinho).
+ * Garçom v2: com `slug`, o QR fixo da loja é https://site/garcom/<slug> (login por usuário e senha, sem e-mail).
+ */
+export function waiterEntryUrl(origin: string, email?: string | null, slug?: string | null): string {
+  const cleanSlug = String(slug ?? '').trim().toLowerCase();
+  if (/^[a-z0-9][a-z0-9-]{0,63}$/.test(cleanSlug)) return `${origin.replace(/\/$/, '')}${WAITER_PATH}/${cleanSlug}`;
   const base = `${origin.replace(/\/$/, '')}${WAITER_PATH}`;
   const clean = cleanWaiterEmail(email);
   return clean ? `${base}?email=${encodeURIComponent(clean)}` : base;
@@ -17,6 +22,14 @@ export function waiterEntryUrl(origin: string, email?: string | null): string {
 export function waiterWhatsAppUrl(url: string, storeName?: string | null): string {
   const store = String(storeName || '').trim().slice(0, 60);
   const text = `${store ? `Você foi convidado(a) para a equipe de ${store} como garçom. ` : 'Você foi convidado(a) para a equipe como garçom. '}Abra o link no celular, entre ou crie sua conta com o e-mail do convite e pronto: ${url}`;
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
+/** Mensagem do QR fixo (login por usuário e senha). */
+export function waiterLoginWhatsAppUrl(url: string, storeName?: string | null, username?: string | null): string {
+  const store = String(storeName || '').trim().slice(0, 60);
+  const user = String(username || '').trim().slice(0, 24);
+  const text = `${store ? `Acesso de garçom de ${store}. ` : 'Acesso de garçom. '}Abra o link no celular${user ? ` e entre com o usuário "${user}" e a senha que o dono passou` : ' e entre com seu usuário e senha'}: ${url}`;
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }
 

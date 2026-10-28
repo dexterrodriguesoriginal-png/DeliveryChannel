@@ -35,7 +35,12 @@ export const WaiterTableSheet: React.FC<{
   onChangeHolder?: () => void;
   onReleaseEmptyTab?: (reason: string) => void;
   onTransferHolder: (sessionId: string) => void;
-}> = ({ table, tab, info, sessions, calls, rounds, holderSessionId, holderCode, tenantSlug, features, busy, message, onClose, onApprove, onReject, onHandleCall, onOpenTable, onOrder, onRequestBill, onResetHolder, onChangeHolder, onReleaseEmptyTab, onTransferHolder }) => {
+  currentUserId?: string;
+  onAcceptCall?: (callId: string) => void;
+  canHelp?: boolean;
+  onHelpTable?: () => void;
+  helpSuccess?: boolean;
+}> = ({ table, tab, info, sessions, calls, rounds, holderSessionId, holderCode, tenantSlug, features, busy, message, onClose, onApprove, onReject, onHandleCall, onOpenTable, onOrder, onRequestBill, onResetHolder, onChangeHolder, onReleaseEmptyTab, onTransferHolder, currentUserId, onAcceptCall, canHelp, onHelpTable, helpSuccess }) => {
   const [confirmReject, setConfirmReject] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [releaseEmptyOpen, setReleaseEmptyOpen] = useState(false);
@@ -86,7 +91,42 @@ export const WaiterTableSheet: React.FC<{
             {calls.length > 0 && (
               <div className="space-y-2">
                 <h3 className="flex items-center gap-2 text-sm font-black text-rose-700"><BellRing className="h-4 w-4" />Chamados</h3>
-                {calls.map(c => <div key={c.id} className="flex items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-3"><span className="font-bold">{callTitle(c.type)}</span><button type="button" disabled={!!busy} onClick={() => onHandleCall(c.id)} className={`${btn} h-11 bg-white text-slate-900 border border-slate-200`}><Check className="h-4 w-4" />Atendido</button></div>)}
+                {calls.map(c => {
+                  const isAcceptedByMe = c.accepted_by === currentUserId;
+                  const needsAccept = !c.accepted_by && onAcceptCall;
+                  return (
+                    <div key={c.id} className="flex items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-3">
+                      <div>
+                        <span className="font-bold">{callTitle(c.type)}</span>
+                        {isAcceptedByMe && <p className="text-[11px] text-emerald-700 font-semibold">Você está atendendo</p>}
+                      </div>
+                      {needsAccept ? (
+                        <button type="button" disabled={!!busy} onClick={() => onAcceptCall(c.id)} className={`${btn} h-11 bg-emerald-600 text-white`}>
+                          Vou atender
+                        </button>
+                      ) : (
+                        <button type="button" disabled={!!busy} onClick={() => onHandleCall(c.id)} className={`${btn} h-11 bg-white text-slate-900 border border-slate-200`}>
+                          <Check className="h-4 w-4" />Atendido
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {canHelp && onHelpTable && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3 text-slate-900">
+                <p className="text-xs font-bold text-emerald-950">Modo Híbrido ativo</p>
+                <p className="text-xs text-slate-600 mt-0.5">Esta mesa pertence a outro garçom, mas você pode ajudar neste atendimento.</p>
+                <button
+                  type="button"
+                  disabled={!!busy || helpSuccess}
+                  onClick={onHelpTable}
+                  className={`${btn} mt-2 w-full bg-emerald-600 text-white`}
+                >
+                  {helpSuccess ? 'Registrado como ajudante!' : 'Ajudar nesta mesa'}
+                </button>
               </div>
             )}
 

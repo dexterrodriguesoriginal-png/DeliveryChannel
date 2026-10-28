@@ -5,7 +5,20 @@ export type TableStatusKind = 'FREE' | 'OCCUPIED' | 'LONG_STAY' | 'BILL';
 export type TableFilter = 'ALL' | TableStatusKind | 'CALL';
 
 export interface TabLike { id: string; table_id: string; status: 'OPEN' | 'BILL_REQUESTED' | 'CLOSED' | 'CANCELLED'; opened_at: string; service_fee_percent: number; service_fee_removed: boolean }
-export interface CallLike { id: string; tab_id: string; type: 'CALL' | 'BILL' | 'HELP'; status: string; created_at: string }
+export interface CallLike {
+  id: string;
+  tab_id: string;
+  type: 'CALL' | 'BILL' | 'HELP';
+  status: string;
+  created_at: string;
+  route?: 'ALL' | 'ASSIGNED' | 'CENTRAL';
+  assigned_to?: string | null;
+  accepted_by?: string | null;
+  accepted_at?: string | null;
+  dispatched_by?: string | null;
+  dispatched_at?: string | null;
+  escalated_at?: string | null;
+}
 export interface SessionLike { id: string; tab_id: string; approved_at: string | null }
 export interface RoundLike { id: string; tab_id: string; status: string; subtotal: number; created_at: string }
 export interface TableLike { id: string; label: string; area: string | null; seats: number }

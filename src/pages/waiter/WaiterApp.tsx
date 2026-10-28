@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BellRing, ChevronRight, LayoutGrid, LogOut, Loader2, MoreHorizontal, Search, ShieldAlert, ShoppingBag, UserCheck, Volume2, WifiOff, X } from 'lucide-react';
+import { ArrowRightLeft, BellRing, ChevronRight, Eye, EyeOff, LayoutGrid, LogOut, Loader2, MoreHorizontal, Search, ShieldAlert, ShoppingBag, UserCheck, Volume2, WifiOff, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { LegalCheckbox } from '../../components/legal/LegalUI';
 import { legalSignupMetadata } from '../../lib/legal/documents';
 import { teamRepository } from '../../repositories/teamRepository';
 import { readWaiterEmailParam } from '../../lib/waiter/waiterAccess';
+import { normalizeWaiterUsername, parseWaiterLoginPath } from '../../lib/waiter/waiterIdentity';
+import { DEFAULT_SERVICE_SETTINGS, formatCountdown, isCallEscalated, secondsLeft, type RosterEntry, type ServiceSettings } from '../../lib/waiter/waiterRouting';
+import { waiterV2Repository, type TableAssignment } from '../../repositories/waiterV2Repository';
 import type { Category, Product, TeamInvite } from '../../types';
 import { useModules } from '../../hooks/useModules';
 import { usePendingApprovals } from '../../hooks/usePendingApprovals';
@@ -24,6 +27,7 @@ import { badgeText, callTitle, canUseWaiterApp, greeting, newRoundIds, openCalls
 import { WaiterInstallCard } from './WaiterInstallCard';
 import { WaiterOrderSheet } from './WaiterOrderSheet';
 import { WaiterTableSheet } from './WaiterTableSheet';
+import { PassShiftModal } from '../../components/establishment/waiter/PassShiftModal';
 
 const shell = 'min-h-[100dvh] bg-slate-950 text-white';
 
@@ -35,6 +39,123 @@ const Brand: React.FC = () => (
 );
 
 const inputCls = 'mt-1 h-12 w-full rounded-2xl border-0 bg-white px-4 text-base text-slate-900 outline-none ring-1 ring-slate-300 focus:ring-2 focus:ring-emerald-500';
+
+const WaiterSlugLoginScreen: React.FC<{ slug: string; onSwitchToEmail: () => void }> = ({ slug, onSwitchToEmail }) => {
+  const [store, setStore] = useState<{ name: string; slug: string } | null>(null);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    waiterV2Repository.loginStore(slug)
+      .then(res => { if (alive) setStore(res); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [slug]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    const cleanUser = normalizeWaiterUsername(username);
+    if (!cleanUser) {
+      setError('Informe seu usuário.');
+      return;
+    }
+    if (!password || password.length < 6) {
+      setError('A senha precisa ter pelo menos 6 caracteres.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await waiterV2Repository.loginWithUsername(slug, cleanUser, password);
+    } catch (err: any) {
+      setError(err.message || 'Usuário ou senha incorretos.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Center testId="waiter-login-username">
+      <Brand />
+      <form onSubmit={submit} className="space-y-4 rounded-3xl bg-white/5 p-6 ring-1 ring-white/10">
+        <div>
+          <h2 className="text-xl font-black">Entrar como garçom</h2>
+          <p className="mt-1 text-sm text-slate-300">
+            {store?.name ? <span>Loja: <strong className="text-emerald-400">{store.name}</strong></span> : <span>Loja: <strong className="font-mono text-emerald-400">{slug}</strong></span>}
+          </p>
+        </div>
+
+        <label className="block text-sm font-semibold">
+          Usuário
+          <input
+            aria-label="Usuário"
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoComplete="username"
+            placeholder="ex: joao"
+            required
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            className={inputCls}
+          />
+        </label>
+
+        <label className="block text-sm font-semibold">
+          Senha
+          <div className="relative mt-1">
+            <input
+              aria-label="Senha"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              placeholder="sua senha"
+              required
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              className="h-12 w-full rounded-2xl border-0 bg-white px-4 pr-11 text-base text-slate-900 outline-none ring-1 ring-slate-300 focus:ring-2 focus:ring-emerald-500"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(v => !v)}
+              className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-500 hover:text-slate-700 cursor-pointer"
+              aria-label={showPassword ? 'Ocultar senha' : 'Ver senha'}
+            >
+              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
+        </label>
+
+        {error && (
+          <p role="alert" className="rounded-xl bg-rose-500/15 p-3 text-sm text-rose-200">
+            {error}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={busy}
+          className="h-14 w-full rounded-2xl bg-emerald-500 text-base font-black text-slate-950 shadow-lg shadow-emerald-500/20 disabled:opacity-60 cursor-pointer"
+        >
+          {busy ? 'Entrando…' : 'Entrar como garçom'}
+        </button>
+
+        <div className="pt-2 text-center text-xs text-slate-400 space-y-2">
+          <p>A sessão fica salva neste celular. No final do seu turno, use o botão Sair.</p>
+          <button
+            type="button"
+            onClick={onSwitchToEmail}
+            className="text-emerald-300 font-bold hover:underline cursor-pointer"
+          >
+            Entrar com e-mail (convite tradicional)
+          </button>
+        </div>
+      </form>
+    </Center>
+  );
+};
 
 const LoginScreen: React.FC = () => {
   const { signInWithPassword, signUp } = useAuth();
@@ -128,6 +249,10 @@ export const WaiterApp: React.FC = () => {
   const { supabaseUser, isLoadingAuth, isMembershipLoading, authState, activeTenant, activeRole, availableTenants = [], switchTenant, signOut } = useAuth();
   const { available, loading: modulesLoading, isModuleEnabled } = useModules();
   const [autoSwitchingStore, setAutoSwitchingStore] = useState(false);
+  const routeSlug = useMemo(() => {
+    return typeof window === 'undefined' ? null : parseWaiterLoginPath(window.location.pathname);
+  }, []);
+  const [forceEmailLogin, setForceEmailLogin] = useState(false);
   // Confirma "Mesa/Comanda desligada" na mesma fonte da tela Ferramentas (tenant_modules) via RPC pública
   // (SECURITY DEFINER), que não depende de RLS de leitura do cargo do usuário.
   const [publicDineIn, setPublicDineIn] = useState<{ tenantId: string; enabled: boolean } | null>(null);
@@ -179,7 +304,12 @@ export const WaiterApp: React.FC = () => {
   if (isLoadingAuth || isMembershipLoading || autoSwitchingStore || authState === 'AUTHENTICATING' || authState === 'AUTHENTICATED_RESOLVING_MEMBERSHIP') {
     return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
   }
-  if (!supabaseUser) return <LoginScreen />;
+  if (!supabaseUser) {
+    if (routeSlug && !forceEmailLogin) {
+      return <WaiterSlugLoginScreen slug={routeSlug} onSwitchToEmail={() => setForceEmailLogin(true)} />;
+    }
+    return <LoginScreen />;
+  }
   if (!activeTenant) return <JoinInvite email={supabaseUser.email || ''} signOutBtn={signOutBtn} />;
   if (!canUseWaiterApp(activeRole)) return <Notice testId="waiter-wrong-role" title="Acesso só para a equipe do salão" text="O aplicativo do Garçom é para Garçom, Caixa, Gerente e Dono.">{signOutBtn}</Notice>;
   if (modulesLoading && !available) return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
@@ -247,6 +377,10 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [productsError, setProductsError] = useState('');
   const [sending, setSending] = useState(false);
   const [wake, setWake] = useState(false);
+  const [serviceSettings, setServiceSettings] = useState<ServiceSettings>(DEFAULT_SERVICE_SETTINGS);
+  const [assignments, setAssignments] = useState<TableAssignment[]>([]);
+  const [passShiftOpen, setPassShiftOpen] = useState(false);
+  const [helpSuccess, setHelpSuccess] = useState(false);
   const [orderAlert, setOrderAlert] = useState<{ id: string; tableId: string; tableLabel: string; customerName: string; orderNumber: number; roundNo: number } | null>(null);
   const seenCalls = useRef<Set<string> | null>(null);
   const seenRounds = useRef<Set<string> | null>(null);
@@ -254,6 +388,49 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const features = waiterFeatures(caps.tableAccess);
 
   const approvals = usePendingApprovals(tenantId, true);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    let alive = true;
+    Promise.all([
+      waiterV2Repository.settings(tenantId),
+      waiterV2Repository.assignments(tenantId),
+    ]).then(([s, a]) => {
+      if (alive) {
+        setServiceSettings(s);
+        setAssignments(a);
+      }
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    void waiterV2Repository.heartbeat(tenantId);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        void waiterV2Repository.heartbeat(tenantId);
+        void waiterV2Repository.escalateDue(tenantId);
+      }
+    }, 20000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void waiterV2Repository.heartbeat(tenantId);
+        void waiterV2Repository.escalateDue(tenantId);
+      }
+    };
+    const onUnload = () => {
+      void waiterV2Repository.goOffline(tenantId);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('beforeunload', onUnload);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('beforeunload', onUnload);
+      void waiterV2Repository.goOffline(tenantId);
+    };
+  }, [tenantId]);
 
   const load = useCallback(async () => {
     try {
@@ -302,6 +479,8 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           .on('postgres_changes', { event: '*', schema: 'public', table: 'dining_tabs', filter: `tenant_id=eq.${tenantId}` }, () => { void load(); void approvals.refresh(); })
           .on('postgres_changes', { event: '*', schema: 'public', table: 'waiter_calls', filter: `tenant_id=eq.${tenantId}` }, () => { void load(); })
           .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_events', filter: `tenant_id=eq.${tenantId}` }, () => { void load(); void approvals.refresh(); })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'waiter_service_settings', filter: `tenant_id=eq.${tenantId}` }, () => { void waiterV2Repository.settings(tenantId).then(setServiceSettings).catch(() => {}); })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'waiter_table_assignments', filter: `tenant_id=eq.${tenantId}` }, () => { void waiterV2Repository.assignments(tenantId).then(setAssignments).catch(() => {}); })
           .subscribe()
       : null;
     return () => {
@@ -514,11 +693,70 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <p className="mb-4 text-sm text-slate-400">Mesas pedindo o garçom, ajuda ou a conta.</p>
             {calls.length === 0
               ? <div className="rounded-3xl bg-white/5 p-8 text-center ring-1 ring-white/10"><BellRing className="mx-auto mb-2 h-8 w-8 text-emerald-300" /><p className="font-bold">Nenhum chamado</p></div>
-              : <div className="space-y-3">{calls.map(c => { const label = labelByTab.get(c.tab_id) || 'Mesa'; const t = tabs.find(x => x.id === c.tab_id); return (
-                <div key={c.id} className="flex items-center gap-3 rounded-2xl bg-rose-500/10 p-4 ring-1 ring-rose-400/30">
-                  <button type="button" onClick={() => t && (setTab('MESAS'), setSelectedId(t.table_id))} className="min-w-0 flex-1 text-left"><p className="font-black">{label}</p><p className="text-sm text-rose-200">{callTitle(c.type)}</p></button>
-                  <button type="button" disabled={!!busy} onClick={() => void run(`call-${c.id}`, () => salonStaffRepository.handleCall(c.id))} className="h-12 shrink-0 rounded-2xl bg-white px-4 text-sm font-black text-slate-900 disabled:opacity-50">Atendido</button>
-                </div>); })}</div>}
+              : <div className="space-y-3">{calls.map(c => {
+                const label = labelByTab.get(c.tab_id) || 'Mesa';
+                const t = tabs.find(x => x.id === c.tab_id);
+                const isMine = c.assigned_to === currentUser?.id;
+                const isAcceptedByMe = c.accepted_by === currentUser?.id;
+                const isEscalated = isCallEscalated(c as any, serviceSettings, now);
+                const left = c.route === 'ASSIGNED' && !c.accepted_by ? secondsLeft(c.created_at, serviceSettings.acceptTimeoutSeconds, now) : 0;
+                return (
+                  <div key={c.id} className="flex flex-col gap-2.5 rounded-2xl bg-rose-500/10 p-4 ring-1 ring-rose-400/30">
+                    <div className="flex items-start justify-between gap-3">
+                      <button type="button" onClick={() => t && (setTab('MESAS'), setSelectedId(t.table_id))} className="min-w-0 flex-1 text-left">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="font-black text-base">{label}</p>
+                          {isMine && !isEscalated && (
+                            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Sua mesa</span>
+                          )}
+                          {isEscalated && (
+                            <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-300">Liberado para todos</span>
+                          )}
+                          {c.route === 'CENTRAL' && isMine && (
+                            <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-bold text-blue-300">Central</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-rose-200 mt-0.5">{callTitle(c.type)}</p>
+                        {left > 0 && !isEscalated && isMine && !c.accepted_by && (
+                          <p className="text-xs text-amber-300 font-mono mt-0.5">Aceite em {formatCountdown(left)} ou irá para todos</p>
+                        )}
+                      </button>
+
+                      <div className="shrink-0">
+                        {!c.accepted_by ? (
+                          <button
+                            type="button"
+                            disabled={!!busy}
+                            onClick={() => void run(`accept-${c.id}`, async () => {
+                              try {
+                                await waiterV2Repository.acceptCall(c.id);
+                                await load();
+                              } catch (err: any) {
+                                setToast(err.message || 'Outro garçom já assumiu.');
+                                await load();
+                              }
+                            }, 'Você assumiu este chamado.')}
+                            className="h-11 rounded-2xl bg-emerald-500 px-4 text-xs font-black text-slate-950 hover:bg-emerald-400 transition cursor-pointer disabled:opacity-50"
+                          >
+                            Vou atender
+                          </button>
+                        ) : isAcceptedByMe ? (
+                          <button
+                            type="button"
+                            disabled={!!busy}
+                            onClick={() => void run(`call-${c.id}`, () => salonStaffRepository.handleCall(c.id), 'Chamado atendido.')}
+                            className="h-11 rounded-2xl bg-white px-4 text-xs font-black text-slate-900 hover:bg-slate-100 transition cursor-pointer disabled:opacity-50"
+                          >
+                            Atendido
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400 font-semibold">Outro garçom atendendo</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}</div>}
           </section>
         )}
 
@@ -526,6 +764,19 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           <section aria-label="Mais" className="space-y-3" data-testid="waiter-more">
             <h2 className="text-xl font-black">Mais</h2>
             <WaiterInstallCard alwaysShow />
+            {serviceSettings.mode === 'FIXED' && (
+              <button
+                type="button"
+                onClick={() => setPassShiftOpen(true)}
+                className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10"
+              >
+                <span className="flex items-center gap-2">
+                  <ArrowRightLeft className="h-5 w-5 text-emerald-300" />
+                  Passar mesas (troca de turno)
+                </span>
+                <ChevronRight className="h-4 w-4 text-slate-500" />
+              </button>
+            )}
             <button type="button" onClick={() => { unlockAudio(); playNewOrderSound(); }} className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10"><span className="flex items-center gap-2"><Volume2 className="h-5 w-5 text-emerald-300" />Testar o som dos avisos</span><ChevronRight className="h-4 w-4 text-slate-500" /></button>
             <button type="button" onClick={() => void toggleWake()} aria-pressed={wake} className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10"><span>Manter a tela ligada</span><span className={`rounded-full px-3 py-1 text-xs ${wake ? 'bg-emerald-500 text-slate-950' : 'bg-white/10 text-slate-300'}`}>{wake ? 'Ligado' : 'Desligado'}</span></button>
             {(activeRole === 'OWNER' || activeRole === 'MANAGER') && <a href="/" className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10">Abrir o painel completo<ChevronRight className="h-4 w-4 text-slate-500" /></a>}
@@ -555,10 +806,26 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           holderSessionId={selectedTab ? extras?.responsibleSessionByTab.get(selectedTab.id) : undefined}
           holderCode={holderCode}
           tenantSlug={activeTenant?.slug}
-          features={features} busy={busy} message={message} onClose={() => { setSelectedId(null); setHolderCode(null); setMessage(''); }}
+          features={features} busy={busy} message={message} onClose={() => { setSelectedId(null); setHolderCode(null); setMessage(''); setHelpSuccess(false); }}
           onApprove={id => void run(`approve-${id}`, () => salonStaffRepository.approve(id), 'Liberado.')}
           onReject={id => void run(`reject-${id}`, () => salonStaffRepository.reject(id), 'Recusado.')}
           onHandleCall={id => void run(`call-${id}`, () => salonStaffRepository.handleCall(id), 'Chamado atendido.')}
+          currentUserId={currentUser?.id}
+          onAcceptCall={id => void run(`accept-${id}`, async () => {
+            try {
+              await waiterV2Repository.acceptCall(id);
+              await load();
+            } catch (err: any) {
+              setToast(err.message || 'Outro garçom já assumiu.');
+              await load();
+            }
+          }, 'Você assumiu este chamado.')}
+          canHelp={serviceSettings.mode === 'FIXED' && serviceSettings.hybridHelp && assignments.some(a => a.table_id === selected.id && a.waiter_id !== currentUser?.id)}
+          onHelpTable={() => void run('help', async () => {
+            await waiterV2Repository.helpTable(tenantId, selected.id);
+            setHelpSuccess(true);
+          }, 'Registrado como ajudante nesta mesa.')}
+          helpSuccess={helpSuccess}
           onOpenTable={openTable}
           onOrder={() => selectedTab && void openOrder(selectedTab.id, selected.label)}
           onRequestBill={() => selectedTab && void run('bill', () => salonStaffRepository.requestBill(selectedTab.id), 'Conta pedida.')}
@@ -579,6 +846,20 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         />
       )}
       {orderTarget && <WaiterOrderSheet tableLabel={orderTarget.label} products={products} categories={categories} loading={productsLoading} error={productsError} sending={sending} onClose={() => setOrderTarget(null)} onSubmit={cart => void sendOrder(cart)} />}
+      {passShiftOpen && (
+        <PassShiftModal
+          isOpen={passShiftOpen}
+          onClose={() => setPassShiftOpen(false)}
+          tenantId={tenantId}
+          currentUserId={currentUser?.id || ''}
+          myTableLabels={tables.filter(t => assignments.some(a => a.table_id === t.id && a.waiter_id === currentUser?.id)).map(t => t.label)}
+          onPassed={() => {
+            void load();
+            void waiterV2Repository.assignments(tenantId).then(setAssignments).catch(() => {});
+            setToast('Mesas passadas com sucesso!');
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -7,11 +7,15 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { TeamMember, TeamInvite, RoleId } from '../../types';
-import { Users, UserPlus, Trash2, Mail, Phone, Clock, RefreshCw, XCircle, Send } from 'lucide-react';
+import { Users, UserPlus, Trash2, Mail, Phone, Clock, RefreshCw, XCircle, Send, Pencil, KeyRound, Power, UserCheck, AtSign } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { TeamMemberStatusBadge } from '../../components/establishment/statusBadges';
 import { WaiterPhonePairingCard } from '../../components/establishment/WaiterPhonePairingCard';
 import { WaiterAccessBlock } from '../../components/establishment/WaiterAccessBlock';
+import { CreateWaiterModal, EditWaiterModal, ResetWaiterPasswordModal } from '../../components/establishment/waiter/WaiterTeamModals';
+import { waiterV2Repository, type DirectoryMember } from '../../repositories/waiterV2Repository';
+import { initials } from '../../lib/waiter/waiterRouting';
+import { isWaiterSyntheticEmail } from '../../lib/waiter/waiterIdentity';
 
 export const TeamPage: React.FC = () => {
   const { activeTenant, securityContext } = useAuth();
@@ -25,6 +29,12 @@ export const TeamPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [waiterShare, setWaiterShare] = useState<string | null>(null);
   const [openAccessId, setOpenAccessId] = useState<string | null>(null);
+  // Garçom v2 (login por usuário e senha): só aparece com a migration 20261027004900 aplicada.
+  const [directory, setDirectory] = useState<Map<string, DirectoryMember> | null>(null);
+  const [createWaiterOpen, setCreateWaiterOpen] = useState(false);
+  const [editWaiter, setEditWaiter] = useState<DirectoryMember | null>(null);
+  const [resetWaiter, setResetWaiter] = useState<DirectoryMember | null>(null);
+  const [storeAccess, setStoreAccess] = useState<{ username?: string } | null>(null);
   const [formData, setFormData] = useState({
     email: '',
     role: 'OPERATOR' as RoleId,
@@ -34,11 +44,18 @@ export const TeamPage: React.FC = () => {
     if (!activeTenant?.id) return;
     setIsLoading(true);
     try {
-      const [members, invites] = await Promise.all([
+      const [members, invites, dir] = await Promise.all([
         teamRepository.listTeamMembers(securityContext, activeTenant.id),
         teamRepository.listPendingInvites(securityContext, activeTenant.id),
+        waiterV2Repository.directory(activeTenant.id).catch(() => null),
       ]);
-      setTeam(members);
+      // O diretório (RPC) traz nome/telefone reais: a tabela users só é legível pelo próprio usuário (cards "Colaborador / Sem e-mail").
+      const byUser = dir ? new Map(dir.map(d => [d.userId, d])) : null;
+      setDirectory(byUser);
+      setTeam(byUser ? members.map(m => {
+        const d = byUser.get(m.userId);
+        return d ? { ...m, name: d.name || m.name, email: isWaiterSyntheticEmail(d.email) ? '' : d.email, phone: d.phone || m.phone } : m;
+      }) : members);
       setPendingInvites(invites);
     } catch (err) {
       console.warn('[TeamPage] Erro ao carregar equipe do Supabase:', err);
@@ -112,6 +129,16 @@ export const TeamPage: React.FC = () => {
     }
   };
 
+  const waiterAction = async (member: TeamMember, run: () => Promise<unknown>, done: { title: string; message: string }) => {
+    try {
+      await run();
+      showToast({ type: 'success', ...done });
+      await fetchTeamData();
+    } catch (err: any) {
+      showToast({ type: 'error', title: 'Não foi possível concluir', message: err.message || 'Tente novamente.' });
+    }
+  };
+
   const handleRemove = async (member: TeamMember) => {
     if (member.role === 'OWNER') {
       showToast({
@@ -122,10 +149,14 @@ export const TeamPage: React.FC = () => {
       return;
     }
 
-    if (!window.confirm(`Tem certeza que deseja remover ${member.name} da equipe?`)) return;
+    const isLoginWaiter = !!directory?.get(member.userId)?.username;
+    if (!window.confirm(isLoginWaiter
+      ? `Excluir ${member.name}? A conta de login será apagada (o histórico de pedidos é mantido). Para só bloquear o acesso, use "Desativar".`
+      : `Tem certeza que deseja remover ${member.name} da equipe?`)) return;
 
     try {
-      await teamRepository.removeTeamMember(securityContext, activeTenant.id, member.id);
+      if (directory?.get(member.userId)?.username) await waiterV2Repository.deleteWaiter(activeTenant.id, member.userId);
+      else await teamRepository.removeTeamMember(securityContext, activeTenant.id, member.id);
       showToast({
         type: 'warning',
         title: 'Colaborador Removido',
@@ -164,6 +195,14 @@ export const TeamPage: React.FC = () => {
 
           <Button
             variant="primary"
+            onClick={() => setCreateWaiterOpen(true)}
+            leftIcon={<UserCheck className="w-4 h-4" />}
+            className="shadow-xs text-xs"
+          >
+            Convidar garçom
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => setIsModalOpen(true)}
             leftIcon={<UserPlus className="w-4 h-4" />}
             className="shadow-xs text-xs"
@@ -188,9 +227,11 @@ export const TeamPage: React.FC = () => {
               <div className="space-y-2">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-800 flex items-center justify-center font-bold text-sm border border-emerald-200">
-                      {member.name.substring(0, 2).toUpperCase()}
-                    </div>
+                    {directory?.get(member.userId)?.photoUrl
+                      ? <img src={directory.get(member.userId)!.photoUrl!} alt={`Foto de ${member.name}`} className="w-10 h-10 rounded-xl object-cover" />
+                      : <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-800 flex items-center justify-center font-bold text-sm border border-emerald-200">
+                          {directory?.get(member.userId)?.username ? initials(member.name) : member.name.substring(0, 2).toUpperCase()}
+                        </div>}
                     <div>
                       <h4 className="font-bold text-xs text-gray-900 leading-snug">{member.name}</h4>
                       <Badge variant={member.role === 'OWNER' ? 'brand' : 'neutral'} size="sm">
@@ -212,10 +253,22 @@ export const TeamPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-1 text-xs text-gray-600 pt-1 border-t border-gray-100">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                    <span className="truncate">{member.email || 'Sem e-mail'}</span>
-                  </div>
+                  {directory?.get(member.userId)?.username
+                    ? (
+                      <div className="flex items-center gap-1.5 truncate" data-testid="waiter-username">
+                        <AtSign className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <span className="truncate font-mono">{directory.get(member.userId)!.username}</span>
+                      </div>
+                    )
+                    : (
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <span className="truncate">{member.email || 'Sem e-mail'}</span>
+                      </div>
+                    )}
+                  {directory?.get(member.userId)?.username && member.email && (
+                    <div className="flex items-center gap-1.5 truncate"><Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" /><span className="truncate">{member.email}</span></div>
+                  )}
                   {member.phone && (
                     <div className="flex items-center gap-1.5 font-mono text-[11px]">
                       <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
@@ -225,9 +278,28 @@ export const TeamPage: React.FC = () => {
                 </div>
               </div>
 
+              {directory?.get(member.userId)?.username && (
+                <div className="flex flex-wrap gap-1.5" data-testid="waiter-actions">
+                  {(() => {
+                    const d = directory.get(member.userId)!;
+                    const btn = 'inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-700 hover:bg-gray-50';
+                    return (
+                      <>
+                        <button type="button" className={btn} onClick={() => setEditWaiter(d)}><Pencil className="h-3 w-3" />Editar</button>
+                        <button type="button" className={btn} onClick={() => setResetWaiter(d)}><KeyRound className="h-3 w-3" />Redefinir senha</button>
+                        {d.waiterActive === false
+                          ? <button type="button" className={btn} onClick={() => waiterAction(member, () => waiterV2Repository.setActive(activeTenant.id, d.userId, true), { title: 'Garçom reativado', message: `${d.name} já pode entrar de novo.` })}><Power className="h-3 w-3" />Reativar</button>
+                          : <button type="button" className={btn} onClick={() => waiterAction(member, () => waiterV2Repository.setActive(activeTenant.id, d.userId, false), { title: 'Garçom desativado', message: `${d.name} não consegue mais entrar e as mesas dele foram liberadas.` })}><Power className="h-3 w-3" />Desativar</button>}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
               <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
                 <span className="flex items-center gap-1.5">
                   <TeamMemberStatusBadge status={member.status} />
+                  {directory?.get(member.userId)?.waiterActive === false && <Badge variant="warning" size="sm">Desativado</Badge>}
                   {member.role === 'DRIVER' && member.status === 'PENDING' && <span>Aprovar em Entregadores</span>}
                 </span>
                 <span className="font-mono">Desde {member.createdAt ? member.createdAt.split('T')[0] : 'N/A'}</span>
@@ -315,7 +387,7 @@ export const TeamPage: React.FC = () => {
               required
             >
               <option value="MANAGER">Gerente Operacional (Operações, cardápio, relatórios)</option>
-              <option value="WAITER">Garçom (atendimento e comandas do salão)</option>
+              {!directory && <option value="WAITER">Garçom (atendimento e comandas do salão)</option>}
               <option value="CASHIER">Operador de Caixa (Frente de caixa e pedidos)</option>
               <option value="OPERATOR">Operador de Loja (Separação e estoque)</option>
               <option value="DELIVERY_MANAGER">Coordenador de Entregas (Despacho de motoboys)</option>
@@ -345,6 +417,24 @@ export const TeamPage: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <CreateWaiterModal
+        isOpen={createWaiterOpen}
+        onClose={() => setCreateWaiterOpen(false)}
+        tenantId={activeTenant.id}
+        storeSlug={activeTenant.slug}
+        onDone={({ username }) => {
+          setCreateWaiterOpen(false);
+          setStoreAccess({ username });
+          showToast({ type: 'success', title: 'Garçom cadastrado', message: `Usuário "${username}" criado. Mostre o QR da loja ou envie o link.` });
+          void fetchTeamData();
+        }}
+      />
+      <EditWaiterModal member={editWaiter} onClose={() => setEditWaiter(null)} tenantId={activeTenant.id} onDone={() => { setEditWaiter(null); showToast({ type: 'success', title: 'Garçom atualizado', message: 'Dados salvos.' }); void fetchTeamData(); }} />
+      <ResetWaiterPasswordModal member={resetWaiter} onClose={() => setResetWaiter(null)} tenantId={activeTenant.id} onDone={() => { setResetWaiter(null); showToast({ type: 'success', title: 'Senha redefinida', message: 'Passe a nova senha ao garçom pessoalmente.' }); }} />
+      <Modal isOpen={!!storeAccess} onClose={() => setStoreAccess(null)} title="Acesso único do garçom" description="Um QR fixo da loja: o garçom entra com usuário e senha." size="lg">
+        {storeAccess && <WaiterAccessBlock storeName={activeTenant?.name} slug={activeTenant.slug} username={storeAccess.username} />}
       </Modal>
 
       <Modal isOpen={!!waiterShare} onClose={() => setWaiterShare(null)} title="Convite do garçom criado" description="Nenhum e-mail é enviado automaticamente. Mostre o QR ou envie o link para o garçom." size="lg">
