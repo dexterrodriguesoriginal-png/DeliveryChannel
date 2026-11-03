@@ -2,6 +2,41 @@
 -- Aplicar somente em ambiente autorizado. Sem chamadas remotas ou dados fixos de loja.
 BEGIN;
 
+-- Patches de definições falham fechados se o baseline divergir. Helpers temporários
+-- não criam API pública e os diagnósticos mostram somente função/etapa.
+CREATE FUNCTION pg_temp.entrega1_checked_replace(p_source text,p_old text,p_new text,p_stage text DEFAULT 'body') RETURNS text
+LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE v_result text; v_function text:=COALESCE(substring(p_source FROM '^CREATE OR REPLACE FUNCTION ([a-zA-Z0-9_.]+)'),'unknown_function');
+BEGIN
+ v_result:=pg_catalog.replace(p_source,p_old,p_new);
+ IF p_old IS NULL OR p_old='' OR v_result IS NOT DISTINCT FROM p_source THEN
+  RAISE EXCEPTION 'ENTREGA1_PATCH_MISMATCH: %/%',v_function,p_stage USING ERRCODE='22023';
+ END IF;
+ RETURN v_result;
+END; $$;
+CREATE FUNCTION pg_temp.entrega1_checked_regexp_replace(p_source text,p_pattern text,p_new text,p_stage text DEFAULT 'body') RETURNS text
+LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE v_result text; v_function text:=COALESCE(substring(p_source FROM '^CREATE OR REPLACE FUNCTION ([a-zA-Z0-9_.]+)'),'unknown_function');
+BEGIN
+ v_result:=pg_catalog.regexp_replace(p_source,p_pattern,p_new);
+ IF p_pattern IS NULL OR p_pattern='' OR v_result IS NOT DISTINCT FROM p_source THEN
+  RAISE EXCEPTION 'ENTREGA1_PATCH_MISMATCH: %/%',v_function,p_stage USING ERRCODE='22023';
+ END IF;
+ RETURN v_result;
+END; $$;
+CREATE FUNCTION pg_temp.entrega1_empty_search_path(p_source text) RETURNS text
+LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE v_header text:=pg_catalog.split_part(p_source,E'\nAS ',1);
+ v_path text:=btrim(substring(v_header FROM '(?n)^ SET search_path TO .*$'));
+BEGIN
+ IF v_path='SET search_path TO ''public'', ''pg_temp''' THEN
+  RETURN pg_temp.entrega1_checked_replace(p_source,'SET search_path TO ''public'', ''pg_temp''','SET search_path TO ''''','search_path');
+ END IF;
+ IF v_path='SET search_path TO ''''' THEN RETURN p_source; END IF;
+ RAISE EXCEPTION 'ENTREGA1_PATCH_MISMATCH: %/search_path',COALESCE(substring(p_source FROM '^CREATE OR REPLACE FUNCTION ([a-zA-Z0-9_.]+)'),'unknown_function') USING ERRCODE='22023';
+END; $$;
+REVOKE ALL ON FUNCTION pg_temp.entrega1_checked_replace(text,text,text,text),pg_temp.entrega1_checked_regexp_replace(text,text,text,text),pg_temp.entrega1_empty_search_path(text) FROM PUBLIC,anon,authenticated,service_role;
+
 -- A cópia não contém dados de pessoas; preserva definições/ACL reais para rollback exato.
 CREATE TABLE public._entrega1_restore (signature text PRIMARY KEY, definition text NOT NULL, acl jsonb NOT NULL);
 ALTER TABLE public._entrega1_restore ENABLE ROW LEVEL SECURITY;
@@ -18,7 +53,7 @@ FROM pg_catalog.pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.pron
  'adjust_inventory','assign_order_to_driver','revoke_team_invite','remove_team_member','set_kitchen_settings',
  'set_waiter_service_settings','waiter_performance_report','staff_open_tab','staff_request_bill','close_tab',
  'approve_session','reject_session','authorize_waiter_to_close','staff_create_holder_code','staff_reset_tab_holder',
- 'release_empty_tab','submit_round','waiter_set_active','configure_store_payment','complete_store_payment_connection',
+ 'release_empty_tab','submit_round','waiter_set_active','waiter_assert_member','waiter_update_profile','configure_store_payment','complete_store_payment_connection',
  '_waiter_is_active','_waiter_serves_tab','_tab_can_collect','_tab_pix_staff','waiter_login_check',
  '_waiter_require_manager','assign_waiter_tables','pass_waiter_tables',
  'reserve_order_payment','confirm_order_payment',
@@ -97,8 +132,12 @@ CREATE FUNCTION public.has_store_permission(p_tenant uuid,p_perm text) RETURNS b
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$ SELECT public._store_user_permission(auth.uid(),p_tenant,p_perm); $$;
 CREATE OR REPLACE FUNCTION public.has_tenant_permission(p_user_id uuid,p_tenant_id uuid,p_permission text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
- SELECT p_user_id=auth.uid() AND public.has_store_permission(p_tenant_id,p_permission);
+ SELECT (COALESCE(p_user_id=auth.uid(),false) OR auth.role()='service_role')
+ AND public._store_user_permission(p_user_id,p_tenant_id,p_permission);
 $$;
+-- Chamadas internas com ator explícito continuam sujeitas às permissões desse ator.
+-- O papel vem do JWT do PostgREST, nunca de um parâmetro recebido do navegador.
+GRANT EXECUTE ON FUNCTION public.has_tenant_permission(uuid,uuid,text) TO service_role;
 CREATE FUNCTION public._store_caller_role(p_tenant uuid) RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$ SELECT public._tenant_role_of_caller(p_tenant); $$;
 CREATE POLICY entrega1_tools_read ON public.store_tools FOR SELECT TO authenticated USING(public._store_caller_role(tenant_id) IS NOT NULL);
@@ -151,13 +190,14 @@ BEGIN
  INSERT INTO public.store_access_audit(tenant_id,actor_id,kind,role,permission,enabled) VALUES(p_tenant,auth.uid(),'PERMISSION',p_role,p_permission,p_enabled);
 END; $$;
 
--- Pré-checagem pública: só booleanos, com cota compartilhada por loja + IP (ou e-mail sem IP).
+-- Pré-checagem pública: só booleanos. Sem IP, a cota é compartilhada pela loja,
+-- impedindo que a troca do e-mail consultado reinicie o limite de enumeração.
 CREATE FUNCTION public.team_invite_check(p_slug text,p_email text,p_role text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE v_tenant uuid; v_slug text:=lower(btrim(COALESCE(p_slug,''))); v_email text:=lower(btrim(COALESCE(p_email,''))); v_role text:=upper(btrim(COALESCE(p_role,''))); v_subject text; v_scope text;
 BEGIN
  SELECT id INTO v_tenant FROM public.tenants WHERE slug=v_slug AND status='ACTIVE';
- v_subject:=public._sha256_hex(v_slug||'|'||COALESCE(NULLIF(public._request_ip_hash(),''),v_email));
+ v_subject:=public._sha256_hex(v_slug||'|'||COALESCE(NULLIF(public._request_ip_hash(),''),'no-ip'));
  v_scope:=CASE WHEN v_role='WAITER' THEN 'waiter_invite_check' ELSE 'team_invite_check' END;
  IF NOT public._rate_limit_hit(v_scope,v_subject,v_tenant,10,600) THEN RETURN jsonb_build_object('invited',false,'rate_limited',true); END IF;
  RETURN jsonb_build_object('invited',v_tenant IS NOT NULL AND length(v_email)<=254 AND v_role IN('MANAGER','CASHIER','OPERATOR','DELIVERY_MANAGER','DRIVER','WAITER','KITCHEN')
@@ -203,6 +243,24 @@ BEGIN
 EXCEPTION WHEN unique_violation THEN RAISE EXCEPTION 'WAITER_USERNAME_TAKEN: este usuário já faz parte da equipe.' USING ERRCODE='P0412';
 END; $$;
 
+-- Um perfil antigo não autoriza mutações globais de Auth. Contas pessoais,
+-- promovidas ou compartilhadas com outra loja nunca são geridas por este fluxo.
+CREATE OR REPLACE FUNCTION public.waiter_assert_member(p_tenant uuid,p_user uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
+ SELECT EXISTS(
+  SELECT 1 FROM public.waiter_profiles wp
+  JOIN public.tenant_users tu ON tu.tenant_id=wp.tenant_id AND tu.user_id=wp.user_id AND tu.role_id='WAITER'
+  JOIN public.tenants t ON t.id=wp.tenant_id AND t.status='ACTIVE'
+  JOIN auth.users a ON a.id=wp.user_id
+  WHERE wp.tenant_id=p_tenant AND wp.user_id=p_user
+  AND lower(a.email)=wp.username||'.'||t.slug||'@garcom.deliverychannel.local'
+  AND a.raw_app_meta_data->>'waiter_tenant_id'=p_tenant::text
+  AND NOT EXISTS(SELECT 1 FROM public.tenant_users other_membership
+    WHERE other_membership.user_id=p_user
+    AND (other_membership.tenant_id IS DISTINCT FROM p_tenant OR other_membership.role_id<>'WAITER'))
+ );
+$$;
+
 -- O endpoint HTTP de salão usa service_role, mas autoriza o ator real antes da consulta.
 -- Wrapper próprio da sessão para RLS: não expõe consultas de identidade de outro garçom.
 CREATE FUNCTION public._store_waiter_tab_visible(p_tab uuid) RETURNS boolean
@@ -213,21 +271,23 @@ BEGIN
  FOREACH v_sig IN ARRAY ARRAY['public._waiter_is_active(uuid,uuid)','public._waiter_serves_tab(uuid,uuid)','public._tab_can_collect(uuid,uuid)','public._tab_pix_staff(uuid,uuid)'] LOOP
   v_def:=pg_catalog.pg_get_functiondef(v_sig::regprocedure);
   IF v_sig LIKE '%_waiter_is_active%' THEN
-   v_def:=replace(v_def,'SELECT EXISTS','SELECT public._store_user_permission(p_user,p_tenant,''waiter'') AND EXISTS');
+   v_def:=pg_temp.entrega1_checked_replace(v_def,'SELECT EXISTS','SELECT public._store_user_permission(p_user,p_tenant,''waiter'') AND EXISTS','actor_permission');
   ELSIF v_sig LIKE '%_waiter_serves_tab%' THEN
-   v_def:=replace(v_def,'SELECT EXISTS','SELECT public._store_user_permission(p_user,(SELECT tenant_id FROM public.dining_tabs WHERE id=p_tab),''waiter'') AND EXISTS');
+   v_def:=pg_temp.entrega1_checked_replace(v_def,'SELECT EXISTS','SELECT public._store_user_permission(p_user,(SELECT tenant_id FROM public.dining_tabs WHERE id=p_tab),''waiter'') AND EXISTS','actor_permission');
   ELSIF v_sig LIKE '%_tab_can_collect%' THEN
-   v_def:=replace(v_def,'SELECT EXISTS','SELECT public._store_user_permission(p_user,(SELECT tenant_id FROM public.dining_tabs WHERE id=p_tab),''manage_tables'') AND EXISTS');
+   v_def:=pg_temp.entrega1_checked_replace(v_def,'SELECT EXISTS','SELECT public._store_user_permission(p_user,(SELECT tenant_id FROM public.dining_tabs WHERE id=p_tab),''manage_tables'') AND EXISTS','actor_permission');
   ELSE
-   v_def:=replace(v_def,'SELECT EXISTS','SELECT public._store_user_permission(p_user,p_tenant,''manage_tables'') AND EXISTS');
+   v_def:=pg_temp.entrega1_checked_replace(v_def,'SELECT EXISTS','SELECT public._store_user_permission(p_user,p_tenant,''manage_tables'') AND EXISTS','actor_permission');
   END IF;
   EXECUTE v_def;
  END LOOP;
  v_def:=pg_catalog.pg_get_functiondef('public.waiter_login_check(text,text,text)'::regprocedure);
- v_def:=replace(v_def,$s$'allowed', v_tenant IS NOT NULL$s$,$s$'allowed', v_tenant IS NOT NULL AND public._store_tool_enabled(v_tenant,'waiter')$s$);
+ v_def:=pg_temp.entrega1_checked_replace(v_def,$s$'allowed', v_tenant IS NOT NULL$s$,$s$'allowed', v_tenant IS NOT NULL AND public._store_tool_enabled(v_tenant,'waiter')$s$,'login_tool');
  EXECUTE v_def;
  v_def:=pg_catalog.pg_get_functiondef('public.waiter_set_active(uuid,uuid,boolean)'::regprocedure);
- EXECUTE regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN IF p_active AND NOT public._store_tool_enabled(p_tenant,'waiter') THEN RAISE EXCEPTION 'TOOL_DISABLED: ative a ferramenta Garçom.' USING ERRCODE='42501'; END IF;$r$);
+ EXECUTE pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN IF p_active AND NOT public._store_tool_enabled(p_tenant,'waiter') THEN RAISE EXCEPTION 'TOOL_DISABLED: ative a ferramenta Garçom.' USING ERRCODE='42501'; END IF; IF NOT public.waiter_assert_member(p_tenant,p_user) THEN RAISE EXCEPTION 'IDENTITY_NOT_MANAGED: conta não é gerenciada exclusivamente como garçom desta loja.' USING ERRCODE='42501'; END IF;$r$,'entry_guard');
+ v_def:=pg_catalog.pg_get_functiondef('public.waiter_update_profile(uuid,uuid,text,text,text,boolean)'::regprocedure);
+ EXECUTE pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN IF NOT public.waiter_assert_member(p_tenant,p_user) THEN RAISE EXCEPTION 'IDENTITY_NOT_MANAGED: conta não é gerenciada exclusivamente como garçom desta loja.' USING ERRCODE='42501'; END IF;$r$,'identity_guard');
 END $waiter_gates$;
 
 CREATE FUNCTION public.salon_rounds_for_staff(p_user uuid,p_tenant uuid) RETURNS jsonb
@@ -258,11 +318,11 @@ DECLARE v_def text; v_guard text := $guard$
 $guard$;
 BEGIN
  v_def:=pg_catalog.pg_get_functiondef('public._legal_signup_check()'::regprocedure);
- EXECUTE regexp_replace(v_def,'\mBEGIN\M','BEGIN '||v_guard);
+ EXECUTE pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M','BEGIN '||v_guard,'entry_guard');
  v_def:=pg_catalog.pg_get_functiondef('public._legal_signup_record()'::regprocedure);
- EXECUTE regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN
+ EXECUTE pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN
   IF NEW.raw_user_meta_data ? 'waiter_signup_slug' OR NEW.raw_user_meta_data ? 'team_signup_slug' THEN RETURN NEW; END IF;
-$r$);
+$r$,'entry_guard');
 END $patch$;
 
 -- Convites: mantém locks e defesas de conflitos existentes, adiciona escopo/permissões/ferramentas.
@@ -270,44 +330,47 @@ DO $patch$
 DECLARE v_def text; v_sig text;
 BEGIN
  v_def:=pg_catalog.pg_get_functiondef('public._is_staff_role(text)'::regprocedure);
- EXECUTE replace(v_def,$s$'WAITER'$s$,$s$'WAITER','KITCHEN'$s$);
+ EXECUTE pg_temp.entrega1_checked_replace(v_def,$s$'WAITER'$s$,$s$'WAITER','KITCHEN'$s$,'staff_roles');
  FOREACH v_sig IN ARRAY ARRAY['public.create_team_invite(uuid,character varying,character varying)','public.accept_team_invite(uuid)'] LOOP
   v_def:=pg_catalog.pg_get_functiondef(v_sig::regprocedure);
-  v_def:=replace(v_def,$s$'DRIVER','WAITER')$s$,$s$'DRIVER','WAITER','KITCHEN')$s$);
-  v_def:=replace(v_def,$s$'DRIVER', 'WAITER')$s$,$s$'DRIVER', 'WAITER', 'KITCHEN')$s$);
+  IF position($s$'DRIVER','WAITER')$s$ IN v_def)>0 THEN
+   v_def:=pg_temp.entrega1_checked_replace(v_def,$s$'DRIVER','WAITER')$s$,$s$'DRIVER','WAITER','KITCHEN')$s$,'invite_roles');
+  ELSE
+   v_def:=pg_temp.entrega1_checked_replace(v_def,$s$'DRIVER', 'WAITER')$s$,$s$'DRIVER', 'WAITER', 'KITCHEN')$s$,'invite_roles');
+  END IF;
   IF v_sig LIKE '%create_team_invite%' THEN
-   v_def:=replace(v_def,'public.has_tenant_role(v_operator_id, p_tenant_id, ARRAY[''OWNER'',''MANAGER''])','public.has_store_permission(p_tenant_id, ''manage_team'')');
-   v_def:=regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN
+   v_def:=pg_temp.entrega1_checked_replace(v_def,'public.has_tenant_role(v_operator_id, p_tenant_id, ARRAY[''OWNER'',''MANAGER''])','public.has_store_permission(p_tenant_id, ''manage_team'')','permission_guard');
+   v_def:=pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN
     IF NOT public.has_store_permission(p_tenant_id,'manage_team') THEN RAISE EXCEPTION 'FORBIDDEN: sem permissão para convidar.' USING ERRCODE='42501'; END IF;
     IF v_clean_role IN('WAITER','KITCHEN') THEN
       PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_tenant_id::text||'|tool|'||CASE WHEN v_clean_role='WAITER' THEN 'waiter' ELSE 'kitchen' END,0));
       IF NOT public._store_tool_enabled(p_tenant_id,CASE WHEN v_clean_role='WAITER' THEN 'waiter' ELSE 'kitchen' END) THEN RAISE EXCEPTION 'TOOL_DISABLED: ative a ferramenta antes de convidar.' USING ERRCODE='42501'; END IF;
     END IF;
-$r$);
+$r$,'entry_guard');
   ELSE
    -- O e-mail do perfil é editável pelo usuário; convite exige o e-mail autoritativo do Auth.
-   v_def:=replace(v_def,$s$SELECT email, name, phone INTO v_user_email, v_user_name, v_user_phone
+   v_def:=pg_temp.entrega1_checked_replace(v_def,$s$SELECT email, name, phone INTO v_user_email, v_user_name, v_user_phone
     FROM public.users WHERE id = v_user_id;$s$,$r$SELECT a.email, u.name, u.phone INTO v_user_email, v_user_name, v_user_phone
-    FROM auth.users a LEFT JOIN public.users u ON u.id=a.id WHERE a.id=v_user_id;$r$);
-   v_def:=replace(v_def,'-- Lock 2: (usuário, loja)',$r$
+    FROM auth.users a LEFT JOIN public.users u ON u.id=a.id WHERE a.id=v_user_id;$r$,'invite_auth_email');
+   v_def:=pg_temp.entrega1_checked_replace(v_def,'-- Lock 2: (usuário, loja)',$r$
     IF NOT EXISTS(SELECT 1 FROM public.tenants t WHERE t.id=v_invite.tenant_id AND t.status='ACTIVE') THEN RAISE EXCEPTION 'INVITE_REQUIRED: convite indisponível.' USING ERRCODE='42501'; END IF;
     IF v_invite.role_id IN('WAITER','KITCHEN') THEN
       PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_invite.tenant_id::text||'|tool|'||CASE WHEN v_invite.role_id='WAITER' THEN 'waiter' ELSE 'kitchen' END,0));
       IF NOT public._store_tool_enabled(v_invite.tenant_id,CASE WHEN v_invite.role_id='WAITER' THEN 'waiter' ELSE 'kitchen' END) THEN RAISE EXCEPTION 'TOOL_DISABLED: ferramenta indisponível.' USING ERRCODE='42501'; END IF;
     END IF;
     -- Lock 2: (usuário, loja)
-$r$);
+$r$,'invite_tool');
   END IF;
   EXECUTE v_def;
  END LOOP;
  v_def:=pg_catalog.pg_get_functiondef('public.list_team_invites(uuid)'::regprocedure);
- EXECUTE replace(v_def,'public.has_tenant_role(v_uid, p_tenant_id, ARRAY[''OWNER''])','public.has_store_permission(p_tenant_id,''manage_team'')');
+ EXECUTE pg_temp.entrega1_checked_replace(v_def,'public.has_tenant_role(v_uid, p_tenant_id, ARRAY[''OWNER''])','public.has_store_permission(p_tenant_id,''manage_team'')','permission_guard');
  v_def:=pg_catalog.pg_get_functiondef('public.list_team_directory(uuid)'::regprocedure);
- EXECUTE replace(v_def,'public.has_tenant_scoped_role(p_tenant, ARRAY[''OWNER'', ''MANAGER''])','public.has_store_permission(p_tenant,''manage_team'')');
+ EXECUTE pg_temp.entrega1_checked_replace(v_def,'public.has_tenant_scoped_role(p_tenant, ARRAY[''OWNER'', ''MANAGER''])','public.has_store_permission(p_tenant,''manage_team'')','permission_guard');
  v_def:=pg_catalog.pg_get_functiondef('public.revoke_team_invite(uuid)'::regprocedure);
- EXECUTE regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN IF NOT public.has_store_permission((SELECT tenant_id FROM public.team_invites WHERE id=p_invite_id),'manage_team') THEN RAISE EXCEPTION 'FORBIDDEN: sem acesso à equipe.' USING ERRCODE='42501'; END IF;$r$);
+ EXECUTE pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN IF NOT public.has_store_permission((SELECT tenant_id FROM public.team_invites WHERE id=p_invite_id),'manage_team') THEN RAISE EXCEPTION 'FORBIDDEN: sem acesso à equipe.' USING ERRCODE='42501'; END IF;$r$,'entry_guard');
  v_def:=pg_catalog.pg_get_functiondef('public.remove_team_member(uuid)'::regprocedure);
- EXECUTE regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN IF NOT public.has_store_permission((SELECT tenant_id FROM public.tenant_users WHERE id=p_tenant_user_id),'manage_team') THEN RAISE EXCEPTION 'FORBIDDEN: sem acesso à equipe.' USING ERRCODE='42501'; END IF;$r$);
+ EXECUTE pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN IF NOT public.has_store_permission((SELECT tenant_id FROM public.tenant_users WHERE id=p_tenant_user_id),'manage_team') THEN RAISE EXCEPTION 'FORBIDDEN: sem acesso à equipe.' USING ERRCODE='42501'; END IF;$r$,'entry_guard');
 END $patch$;
 CREATE FUNCTION public.team_accept_invite(p_slug text,p_role text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
@@ -341,36 +404,36 @@ DO $patch$
 DECLARE v_def text;
 BEGIN
  v_def:=pg_catalog.pg_get_functiondef('public._kitchen_resolve_tenant(uuid)'::regprocedure);
- EXECUTE replace(v_def,'SET search_path TO ''public'', ''pg_temp''','SET search_path TO ''''');
+ EXECUTE pg_temp.entrega1_empty_search_path(v_def);
  v_def:=pg_catalog.pg_get_functiondef('public.kitchen_get_context(uuid)'::regprocedure);
- v_def:=replace(v_def,$s$COALESCE(public._tenant_role_of_caller(p_tenant_id), '') NOT IN ('OWNER','MANAGER','OPERATOR','CASHIER')$s$,$s$NOT public.has_store_permission(p_tenant_id,'manage_kitchen')$s$);
- v_def:=replace(v_def,'SET search_path TO ''public'', ''pg_temp''','SET search_path TO ''''');
+ v_def:=pg_temp.entrega1_checked_replace(v_def,$s$COALESCE(public._tenant_role_of_caller(p_tenant_id), '') NOT IN ('OWNER','MANAGER','OPERATOR','CASHIER')$s$,$s$NOT public.has_store_permission(p_tenant_id,'manage_kitchen')$s$,'permission_guard');
+ v_def:=pg_temp.entrega1_empty_search_path(v_def);
  EXECUTE v_def;
  -- Remove também nome e código de retirada do papel Cozinha (só preparo/mesa/produtos).
  v_def:=pg_catalog.pg_get_functiondef('public.kitchen_list_orders(uuid)'::regprocedure);
- v_def:=replace(v_def,$s$'customer_first_name', CASE WHEN$s$,$s$'customer_first_name', CASE WHEN public._tenant_role_of_caller(v_tenant)<>'KITCHEN' AND$s$);
- v_def:=replace(v_def,$s$'pickup_code', CASE WHEN$s$,$s$'pickup_code', CASE WHEN public._tenant_role_of_caller(v_tenant)<>'KITCHEN' AND$s$);
+ v_def:=pg_temp.entrega1_checked_replace(v_def,$s$'customer_first_name', CASE WHEN$s$,$s$'customer_first_name', CASE WHEN public._tenant_role_of_caller(v_tenant)<>'KITCHEN' AND$s$,'kitchen_minimize_name');
+ v_def:=pg_temp.entrega1_checked_replace(v_def,$s$'pickup_code', CASE WHEN$s$,$s$'pickup_code', CASE WHEN public._tenant_role_of_caller(v_tenant)<>'KITCHEN' AND$s$,'kitchen_minimize_code');
  EXECUTE v_def;
  v_def:=pg_catalog.pg_get_functiondef('public.kitchen_set_order_status(uuid,text)'::regprocedure);
- v_def:=replace(v_def,'SET search_path TO ''public'', ''pg_temp''','SET search_path TO ''''');
+ v_def:=pg_temp.entrega1_empty_search_path(v_def);
  EXECUTE v_def;
  v_def:=pg_catalog.pg_get_functiondef('public.update_order_status(uuid,text,text)'::regprocedure);
- v_def:=replace(v_def,$s$v_role := public._tenant_role_of_caller(v_order.tenant_id);$s$,$r$v_role := public._tenant_role_of_caller(v_order.tenant_id);
+ v_def:=pg_temp.entrega1_checked_replace(v_def,$s$v_role := public._tenant_role_of_caller(v_order.tenant_id);$s$,$r$v_role := public._tenant_role_of_caller(v_order.tenant_id);
     IF v_role='KITCHEN' THEN RETURN public.kitchen_set_order_status(p_order_id,v_new); END IF;
     IF NOT public.has_store_permission(v_order.tenant_id,CASE WHEN v_role='WAITER' THEN 'waiter' WHEN v_role='DELIVERY_MANAGER' THEN 'dispatch_orders' ELSE 'manage_orders' END) THEN
       RAISE EXCEPTION 'ORDER_NOT_FOUND: pedido não encontrado.' USING ERRCODE='42501';
     END IF;
-$r$);
+$r$,'order_permissions');
  EXECUTE v_def;
  -- A habilitação antiga da cozinha respeita o mesmo interruptor e só o dono o altera.
  v_def:=pg_catalog.pg_get_functiondef('public.set_kitchen_settings(uuid,boolean,text,boolean)'::regprocedure);
- v_def:=regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN
+ v_def:=pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN
     IF NOT public.has_store_permission(p_tenant_id,'manage_kitchen') THEN RAISE EXCEPTION 'FORBIDDEN: sem acesso à cozinha.' USING ERRCODE='42501'; END IF;
     IF p_enabled IS DISTINCT FROM (SELECT enabled FROM public.kitchen_settings WHERE tenant_id=p_tenant_id) THEN
       PERFORM public.set_store_tool(p_tenant_id,'kitchen',COALESCE(p_enabled,false));
     END IF;
-$r$);
- v_def:=replace(v_def,'SET search_path TO ''public'', ''pg_temp''','SET search_path TO ''''');
+$r$,'entry_guard');
+ v_def:=pg_temp.entrega1_empty_search_path(v_def);
  EXECUTE v_def;
 END $patch$;
 
@@ -389,17 +452,20 @@ BEGIN
  ('change_product_option_price','p_tenant_id','manage_catalog'),
  ('change_product_options_price','p_tenant_id','manage_catalog')
  ) x(fn,arg,perm) LOOP
+  IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.proname=r.fn) THEN
+   RAISE EXCEPTION 'ENTREGA1_PATCH_MISMATCH: %/required_function',r.fn USING ERRCODE='22023';
+  END IF;
   FOR v_def IN SELECT pg_catalog.pg_get_functiondef(p.oid) FROM pg_catalog.pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.proname=r.fn LOOP
    v_guard:=format('BEGIN IF NOT public.has_store_permission(%I,%L) THEN RAISE EXCEPTION ''FORBIDDEN: sem permissão para esta operação.'' USING ERRCODE=''42501''; END IF;',r.arg,r.perm);
-   v_def:=regexp_replace(v_def,'\mBEGIN\M',v_guard);
-   v_def:=replace(v_def,'SET search_path TO ''public'', ''pg_temp''','SET search_path TO ''''');
+   v_def:=pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M',v_guard,'entry_guard');
+   v_def:=pg_temp.entrega1_empty_search_path(v_def);
    EXECUTE v_def;
   END LOOP;
  END LOOP;
  -- Essas RPCs já resolvem tenant antes de validar o papel. Acrescentamos a permissão ajustável.
  v_def:=pg_catalog.pg_get_functiondef('public.adjust_inventory(uuid,integer,character varying,text,character varying)'::regprocedure);
- v_def:=replace(v_def,'IF NOT public.has_tenant_role(v_user_id, v_tenant_id, ARRAY[''OWNER'', ''MANAGER'', ''OPERATOR'']) THEN','IF NOT public.has_store_permission(v_tenant_id,''manage_inventory'') THEN');
- v_def:=replace(v_def,'SET search_path TO ''public'', ''pg_temp''','SET search_path TO ''''');
+ v_def:=pg_temp.entrega1_checked_replace(v_def,'IF NOT public.has_tenant_permission(v_user_id, v_tenant_id, ''manage_inventory'') THEN','IF NOT public.has_store_permission(v_tenant_id,''manage_inventory'') THEN','permission_guard');
+ v_def:=pg_temp.entrega1_empty_search_path(v_def);
  EXECUTE v_def;
 END $patch$;
 
@@ -413,15 +479,15 @@ DO $patch$
 DECLARE v_def text;
 BEGIN
  v_def:=pg_catalog.pg_get_functiondef('public.archive_orders(uuid[],boolean)'::regprocedure);
- v_def:=replace(v_def,$s$COALESCE(public._tenant_role_of_caller(v_order.tenant_id), '') NOT IN ('OWNER','MANAGER')$s$,$s$NOT public.has_store_permission(v_order.tenant_id,'manage_orders')$s$);
+ v_def:=pg_temp.entrega1_checked_replace(v_def,$s$COALESCE(public._tenant_role_of_caller(v_order.tenant_id), '') NOT IN ('OWNER','MANAGER')$s$,$s$NOT public.has_store_permission(v_order.tenant_id,'manage_orders')$s$,'permission_guard');
  EXECUTE v_def;
  IF pg_catalog.to_regprocedure('public.offer_order_to_driver(uuid,uuid)') IS NOT NULL THEN
   v_def:=pg_catalog.pg_get_functiondef('public.offer_order_to_driver(uuid,uuid)'::regprocedure);
-  v_def:=replace(v_def,$s$public._pr_b_staff(o.tenant_id,ARRAY['OWNER','MANAGER','DELIVERY_MANAGER'])$s$,$s$public.has_store_permission(o.tenant_id,'dispatch_orders')$s$);
+  v_def:=pg_temp.entrega1_checked_replace(v_def,$s$public._pr_b_staff(o.tenant_id,ARRAY['OWNER','MANAGER','DELIVERY_MANAGER'])$s$,$s$public.has_store_permission(o.tenant_id,'dispatch_orders')$s$,'permission_guard');
   EXECUTE v_def;
  END IF;
  v_def:=pg_catalog.pg_get_functiondef('public.get_dispatch_queue(uuid)'::regprocedure);
- v_def:=regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN IF NOT public.has_store_permission(p_tenant_id,'dispatch_orders') THEN RAISE EXCEPTION 'FORBIDDEN: sem acesso ao despacho.' USING ERRCODE='42501'; END IF;$r$);
+ v_def:=pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN IF NOT public.has_store_permission(p_tenant_id,'dispatch_orders') THEN RAISE EXCEPTION 'FORBIDDEN: sem acesso ao despacho.' USING ERRCODE='42501'; END IF;$r$,'entry_guard');
  EXECUTE v_def;
 END $patch$;
 
@@ -442,10 +508,10 @@ BEGIN
  ) x(sig,tbl,arg) LOOP
   v_def:=pg_catalog.pg_get_functiondef(r.sig::regprocedure);
   v_guard:=format('BEGIN IF NOT public.has_store_permission((SELECT tenant_id FROM %s WHERE id=%I),''manage_tables'') THEN RAISE EXCEPTION ''FORBIDDEN: sem acesso às mesas.'' USING ERRCODE=''42501''; END IF;',r.tbl,r.arg);
-  EXECUTE regexp_replace(v_def,'\mBEGIN\M',v_guard);
+  EXECUTE pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M',v_guard,'entry_guard');
  END LOOP;
  v_def:=pg_catalog.pg_get_functiondef('public._waiter_require_manager(uuid)'::regprocedure);
- EXECUTE regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN IF NOT public.has_store_permission(p_tenant,'manage_team') THEN RAISE EXCEPTION 'FORBIDDEN: sem acesso à equipe.' USING ERRCODE='42501'; END IF;$r$);
+ EXECUTE pg_temp.entrega1_checked_regexp_replace(v_def,'\mBEGIN\M',$r$BEGIN IF NOT public.has_store_permission(p_tenant,'manage_team') THEN RAISE EXCEPTION 'FORBIDDEN: sem acesso à equipe.' USING ERRCODE='42501'; END IF;$r$,'entry_guard');
 END $table_guards$;
 
 -- RLS adicional é RESTRICTIVE: nenhuma policy antiga amplia o papel Cozinha ou ignora um toggle.
@@ -462,6 +528,10 @@ CREATE POLICY entrega1_customers_minimize ON public.customers AS RESTRICTIVE FOR
 CREATE POLICY entrega1_payment_settings_owner ON public.tenant_payment_settings AS RESTRICTIVE FOR ALL TO authenticated USING(public.has_store_permission(tenant_id,'view_finances')) WITH CHECK(public.has_store_permission(tenant_id,'view_finances'));
 CREATE POLICY entrega1_payment_accounts_owner ON public.store_payment_accounts AS RESTRICTIVE FOR ALL TO authenticated USING(public.has_store_permission(tenant_id,'view_finances')) WITH CHECK(public.has_store_permission(tenant_id,'view_finances'));
 CREATE POLICY entrega1_products_permission ON public.products AS RESTRICTIVE FOR UPDATE TO authenticated USING(public.has_store_permission(tenant_id,'manage_catalog') OR public.has_store_permission(tenant_id,'manage_inventory')) WITH CHECK(public.has_store_permission(tenant_id,'manage_catalog') OR public.has_store_permission(tenant_id,'manage_inventory'));
+-- Intencionalmente PERMISSIVE: um override autorizado precisa poder conceder UPDATE
+-- mesmo sem uma policy permissiva antiga para o papel. A policy RESTRICTIVE acima
+-- continua obrigatória (inclusive isolamento por tenant) e nunca é contornada por OR.
+-- A proteção de colunas/estoque permanece nos triggers existentes.
 CREATE POLICY entrega1_products_write ON public.products FOR UPDATE TO authenticated USING(public.has_store_permission(tenant_id,'manage_catalog') OR public.has_store_permission(tenant_id,'manage_inventory')) WITH CHECK(public.has_store_permission(tenant_id,'manage_catalog') OR public.has_store_permission(tenant_id,'manage_inventory'));
 CREATE POLICY entrega1_catalog_insert ON public.products AS RESTRICTIVE FOR INSERT TO authenticated WITH CHECK(public.has_store_permission(tenant_id,'manage_catalog'));
 CREATE POLICY entrega1_catalog_delete ON public.products AS RESTRICTIVE FOR DELETE TO authenticated USING(public.has_store_permission(tenant_id,'manage_catalog'));
@@ -477,7 +547,7 @@ DECLARE v_def text; v_sig text;
 BEGIN
  FOREACH v_sig IN ARRAY ARRAY['public.configure_store_payment(uuid,uuid,text,jsonb)','public.complete_store_payment_connection(uuid,uuid,text,text,bigint)'] LOOP
   v_def:=pg_catalog.pg_get_functiondef(v_sig::regprocedure);
-  EXECUTE replace(v_def,$s$tu.role_id IN ('OWNER','MANAGER')$s$,$s$tu.role_id='OWNER'$s$);
+  EXECUTE pg_temp.entrega1_checked_replace(v_def,$s$tu.role_id IN ('OWNER','MANAGER')$s$,$s$tu.role_id='OWNER'$s$,'financial_owner');
  END LOOP;
 END $patch$;
 -- Recebimento operacional é distinto da configuração financeira; identidade real
@@ -486,13 +556,13 @@ DO $receipt_guards$
 DECLARE v_def text;
 BEGIN
  v_def:=pg_catalog.pg_get_functiondef('public.reserve_order_payment(uuid,uuid,text,text)'::regprocedure);
- v_def:=replace(v_def,$s$EXISTS(SELECT 1 FROM public.tenant_users tu WHERE tu.tenant_id=v_order.tenant_id AND tu.user_id=p_user AND tu.status='ACTIVE' AND tu.role_id IN ('OWNER','MANAGER','CASHIER'))$s$,
- $r$(public._store_user_permission(p_user,v_order.tenant_id,'manage_orders') OR public._store_user_permission(p_user,v_order.tenant_id,'manage_cashier'))$r$);
+ v_def:=pg_temp.entrega1_checked_replace(v_def,$s$EXISTS(SELECT 1 FROM public.tenant_users tu WHERE tu.tenant_id=v_order.tenant_id AND tu.user_id=p_user AND tu.status='ACTIVE' AND tu.role_id IN ('OWNER','MANAGER','CASHIER'))$s$,
+ $r$(public._store_user_permission(p_user,v_order.tenant_id,'manage_orders') OR public._store_user_permission(p_user,v_order.tenant_id,'manage_cashier'))$r$,'financial_owner');
  EXECUTE v_def;
  v_def:=pg_catalog.pg_get_functiondef('public.confirm_order_payment(uuid,jsonb,uuid)'::regprocedure);
- v_def:=replace(v_def,$s$IF v_payment.status='paid' THEN RETURN; END IF;$s$,$r$IF p_manual_user IS NOT NULL AND NOT (public._store_user_permission(p_manual_user,v_payment.tenant_id,'manage_orders') OR public._store_user_permission(p_manual_user,v_payment.tenant_id,'manage_cashier')) THEN RAISE EXCEPTION 'FORBIDDEN: sem permissão para receber pagamentos.' USING ERRCODE='42501'; END IF;
- IF v_payment.status='paid' THEN RETURN; END IF;$r$);
- v_def:=replace(v_def,$s$tu.role_id IN ('OWNER','MANAGER')$s$,$s$tu.role_id IN ('OWNER','MANAGER','CASHIER')$s$);
+ v_def:=pg_temp.entrega1_checked_replace(v_def,$s$IF v_payment.status='paid' THEN RETURN; END IF;$s$,$r$IF p_manual_user IS NOT NULL AND NOT (public._store_user_permission(p_manual_user,v_payment.tenant_id,'manage_orders') OR public._store_user_permission(p_manual_user,v_payment.tenant_id,'manage_cashier')) THEN RAISE EXCEPTION 'FORBIDDEN: sem permissão para receber pagamentos.' USING ERRCODE='42501'; END IF;
+ IF v_payment.status='paid' THEN RETURN; END IF;$r$,'receipt_actor');
+ v_def:=pg_temp.entrega1_checked_replace(v_def,$s$tu.role_id IN ('OWNER','MANAGER')$s$,$s$tu.role_id IN ('OWNER','MANAGER','CASHIER')$s$,'receipt_roles');
  EXECUTE v_def;
 END $receipt_guards$;
 
@@ -522,9 +592,12 @@ BEGIN
  FOR r IN SELECT p.oid::regprocedure::text sig FROM pg_catalog.pg_proc p JOIN public._entrega1_restore b ON b.signature=p.oid::regprocedure::text
  WHERE p.pronamespace='public'::regnamespace LOOP
   v_def:=pg_catalog.pg_get_functiondef(r.sig::regprocedure);
-  v_def:=replace(v_def,'SET search_path TO ''public'', ''pg_temp''','SET search_path TO ''''');
+  v_def:=pg_temp.entrega1_empty_search_path(v_def);
   EXECUTE v_def;
   EXECUTE 'REVOKE ALL ON FUNCTION '||r.sig||' FROM PUBLIC';
  END LOOP;
 END $acl$;
+DROP FUNCTION pg_temp.entrega1_empty_search_path(text);
+DROP FUNCTION pg_temp.entrega1_checked_regexp_replace(text,text,text,text);
+DROP FUNCTION pg_temp.entrega1_checked_replace(text,text,text,text);
 COMMIT;

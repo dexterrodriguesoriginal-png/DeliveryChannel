@@ -48,3 +48,13 @@ O ambiente fornecido não tem credenciais de staging. Falhas de Auth/Storage for
 3. Um pedido delivery, três rodadas de mesa e dois delivery seguidos, com realtime e recuperação por polling.
 
 O rollback recusa execução enquanto houver membros ou convites com papel `KITCHEN`, para não apagar pessoas nem converter papéis silenciosamente. Esses vínculos devem ser tratados explicitamente antes de uma reversão.
+
+## Revisão de segurança do PR #18
+
+- Cada substituição semântica de definição verifica que o texto mudou; divergências abortam a transação com função/etapa no diagnóstico. O `search_path` aceita somente os estados completos conhecidos. Helpers temporários são removidos ao concluir. Cinco fixtures de divergência verificam o aborto atômico.
+- A busca de chamadas em `src`, `server`, funções Edge, scripts e SQL encontrou o servidor de pagamentos usando `_store_user_permission` com ator explícito. `has_tenant_permission` agora também aceita o JWT de `service_role` sem `auth.uid`, mantendo a verificação das permissões do ator; usuários autenticados continuam limitados ao próprio ID.
+- Sem IP, a pré-checagem de convite usa uma única cota por loja, compartilhada entre os e-mails consultados. A pré-checagem generalizada também compartilha a cota entre os papéis.
+- `entrega1_products_write` é permissiva intencionalmente, para permitir concessões por override que as policies antigas não contemplam. A policy restritiva de permissões/tenant e os triggers de colunas continuam obrigatórios.
+- O gerenciamento de Auth exige conta sintética exclusiva, associação atual de Garçom e metadados confiáveis. Perfis antigos de contas promovidas, compartilhadas ou pessoais não autorizam redefinir senha, remover ban ou alterar o perfil global. A exclusão continua restrita ao vínculo da loja.
+
+Validação final única desta revisão: TypeScript sem erros; 1.807 testes Vitest aprovados em 216 arquivos; 164 verificações SQL aprovadas; cinco baselines divergentes recusados sem alterar o schema; dois ciclos de rollback exato aprovados.

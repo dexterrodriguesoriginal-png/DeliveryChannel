@@ -325,3 +325,4 @@ SELECT t.ok(NOT has_function_privilege('anon','public._team_signup_invited(text,
 SELECT t.ok(NOT has_table_privilege('anon','public._entrega1_restore','SELECT') AND NOT has_table_privilege('authenticated','public._entrega1_restore','SELECT'), 'snapshot de rollback não é acessível ao cliente');
 
 SELECT t.ok(NOT has_function_privilege('anon','public.salon_rounds_for_staff(uuid,uuid)','EXECUTE') AND NOT has_function_privilege('authenticated','public.salon_rounds_for_staff(uuid,uuid)','EXECUTE') AND has_function_privilege('service_role','public.salon_rounds_for_staff(uuid,uuid)','EXECUTE'), 'fallback de salão tem ACL mínima de service_role');
+\ir security_review.sql

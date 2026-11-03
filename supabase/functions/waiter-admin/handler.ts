@@ -209,9 +209,12 @@ export function createWaiterAdminHandler(createClient: (...args: any[]) => any, 
         if (error) return serverError(error, action, stage);
         return json({ ok: true });
       }
+      // A historical waiter profile is not authority to mutate global Auth.
+      // SQL also verifies the current WAITER membership and an exclusive,
+      // trusted synthetic identity for this store before any side effect.
       const { data: member, error: assertError } = await admin.rpc('waiter_assert_member', { p_tenant: tenantId, p_user: userId });
       if (assertError) return serverError(assertError, action, stage);
-      if (member !== true) return fail(404, 'NOT_FOUND', 'Garçom não encontrado nesta loja.');
+      if (member !== true) return fail(403, 'IDENTITY_NOT_MANAGED', 'Esta conta não pode ser alterada pelo cadastro de garçons desta loja.');
 
       if (action === 'update') {
         const phone = cleanWaiterPhone(body?.phone);

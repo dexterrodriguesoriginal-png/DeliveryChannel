@@ -131,6 +131,54 @@ describe('waiter-admin authenticated boundary', () => {
     expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled();
   });
 
+  it.each(['privileged former waiter', 'identity shared with another store', 'personal-email identity'])('refuses global and profile mutations for a denied %s', async () => {
+    admin.rpc.mockResolvedValue({ data: false, error: null });
+    for (const action of ['update', 'reset_password', 'set_active', 'reactivate']) {
+      const response = await post({ ...createInput, action, userId: WAITER, active: true, photoDataUrl: 'data:image/png;base64,aGVsbG8=' });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ ok: false, code: 'IDENTITY_NOT_MANAGED', message: 'Esta conta não pode ser alterada pelo cadastro de garçons desta loja.' });
+    }
+    expect(admin.rpc.mock.calls).toEqual(Array.from({ length: 4 }, () => ['waiter_assert_member', { p_tenant: TENANT, p_user: WAITER }]));
+    expect(admin.auth.admin.updateUserById).not.toHaveBeenCalled();
+    expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled();
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it.each([null, 'true'])('requires an explicit true identity authorization (received %j)', async data => {
+    admin.rpc.mockResolvedValueOnce({ data, error: null });
+    const response = await post({ action: 'reset_password', tenantId: TENANT, userId: WAITER, password: 'new-secret' });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: 'IDENTITY_NOT_MANAGED' });
+    expect(admin.auth.admin.updateUserById).not.toHaveBeenCalled();
+  });
+
+  it.each(['returned', 'thrown'])('fails closed if the target identity authorization RPC has a %s error', async kind => {
+    const error = { code: 'PGRST202', message: 'private SQL diagnostic' };
+    if (kind === 'returned') admin.rpc.mockResolvedValueOnce({ data: true, error });
+    else admin.rpc.mockRejectedValueOnce(error);
+    const response = await post({ ...createInput, action: 'reactivate', userId: WAITER, photoDataUrl: 'data:image/png;base64,aGVsbG8=' });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: 'WAITER_SETUP_REQUIRED' });
+    expect(admin.rpc).toHaveBeenCalledExactlyOnceWith('waiter_assert_member', { p_tenant: TENANT, p_user: WAITER });
+    expect(admin.auth.admin.updateUserById).not.toHaveBeenCalled();
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it.each(['update', 'reset_password', 'set_active', 'reactivate'])('preserves %s for an authorized store-exclusive waiter', async action => {
+    const response = await post({ ...createInput, action, userId: WAITER, active: true });
+    expect(await response.json()).toEqual({ ok: true });
+    expect(admin.rpc).toHaveBeenCalledWith('waiter_assert_member', { p_tenant: TENANT, p_user: WAITER });
+    if (action === 'update') {
+      expect(admin.rpc).toHaveBeenCalledWith('waiter_update_profile', expect.objectContaining({ p_tenant: TENANT, p_user: WAITER }));
+    } else {
+      expect(admin.auth.admin.updateUserById).toHaveBeenCalledWith(WAITER, action === 'reset_password'
+        ? { password: 'senha123' } : action === 'reactivate' ? { ban_duration: 'none', password: 'senha123' } : { ban_duration: 'none' });
+    }
+    if (action === 'set_active' || action === 'reactivate') {
+      expect(admin.rpc).toHaveBeenCalledWith('waiter_set_active', { p_tenant: TENANT, p_user: WAITER, p_active: true });
+    }
+  });
+
   it('cannot revoke a user who has no waiter membership in this store', async () => {
     admin.from.mockImplementation((table: string) => {
       const q: any = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: table === 'tenants' ? { slug: 'loja-a' } : null, error: null }) }; return q;
