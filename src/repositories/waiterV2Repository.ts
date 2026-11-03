@@ -61,7 +61,9 @@ async function readInvokeError(error: any): Promise<WaiterAdminError> {
     const body = await error?.context?.json?.();
     if (body && typeof body.message === 'string') return new WaiterAdminError(body.message, String(body.code || 'ERROR'), body.canReactivate === true, body.userId);
   } catch { /* corpo ilegível */ }
-  return new WaiterAdminError('Não foi possível concluir a ação. Tente novamente.', 'ERROR');
+  const raw = typeof error?.message === 'string' ? error.message : '';
+  const detail = raw && !/non-2xx/i.test(raw) ? ` (${raw})` : '';
+  return new WaiterAdminError(`Não foi possível concluir a ação. Tente novamente.${detail}`, 'ERROR');
 }
 
 async function adminCall(payload: Record<string, unknown>): Promise<{ userId?: string; username?: string }> {

@@ -50,12 +50,13 @@ export const TeamPage: React.FC = () => {
         waiterV2Repository.directory(activeTenant.id).catch(() => null),
       ]);
       // O diretório (RPC) traz nome/telefone reais: a tabela users só é legível pelo próprio usuário (cards "Colaborador / Sem e-mail").
+      const visibleMembers = members.filter(m => m.status !== 'INACTIVE'); // removidos/revogados não aparecem na lista
       const byUser = dir ? new Map(dir.map(d => [d.userId, d])) : null;
       setDirectory(byUser);
-      setTeam(byUser ? members.map(m => {
+      setTeam(byUser ? visibleMembers.map(m => {
         const d = byUser.get(m.userId);
         return d ? { ...m, name: d.name || m.name, email: isWaiterSyntheticEmail(d.email) ? '' : d.email, phone: d.phone || m.phone } : m;
-      }) : members);
+      }) : visibleMembers);
       setPendingInvites(invites);
     } catch (err) {
       console.warn('[TeamPage] Erro ao carregar equipe do Supabase:', err);
@@ -150,17 +151,21 @@ export const TeamPage: React.FC = () => {
     }
 
     const isLoginWaiter = !!directory?.get(member.userId)?.username;
+    const isWaiter = member.role === 'WAITER';
     if (!window.confirm(isLoginWaiter
       ? `Excluir ${member.name}? A conta de login será apagada (o histórico de pedidos é mantido). Para só bloquear o acesso, use "Desativar".`
-      : `Tem certeza que deseja remover ${member.name} da equipe?`)) return;
+      : isWaiter
+        ? `Tem certeza que deseja remover o garçom ${member.name}? Ele perderá o acesso ao salão.`
+        : `Tem certeza que deseja remover ${member.name} da equipe?`)) return;
 
     try {
       if (directory?.get(member.userId)?.username) await waiterV2Repository.deleteWaiter(activeTenant.id, member.userId);
       else await teamRepository.removeTeamMember(securityContext, activeTenant.id, member.id);
+      setTeam(prev => prev.filter(m => m.id !== member.id)); // some da lista na hora
       showToast({
         type: 'warning',
-        title: 'Colaborador Removido',
-        message: `${member.name} teve o acesso revogado no estabelecimento.`,
+        title: isWaiter ? 'Garçom Removido' : 'Colaborador Removido',
+        message: isWaiter ? `O garçom ${member.name} foi removido da equipe.` : `${member.name} teve o acesso revogado no estabelecimento.`,
       });
       await fetchTeamData();
     } catch (err: any) {
@@ -193,21 +198,16 @@ export const TeamPage: React.FC = () => {
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-700' : ''}`} />
           </button>
 
+          {/* Botão único (A3). Antes: "Convidar garçom" abria o cadastro v2 (usuário+senha, sem e-mail) e
+              "+ Convidar Colaborador" abria o convite por e-mail para qualquer papel (inclusive Garçom legado). */}
           <Button
             variant="primary"
-            onClick={() => setCreateWaiterOpen(true)}
-            leftIcon={<UserCheck className="w-4 h-4" />}
-            className="shadow-xs text-xs"
-          >
-            Convidar garçom
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setFormData({ email: '', role: 'OPERATOR' as RoleId }); setIsModalOpen(true); }}
             leftIcon={<UserPlus className="w-4 h-4" />}
             className="shadow-xs text-xs"
+            data-testid="add-team-member-btn"
           >
-            + Convidar Colaborador
+            Adicionar membro da equipe
           </Button>
         </div>
       </div>
@@ -364,19 +364,32 @@ export const TeamPage: React.FC = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Convidar Colaborador para a Equipe"
-        description="O colaborador receberá um convite formal. Quando ele criar a conta com este e-mail, o vínculo com a loja será ativado com o papel escolhido."
+        title="Adicionar membro da equipe"
+        description="Escolha o papel. Garçom entra com usuário e senha (sem e-mail); os demais papéis recebem convite por e-mail."
         size="md"
       >
-        <form onSubmit={handleInvite} className="space-y-4 text-xs">
-          <Input
-            label="E-mail do Colaborador *"
-            type="email"
-            value={formData.email}
-            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-            placeholder="colaborador@adega.com"
-            required
-          />
+        <form
+          onSubmit={(e) => {
+            if (formData.role === 'WAITER' && directory) {
+              e.preventDefault();
+              setIsModalOpen(false);
+              setCreateWaiterOpen(true);
+              return;
+            }
+            void handleInvite(e);
+          }}
+          className="space-y-4 text-xs"
+        >
+          {!(formData.role === 'WAITER' && directory) && (
+            <Input
+              label="E-mail do Colaborador *"
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="colaborador@adega.com"
+              required
+            />
+          )}
 
           <div>
             <label className="font-semibold text-gray-700 block mb-1">Papel & Nível de Permissão (RBAC) *</label>
@@ -385,9 +398,10 @@ export const TeamPage: React.FC = () => {
               onChange={(e) => setFormData({ ...formData, role: e.target.value as RoleId })}
               className="w-full bg-white border border-gray-200 rounded-xl p-2.5 text-xs outline-none focus:border-emerald-600"
               required
+              data-testid="team-role-select"
             >
+              <option value="WAITER">Garçom (usuário e senha, atendimento do salão)</option>
               <option value="MANAGER">Gerente Operacional (Operações, cardápio, relatórios)</option>
-              {!directory && <option value="WAITER">Garçom (atendimento e comandas do salão)</option>}
               <option value="CASHIER">Operador de Caixa (Frente de caixa e pedidos)</option>
               <option value="OPERATOR">Operador de Loja (Separação e estoque)</option>
               <option value="DELIVERY_MANAGER">Coordenador de Entregas (Despacho de motoboys)</option>
@@ -413,7 +427,7 @@ export const TeamPage: React.FC = () => {
               disabled={isSubmitting}
               leftIcon={<Send className="w-3.5 h-3.5" />}
             >
-              {isSubmitting ? 'Emitindo Convite...' : 'Enviar Convite'}
+              {isSubmitting ? 'Emitindo Convite...' : (formData.role === 'WAITER' && directory ? 'Continuar' : 'Enviar Convite')}
             </Button>
           </div>
         </form>

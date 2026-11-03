@@ -76,7 +76,16 @@ Deno.serve(async (req: Request) => {
         email, password: String(body.password), email_confirm: true,
         user_metadata: { name, waiter: true }, app_metadata: { waiter_tenant_id: tenantId },
       });
-      if (created.error || !created.data.user) return fail(409, 'USERNAME_TAKEN', 'Não foi possível criar este usuário. Tente outro nome de usuário.');
+      if (created.error || !created.data.user) {
+        const cmsg = String(created.error?.message || '');
+        const cstatus = Number((created.error as any)?.status || 0);
+        if (cstatus === 422 && /already|registered|exists|duplicate/i.test(cmsg)) {
+          return fail(409, 'USERNAME_TAKEN', 'O usuário já existe. Tente outro nome de usuário.');
+        }
+        if (/password/i.test(cmsg)) return fail(400, 'INVALID_INPUT', 'Senha inválida: ' + cmsg);
+        console.error('waiter-admin createUser failed', cstatus, cmsg);
+        return fail(400, 'CREATE_FAILED', 'Não foi possível criar o usuário: ' + (cmsg || 'erro desconhecido') + '.');
+      }
       const newId = created.data.user.id;
       let photoUrl: string | null = null;
       try {
@@ -140,7 +149,8 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
     return fail(400, 'INVALID_INPUT', 'Ação desconhecida.');
-  } catch {
-    return fail(500, 'INTERNAL', 'Erro inesperado. Tente novamente.');
+  } catch (e) {
+    console.error('waiter-admin unexpected', e);
+    return fail(500, 'INTERNAL', 'Erro inesperado: ' + ((e as Error)?.message || 'tente novamente') + '.');
   }
 });

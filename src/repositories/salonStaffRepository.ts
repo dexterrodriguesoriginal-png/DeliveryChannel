@@ -226,6 +226,8 @@ export const salonStaffRepository = {
     return data as { tabId: string; existing: boolean };
   },
   async requestBill(tabId: string): Promise<void> { const { error } = await supabase.rpc('staff_request_bill', { p_tab_id: tabId }); if (error) throw error; },
+  /** Dono/gerente/caixa autoriza o garçom a fechar a conta (BILL_REQUESTED → WAITER_AUTHORIZED). */
+  async authorizeWaiterToClose(tabId: string): Promise<void> { const { error } = await supabase.rpc('authorize_waiter_to_close', { p_tab_id: tabId }); if (error) throw error; },
   async submitRound(tabId: string, items: unknown[], idempotencyKey: string): Promise<void> {
     const { error } = await supabase.rpc('submit_round', { p_items: items, p_idempotency_key: idempotencyKey, p_tab_id: tabId }); if (error) throw error;
   },
