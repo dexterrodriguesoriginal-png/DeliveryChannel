@@ -58,12 +58,16 @@ export const mapRosterRow = (r: any): RosterEntry => ({
 
 async function readInvokeError(error: any): Promise<WaiterAdminError> {
   try {
-    const body = await error?.context?.json?.();
-    if (body && typeof body.message === 'string') return new WaiterAdminError(body.message, String(body.code || 'ERROR'), body.canReactivate === true, body.userId);
+    const response = error?.context;
+    const body = await (typeof response?.clone === 'function' ? response.clone() : response)?.json?.();
+    const message = typeof body?.message === 'string' ? body.message : typeof body?.msg === 'string' ? body.msg : '';
+    if (/invalid jwt|jwt expired|missing authorization/i.test(message)) return new WaiterAdminError('Sessão expirada. Entre novamente para gerenciar a equipe.', 'UNAUTHENTICATED');
+    if (body?.ok === false && message) return new WaiterAdminError(message, String(body.code || 'ERROR'), body.canReactivate === true, body.userId);
+    // waiter-login also returns safe business errors without an `ok` field in older deployments.
+    if (body?.code && typeof body.code === 'string' && !/^\d+$/.test(body.code) && message) return new WaiterAdminError(message, body.code, body.canReactivate === true, body.userId);
   } catch { /* corpo ilegível */ }
-  const raw = typeof error?.message === 'string' ? error.message : '';
-  const detail = raw && !/non-2xx/i.test(raw) ? ` (${raw})` : '';
-  return new WaiterAdminError(`Não foi possível concluir a ação. Tente novamente.${detail}`, 'ERROR');
+  if (error?.name === 'FunctionsFetchError') return new WaiterAdminError('Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.', 'NETWORK');
+  return new WaiterAdminError('Não foi possível concluir a ação. Tente novamente em instantes.', 'ERROR');
 }
 
 async function adminCall(payload: Record<string, unknown>): Promise<{ userId?: string; username?: string }> {

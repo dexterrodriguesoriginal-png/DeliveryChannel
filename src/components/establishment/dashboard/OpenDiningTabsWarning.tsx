@@ -4,6 +4,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useModules } from '../../../hooks/useModules';
 import { formatTableLabel } from '../../../lib/orders/labels';
 import { supabase } from '../../../lib/supabase';
+import { ACTIVE_DINING_TAB_STATUSES } from '../../../lib/salon/tableStatus';
 
 type DiningTabRow = { id: string; table_id: string; opened_at: string; status: string };
 type DiningTableRow = { id: string; label: string };
@@ -29,7 +30,7 @@ export const OpenDiningTabsWarning: React.FC = () => {
     if (!activeTenant?.id || !enabled) { setWarnings([]); return; }
     try {
       const { data: tabs, error: tabsError } = await supabase.from('dining_tabs')
-        .select('id,table_id,opened_at,status').eq('tenant_id', activeTenant.id).in('status', ['OPEN', 'BILL_REQUESTED']).order('opened_at');
+        .select('id,table_id,opened_at,status').eq('tenant_id', activeTenant.id).in('status', ACTIVE_DINING_TAB_STATUSES).order('opened_at');
       if (tabsError) throw tabsError;
       if (!tabs?.length) { setWarnings([]); return; }
       const { data: tables, error: tablesError } = await supabase.from('dining_tables')

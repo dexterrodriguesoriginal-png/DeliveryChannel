@@ -17,6 +17,12 @@
 .salon-card--OCCUPIED { --sc-bg:#fefce8; --sc-border:#fde047; --sc-text:#422006; --sc-accent:#a16207; --sc-chip:#fef08a; --sc-shadow:rgba(202,138,4,.45); }
 .salon-card--LONG_STAY { --sc-bg:#fef2f2; --sc-border:#fca5a5; --sc-text:#7f1d1d; --sc-accent:#b91c1c; --sc-chip:#fecaca; --sc-shadow:rgba(220,38,38,.45); }
 .salon-card--BILL { --sc-bg:#f5f3ff; --sc-border:#c4b5fd; --sc-text:#4c1d95; --sc-accent:#6d28d9; --sc-chip:#ddd6fe; --sc-shadow:rgba(124,58,237,.45); }
+.salon-card--AUTHORIZED { --sc-bg:#5b21b6; --sc-border:#4c1d95; --sc-text:#fff; --sc-accent:#ddd6fe; --sc-chip:#6d28d9; --sc-shadow:rgba(91,33,182,.6); background:#5b21b6; }
+.salon-card--AUTHORIZED .salon-time { background:#6d28d9; }
+.salon-card--AWAITING_PAYMENT { --sc-bg:#f0fdfa; --sc-border:#5eead4; --sc-text:#134e4a; --sc-accent:#0f766e; --sc-chip:#ccfbf1; --sc-shadow:rgba(15,118,110,.45); }
+.salon-card--NEW_ORDER { --sc-bg:#fef2f2; --sc-border:#fca5a5; --sc-text:#7f1d1d; --sc-accent:#dc2626; --sc-chip:#fee2e2; --sc-shadow:rgba(220,38,38,.45); }
+.salon-card--PREPARING { --sc-bg:#fff7ed; --sc-border:#fdba74; --sc-text:#7c2d12; --sc-accent:#ea580c; --sc-chip:#ffedd5; --sc-shadow:rgba(234,88,12,.45); }
+.salon-card--READY { --sc-bg:#faf5ff; --sc-border:#a855f7; --sc-text:#581c87; --sc-accent:#7c3aed; --sc-chip:#e9d5ff; --sc-shadow:rgba(124,58,237,.55); }
 .salon-card--CALL { box-shadow:0 0 0 0 rgba(239,68,68,.5), 0 8px 20px -12px var(--sc-shadow); animation:salon-rise .35s cubic-bezier(.2,.8,.2,1) both, salon-halo 2s ease-out infinite; animation-delay:calc(var(--i,0) * 14ms), 0s; }
 
 .salon-chip { display:inline-flex; align-items:center; gap:6px; padding:3px 9px 3px 7px; border-radius:999px; background:var(--sc-chip); color:var(--sc-text); font-size:11px; font-weight:800; letter-spacing:.01em; line-height:1.4; }

@@ -1,4 +1,4 @@
-import type { OrderStatus } from '../../types';
+import type { FulfillmentType, OrderStatus } from '../../types';
 
 /**
  * 19/10 (padrão KDS, aplicado em todo o painel do dono):
@@ -21,8 +21,18 @@ const CHIP: Record<OrderStatus, StatusChip> = {
 };
 export const LATE_CHIP: StatusChip = { label: 'ATRASADO', icon: 'late', className: 'bg-red-600 text-white border-red-700' };
 
-export function statusChip(status: OrderStatus, late = false): StatusChip {
+const DINE_IN_CHIP: Partial<Record<OrderStatus, StatusChip>> = {
+  PENDING: { label: 'AGUARDANDO', icon: 'bell', className: 'bg-red-100 text-red-900 border-red-400' },
+  CONFIRMED: { label: 'ACEITO', icon: 'confirmed', className: 'bg-red-50 text-red-900 border-red-300' },
+  PREPARING: { label: 'EM PREPARO', icon: 'flame', className: 'bg-orange-100 text-orange-900 border-orange-400' },
+  READY: { label: 'AGUARDANDO GARÇOM', icon: 'ready', className: 'bg-purple-100 text-purple-900 border-purple-400' },
+  OUT_FOR_DELIVERY: { label: 'INDO ATÉ A MESA', icon: 'ready', className: 'bg-purple-100 text-purple-900 border-purple-400' },
+  DELIVERED: { label: 'ENTREGUE', icon: 'delivered', className: 'bg-green-100 text-green-900 border-green-400' },
+};
+
+export function statusChip(status: OrderStatus, late = false, fulfillmentType?: FulfillmentType): StatusChip {
   if (late) return LATE_CHIP;
+  if (fulfillmentType === 'DINE_IN' && DINE_IN_CHIP[status]) return DINE_IN_CHIP[status]!;
   return CHIP[status] ?? CHIP.DELIVERED;
 }
 

@@ -91,12 +91,16 @@ export class PaymentStore {
       .eq('tenant_id', tenantId).eq('user_id', userId).eq('status', 'ACTIVE').eq('tenants.status', 'ACTIVE')
       .in('role_id', ['OWNER', 'MANAGER', 'CASHIER', 'WAITER', 'OPERATOR']).maybeSingle();
     if (memberErr || !member) throw new PaymentError('FORBIDDEN', 403, 'Acesso negado ao salão.');
+    // This fallback uses service role, so it must enforce the module gate normally applied by RLS.
+    const { data: module, error: moduleErr } = await this.db.from('tenant_modules')
+      .select('enabled').eq('tenant_id', tenantId).eq('module_key', 'dine_in').eq('enabled', true).maybeSingle();
+    if (moduleErr || !module) throw new PaymentError('MODULE_DISABLED', 403, 'O salão está desativado nesta loja.');
     const { data: tabs } = await this.db.from('dining_tabs')
-      .select('id').eq('tenant_id', tenantId).in('status', ['OPEN', 'BILL_REQUESTED']);
+      .select('id').eq('tenant_id', tenantId).in('status', ['OPEN', 'BILL_REQUESTED', 'WAITER_AUTHORIZED', 'AWAITING_PAYMENT']);
     const tabIds = (tabs || []).map((t: { id: string }) => t.id);
     if (!tabIds.length) return [];
     const { data: rounds, error } = await this.db.from('orders')
-      .select('id,tab_id,order_number,customer_name,status,subtotal,created_at,round_no')
+      .select('id,tab_id,order_number,customer_name,status,subtotal,created_at,round_no,waiter_id')
       .eq('tenant_id', tenantId).eq('fulfillment_type', 'DINE_IN')
       .in('tab_id', tabIds).neq('status', 'CANCELLED').order('round_no');
     if (error) return [];

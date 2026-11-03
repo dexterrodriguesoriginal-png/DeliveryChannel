@@ -6,6 +6,7 @@ import { ORDER_STATUS_THEME } from '../../utils/orderStatusTheme';
 import { orderAgeInfo } from '../../lib/orders/orderAge';
 import { pickupActionLabel, pickupWaitingMinutes, waitingText } from '../../lib/orders/fulfillmentTabs';
 import { orderTypeLabel, paymentMethodShortLabel } from '../../lib/orders/labels';
+import { dineInNextAction } from '../../lib/orders/dineInFlow';
 import { formatBRL } from '../../lib/pricing/money';
 import { KANBAN_COLUMN_THEME, kanbanColumnForStatus, itemsSummary } from './ordersKanban';
 import './ordersKanban.css';
@@ -44,6 +45,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
   const isClosed = order.status === 'DELIVERED' || order.status === 'CANCELLED';
   const isPickup = order.fulfillmentType === 'PICKUP';
   const isDineIn = order.fulfillmentType === 'DINE_IN';
+  const dineInAction = dineInNextAction(order);
   const wait = pickupWaitingMinutes(order, now);
   const paid = order.onlinePayment?.status === 'paid' || order.paymentStatus === 'PAID';
   const awaitingPayment = !!order.onlinePayment && order.onlinePayment.status !== 'paid';
@@ -65,17 +67,18 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
 
   const handleActionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isPending) void onUpdateStatus(order.id, 'CONFIRMED');
+    if (dineInAction) void onUpdateStatus(order.id, dineInAction.to);
+    else if (isPending) void onUpdateStatus(order.id, 'CONFIRMED');
     else if (isConfirmed) void onUpdateStatus(order.id, 'PREPARING');
     else if (isPreparing) void onUpdateStatus(order.id, 'READY');
-    else if (isReady && (isPickup || isDineIn)) void onUpdateStatus(order.id, 'DELIVERED');
+    else if (isReady && isPickup) void onUpdateStatus(order.id, 'DELIVERED');
     else if (isReady && order.status === 'READY' && !live && !order.driverId) onAssignDriverClick(order);
     else if (isDelivery) void onUpdateStatus(order.id, 'DELIVERED');
     else onSelectOrder(order);
   };
-  const actionLabel = order.status === 'WAITING_FOR_DRIVER' || (isReady && order.driverId) ? 'Ver detalhes'
+  const actionLabel = dineInAction?.label || (order.status === 'WAITING_FOR_DRIVER' || (isReady && order.driverId) ? 'Ver detalhes'
     : isDineIn && isReady ? 'Servir' : (isPickup && pickupActionLabel(order.status))
-    || (retry && isReady ? 'Chamar outro' : isReady ? 'Chamar entregador' : ORDER_STATUS_THEME[order.status]?.buttonLabel || 'Ver detalhes');
+    || (retry && isReady ? 'Chamar outro' : isReady ? 'Chamar entregador' : ORDER_STATUS_THEME[order.status]?.buttonLabel || 'Ver detalhes'));
   const ActionIcon = isClosed ? Eye : isReady && !isPickup && !isDineIn ? Truck : isPending || isPreparing ? Check : CheckCircle2;
 
   const showPrimary = !live && !isClosed;
@@ -87,6 +90,7 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
     {(live || retry) && <div className="orders-card-strip" data-offer="true" data-testid="driver-offer-strip"><DriverOfferStatus orderId={order.id} /></div>}
     {acceptedDriver && <div className="orders-card-strip flex items-center gap-1"><Truck size={11} />Entregador a caminho da loja</div>}
     {awaitingPayment && <div className="orders-card-strip flex items-center gap-1"><CreditCard size={11} />Aguardando pagamento</div>}
+    {isDineIn && isDelivery && <div className="orders-card-strip">Pedido indo até a mesa</div>}
     <div className="orders-card-row">
       <div className="orders-card-l1">
         <p className="orders-card-title" title={`#${order.orderNumber || order.id.slice(0, 6)} ${order.customerName}`}><span className="orders-card-num">#{order.orderNumber || order.id.slice(0, 6)}</span></p>

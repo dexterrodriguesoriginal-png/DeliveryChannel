@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
 const product = { id: 'p1', name: 'Chopp', description: '', price: 12, imageUrl: '', isActive: true, isAvailable: true, optionGroups: [] };
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ supabaseUser: h.auth.user, signUp: h.auth.signUp, signInWithPassword: h.auth.signInWithPassword }) }));
 vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: { rpc: (...a: unknown[]) => h.rpc(...a), auth: { signInAnonymously: vi.fn(), signInWithOAuth: vi.fn() } } }));
+vi.mock('../../../lib/pwa/applyStoreIdentity', () => ({ applyStoreIdentity: vi.fn().mockResolvedValue({}) }));
 vi.mock('../../../repositories/publicStoreRepository', () => ({ publicStoreRepository: { loadPublicStore: async () => ({ status: 'ok', data: { tenant: { id: 'tn', name: 'Loja X' }, products: [product] } }) } }));
 vi.mock('../../../repositories/tenantModuleRepository', () => ({ tenantModuleRepository: { getPublicEnabled: async () => new Set(['dine_in']) } }));
 vi.mock('../../../repositories/productOptionRepository', () => ({ productOptionRepository: { getPublicForProducts: async () => new Map() } }));
@@ -40,9 +41,13 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Mesa — modelo de acesso (capabilities v2)', () => {
-  it('quem não está identificado vê entrar/criar conta (nunca "continuar como visitante") e a mesa fica guardada para o retorno do e-mail', async () => {
+  it('navega e adiciona sem login; cadastro só ao finalizar e a mesa fica guardada para o retorno do e-mail', async () => {
     h.caps.mockResolvedValue(V2); baseRpc();
     render(<DineInClientApp token={TOKEN} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
+    expect(screen.queryByTestId('identity-gate')).toBeNull();
+    fireEvent.click(screen.getByTestId('dinein-bag-counter'));
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar pedido' }));
     expect(await screen.findByTestId('identity-gate')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Continuar como visitante/ })).toBeNull();
     expect(screen.getByLabelText('Celular')).toBeTruthy();
@@ -52,6 +57,10 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
   it('visitante anônimo antigo também precisa se identificar', async () => {
     h.caps.mockResolvedValue(V2); baseRpc(); h.auth.user = { id: 'anon', is_anonymous: true };
     render(<DineInClientApp token={TOKEN} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
+    expect(screen.queryByTestId('identity-gate')).toBeNull();
+    fireEvent.click(screen.getByTestId('dinein-bag-counter'));
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar pedido' }));
     expect(await screen.findByTestId('identity-gate')).toBeTruthy();
     expect(h.access.enterTable).not.toHaveBeenCalled();
   });
@@ -59,6 +68,8 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     h.caps.mockResolvedValue(V2); baseRpc();
     h.auth.signUp.mockResolvedValue({ success: true, requiresEmailConfirmation: true });
     render(<DineInClientApp token={TOKEN} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fazer pedido' }));
     await screen.findByTestId('identity-gate');
     fireEvent.change(screen.getByLabelText('Seu nome'), { target: { value: 'Ana Souza' } });
     fireEvent.change(screen.getByLabelText('Celular'), { target: { value: '11 99999-0000' } });

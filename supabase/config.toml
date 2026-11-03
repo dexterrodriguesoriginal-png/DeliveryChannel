@@ -1,0 +1,4 @@
+# The handler validates the caller via Auth.getUser and checks the store role before
+# using service_role. The legacy gateway verifier does not accept every ES256 JWT.
+[functions.waiter-admin]
+verify_jwt = false

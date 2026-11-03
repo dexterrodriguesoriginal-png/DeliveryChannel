@@ -33,7 +33,7 @@ describe('TableCard', () => {
     expect(screen.getByTestId('salon-table-t1').getAttribute('aria-label')).toContain('50% pago');
   });
   it('estados: longa permanência, conta pedida e sino de chamado', () => {
-    const long = deriveTableStatus({ tab: tab(75), rounds, now: NOW, longStayMinutes: 60 });
+    const long = deriveTableStatus({ tab: tab(75), rounds: rounds.map(round => ({ ...round, status: 'DELIVERED' })), now: NOW, longStayMinutes: 60 });
     const bill = deriveTableStatus({ tab: tab(10, 'BILL_REQUESTED'), rounds, now: NOW });
     const call = deriveTableStatus({ tab: tab(5), rounds, calls: [{ id: 'c', tab_id: 'tab1', type: 'CALL', status: 'OPEN', created_at: '' }], now: NOW });
     const { rerender } = render(<TableCard id="t1" label="Mesa 1" area={null} seats={2} info={long} onOpen={() => {}} />);
@@ -49,5 +49,16 @@ describe('TableCard', () => {
   it('PIX para conferir aparece no rótulo acessível', () => {
     const info = deriveTableStatus({ tab: tab(5), rounds, needsReview: true, now: NOW });
     expect(tableAriaLabel('Mesa 1', info, 2)).toContain('PIX para conferir');
+  });
+  it('autorização roxa e Pix aguardando pagamento continuam com a comanda ocupada', () => {
+    const authorized = deriveTableStatus({ tab: { ...tab(10), status: 'WAITER_AUTHORIZED' }, rounds, now: NOW });
+    const awaiting = deriveTableStatus({ tab: { ...tab(10), status: 'AWAITING_PAYMENT' }, rounds, now: NOW });
+    const { rerender } = render(<TableCard id="t1" label="Mesa 1" area={null} seats={2} info={authorized} onOpen={() => {}} />);
+    expect(screen.getByTestId('salon-table-t1').className).toContain('salon-card--AUTHORIZED');
+    expect(screen.getByTestId('salon-table-t1').textContent).toContain('Garçom autorizado');
+    rerender(<TableCard id="t1" label="Mesa 1" area={null} seats={2} info={awaiting} onOpen={() => {}} />);
+    expect(screen.getByTestId('salon-table-t1').getAttribute('data-status')).toBe('AWAITING_PAYMENT');
+    expect(screen.getByRole('progressbar')).toBeTruthy();
+    expect(screen.getByTestId('salon-table-t1').textContent).toContain('Aguardando pagamento');
   });
 });

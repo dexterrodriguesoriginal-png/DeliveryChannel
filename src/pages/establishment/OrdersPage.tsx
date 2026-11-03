@@ -38,7 +38,7 @@ import { OrdersZoomControl } from '../../components/establishment/OrdersZoomCont
 import { useOrdersZoom } from '../../lib/orders/ordersZoom';
 import { SlaTimerChip } from '../../components/establishment/SlaTimerChip';
 import { useNewOrderAlarm } from '../../lib/orders/newOrderAlarm';
-import { ORDER_STATUS_THEME, DELAYED_PREPARING_THEME, checkIsPreparingDelayed, orderActionButtonStyle } from '../../utils/orderStatusTheme';
+import { checkIsPreparingDelayed, orderActionButtonStyle, getOrderStatusTheme } from '../../utils/orderStatusTheme';
 import { ShoppingBag, Bike, Clock, Phone, FileText, User, RefreshCw, Search, X, ChevronRight, ChevronDown, AlertTriangle, Printer, Plus, DollarSign, MessageSquare, Layers, List, Volume2, VolumeX, Building2, Check, UtensilsCrossed, MoreVertical, SlidersHorizontal } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { assignableDrivers, canAssignDrivers } from '../../lib/driverAdmin';
@@ -53,6 +53,7 @@ import { sortOrdersNewestFirst, countStaleActiveOrders } from '../../lib/orders/
 import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE, shouldBlockCallDriver } from '../../lib/orders/dispatchErrors';
 import { supabase } from '../../lib/supabase';
 import { canArchiveOrder, matchesOrderStatusTab } from '../../lib/orders/archive';
+import { dineInNextAction } from '../../lib/orders/dineInFlow';
 
 function orderForCard(order: Order): Order {
   return order.fulfillmentType === 'DINE_IN'
@@ -397,10 +398,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus, note?: string) => {
     if (!activeTenant?.id) return;
     const currentOrder = (remoteOrders || []).find(o => o.id === orderId);
-    if (currentOrder?.fulfillmentType !== 'PICKUP' && currentOrder && newStatus === 'WAITING_FOR_DRIVER' && !currentOrder.driverId) {
+    if (currentOrder?.fulfillmentType === 'DELIVERY' && newStatus === 'WAITING_FOR_DRIVER' && !currentOrder.driverId) {
       setAssigningOrder(currentOrder); return;
     }
-    if (newStatus === 'OUT_FOR_DELIVERY' && currentOrder?.driverId) {
+    if (newStatus === 'OUT_FOR_DELIVERY' && currentOrder?.fulfillmentType === 'DELIVERY' && currentOrder.driverId) {
       setSelectedOrder(currentOrder); setDrawerTab('detalhes');
       showToast({ type: 'info', title: 'Retirada', message: 'Peça o código ao entregador.' }); return;
     }
@@ -440,7 +441,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       });
       await fetchOrders(true);
     } catch (err: any) {
-      const isDispatch = newStatus === 'WAITING_FOR_DRIVER' || newStatus === 'OUT_FOR_DELIVERY';
+      const isDispatch = currentOrder?.fulfillmentType === 'DELIVERY' && (newStatus === 'WAITING_FOR_DRIVER' || newStatus === 'OUT_FOR_DELIVERY');
       showToast({
         type: 'error',
         title: isDispatch ? 'Não foi possível chamar o entregador' : 'Falha ao atualizar',
@@ -474,7 +475,12 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       return;
     }
 
-    if (targetStatus === 'OUT_FOR_DELIVERY' && !targetOrder.driverId && targetOrder.fulfillmentType !== 'PICKUP') {
+    if (targetStatus === 'DELIVERED' && targetOrder.fulfillmentType === 'DINE_IN' && targetOrder.status !== 'OUT_FOR_DELIVERY') {
+      showToast({ type: 'warning', title: 'Serviço pendente', message: 'Toque em Servir antes de confirmar que o pedido foi entregue na mesa.' });
+      return;
+    }
+
+    if (targetStatus === 'OUT_FOR_DELIVERY' && !targetOrder.driverId && targetOrder.fulfillmentType === 'DELIVERY') {
       setAssigningOrder(targetOrder);
       const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
       setSelectedDriverUserId(firstAvail);
@@ -725,7 +731,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
 
   const isSelectedDelayed = selectedOrder ? checkIsPreparingDelayed(selectedOrder.createdAt, selectedOrder.status, prepMinutes) : false;
   const selectedOrderTheme = selectedOrder 
-    ? (isSelectedDelayed ? DELAYED_PREPARING_THEME : (ORDER_STATUS_THEME[selectedOrder.status] || ORDER_STATUS_THEME.PENDING)) 
+    ? getOrderStatusTheme(selectedOrder, isSelectedDelayed)
     : null;
 
   // Renderizador do Conteúdo do Drawer de Detalhes Status-Aware (COMANDO 123)
@@ -758,7 +764,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           {/* Linha 1: Badge de Status + Tempo Decorrido + Botão Fechar */}
           <div className="flex items-center justify-between gap-1">
             <div className="flex items-center gap-1 min-w-0">
-              <OrderStatusChip status={selectedOrder.status} late={isSelectedDelayed} className="text-[8px] px-1.5 py-0.5" />
+              <OrderStatusChip status={selectedOrder.status} fulfillmentType={selectedOrder.fulfillmentType} late={isSelectedDelayed} className="text-[8px] px-1.5 py-0.5" />
               <span className="text-[7.5px] font-mono text-slate-500 font-semibold flex items-center gap-0.5 shrink-0">
                 <Clock className="w-2 h-2 text-slate-400" />
                 <span>{elapsedStr}</span>
@@ -973,14 +979,14 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               <div className="text-[7.5px] font-bold uppercase tracking-wider text-slate-400">Linha do Tempo Operacional</div>
               <div className="space-y-1.5 border-l-2 border-slate-200 pl-2.5 ml-1 text-[8px]">
                 <div className="relative">
-                  <div className="w-2 h-2 rounded-full bg-amber-500 absolute -left-[14px] top-1 ring-2 ring-white" />
+                  <div className={`w-2 h-2 rounded-full ${selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-red-500' : 'bg-amber-500'} absolute -left-[14px] top-1 ring-2 ring-white`} />
                   <div className="font-bold text-slate-900 text-[9px]">Pedido Criado</div>
                   <div className="text-[7.5px] text-slate-500 font-mono">{orderTimeStr}</div>
                 </div>
 
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
-                    selectedOrder.status !== 'PENDING' ? 'bg-amber-400' : 'bg-slate-300'
+                    selectedOrder.status !== 'PENDING' ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-red-400' : 'bg-amber-400' : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Confirmação</div>
                   <div className="text-[7.5px] text-slate-500">
@@ -991,7 +997,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
                     selectedOrder.status === 'PREPARING' || selectedOrder.status === 'READY' || selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? 'bg-blue-600'
+                      ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-orange-600' : 'bg-blue-600'
                       : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Preparo na Cozinha</div>
@@ -1003,30 +1009,30 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
                     selectedOrder.status === 'READY' || selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? 'bg-green-700'
+                      ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-purple-700' : 'bg-green-700'
                       : 'bg-slate-300'
                   }`} />
-                  <div className="font-bold text-slate-900 text-[9px]">Pronto para Envio</div>
+                  <div className="font-bold text-slate-900 text-[9px]">{selectedOrder.fulfillmentType === 'DINE_IN' ? 'Aguardando garçom' : 'Pronto para Envio'}</div>
                   <div className="text-[7.5px] text-slate-500">
-                    {selectedOrder.status === 'READY' ? 'Embalado' : 'Pendente'}
+                    {selectedOrder.status === 'READY' ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'Pronto no balcão' : 'Embalado' : 'Pendente'}
                   </div>
                 </div>
 
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
                     selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? 'bg-cyan-600'
+                      ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-purple-600' : 'bg-cyan-600'
                       : 'bg-slate-300'
                   }`} />
-                  <div className="font-bold text-slate-900 text-[9px]">Em Rota de Entrega</div>
+                  <div className="font-bold text-slate-900 text-[9px]">{selectedOrder.fulfillmentType === 'DINE_IN' ? 'Serviço na mesa' : 'Em Rota de Entrega'}</div>
                   <div className="text-[7.5px] text-slate-500">
-                    {selectedOrder.status === 'OUT_FOR_DELIVERY' ? 'A caminho' : 'Pendente'}
+                    {selectedOrder.status === 'OUT_FOR_DELIVERY' ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'Pedido indo até você' : 'A caminho' : 'Pendente'}
                   </div>
                 </div>
 
                 <div className="relative">
                   <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
-                    selectedOrder.status === 'DELIVERED' ? 'bg-slate-500' : 'bg-slate-300'
+                    selectedOrder.status === 'DELIVERED' ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-green-600' : 'bg-slate-500' : 'bg-slate-300'
                   }`} />
                   <div className="font-bold text-slate-900 text-[9px]">Entregue</div>
                   <div className="text-[7.5px] text-slate-500">
@@ -1173,10 +1179,12 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
             <button
               type="button"
               onClick={() => {
-                if (selectedOrder.status === 'PENDING') handleUpdateStatus(selectedOrder.id, 'CONFIRMED');
+                const dineInAction = dineInNextAction(selectedOrder);
+                if (dineInAction) handleUpdateStatus(selectedOrder.id, dineInAction.to);
+                else if (selectedOrder.status === 'PENDING') handleUpdateStatus(selectedOrder.id, 'CONFIRMED');
                 else if (selectedOrder.status === 'CONFIRMED') handleUpdateStatus(selectedOrder.id, 'PREPARING');
                 else if (selectedOrder.status === 'PREPARING') handleUpdateStatus(selectedOrder.id, 'READY');
-                else if (selectedOrder.status === 'READY' && (selectedOrder.fulfillmentType === 'PICKUP' || selectedOrder.fulfillmentType === 'DINE_IN')) handleUpdateStatus(selectedOrder.id, 'DELIVERED');
+                else if (selectedOrder.status === 'READY' && selectedOrder.fulfillmentType === 'PICKUP') handleUpdateStatus(selectedOrder.id, 'DELIVERED');
                 else if (selectedOrder.status === 'READY' && selectedOrder.fulfillmentType === 'DELIVERY') {
                   setAssigningOrder(selectedOrder);
                   const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
@@ -1188,9 +1196,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
             >
               <Check className="w-2.5 h-2.5 stroke-[3] shrink-0" />
               <span className="truncate">
-                {selectedOrder.fulfillmentType === 'DINE_IN' && selectedOrder.status === 'READY'
-                  ? 'Servir'
-                  : (selectedOrder.fulfillmentType === 'PICKUP' && pickupActionLabel(selectedOrder.status))
+                {dineInNextAction(selectedOrder)?.label || (selectedOrder.fulfillmentType === 'PICKUP' && pickupActionLabel(selectedOrder.status))
                     || (selectedOrder.status === 'READY' && retryOffer(selectedOrder.id) ? 'Chamar outro' : selectedOrderTheme.buttonLabel)}
               </span>
             </button>
@@ -1368,7 +1374,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                         {filteredOrders.map(order => {
                           const totalItemsCount = order.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || order.items?.length || 0;
                           const orderTimeStr = new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                          const rowTheme = ORDER_STATUS_THEME[order.status] || ORDER_STATUS_THEME.PENDING;
+                          const rowTheme = getOrderStatusTheme(order);
                           const statusColors = orderStatusColors(order.status);
                           const isSelected = selectedOrder?.id === order.id;
 
@@ -1427,7 +1433,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                               <td>
                                 <span className="inline-flex flex-wrap items-center gap-1.5">
                                   <DriverOfferStatus orderId={order.id} />
-                                  <OrderStatusPill status={order.status} late={checkIsPreparingDelayed(order.createdAt, order.status, prepMinutes)} />
+                                  <OrderStatusPill status={order.status} fulfillmentType={order.fulfillmentType} late={checkIsPreparingDelayed(order.createdAt, order.status, prepMinutes)} />
                                   <SlaTimerChip status={order.status} createdAt={order.createdAt} prepMinutes={prepMinutes} className="text-[10px] px-1.5 py-0.5" />
                                 </span>
                               </td>
@@ -1439,10 +1445,12 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      if (order.status === 'PENDING') handleUpdateStatus(order.id, 'CONFIRMED');
+                                      const dineInAction = dineInNextAction(order);
+                                      if (dineInAction) handleUpdateStatus(order.id, dineInAction.to);
+                                      else if (order.status === 'PENDING') handleUpdateStatus(order.id, 'CONFIRMED');
                                       else if (order.status === 'CONFIRMED') handleUpdateStatus(order.id, 'PREPARING');
                                       else if (order.status === 'PREPARING') handleUpdateStatus(order.id, 'READY');
-                                      else if (order.status === 'READY' && (order.fulfillmentType === 'PICKUP' || order.fulfillmentType === 'DINE_IN')) handleUpdateStatus(order.id, 'DELIVERED');
+                                      else if (order.status === 'READY' && order.fulfillmentType === 'PICKUP') handleUpdateStatus(order.id, 'DELIVERED');
                                       else if (order.status === 'READY' && order.fulfillmentType === 'DELIVERY' && !liveOffer(order.id)) {
                                         setAssigningOrder(order);
                                         const firstAvail = drivers.find(d => d.status === 'AVAILABLE')?.userId || '';
@@ -1455,9 +1463,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                                   >
                                     {liveOffer(order.id) || order.status === 'WAITING_FOR_DRIVER'
                                       ? 'Ver detalhes'
-                                      : order.fulfillmentType === 'DINE_IN' && order.status === 'READY'
-                                        ? 'Servir'
-                                        : (order.fulfillmentType === 'PICKUP' && pickupActionLabel(order.status)) || (retryOffer(order.id) ? 'Chamar outro' : rowTheme.buttonLabel)}
+                                      : dineInNextAction(order)?.label || (order.fulfillmentType === 'PICKUP' && pickupActionLabel(order.status)) || (retryOffer(order.id) ? 'Chamar outro' : rowTheme.buttonLabel)}
                                   </button>
                                   <button
                                     type="button"

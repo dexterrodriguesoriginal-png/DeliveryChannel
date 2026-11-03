@@ -25,9 +25,8 @@ export function tabPixView(c: TabChargeRow | null, tabStatus?: string) {
 
 /** A payment is only accepted when the provider API itself says so and every field matches the server-side charge. */
 export function assertTabConfirmation(c: TabChargeRow, k: Confirmation) {
-  if (!k.paid) return;
   if (!c.provider_payment_id || k.providerPaymentId !== c.provider_payment_id || k.orderId !== tabReference(c.tab_id)
-      || k.currency !== 'BRL' || !Number.isSafeInteger(k.amountCents) || k.amountCents !== c.amount_cents) {
+      || (k.paid && (k.currency !== 'BRL' || !Number.isSafeInteger(k.amountCents) || k.amountCents !== c.amount_cents))) {
     throw new PaymentError('PAYMENT_MISMATCH', 409, 'O pagamento recebido não corresponde à cobrança da conta. Confira no Mercado Pago.');
   }
 }
@@ -107,6 +106,9 @@ export class TabPixService {
     const charge = await this.store.tabChargeById(id);
     if (!charge) throw new PaymentError('INVALID_WEBHOOK', 401);
     const hint = typeof input.query['data.id'] === 'string' ? input.query['data.id'] : undefined;
+    // A valid provider signature can be replayed against another notification URL.
+    // Bind rejected/expired notifications too, so they cannot cancel another tab's charge.
+    if (!hint || hint !== charge.provider_payment_id) throw new PaymentError('INVALID_WEBHOOK', 401);
     await this.refresh(charge, hint, true);
   }
 }

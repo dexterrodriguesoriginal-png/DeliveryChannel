@@ -23,7 +23,7 @@ import { ApprovalRow } from '../../components/establishment/salon/ApprovalsAlert
 import { TableCard } from '../../components/establishment/salon/TableCard';
 import '../../components/establishment/salon/salon.css';
 import { playShortBeep, playNewOrderSound, unlockAudio } from '../../utils/audio';
-import { badgeText, callTitle, canUseWaiterApp, greeting, newRoundIds, openCalls, waiterFeatures, type WaiterTab } from './waiterLogic';
+import { attendedTabIds, badgeText, callTitle, canCollectTab, canUseWaiterApp, greeting, newRoundIds, newlyReadyRoundIds, openCalls, waiterFeatures, waiterOrderStatus, type WaiterTab } from './waiterLogic';
 import { WaiterInstallCard } from './WaiterInstallCard';
 import { WaiterOrderSheet } from './WaiterOrderSheet';
 import { WaiterTableSheet } from './WaiterTableSheet';
@@ -196,7 +196,7 @@ const LoginScreen: React.FC = () => {
         {message && <p role="alert" className="rounded-xl bg-rose-500/15 p-3 text-sm text-rose-200">{message}</p>}
         <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(''); }} className="w-full py-1 text-center text-sm font-bold text-emerald-300">{mode === 'login' ? 'Primeiro acesso? Criar conta' : 'Já tenho conta'}</button>
       </form>
-      <p className="mt-4 text-center text-xs text-slate-400">Sem convite ainda? Peça ao dono: Equipe &amp; Permissões → Convidar Colaborador → cargo Garçom.</p>
+      <p className="mt-4 text-center text-xs text-slate-400">Sem acesso ainda? Peça ao dono: Equipe &amp; Permissões → Adicionar membro da equipe → Garçom.</p>
     </Center>
   );
 };
@@ -347,7 +347,7 @@ export const WaiterApp: React.FC = () => {
       </Notice>
     );
   }
-  return <WaiterMain tenantId={activeTenant.id} />;
+  return <WaiterMain key={activeTenant.id} tenantId={activeTenant.id} />;
 };
 
 const FILTERS: Array<{ id: TableFilter | 'ATTN'; label: string }> = [
@@ -381,9 +381,13 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [assignments, setAssignments] = useState<TableAssignment[]>([]);
   const [passShiftOpen, setPassShiftOpen] = useState(false);
   const [helpSuccess, setHelpSuccess] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const notificationRef = useRef(true); notificationRef.current = notificationsEnabled;
   const [orderAlert, setOrderAlert] = useState<{ id: string; tableId: string; tableLabel: string; customerName: string; orderNumber: number; roundNo: number } | null>(null);
   const seenCalls = useRef<Set<string> | null>(null);
   const seenRounds = useRef<Set<string> | null>(null);
+  const roundStatuses = useRef<Map<string, string> | null>(null);
+  const tenantRef = useRef(tenantId); tenantRef.current = tenantId;
   const wakeRef = useRef<{ release: () => Promise<void> } | null>(null);
   const features = waiterFeatures(caps.tableAccess);
 
@@ -435,6 +439,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const load = useCallback(async () => {
     try {
       const next = await salonStaffRepository.snapshot(tenantId);
+      if (tenantRef.current !== tenantId) return;
       const calls = next.calls.filter(c => c.status === 'OPEN');
       if (seenCalls.current && calls.some(c => !seenCalls.current!.has(c.id))) (playShortBeep ?? playNewOrderSound)?.();
       seenCalls.current = new Set(calls.map(c => c.id));
@@ -456,15 +461,24 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         }
       }
       seenRounds.current = new Set(next.rounds.map(r => r.id));
+      const attended = attendedTabIds(currentUser?.id, next.tabs, assignments, next.calls, next.rounds);
+      const ready = newlyReadyRoundIds(roundStatuses.current, next.rounds.filter(r => attended.has(r.tab_id)));
+      if (ready.length && notificationRef.current) {
+        (playShortBeep ?? playNewOrderSound)?.();
+        try { navigator.vibrate?.([120, 60, 120]); } catch { /* optional browser feature */ }
+        setToast('Balcão chamando: pedido pronto para levar à mesa.');
+      }
+      roundStatuses.current = new Map(next.rounds.map(r => [r.id, r.status]));
       setSnap(next); setOffline(false); setLoadError('');
     } catch (error) {
+      if (tenantRef.current !== tenantId) return;
       setOffline(typeof navigator !== 'undefined' && navigator.onLine === false);
       setLoadError(error instanceof Error ? error.message : 'Não foi possível carregar o salão.');
     }
-  }, [tenantId]);
+  }, [tenantId, currentUser?.id, assignments]);
 
   useEffect(() => {
-    seenCalls.current = null; seenRounds.current = null; setOrderAlert(null); setSnap(null);
+    seenCalls.current = null; seenRounds.current = null; roundStatuses.current = null; setOrderAlert(null); setSnap(null);
     void load();
     const timer = window.setInterval(() => { if (document.visibilityState !== 'hidden') void load(); }, 5000);
     const onVisible = () => { if (document.visibilityState === 'visible') { void load(); void approvals.refresh(); } };
@@ -491,6 +505,10 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       if (channel && typeof supabase?.removeChannel === 'function') void supabase.removeChannel(channel);
     };
   }, [load, tenantId, approvals.refresh]);
+  useEffect(() => {
+    setSelectedId(null); setOrderTarget(null); setHolderCode(null); setMessage('');
+    setProducts([]); setCategories([]); setAssignments([]); setServiceSettings(DEFAULT_SERVICE_SETTINGS);
+  }, [tenantId]);
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), ELAPSED_REFRESH_MS); return () => window.clearInterval(t); }, []);
   useEffect(() => { let alive = true; void mesasQrRepository.capabilities().then(c => { if (alive) setCaps(c); }); return () => { alive = false; }; }, [tenantId]);
   useEffect(() => {
@@ -523,6 +541,12 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   }, [snap?.sessions, approvals.pending]);
   const calls = useMemo(() => openCalls((snap?.calls || []) as CallLike[]), [snap?.calls]);
   const rounds = snap?.rounds || [];
+  const myTabIds = useMemo(() => attendedTabIds(currentUser?.id, tabs, assignments, (snap?.calls || []) as CallLike[], rounds), [currentUser?.id, tabs, assignments, snap?.calls, rounds]);
+  const myRounds = useMemo(() => rounds.filter(r => myTabIds.has(r.tab_id)).sort((a, b) => {
+    const priority = (s: string) => s === 'READY' ? 0 : s === 'DELIVERED' || s === 'CANCELLED' ? 2 : 1;
+    return priority(a.status) - priority(b.status) || a.created_at.localeCompare(b.created_at);
+  }), [rounds, myTabIds]);
+  const readyRounds = myRounds.filter(r => r.status === 'READY');
   const infoByTable = useMemo(() => {
     const map = new Map<string, ReturnType<typeof deriveTableStatus>>();
     for (const table of tables) {
@@ -563,10 +587,11 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setProductsLoading(true);
     try {
       const menu = await salonStaffRepository.loadMenu(tenantId, activeTenant?.slug, securityContext);
+      if (tenantRef.current !== tenantId) return;
       setProducts(menu.products.filter(p => p.isAvailable !== false));
       setCategories(menu.categories);
-    } catch (error) { setProductsError(error instanceof Error ? error.message : 'Não foi possível carregar o cardápio.'); }
-    finally { setProductsLoading(false); }
+    } catch (error) { if (tenantRef.current === tenantId) setProductsError(error instanceof Error ? error.message : 'Não foi possível carregar o cardápio.'); }
+    finally { if (tenantRef.current === tenantId) setProductsLoading(false); }
   };
   const sendOrder = async (cart: DineInCartLine[]) => {
     if (!orderTarget || !cart.length) return;
@@ -606,9 +631,10 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       </header>
 
       {(offline || loadError) && <div role="status" className="mx-auto mt-3 flex w-full max-w-2xl items-center gap-2 px-4 text-xs font-semibold text-amber-200"><WifiOff className="h-4 w-4 shrink-0" />{offline ? 'Sem conexão. Tentando de novo…' : loadError}</div>}
-      {!caps.tableAccess && snap && <p role="status" className="mx-auto mt-3 w-full max-w-2xl px-4 text-xs text-slate-400">Algumas funções (recusar, abrir mesa, pedir a conta) chegam com a próxima atualização do sistema.</p>}
+      {!caps.tableAccess && snap && <p role="status" className="mx-auto mt-3 w-full max-w-2xl px-4 text-xs text-slate-400">Algumas funções (recusar e abrir mesa) chegam com a próxima atualização do sistema.</p>}
 
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-32 pt-4">
+        {readyRounds.length > 0 && <button type="button" aria-live="polite" onClick={() => { unlockAudio(); setTab('PEDIDOS'); }} data-testid="waiter-counter-alert" className="mb-3 flex w-full items-center gap-3 rounded-2xl border border-violet-400 bg-violet-800 p-4 text-left text-white shadow-lg"><BellRing className="h-7 w-7 shrink-0" /><span><strong className="block">Balcão chamando</strong><span className="text-sm">{readyRounds.length === 1 ? '1 pedido pronto no balcão' : `${readyRounds.length} pedidos prontos no balcão`} · toque para ver suas mesas</span></span></button>}
         {orderAlert && (
           <div role="alert" data-testid="waiter-order-alert" className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-emerald-400/50 bg-emerald-500/15 p-3.5 text-white shadow-lg">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -663,7 +689,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         {tab === 'MESAS' && (<>
           <div className="mb-3 grid grid-cols-3 gap-2 text-center text-xs font-bold">
             <div className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10"><p className="text-2xl font-black text-emerald-300">{counts.FREE}</p>Livres</div>
-            <div className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10"><p className="text-2xl font-black text-amber-300">{counts.OCCUPIED + counts.LONG_STAY + counts.BILL}</p>Ocupadas</div>
+            <div className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10"><p className="text-2xl font-black text-amber-300">{tables.length - counts.FREE}</p>Ocupadas</div>
             <button type="button" onClick={() => setFilter('ATTN')} className="rounded-2xl bg-rose-500/10 p-3 ring-1 ring-rose-400/30"><p className="text-2xl font-black text-rose-300">{counts.CALL}</p>Atenção</button>
           </div>
           <label className="relative mb-3 block"><Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><input aria-label="Buscar mesa" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar mesa" className="h-12 w-full rounded-2xl border-0 bg-white/10 pl-10 pr-3 text-base text-white placeholder:text-slate-400" /></label>
@@ -675,6 +701,18 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           </div>
           {snap && tables.length > 0 && !visible.length && <p className="py-8 text-center text-sm text-slate-400">Nenhuma mesa neste filtro.</p>}
         </>)}
+
+        {tab === 'PEDIDOS' && <section aria-label="Meus pedidos" data-testid="waiter-my-orders">
+          <h2 className="text-xl font-black">Meus pedidos</h2><p className="mb-4 mt-1 text-sm text-slate-400">Acompanhe os pedidos das mesas que você atende.</p>
+          {!myRounds.length ? <p className="rounded-2xl bg-white/5 p-5 text-sm text-slate-300">Nenhum pedido nas suas mesas. Ao assumir um chamado ou receber uma mesa, os pedidos aparecem aqui.</p> : <div className="space-y-3">{myRounds.map(r => {
+            const status = waiterOrderStatus(r.status);
+            const table = tabs.find(t => t.id === r.tab_id);
+            return <button key={r.id} type="button" onClick={() => table && setSelectedId(table.table_id)} className="block w-full space-y-2 rounded-2xl border-l-4 bg-white/5 p-4 text-left ring-1 ring-white/10" style={{ borderLeftColor: status.color }}>
+              <div className="flex items-start justify-between gap-2"><strong>{labelByTab.get(r.tab_id) || 'Mesa'}</strong><span className="text-xs text-slate-400">#{r.order_number} · rodada {r.round_no}</span></div>
+              <p className="font-bold" style={{ color: status.color }}>{status.label}</p><p className="text-xs text-slate-400">Pedido feito às {new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+            </button>;
+          })}</div>}
+        </section>}
 
         {tab === 'LIBERAR' && (
           <section aria-label="Liberações" data-testid="waiter-approvals">
@@ -778,6 +816,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               </button>
             )}
             <button type="button" onClick={() => { unlockAudio(); playNewOrderSound(); }} className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10"><span className="flex items-center gap-2"><Volume2 className="h-5 w-5 text-emerald-300" />Testar o som dos avisos</span><ChevronRight className="h-4 w-4 text-slate-500" /></button>
+            <button type="button" aria-pressed={notificationsEnabled} onClick={() => { unlockAudio(); setNotificationsEnabled(v => !v); }} className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10"><span>Som e vibração quando ficar pronto</span><span className="text-emerald-300">{notificationsEnabled ? 'Ligados' : 'Desligados'}</span></button>
             <button type="button" onClick={() => void toggleWake()} aria-pressed={wake} className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10"><span>Manter a tela ligada</span><span className={`rounded-full px-3 py-1 text-xs ${wake ? 'bg-emerald-500 text-slate-950' : 'bg-white/10 text-slate-300'}`}>{wake ? 'Ligado' : 'Desligado'}</span></button>
             {(activeRole === 'OWNER' || activeRole === 'MANAGER') && <a href="/" className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10">Abrir o painel completo<ChevronRight className="h-4 w-4 text-slate-500" /></a>}
             {activeRole === 'WAITER' && <a href="/#/painel/est-salon" className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10">Abrir o Salão<ChevronRight className="h-4 w-4 text-slate-500" /></a>}
@@ -791,6 +830,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       <nav aria-label="Navegação do Garçom" className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/95 px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur">
         <div className="mx-auto flex max-w-2xl gap-1">
           {navItem('MESAS', 'Mesas', LayoutGrid)}
+          {navItem('PEDIDOS', 'Meus pedidos', ShoppingBag, readyRounds.length)}
           {navItem('LIBERAR', 'Liberar', UserCheck, pendingCount)}
           {navItem('CHAMADOS', 'Chamados', BellRing, calls.length)}
           {navItem('MAIS', 'Mais', MoreHorizontal)}
@@ -828,7 +868,15 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           helpSuccess={helpSuccess}
           onOpenTable={openTable}
           onOrder={() => selectedTab && void openOrder(selectedTab.id, selected.label)}
-          onRequestBill={() => selectedTab && void run('bill', () => salonStaffRepository.requestBill(selectedTab.id), 'Conta pedida.')}
+          canCollect={canCollectTab(selectedTab?.status, activeRole, !!selectedTab && (myTabIds.has(selectedTab.id) || !assignments.some(a => a.table_id === selected.id)))}
+          onConfirmPayment={method => {
+            if (!selectedTab || selectedTab.status === 'AWAITING_PAYMENT' || !canCollectTab(selectedTab.status, activeRole, myTabIds.has(selectedTab.id) || !assignments.some(a => a.table_id === selected.id))) return;
+            void run('close-tab', async () => {
+              await salonStaffRepository.closeTab(selectedTab.id, method, infoByTable.get(selected.id)!.totalCents);
+              setSelectedId(null);
+            }, 'Pagamento confirmado. Mesa liberada.');
+          }}
+          onPaymentSettled={() => { setSelectedId(null); void load(); setToast('Pix confirmado. Mesa liberada.'); }}
           onResetHolder={() => selectedTab && void run('change-holder', async () => {
             const created = await salonStaffRepository.createHolderCode(selectedTab.id);
             setHolderCode(created);

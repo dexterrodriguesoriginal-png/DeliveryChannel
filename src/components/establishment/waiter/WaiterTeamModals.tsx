@@ -91,7 +91,7 @@ export const CreateWaiterModal: React.FC<CreateProps> = ({ isOpen, onClose, tena
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Convidar garçom" description="O garçom entra com usuário e senha, sem e-mail. Você pode redefinir a senha a qualquer momento." size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title="Adicionar garçom" description="O garçom entra com usuário e senha, sem e-mail. Você pode redefinir a senha a qualquer momento." size="md">
       <form onSubmit={submit} className="space-y-3 text-xs" data-testid="waiter-create-form">
         <Input label="Nome *" value={form.name} onChange={e => { set('name', e.target.value); if (!usernameTouched) set('username', normalizeWaiterUsername(e.target.value.split(' ')[0])); }} required />
         <Input label="Telefone *" type="tel" inputMode="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(11) 99999-0000" required />
@@ -165,7 +165,7 @@ export const ResetWaiterPasswordModal: React.FC<ResetProps> = ({ member, onClose
     finally { setBusy(false); }
   };
   return (
-    <Modal isOpen onClose={onClose} title={`Redefinir senha de ${member.name}`} description="As sessões abertas do garçom serão encerradas. Passe a nova senha pessoalmente." size="sm">
+    <Modal isOpen onClose={onClose} title={`Redefinir senha de ${member.name}`} description="Passe a nova senha ao garçom pessoalmente." size="sm">
       <form onSubmit={submit} className="space-y-3 text-xs" data-testid="waiter-reset-form">
         <PasswordField value={password} onChange={setPassword} label="Nova senha * (mín. 6)" />
         {error && <p role="alert" className="rounded-xl bg-rose-50 p-2.5 text-rose-700">{error}</p>}

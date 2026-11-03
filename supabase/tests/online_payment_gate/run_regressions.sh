@@ -16,13 +16,13 @@ for file in supabase/migrations/202609*.sql; do
 done
 psql -X -v ON_ERROR_STOP=1 -f supabase/tests/n1n6/sql/01_legacy_data.sql
 for file in supabase/migrations/202610*.sql; do
- name=${file##*/}
- case "$name" in 20261026004301_*|20261026004500_*) continue ;; esac
+ name=${file##*/}; version=${name%%_*}
+ # Keep rollback hashes anchored to the schema immediately before the payment gate.
+ [ "$version" -ge 20261026004301 ] && continue
  if [ "$name" = '20261014000800_revoke_excess_table_privileges.sql' ]; then
  psql -X -v ON_ERROR_STOP=1 -c 'GRANT ALL ON public.drivers,public.team_invites,public.tenant_users TO postgres'
  fi
  psql -X -v ON_ERROR_STOP=1 -1 -f "$file"
- version=${name%%_*}
  psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO supabase_migrations.schema_migrations(version) VALUES ('$version')"
 done
 # Hash ALL original public functions and ACLs, plus policies (not just an allow-list).

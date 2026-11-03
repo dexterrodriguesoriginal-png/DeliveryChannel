@@ -73,6 +73,15 @@ describe('deriveTableStatus', () => {
   it('bill requested wins over long stay', () => {
     expect(deriveTableStatus({ tab: tab({ status: 'BILL_REQUESTED', opened_at: minutesAgo(300) }), now: NOW }).kind).toBe('BILL');
   });
+  it('distingue etapas da cozinha e dá prioridade ao fechamento autorizado', () => {
+    const round = (status: string) => ({ id: status, tab_id: 'tab-1', status, subtotal: 10, created_at: minutesAgo(2) });
+    expect(deriveTableStatus({ tab: tab(), rounds: [round('CONFIRMED')], now: NOW }).kind).toBe('NEW_ORDER');
+    expect(deriveTableStatus({ tab: tab(), rounds: [round('CONFIRMED'), round('PREPARING')], now: NOW }).kind).toBe('PREPARING');
+    expect(deriveTableStatus({ tab: tab(), rounds: [round('PREPARING'), round('READY')], now: NOW }).kind).toBe('READY');
+    expect(deriveTableStatus({ tab: tab({ status: 'WAITER_AUTHORIZED' }), rounds: [round('READY')], now: NOW }).kind).toBe('AUTHORIZED');
+    expect(deriveTableStatus({ tab: tab({ status: 'AWAITING_PAYMENT' }), rounds: [round('READY')], now: NOW }).kind).toBe('AWAITING_PAYMENT');
+    expect(deriveTableStatus({ tab: tab(), rounds: [round('CANCELLED')], now: NOW })).toMatchObject({ kind: 'OCCUPIED', totalCents: 0 });
+  });
   it('active call = waiter/help call open on THIS tab; a bill call alone is not an attention call', () => {
     const calls = [
       { id: 'c1', tab_id: 'tab-1', type: 'CALL' as const, status: 'OPEN', created_at: minutesAgo(1) },
@@ -102,8 +111,8 @@ describe('filters, counts and search', () => {
     { kind: 'FREE' as const, hasActiveCall: false, pendingRelease: false },
   ];
   it('counts per status and calls (call = bell or waiting release)', () => {
-    expect(statusCounts(infos)).toEqual({ ALL: 5, FREE: 2, OCCUPIED: 1, LONG_STAY: 1, BILL: 1, CALL: 2 });
-    expect(statusCounts([])).toEqual({ ALL: 0, FREE: 0, OCCUPIED: 0, LONG_STAY: 0, BILL: 0, CALL: 0 });
+    expect(statusCounts(infos)).toEqual({ ALL: 5, FREE: 2, OCCUPIED: 1, LONG_STAY: 1, BILL: 1, CALL: 2, NEW_ORDER: 0, PREPARING: 0, READY: 0, AUTHORIZED: 0, AWAITING_PAYMENT: 0 });
+    expect(statusCounts([])).toEqual({ ALL: 0, FREE: 0, OCCUPIED: 0, LONG_STAY: 0, BILL: 0, CALL: 0, NEW_ORDER: 0, PREPARING: 0, READY: 0, AUTHORIZED: 0, AWAITING_PAYMENT: 0 });
   });
   it('filters match the counts', () => {
     for (const f of ['ALL', 'FREE', 'OCCUPIED', 'LONG_STAY', 'BILL', 'CALL'] as const) expect(infos.filter(i => matchesFilter(i, f)).length).toBe(statusCounts(infos)[f]);

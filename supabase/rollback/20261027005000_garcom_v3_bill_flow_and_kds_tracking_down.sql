@@ -1,5 +1,24 @@
 -- Rollback: 20261027005000_garcom_v3_bill_flow_and_kds_tracking_down.sql
+-- Rollback Garçom v3. Confirmações de pagamento e auditoria existentes são preservadas.
 BEGIN;
+DROP TRIGGER IF EXISTS garcom_v3_tab_guard ON public.dining_tabs;
+DROP TRIGGER IF EXISTS garcom_v3_order_total_guard ON public.orders;
+DROP TRIGGER IF EXISTS garcom_v3_membership_revoked ON public.tenant_users;
+DROP TRIGGER IF EXISTS garcom_v3_call_accepted ON public.waiter_calls;
+DROP TRIGGER IF EXISTS garcom_v3_tab_tracking ON public.dining_tabs;
+DROP TRIGGER IF EXISTS garcom_v3_order_tracking ON public.orders;
+DROP TABLE IF EXISTS public.dining_tracking_revisions;
+DROP INDEX IF EXISTS public.orders_active_queue_v3;
+DROP INDEX IF EXISTS public.dining_tabs_one_active_table_v3;
+DROP FUNCTION IF EXISTS public._garcom_v3_tab_guard();
+DROP FUNCTION IF EXISTS public._garcom_v3_order_total_guard();
+DROP FUNCTION IF EXISTS public._garcom_v3_membership_revoked();
+DROP FUNCTION IF EXISTS public._garcom_v3_call_accepted();
+DROP FUNCTION IF EXISTS public._garcom_v3_tracking_signal();
+DROP FUNCTION IF EXISTS public._can_read_dining_tracking(uuid,uuid);
+DROP FUNCTION IF EXISTS public._tab_can_collect(uuid,uuid);
+DROP FUNCTION IF EXISTS public._waiter_serves_tab(uuid,uuid);
+
 
 -- 1. Restaurar status de dining_tabs
 UPDATE public.dining_tabs SET status = 'BILL_REQUESTED' WHERE status IN ('WAITER_AUTHORIZED', 'AWAITING_PAYMENT');
@@ -10,11 +29,6 @@ ALTER TABLE public.dining_tabs ADD CONSTRAINT dining_tabs_status_check
 ALTER TABLE public.dining_tabs DROP COLUMN IF EXISTS waiter_authorized_by;
 ALTER TABLE public.dining_tabs DROP COLUMN IF EXISTS waiter_authorized_at;
 
-ALTER TABLE public.tab_events DROP CONSTRAINT IF EXISTS tab_events_event_type_check;
-ALTER TABLE public.tab_events ADD CONSTRAINT tab_events_event_type_check
-  CHECK (event_type IN (
-    'SESSION_APPROVED', 'SERVICE_FEE_REMOVED', 'ITEM_CANCELLED', 'DISCOUNT', 'TAB_CLOSED'
-  ));
 
 -- 2. Remover authorize_waiter_to_close
 DROP FUNCTION IF EXISTS public.authorize_waiter_to_close(uuid);
@@ -284,5 +298,283 @@ AS $$ SELECT jsonb_build_object('version', 1, 'username_login', true, 'modes', j
                                 'report', true, 'my_waiter', true); $$;
 REVOKE ALL ON FUNCTION public.waiter_v2_capabilities() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.waiter_v2_capabilities() TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public._tab_pix_staff(p_user uuid, p_tenant uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE v_role text; v_config jsonb;
+BEGIN
+  IF p_user IS NULL THEN RETURN false; END IF;
+  SELECT tu.role_id INTO v_role FROM public.tenant_users tu JOIN public.tenants t ON t.id = tu.tenant_id
+  WHERE tu.user_id = p_user AND tu.tenant_id = p_tenant AND tu.status = 'ACTIVE' AND t.status = 'ACTIVE' LIMIT 1;
+  IF v_role IS NULL OR v_role NOT IN ('OWNER','MANAGER','CASHIER','WAITER') THEN RETURN false; END IF;
+  IF v_role = 'WAITER' THEN
+    v_config := public._dine_in_config(p_tenant);
+    RETURN COALESCE((v_config -> 'close_roles') ? 'WAITER', false);
+  END IF;
+  RETURN true;
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.reserve_tab_pix(p_tab uuid, p_user uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  v_tab public.dining_tabs; v_total integer; v_charge public.tab_pix_charges; v_claimed boolean := false;
+  v_slug text; v_label text;
+BEGIN
+  SELECT * INTO v_tab FROM public.dining_tabs tb WHERE tb.id = p_tab FOR UPDATE;
+  IF NOT FOUND OR NOT public._tab_pix_staff(p_user, v_tab.tenant_id) THEN
+    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
+  END IF;
+  IF public._dine_in_config(v_tab.tenant_id) IS NULL THEN RAISE EXCEPTION 'Salão indisponível.'; END IF;
+  IF v_tab.status NOT IN ('OPEN','BILL_REQUESTED') THEN RAISE EXCEPTION 'Comanda encerrada.'; END IF;
+  IF NOT public._rate_limit_hit('tab_pix_create', public._sha256_hex(p_tab::text), v_tab.tenant_id, 10, 600) THEN
+    RAISE EXCEPTION 'Muitas tentativas de gerar o PIX. Aguarde.';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.tab_payments tp WHERE tp.tenant_id = v_tab.tenant_id AND tp.tab_id = p_tab) THEN
+    RAISE EXCEPTION 'Comanda com pagamento registrado.';
+  END IF;
+  v_total := public._tab_total_cents(v_tab.tenant_id, p_tab);
+  IF v_total <= 0 THEN RAISE EXCEPTION 'Comanda sem itens para cobrar.'; END IF;
+
+  SELECT * INTO v_charge FROM public.tab_pix_charges c WHERE c.tab_id = p_tab AND c.status IN ('creating','pending') FOR UPDATE;
+  IF FOUND THEN
+    IF v_charge.status = 'pending' AND v_charge.expires_at IS NOT NULL AND v_charge.expires_at <= now() THEN
+      UPDATE public.tab_pix_charges SET status = 'expired', brcode = NULL WHERE id = v_charge.id;
+      v_charge := NULL;
+    ELSIF v_charge.amount_cents <> v_total THEN
+      UPDATE public.tab_pix_charges SET status = 'cancelled', raw_status = 'total_changed' WHERE id = v_charge.id;
+      v_charge := NULL;
+    ELSIF v_charge.status = 'creating' AND (v_charge.lease_until IS NULL OR v_charge.lease_until <= now()) THEN
+      UPDATE public.tab_pix_charges SET lease_until = now() + interval '45 seconds' WHERE id = v_charge.id RETURNING * INTO v_charge;
+      v_claimed := true;
+    END IF;
+  END IF;
+  IF v_charge.id IS NULL THEN
+    INSERT INTO public.tab_pix_charges (tenant_id, tab_id, amount_cents, lease_until, created_by)
+    VALUES (v_tab.tenant_id, p_tab, v_total, now() + interval '45 seconds', p_user) RETURNING * INTO v_charge;
+    v_claimed := true;
+  END IF;
+  SELECT t.slug INTO v_slug FROM public.tenants t WHERE t.id = v_tab.tenant_id;
+  SELECT dt.label INTO v_label FROM public.dining_tables dt WHERE dt.id = v_tab.table_id AND dt.tenant_id = v_tab.tenant_id;
+  RETURN jsonb_build_object('charge', to_jsonb(v_charge) - 'lease_until' - 'created_by', 'claimed', v_claimed,
+                            'slug', v_slug, 'table_label', v_label);
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.get_tab_pix_charge(p_tab uuid, p_user uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE v_tab public.dining_tabs; v_charge public.tab_pix_charges;
+BEGIN
+  SELECT * INTO v_tab FROM public.dining_tabs tb WHERE tb.id = p_tab;
+  IF NOT FOUND OR NOT public._tab_pix_staff(p_user, v_tab.tenant_id) THEN
+    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
+  END IF;
+  SELECT * INTO v_charge FROM public.tab_pix_charges c WHERE c.tab_id = p_tab ORDER BY c.created_at DESC LIMIT 1;
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  RETURN jsonb_build_object('charge', to_jsonb(v_charge) - 'lease_until' - 'created_by',
+                            'tab_status', v_tab.status, 'slug', (SELECT t.slug FROM public.tenants t WHERE t.id = v_tab.tenant_id));
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.cancel_tab_pix(p_tab uuid, p_user uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE v_tenant uuid;
+BEGIN
+  SELECT tb.tenant_id INTO v_tenant FROM public.dining_tabs tb WHERE tb.id = p_tab;
+  IF v_tenant IS NULL OR NOT public._tab_pix_staff(p_user, v_tenant) THEN
+    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
+  END IF;
+  UPDATE public.tab_pix_charges SET status = 'cancelled', raw_status = 'staff_cancelled', brcode = NULL, lease_until = NULL
+  WHERE tab_id = p_tab AND tenant_id = v_tenant AND status IN ('creating','pending');
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.fail_tab_pix_charge(p_id uuid) RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $$
+  UPDATE public.tab_pix_charges SET status = 'failed', lease_until = NULL, brcode = NULL
+  WHERE id = p_id AND status = 'creating';
+$$;
+CREATE OR REPLACE FUNCTION public.update_order_status(p_order_id uuid, p_new_status text, p_note text DEFAULT NULL::text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+DECLARE
+    v_order RECORD;
+    v_role TEXT;
+    v_new TEXT := upper(btrim(COALESCE(p_new_status, '')));
+    v_note TEXT := NULLIF(btrim(COALESCE(p_note, '')), '');
+    v_actor TEXT;
+    v_ok BOOLEAN := false;
+    v_restocked INT := 0;
+BEGIN
+    PERFORM public._assert_online_payment_ready(p_order_id);
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'AUTH_REQUIRED: autenticação necessária.' USING ERRCODE = '42501';
+    END IF;
+    IF v_new NOT IN ('PENDING','CONFIRMED','PREPARING','READY','WAITING_FOR_DRIVER','OUT_FOR_DELIVERY','DELIVERED','CANCELLED') THEN
+        RAISE EXCEPTION 'INVALID_STATUS: status "%" inválido.', p_new_status;
+    END IF;
+    IF v_note IS NOT NULL AND length(v_note) > 500 THEN
+        RAISE EXCEPTION 'INVALID_NOTE: nota com mais de 500 caracteres.';
+    END IF;
+
+    SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'ORDER_NOT_FOUND: pedido não encontrado.' USING ERRCODE = '42501';
+    END IF;
+
+    IF v_new='OUT_FOR_DELIVERY' AND v_order.fulfillment_type='DELIVERY' THEN
+        RAISE EXCEPTION 'PICKUP_CODE_REQUIRED: peça o código ao entregador e confirme a retirada.';
+    END IF;
+    v_role := public._tenant_role_of_caller(v_order.tenant_id);
+    IF v_role IS NULL OR v_role NOT IN ('OWNER','MANAGER','OPERATOR','CASHIER','DELIVERY_MANAGER') THEN
+        RAISE EXCEPTION 'ORDER_NOT_FOUND: pedido não encontrado.' USING ERRCODE = '42501';
+    END IF;
+
+    IF v_order.status = 'CANCELLED' THEN
+        RAISE EXCEPTION 'ORDER_CANCELLED_IS_FINAL: pedido cancelado não pode ser reaberto.' USING ERRCODE = '42501';
+    END IF;
+    IF v_order.status = v_new THEN
+        RAISE EXCEPTION 'STATUS_UNCHANGED: o pedido já está em %.', v_new;
+    END IF;
+
+    IF v_new = 'CANCELLED' THEN
+        IF v_note IS NULL THEN
+            RAISE EXCEPTION 'NOTE_REQUIRED: informe o motivo do cancelamento.';
+        END IF;
+        IF v_role IN ('OWNER','MANAGER') THEN
+            v_ok := true;
+        ELSIF v_role IN ('OPERATOR','CASHIER') AND v_order.status IN ('PENDING','CONFIRMED') THEN
+            v_ok := true;
+        END IF;
+    ELSIF public._status_rank(v_new) > public._status_rank(v_order.status) THEN
+        IF v_role IN ('OWNER','MANAGER') THEN
+            v_ok := true;
+        ELSIF v_role IN ('OPERATOR','CASHIER') THEN
+            v_ok := (v_order.status, v_new) IN (('PENDING','CONFIRMED'), ('CONFIRMED','PREPARING'), ('PREPARING','READY'))
+                 OR (v_order.status = 'READY' AND v_new = 'WAITING_FOR_DRIVER' AND v_order.fulfillment_type = 'DELIVERY')
+                 OR (v_order.status = 'READY' AND v_new = 'DELIVERED' AND v_order.fulfillment_type = 'PICKUP');
+        ELSIF v_role = 'DELIVERY_MANAGER' THEN
+            v_ok := (v_order.status, v_new) IN (('WAITING_FOR_DRIVER','OUT_FOR_DELIVERY'), ('OUT_FOR_DELIVERY','DELIVERED'));
+        END IF;
+    END IF;
+    -- retrocesso de status nunca é permitido
+
+    IF NOT v_ok THEN
+        RAISE EXCEPTION 'TRANSITION_FORBIDDEN: papel % não pode mudar o pedido de % para %.', v_role, v_order.status, v_new
+            USING ERRCODE = '42501';
+    END IF;
+
+    -- 1600: entrega marcada pela loja sem código do cliente = override manual com motivo e auditoria.
+    IF v_new = 'DELIVERED' AND v_order.fulfillment_type = 'DELIVERY' THEN
+        IF v_note IS NULL THEN
+            RAISE EXCEPTION 'NOTE_REQUIRED: informe o motivo para concluir a entrega sem o código do cliente.';
+        END IF;
+        PERFORM public.log_audit_event('DELIVERY_OVERRIDE_NO_CODE', 'orders', 'Entrega concluída pela loja sem código: ' || v_note,
+            p_order_id::text, v_order.status::text, 'DELIVERED', v_order.tenant_id);
+    END IF;
+    -- 2100: retirada com fila de chegada ativa: concluir sem o código do cliente = override com motivo e auditoria.
+    IF v_new = 'DELIVERED' AND v_order.fulfillment_type = 'PICKUP'
+       AND EXISTS (SELECT 1 FROM public.pickup_arrivals a WHERE a.order_id = p_order_id AND a.handed_over_at IS NULL) THEN
+        IF v_note IS NULL THEN
+            RAISE EXCEPTION 'PICKUP_CODE_REQUIRED: confirme a retirada com o código do cliente (ou informe o motivo).';
+        END IF;
+        PERFORM public.log_audit_event('PICKUP_OVERRIDE_NO_CODE', 'orders', 'Retirada concluída sem código: ' || v_note,
+            p_order_id::text, v_order.status::text, 'DELIVERED', v_order.tenant_id);
+    END IF;
+    SELECT COALESCE(NULLIF(u.name, ''), u.email, 'Equipe') INTO v_actor FROM public.users u WHERE u.id = auth.uid();
+    v_actor := COALESCE(v_actor, 'Equipe') || ' (' || v_role || ')';
+
+    UPDATE public.orders SET status = v_new, updated_at = now(),
+        delivered_at = CASE WHEN v_new = 'DELIVERED' THEN now() ELSE delivered_at END,
+        picked_up_at = CASE WHEN v_new = 'OUT_FOR_DELIVERY' THEN COALESCE(picked_up_at, now()) ELSE picked_up_at END
+    WHERE id = p_order_id;
+    -- 1600: saída marcada pela loja também gera o código de entrega do cliente.
+    IF v_new = 'OUT_FOR_DELIVERY' THEN
+        UPDATE public.order_handoff_codes SET pickup_confirmed_at = COALESCE(pickup_confirmed_at, now()),
+               delivery_code = COALESCE(delivery_code, public._handoff_code()) WHERE order_id = p_order_id;
+    END IF;
+
+    IF v_new = 'CANCELLED' THEN
+        v_restocked := public._restock_order_items(p_order_id, v_actor);
+    END IF;
+
+    INSERT INTO public.order_status_history (order_id, status, note, changed_by)
+    VALUES (p_order_id, v_new, COALESCE(v_note, 'Status alterado para ' || v_new), v_actor);
+
+    RETURN jsonb_build_object('order_id', p_order_id, 'previous_status', v_order.status, 'status', v_new,
+                              'restocked_products', v_restocked);
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.request_bill(
+  p_session_id uuid,
+  p_choice text DEFAULT NULL,
+  p_cash_tendered_cents integer DEFAULT NULL
+)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  v_tenant uuid;
+  v_tab uuid;
+  v_service_fee_percent numeric;
+  v_service_fee_removed boolean;
+  v_call uuid;
+  v_subtotal numeric;
+  v_total_cents integer;
+BEGIN
+  IF p_choice IS NOT NULL AND p_choice NOT IN ('CAIXA', 'CARD', 'CASH', 'PIX') THEN
+    RAISE EXCEPTION 'INVALID_PAYMENT_CHOICE: forma de pagamento inválida.';
+  END IF;
+
+  SELECT ts.tenant_id, ts.tab_id, tb.service_fee_percent, tb.service_fee_removed
+  INTO v_tenant, v_tab, v_service_fee_percent, v_service_fee_removed
+  FROM public.tab_sessions ts
+  JOIN public.dining_tabs tb ON tb.id = ts.tab_id AND tb.tenant_id = ts.tenant_id
+  WHERE ts.id = p_session_id AND ts.auth_user_id = auth.uid() AND ts.expires_at > now()
+    AND tb.status IN ('OPEN', 'BILL_REQUESTED')
+  FOR UPDATE OF tb;
+  IF v_tab IS NULL THEN
+    RAISE EXCEPTION 'TAB_NOT_FOUND: comanda não encontrada.' USING ERRCODE = '42501';
+  END IF;
+  IF public._dine_in_config(v_tenant) IS NULL THEN
+    RAISE EXCEPTION 'MODULE_DISABLED: salão indisponível.';
+  END IF;
+
+  SELECT COALESCE(sum(o.subtotal), 0)
+  INTO v_subtotal
+  FROM public.orders o
+  WHERE o.tenant_id = v_tenant AND o.tab_id = v_tab
+    AND o.fulfillment_type = 'DINE_IN' AND o.status <> 'CANCELLED';
+  v_total_cents := round((
+    v_subtotal + CASE WHEN v_service_fee_removed THEN 0
+                      ELSE round(v_subtotal * v_service_fee_percent / 100, 2) END
+  ) * 100)::integer;
+
+  IF p_choice = 'CASH'
+     AND (p_cash_tendered_cents IS NULL OR p_cash_tendered_cents < v_total_cents) THEN
+    RAISE EXCEPTION 'CASH_TENDER_TOO_LOW: valor em dinheiro inferior ao total da conta.';
+  END IF;
+
+  UPDATE public.dining_tabs SET status = 'BILL_REQUESTED'
+  WHERE id = v_tab AND tenant_id = v_tenant AND status = 'OPEN';
+  INSERT INTO public.waiter_calls (
+    tenant_id, tab_id, type, payment_choice, cash_tendered_cents
+  )
+  VALUES (v_tenant, v_tab, 'BILL', p_choice, p_cash_tendered_cents)
+  RETURNING id INTO v_call;
+  RETURN v_call;
+END;
+$$;
+DO $active$
+DECLARE v_sig text; v_def text;
+BEGIN
+ FOREACH v_sig IN ARRAY ARRAY['public._tenant_module_disable_blockers(uuid,text)','public.call_waiter(uuid,text)','public.request_bill(uuid,text,integer)','public.remove_service_fee(uuid,text)','public._dining_tables_rotate_guard()','public._responsible_session(uuid)','public.enter_table(text,text,text)','public.join_with_code(text,text,text,text)','public.staff_reset_tab_holder(uuid)','public.staff_open_tab(uuid)','public.staff_create_holder_code(uuid)','public.release_empty_tab(uuid,text)','public.resolve_table_invite(text,text)'] LOOP
+  v_def:=pg_get_functiondef(v_sig::regprocedure);
+  v_def:=replace(v_def,$s$'OPEN', 'BILL_REQUESTED', 'WAITER_AUTHORIZED', 'AWAITING_PAYMENT'$s$,$s$'OPEN', 'BILL_REQUESTED'$s$);
+  v_def:=replace(v_def,$s$'OPEN','BILL_REQUESTED','WAITER_AUTHORIZED','AWAITING_PAYMENT'$s$,$s$'OPEN','BILL_REQUESTED'$s$);
+  EXECUTE v_def;
+ END LOOP;
+END $active$;
 
 COMMIT;

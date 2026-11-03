@@ -1,6 +1,6 @@
 import React from 'react';
 import { Bell, ClipboardCheck, Flame, ShoppingBag, Bike, CheckCheck, CircleX, ClockAlert } from 'lucide-react';
-import type { OrderStatus } from '../../types';
+import type { FulfillmentType, OrderStatus } from '../../types';
 import { statusChip, type StatusIconKey } from '../../lib/orders/statusChip';
 
 const ICONS: Record<StatusIconKey, React.ComponentType<{ className?: string }>> = {
@@ -14,8 +14,8 @@ export const StatusIconByKey: React.FC<{ icon: StatusIconKey; className?: string
 };
 
 /** Selo de status do painel do dono: ícone + texto (nunca só cor). */
-export const OrderStatusChip: React.FC<{ status: OrderStatus; late?: boolean; className?: string }> = ({ status, late, className = '' }) => {
-  const c = statusChip(status, late);
+export const OrderStatusChip: React.FC<{ status: OrderStatus; fulfillmentType?: FulfillmentType; late?: boolean; className?: string }> = ({ status, fulfillmentType, late, className = '' }) => {
+  const c = statusChip(status, late, fulfillmentType);
   return (
     <span data-testid="order-status-chip" data-status={late ? 'LATE' : status}
       className={`inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full border whitespace-nowrap ${c.className} ${className}`}>

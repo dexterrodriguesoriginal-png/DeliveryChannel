@@ -18,7 +18,7 @@ export interface PendingApproval {
 }
 
 export interface WaiterTable { id: string; label: string; area: string | null; seats: number }
-export interface WaiterTab { id: string; table_id: string; status: 'OPEN' | 'BILL_REQUESTED' | 'CLOSED' | 'CANCELLED'; opened_at: string; service_fee_percent: number; service_fee_removed: boolean }
+export interface WaiterTab { id: string; table_id: string; status: 'OPEN' | 'BILL_REQUESTED' | 'WAITER_AUTHORIZED' | 'AWAITING_PAYMENT' | 'CLOSED' | 'CANCELLED'; opened_at: string; service_fee_percent: number; service_fee_removed: boolean; waiter_id?: string | null }
 export interface WaiterSession { id: string; tab_id: string; display_name: string; approved_at: string | null; expires_at: string }
 export interface WaiterCallRow {
   id: string;
@@ -34,7 +34,7 @@ export interface WaiterCallRow {
   dispatched_at?: string | null;
   escalated_at?: string | null;
 }
-export interface WaiterRound { id: string; tab_id: string; order_number: number; customer_name: string; status: string; subtotal: number; created_at: string; round_no: number }
+export interface WaiterRound { id: string; tab_id: string; order_number: number; customer_name: string; status: string; subtotal: number; created_at: string; round_no: number; waiter_id?: string | null }
 export interface SalonSnapshot { tables: WaiterTable[]; tabs: WaiterTab[]; sessions: WaiterSession[]; calls: WaiterCallRow[]; rounds: WaiterRound[]; releaseRequired: boolean | null }
 
 export interface SalonAccessExtras {
@@ -63,7 +63,7 @@ export const salonStaffRepository = {
     const unapproved = sessions.filter(s => !s.approved_at);
     if (!unapproved.length) return [];
     const tabIds = Array.from(new Set(unapproved.map(s => s.tab_id)));
-    const tabs = must(await supabase.from('dining_tabs').select('id,table_id,status').eq('tenant_id', tenantId).in('id', tabIds).in('status', ['OPEN', 'BILL_REQUESTED'])) as Array<{ id: string; table_id: string }>;
+    const tabs = must(await supabase.from('dining_tabs').select('id,table_id,status').eq('tenant_id', tenantId).in('id', tabIds).in('status', ['OPEN', 'BILL_REQUESTED', 'WAITER_AUTHORIZED', 'AWAITING_PAYMENT'])) as Array<{ id: string; table_id: string }>;
     if (!tabs.length) return [];
     const tables = must(await supabase.from('dining_tables').select('id,label').eq('tenant_id', tenantId).in('id', Array.from(new Set(tabs.map(t => t.table_id))))) as Array<{ id: string; label: string }>;
     const tabById = new Map(tabs.map(t => [t.id, t]));
@@ -77,7 +77,7 @@ export const salonStaffRepository = {
   async fetchRoundsForTabs(tenantId: string, tabIds: string[]): Promise<WaiterRound[]> {
     if (!tabIds.length) return [];
     const roundR = await supabase.from('orders')
-      .select('id,tab_id,order_number,customer_name,status,subtotal,created_at,round_no')
+      .select('id,tab_id,order_number,customer_name,status,subtotal,created_at,round_no,waiter_id')
       .eq('tenant_id', tenantId).eq('fulfillment_type', 'DINE_IN').in('tab_id', tabIds).neq('status', 'CANCELLED').order('round_no');
     const direct = must(roundR) as WaiterRound[];
     if (direct.length > 0) return direct;
@@ -105,7 +105,7 @@ export const salonStaffRepository = {
   async snapshot(tenantId: string): Promise<SalonSnapshot> {
     const [tablesR, tabsR, cfgR] = await Promise.all([
       supabase.from('dining_tables').select('id,label,area,seats').eq('tenant_id', tenantId).eq('active', true).order('label'),
-      supabase.from('dining_tabs').select('id,table_id,status,opened_at,service_fee_percent,service_fee_removed').eq('tenant_id', tenantId).in('status', ['OPEN', 'BILL_REQUESTED']).order('opened_at'),
+      supabase.from('dining_tabs').select('id,table_id,status,opened_at,service_fee_percent,service_fee_removed,waiter_id').eq('tenant_id', tenantId).in('status', ['OPEN', 'BILL_REQUESTED', 'WAITER_AUTHORIZED', 'AWAITING_PAYMENT']).order('opened_at'),
       supabase.from('tenant_modules').select('config').eq('tenant_id', tenantId).eq('module_key', 'dine_in').maybeSingle(),
     ]);
     const tables = must(tablesR) as WaiterTable[];
@@ -228,6 +228,11 @@ export const salonStaffRepository = {
   async requestBill(tabId: string): Promise<void> { const { error } = await supabase.rpc('staff_request_bill', { p_tab_id: tabId }); if (error) throw error; },
   /** Dono/gerente/caixa autoriza o garçom a fechar a conta (BILL_REQUESTED → WAITER_AUTHORIZED). */
   async authorizeWaiterToClose(tabId: string): Promise<void> { const { error } = await supabase.rpc('authorize_waiter_to_close', { p_tab_id: tabId }); if (error) throw error; },
+  /** The RPC resolves the tab's store and rechecks authorization and the complete balance atomically. */
+  async closeTab(tabId: string, method: 'CASH' | 'CREDIT_CARD', amountCents: number): Promise<void> {
+    const { error } = await supabase.rpc('close_tab', { p_tab_id: tabId, p_payments: [{ method, amount_cents: amountCents, change_given_cents: 0 }] });
+    if (error) throw error;
+  },
   async submitRound(tabId: string, items: unknown[], idempotencyKey: string): Promise<void> {
     const { error } = await supabase.rpc('submit_round', { p_items: items, p_idempotency_key: idempotencyKey, p_tab_id: tabId }); if (error) throw error;
   },

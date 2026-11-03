@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { teamRepository } from '../../repositories/teamRepository';
 import { Card } from '../../components/ui/Card';
@@ -24,6 +24,9 @@ export const TeamPage: React.FC = () => {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [pendingInvites, setPendingInvites] = useState<TeamInvite[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const currentTenant = useRef(activeTenant?.id);
+  currentTenant.current = activeTenant?.id;
+  const [loadedTenant, setLoadedTenant] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,7 +44,7 @@ export const TeamPage: React.FC = () => {
   });
 
   const fetchTeamData = useCallback(async () => {
-    if (!activeTenant?.id) return;
+    if (!activeTenant?.id || currentTenant.current !== activeTenant.id) return;
     setIsLoading(true);
     try {
       const [members, invites, dir] = await Promise.all([
@@ -49,6 +52,7 @@ export const TeamPage: React.FC = () => {
         teamRepository.listPendingInvites(securityContext, activeTenant.id),
         waiterV2Repository.directory(activeTenant.id).catch(() => null),
       ]);
+      if (currentTenant.current !== activeTenant.id) return;
       // O diretório (RPC) traz nome/telefone reais: a tabela users só é legível pelo próprio usuário (cards "Colaborador / Sem e-mail").
       const visibleMembers = members.filter(m => m.status !== 'INACTIVE'); // removidos/revogados não aparecem na lista
       const byUser = dir ? new Map(dir.map(d => [d.userId, d])) : null;
@@ -58,10 +62,11 @@ export const TeamPage: React.FC = () => {
         return d ? { ...m, name: d.name || m.name, email: isWaiterSyntheticEmail(d.email) ? '' : d.email, phone: d.phone || m.phone } : m;
       }) : visibleMembers);
       setPendingInvites(invites);
+      setLoadedTenant(activeTenant.id);
     } catch (err) {
       console.warn('[TeamPage] Erro ao carregar equipe do Supabase:', err);
     } finally {
-      setIsLoading(false);
+      if (currentTenant.current === activeTenant.id) setIsLoading(false);
     }
   }, [activeTenant?.id, securityContext]);
 
@@ -70,6 +75,8 @@ export const TeamPage: React.FC = () => {
   }, [fetchTeamData]);
 
   if (!activeTenant) return null;
+  const visibleTeam = loadedTenant === activeTenant.id ? team : [];
+  const visibleInvites = loadedTenant === activeTenant.id ? pendingInvites : [];
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,16 +157,13 @@ export const TeamPage: React.FC = () => {
       return;
     }
 
-    const isLoginWaiter = !!directory?.get(member.userId)?.username;
     const isWaiter = member.role === 'WAITER';
-    if (!window.confirm(isLoginWaiter
-      ? `Excluir ${member.name}? A conta de login será apagada (o histórico de pedidos é mantido). Para só bloquear o acesso, use "Desativar".`
-      : isWaiter
-        ? `Tem certeza que deseja remover o garçom ${member.name}? Ele perderá o acesso ao salão.`
-        : `Tem certeza que deseja remover ${member.name} da equipe?`)) return;
+    if (!window.confirm(isWaiter
+      ? `Remover o garçom ${member.name} desta loja? Ele perderá o acesso ao salão. O histórico de pedidos será mantido.`
+      : `Tem certeza que deseja remover ${member.name} da equipe?`)) return;
 
     try {
-      if (directory?.get(member.userId)?.username) await waiterV2Repository.deleteWaiter(activeTenant.id, member.userId);
+      if (isWaiter) await waiterV2Repository.deleteWaiter(activeTenant.id, member.userId);
       else await teamRepository.removeTeamMember(securityContext, activeTenant.id, member.id);
       setTeam(prev => prev.filter(m => m.id !== member.id)); // some da lista na hora
       showToast({
@@ -218,11 +222,11 @@ export const TeamPage: React.FC = () => {
       <div className="space-y-3">
         <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
           <Users className="w-4 h-4 text-emerald-700" />
-          Colaboradores Ativos ({team.length})
+          Colaboradores Ativos ({visibleTeam.length})
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {team.map((member) => (
+          {visibleTeam.map((member) => (
             <Card key={member.id} className="p-4 flex flex-col justify-between space-y-3">
               <div className="space-y-2">
                 <div className="flex items-start justify-between">
@@ -246,6 +250,7 @@ export const TeamPage: React.FC = () => {
                       onClick={() => handleRemove(member)}
                       className="text-gray-400 hover:text-rose-600 p-1 rounded-lg cursor-pointer transition-colors"
                       title="Remover Acesso"
+                      aria-label={`Remover ${member.name} da equipe`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -310,15 +315,15 @@ export const TeamPage: React.FC = () => {
       </div>
 
       {/* Convites Pendentes */}
-      {pendingInvites.length > 0 && (
+      {visibleInvites.length > 0 && (
         <div className="space-y-3 pt-4 border-t border-gray-200">
           <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
             <Clock className="w-4 h-4 text-amber-600" />
-            Convites Pendentes ({pendingInvites.length})
+            Convites Pendentes ({visibleInvites.length})
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {pendingInvites.map((invite) => (
+            {visibleInvites.map((invite) => (
               <Card key={invite.id} className="p-4 border-amber-200 bg-amber-50/20 flex flex-col justify-between space-y-3">
                 <div className="space-y-2">
                   <div className="flex items-start justify-between">
@@ -370,7 +375,7 @@ export const TeamPage: React.FC = () => {
       >
         <form
           onSubmit={(e) => {
-            if (formData.role === 'WAITER' && directory) {
+            if (formData.role === 'WAITER') {
               e.preventDefault();
               setIsModalOpen(false);
               setCreateWaiterOpen(true);
@@ -380,7 +385,7 @@ export const TeamPage: React.FC = () => {
           }}
           className="space-y-4 text-xs"
         >
-          {!(formData.role === 'WAITER' && directory) && (
+          {formData.role !== 'WAITER' && (
             <Input
               label="E-mail do Colaborador *"
               type="email"
@@ -392,8 +397,9 @@ export const TeamPage: React.FC = () => {
           )}
 
           <div>
-            <label className="font-semibold text-gray-700 block mb-1">Papel & Nível de Permissão (RBAC) *</label>
+            <label htmlFor="team-role" className="font-semibold text-gray-700 block mb-1">Tipo de membro *</label>
             <select
+              id="team-role"
               value={formData.role}
               onChange={(e) => setFormData({ ...formData, role: e.target.value as RoleId })}
               className="w-full bg-white border border-gray-200 rounded-xl p-2.5 text-xs outline-none focus:border-emerald-600"
@@ -427,7 +433,7 @@ export const TeamPage: React.FC = () => {
               disabled={isSubmitting}
               leftIcon={<Send className="w-3.5 h-3.5" />}
             >
-              {isSubmitting ? 'Emitindo Convite...' : (formData.role === 'WAITER' && directory ? 'Continuar' : 'Enviar Convite')}
+              {isSubmitting ? 'Emitindo Convite...' : (formData.role === 'WAITER' ? 'Continuar' : 'Enviar Convite')}
             </Button>
           </div>
         </form>

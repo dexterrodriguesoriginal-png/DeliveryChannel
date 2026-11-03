@@ -20,4 +20,14 @@ describe('statusChip (padrão KDS)', () => {
     expect(FILTER_CHIP_CLASS.atrasados).toBe(statusChip('CONFIRMED', true).className);
     expect(FILTER_CHIP_CLASS.estoque).toContain('orange');
   });
+  it('salão segue vermelho/laranja/roxo/verde do Kanban e identifica a ida até a mesa', () => {
+    expect(statusChip('PENDING', false, 'DINE_IN').className).toContain('red');
+    expect(statusChip('PREPARING', false, 'DINE_IN').className).toContain('orange');
+    expect(statusChip('READY', false, 'DINE_IN')).toMatchObject({ label: 'AGUARDANDO GARÇOM' });
+    expect(statusChip('READY', false, 'DINE_IN').className).toContain('purple');
+    expect(statusChip('OUT_FOR_DELIVERY', false, 'DINE_IN')).toMatchObject({ label: 'INDO ATÉ A MESA', icon: 'ready' });
+    expect(statusChip('DELIVERED', false, 'DINE_IN').className).toContain('green');
+    expect(statusChip('PREPARING', false, 'DELIVERY')).toEqual(statusChip('PREPARING'));
+    expect(statusChip('READY', false, 'PICKUP')).toEqual(statusChip('READY'));
+  });
 });

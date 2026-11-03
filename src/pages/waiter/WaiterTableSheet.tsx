@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { BellRing, Check, Clock, Crown, Plus, Receipt, UserCheck, X } from 'lucide-react';
+import { BellRing, Check, Clock, Crown, Plus, UserCheck, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { formatBRL } from '../../lib/pricing/money';
 import { inviteUrl } from '../../lib/customer/tableAccess';
 import type { TableStatusInfo } from '../../lib/salon/tableStatus';
 import type { StaffHolderCode, WaiterCallRow, WaiterRound, WaiterSession, WaiterTab, WaiterTable } from '../../repositories/salonStaffRepository';
-import { callTitle, type WaiterFeatures } from './waiterLogic';
+import { callTitle, waiterOrderStatus, type WaiterFeatures } from './waiterLogic';
+import { WaiterBillPanel } from './WaiterBillPanel';
 
-const roundStatus = (s: string) => s === 'CONFIRMED' ? 'Recebido' : s === 'PREPARING' ? 'Preparando' : s === 'READY' ? 'Pronto' : s === 'DELIVERED' ? 'Entregue' : s;
 const btn = 'inline-flex h-12 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-black disabled:opacity-50';
 
 /** Detalhe de uma mesa no celular: pessoas, liberação, chamados, rodadas e as ações do garçom. */
@@ -30,7 +30,9 @@ export const WaiterTableSheet: React.FC<{
   onHandleCall: (callId: string) => void;
   onOpenTable: () => void;
   onOrder: () => void;
-  onRequestBill: () => void;
+  canCollect?: boolean;
+  onConfirmPayment?: (method: 'CASH' | 'CREDIT_CARD') => void;
+  onPaymentSettled?: () => void;
   onResetHolder: () => void;
   onChangeHolder?: () => void;
   onReleaseEmptyTab?: (reason: string) => void;
@@ -40,7 +42,7 @@ export const WaiterTableSheet: React.FC<{
   canHelp?: boolean;
   onHelpTable?: () => void;
   helpSuccess?: boolean;
-}> = ({ table, tab, info, sessions, calls, rounds, holderSessionId, holderCode, tenantSlug, features, busy, message, onClose, onApprove, onReject, onHandleCall, onOpenTable, onOrder, onRequestBill, onResetHolder, onChangeHolder, onReleaseEmptyTab, onTransferHolder, currentUserId, onAcceptCall, canHelp, onHelpTable, helpSuccess }) => {
+}> = ({ table, tab, info, sessions, calls, rounds, holderSessionId, holderCode, tenantSlug, features, busy, message, onClose, onApprove, onReject, onHandleCall, onOpenTable, onOrder, canCollect, onConfirmPayment, onPaymentSettled, onResetHolder, onChangeHolder, onReleaseEmptyTab, onTransferHolder, currentUserId, onAcceptCall, canHelp, onHelpTable, helpSuccess }) => {
   const [confirmReject, setConfirmReject] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [releaseEmptyOpen, setReleaseEmptyOpen] = useState(false);
@@ -71,6 +73,11 @@ export const WaiterTableSheet: React.FC<{
               <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-500">Pessoas</p><p className="text-lg font-black">{sessions.length}</p></div>
               <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-500">Rodadas</p><p className="text-lg font-black">{rounds.length}</p></div>
             </div>
+
+            {tab.status === 'BILL_REQUESTED' && <p role="status" className="rounded-2xl border border-violet-200 bg-violet-100 p-4 text-sm font-bold text-violet-950">Conta solicitada pelo cliente. Aguarde o caixa autorizar o fechamento.</p>}
+            {tab.status === 'WAITER_AUTHORIZED' && <p role="status" className="rounded-2xl bg-violet-800 p-4 text-sm font-bold text-white">Garçom autorizado a fechar esta conta.</p>}
+            {tab.status === 'AWAITING_PAYMENT' && !canCollect && <p role="status" className="rounded-2xl bg-violet-100 p-4 text-sm font-bold text-violet-950">Aguardando confirmação do pagamento.</p>}
+            {canCollect && onConfirmPayment && <WaiterBillPanel key={tab.id} tabId={tab.id} status={tab.status} totalCents={info.totalCents} busy={!!busy} onManualConfirm={onConfirmPayment} onSettled={onPaymentSettled ?? onClose} />}
 
             {pending.length > 0 && (
               <div className="space-y-2" data-testid="waiter-sheet-pending">
@@ -172,11 +179,11 @@ export const WaiterTableSheet: React.FC<{
             <div className="space-y-2">
               <h3 className="text-sm font-black text-slate-700">Rodadas</h3>
               {rounds.length === 0 && <p className="text-sm text-slate-500">Nenhuma rodada enviada.</p>}
-              {rounds.map(r => <div key={r.id} className="rounded-2xl border border-slate-200 p-3"><div className="flex justify-between gap-2 font-bold"><span>Rodada {r.round_no} · #{r.order_number}</span><span>{formatBRL(Number(r.subtotal))}</span></div><p className="mt-0.5 text-sm text-slate-600">{r.customer_name} · {roundStatus(r.status)}</p><p className="text-xs text-slate-400"><Clock className="mr-1 inline h-3 w-3" />{new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p></div>)}
+              {rounds.map(r => { const status = waiterOrderStatus(r.status); return <div key={r.id} className="rounded-2xl border border-slate-200 p-3"><div className="flex justify-between gap-2 font-bold"><span>Rodada {r.round_no} · #{r.order_number}</span><span>{formatBRL(Number(r.subtotal))}</span></div><p className="mt-0.5 text-sm font-bold" style={{ color: status.color }}>{status.label}</p><p className="text-xs text-slate-400"><Clock className="mr-1 inline h-3 w-3" />{new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p></div>; })}
             </div>
 
             <div className="grid grid-cols-2 gap-2 pb-2">
-              <button type="button" onClick={onOrder} className={`${btn} bg-slate-900 text-white`}><Plus className="h-4 w-4" />Lançar pedido</button>
+              <button type="button" disabled={!!busy || tab.status !== 'OPEN'} onClick={onOrder} className={`${btn} bg-slate-900 text-white`}><Plus className="h-4 w-4" />Lançar pedido</button>
               {isEmptyTab && onReleaseEmptyTab ? (
                 <button
                   type="button"
@@ -187,8 +194,6 @@ export const WaiterTableSheet: React.FC<{
                 >
                   Liberar mesa (sem consumo)
                 </button>
-              ) : features.requestBill ? (
-                <button type="button" disabled={!!busy || tab.status === 'BILL_REQUESTED'} onClick={onRequestBill} className={`${btn} border border-violet-200 bg-violet-50 text-violet-800`}><Receipt className="h-4 w-4" />{tab.status === 'BILL_REQUESTED' ? 'Conta pedida' : 'Pedir a conta'}</button>
               ) : <span />}
             </div>
             {releaseEmptyOpen && onReleaseEmptyTab && (
@@ -235,7 +240,7 @@ export const WaiterTableSheet: React.FC<{
                 </div>
               </div>
             )}
-            <p className="pb-2 text-center text-xs text-slate-400">O fechamento e o pagamento da conta são feitos no painel (Salão) pelo caixa.</p>
+            <p className="pb-2 text-center text-xs text-slate-500">O cliente ou o caixa pede a conta. O garçom só cobra depois da autorização do caixa.</p>
           </>)}
         </div>
       </section>

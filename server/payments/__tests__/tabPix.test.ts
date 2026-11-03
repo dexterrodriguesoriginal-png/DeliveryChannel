@@ -103,9 +103,25 @@ describe('per-tab PIX confirmation', () => {
     expect(store.confirmTab).toHaveBeenCalledTimes(1);
   });
   it('does not confirm a pending provider status, whatever a webhook body claims', async () => {
-    const { tabs, payments, store } = fixture(); vi.spyOn(payments.adapters.mercadopago, 'verifyWebhook').mockReturnValue(true);
-    vi.spyOn(payments.adapters.mercadopago, 'getPaymentStatus').mockResolvedValue({ ...confirmation, paid: false, rawStatus: 'pending' });
+    const { tabs, payments, store, setCharge } = fixture(); setCharge(base());
+    vi.spyOn(payments.adapters.mercadopago, 'verifyWebhook').mockReturnValue(true);
+    const get = vi.spyOn(payments.adapters.mercadopago, 'getPaymentStatus').mockResolvedValue({ ...confirmation, paid: false, rawStatus: 'pending' });
     await tabs.webhook(CHARGE, { headers: {}, query: { 'data.id': 'mp-123' }, rawBody: Buffer.from('{"status":"approved","amount":0.01}') });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(store.confirmTab).not.toHaveBeenCalled();
+  });
+  it('rejects a signed notification replayed against another tab even when that payment was rejected', async () => {
+    const { tabs, payments, store, setCharge } = fixture(); setCharge(base());
+    vi.spyOn(payments.adapters.mercadopago, 'verifyWebhook').mockReturnValue(true);
+    const get = vi.spyOn(payments.adapters.mercadopago, 'getPaymentStatus').mockResolvedValue({ ...confirmation, providerPaymentId: 'other', paid: false, rawStatus: 'rejected' });
+    await expect(tabs.webhook(CHARGE, { headers: {}, query: { 'data.id': 'other' }, rawBody: Buffer.from('{}') }))
+      .rejects.toMatchObject({ code: 'INVALID_WEBHOOK' });
+    expect(get).not.toHaveBeenCalled(); expect(store.confirmTab).not.toHaveBeenCalled();
+  });
+  it('does not cancel a charge from an unrelated unpaid provider response', async () => {
+    const { tabs, payments, store } = fixture();
+    vi.spyOn(payments.adapters.mercadopago, 'getPaymentStatus').mockResolvedValue({ ...confirmation, orderId: 'tab:other', paid: false, rawStatus: 'rejected' });
+    await expect(tabs.refresh(base())).rejects.toMatchObject({ code: 'PAYMENT_MISMATCH' });
     expect(store.confirmTab).not.toHaveBeenCalled();
   });
   it('records a rejected/expired provider status without closing anything', async () => {

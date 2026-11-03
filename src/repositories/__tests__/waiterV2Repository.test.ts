@@ -53,6 +53,20 @@ describe('waiterV2Repository', () => {
     expect(invokeMock).toHaveBeenLastCalledWith('waiter-admin', { body: { action: 'delete', tenantId: 't1', userId: 'u1' } });
   });
 
+  it('mostra o erro de cadastro retornado pela Edge Function e traduz JWT inválido', async () => {
+    invokeMock.mockResolvedValueOnce({ data: null, error: { context: new Response(JSON.stringify({ ok: false, code: 'USERNAME_TAKEN', message: 'O usuário já existe. Tente outro nome de usuário.' }), { status: 409 }) } });
+    await expect(waiterV2Repository.createWaiter({ tenantId: 't1', name: 'João', phone: '11999990000', username: 'joao', password: '123456' })).rejects.toMatchObject({ code: 'USERNAME_TAKEN', message: 'O usuário já existe. Tente outro nome de usuário.' });
+    invokeMock.mockResolvedValueOnce({ data: null, error: { context: new Response(JSON.stringify({ code: 401, message: 'Invalid JWT' }), { status: 401 }) } });
+    await expect(waiterV2Repository.deleteWaiter('t1', 'u1')).rejects.toMatchObject({ code: 'UNAUTHENTICATED', message: expect.stringMatching(/Sessão expirada/) });
+  });
+
+  it('não mostra dados internos quando falha a conexão ou a resposta não é JSON', async () => {
+    invokeMock.mockResolvedValueOnce({ data: null, error: { name: 'FunctionsFetchError', message: 'secret URL', context: new Response('SQL: secret') } });
+    await expect(waiterV2Repository.deleteWaiter('t1', 'u1')).rejects.toMatchObject({ code: 'NETWORK', message: expect.stringMatching(/conectar ao servidor/) });
+    invokeMock.mockResolvedValueOnce({ data: null, error: { message: 'SQL password=secret' } });
+    await expect(waiterV2Repository.deleteWaiter('t1', 'u1')).rejects.toThrow('Não foi possível concluir a ação. Tente novamente em instantes.');
+  });
+
   it('diretório devolve nome/telefone e null quando a migration não existe', async () => {
     rpcMock.mockResolvedValueOnce({ data: [{ id: '1', user_id: 'u', role_id: 'WAITER', status: 'ACTIVE', created_at: 'x', name: 'João', email: '', phone: '11999990000', username: 'joao', photo_url: null, waiter_active: true }], error: null });
     const list = await waiterV2Repository.directory('t');

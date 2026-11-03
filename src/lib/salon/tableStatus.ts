@@ -1,10 +1,12 @@
 // Pure logic for the Salão map (no React, no network): status, totals, filters, search.
 // The closing/payment rules live in SQL (close_tab); nothing here decides money, it only displays it.
 
-export type TableStatusKind = 'FREE' | 'OCCUPIED' | 'LONG_STAY' | 'BILL';
+export type TableStatusKind = 'FREE' | 'OCCUPIED' | 'LONG_STAY' | 'NEW_ORDER' | 'PREPARING' | 'READY' | 'BILL' | 'AUTHORIZED' | 'AWAITING_PAYMENT';
 export type TableFilter = 'ALL' | TableStatusKind | 'CALL';
 
-export interface TabLike { id: string; table_id: string; status: 'OPEN' | 'BILL_REQUESTED' | 'CLOSED' | 'CANCELLED'; opened_at: string; service_fee_percent: number; service_fee_removed: boolean }
+export type DiningTabStatus = 'OPEN' | 'BILL_REQUESTED' | 'WAITER_AUTHORIZED' | 'AWAITING_PAYMENT' | 'CLOSED' | 'CANCELLED';
+export const ACTIVE_DINING_TAB_STATUSES: DiningTabStatus[] = ['OPEN', 'BILL_REQUESTED', 'WAITER_AUTHORIZED', 'AWAITING_PAYMENT'];
+export interface TabLike { id: string; table_id: string; status: DiningTabStatus; opened_at: string; service_fee_percent: number; service_fee_removed: boolean }
 export interface CallLike {
   id: string;
   tab_id: string;
@@ -78,7 +80,15 @@ export interface TableStatusInfo {
 }
 
 export const STATUS_LABEL: Record<TableStatusKind, string> = {
-  FREE: 'Livre', OCCUPIED: 'Ocupada', LONG_STAY: 'Ocupada há muito tempo', BILL: 'Conta pedida',
+  FREE: 'Livre', OCCUPIED: 'Ocupada', LONG_STAY: 'Ocupada há muito tempo', BILL: 'Conta solicitada',
+  NEW_ORDER: 'Pedido novo', PREPARING: 'Em preparo', READY: 'Pronto no balcão',
+  AUTHORIZED: 'Garçom autorizado a fechar', AWAITING_PAYMENT: 'Aguardando pagamento',
+};
+
+/** Same families used by the orders Kanban; bill authorization remains a distinct, stronger purple. */
+export const TABLE_STATUS_COLOR: Record<TableStatusKind, string> = {
+  FREE: '#0f766e', OCCUPIED: '#a16207', LONG_STAY: '#b91c1c', NEW_ORDER: '#dc2626',
+  PREPARING: '#ea580c', READY: '#7c3aed', BILL: '#a78bfa', AUTHORIZED: '#5b21b6', AWAITING_PAYMENT: '#0f766e',
 };
 
 export interface DeriveInput {
@@ -101,11 +111,17 @@ export function deriveTableStatus(input: DeriveInput): TableStatusInfo {
   }
   const calls = (input.calls || []).filter(c => c.tab_id === tab.id && c.status === 'OPEN');
   const sessions = (input.sessions || []).filter(s => s.tab_id === tab.id);
-  const rounds = (input.rounds || []).filter(r => r.tab_id === tab.id);
+  const rounds = (input.rounds || []).filter(r => r.tab_id === tab.id && r.status !== 'CANCELLED');
   const minutes = elapsedMinutes(tab.opened_at, now);
   const totals = tabTotals(tab, rounds);
   const paidCents = Math.max(0, Math.round(input.paidCents || 0));
-  const kind: TableStatusKind = tab.status === 'BILL_REQUESTED' ? 'BILL' : minutes >= long ? 'LONG_STAY' : 'OCCUPIED';
+  const kind: TableStatusKind = tab.status === 'AWAITING_PAYMENT' ? 'AWAITING_PAYMENT'
+    : tab.status === 'WAITER_AUTHORIZED' ? 'AUTHORIZED'
+    : tab.status === 'BILL_REQUESTED' ? 'BILL'
+    : rounds.some(round => round.status === 'READY') ? 'READY'
+    : rounds.some(round => round.status === 'PREPARING') ? 'PREPARING'
+    : rounds.some(round => ['PENDING', 'CONFIRMED'].includes(round.status)) ? 'NEW_ORDER'
+    : minutes >= long ? 'LONG_STAY' : 'OCCUPIED';
   const attention = calls.filter(c => c.type !== 'BILL').length;
   return {
     kind, label: STATUS_LABEL[kind], tabId: tab.id, elapsedMinutes: minutes, elapsedLabel: formatElapsed(minutes),
@@ -116,9 +132,12 @@ export function deriveTableStatus(input: DeriveInput): TableStatusInfo {
 
 export type FilterCounts = Record<TableFilter, number>;
 export function statusCounts(infos: Pick<TableStatusInfo, 'kind' | 'hasActiveCall' | 'pendingRelease'>[]): FilterCounts {
-  const counts: FilterCounts = { ALL: infos.length, FREE: 0, OCCUPIED: 0, LONG_STAY: 0, BILL: 0, CALL: 0 };
+  const counts: FilterCounts = { ALL: infos.length, FREE: 0, OCCUPIED: 0, LONG_STAY: 0, BILL: 0, CALL: 0,
+    NEW_ORDER: 0, PREPARING: 0, READY: 0, AUTHORIZED: 0, AWAITING_PAYMENT: 0 };
   for (const info of infos) {
     counts[info.kind] += 1;
+    if (['NEW_ORDER', 'PREPARING', 'READY'].includes(info.kind)) counts.OCCUPIED += 1;
+    if (['AUTHORIZED', 'AWAITING_PAYMENT'].includes(info.kind)) counts.BILL += 1;
     if (info.hasActiveCall || info.pendingRelease) counts.CALL += 1;
   }
   return counts;
@@ -142,6 +161,8 @@ export function matchesSearch(table: Pick<TableLike, 'label' | 'area'>, query: s
 export function matchesFilter(info: Pick<TableStatusInfo, 'kind' | 'hasActiveCall' | 'pendingRelease'>, filter: TableFilter): boolean {
   if (filter === 'ALL') return true;
   if (filter === 'CALL') return info.hasActiveCall || info.pendingRelease;
+  if (filter === 'OCCUPIED') return ['OCCUPIED', 'NEW_ORDER', 'PREPARING', 'READY'].includes(info.kind);
+  if (filter === 'BILL') return ['BILL', 'AUTHORIZED', 'AWAITING_PAYMENT'].includes(info.kind);
   return info.kind === filter;
 }
 

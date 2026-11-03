@@ -39,9 +39,19 @@ P -d gv3_fx -f /tmp/gv3_fixtures.sql >/dev/null
 dropdb --if-exists gv3_run >/dev/null 2>&1; createdb -T gv3_fx gv3_run
 P -d gv3_run -1 -f $MIG
 P -d gv3_run -c "SET t.suite = 'garcom_v3'" -f "$HERE/garcom_v3.sql" > /tmp/gv3_suite.log 2>&1 || { echo 'ERRO na suíte garcom_v3'; tail -12 /tmp/gv3_suite.log; STATUS=1; }
+sh "$HERE/concurrency.sh" || STATUS=1
 psql -X -At -d gv3_run -c "SELECT 'FALHOU: '||name||' — '||COALESCE(detail,'') FROM t.results WHERE NOT ok ORDER BY id"
 psql -X -At -d gv3_run -c "SELECT 'garcom_v3: ' || count(*) FILTER (WHERE ok) || ' passou, ' || count(*) FILTER (WHERE NOT ok) || ' falhou' FROM t.results"
 [ "$(psql -X -At -d gv3_run -c 'SELECT count(*) FROM t.results WHERE NOT ok')" = 0 ] || STATUS=1
+
+# Rollback com pagamentos e auditoria reais do teste; preserva os dados e reaplica.
+dropdb --if-exists gv3_data_rb >/dev/null 2>&1; createdb -T gv3_run gv3_data_rb
+before_payments=$(psql -X -At -d gv3_data_rb -c 'SELECT count(*) FROM public.tab_payments')
+before_audit=$(psql -X -At -d gv3_data_rb -c "SELECT count(*) FROM public.tab_access_events WHERE event='WAITER_AUTHORIZED_TO_CLOSE'")
+P -d gv3_data_rb -1 -f $DOWN
+[ "$(psql -X -At -d gv3_data_rb -c 'SELECT count(*) FROM public.tab_payments')" = "$before_payments" ] || { echo 'FALHOU rollback com dados: pagamentos perdidos'; STATUS=1; }
+[ "$(psql -X -At -d gv3_data_rb -c "SELECT count(*) FROM public.tab_access_events WHERE event='WAITER_AUTHORIZED_TO_CLOSE'")" = "$before_audit" ] || { echo 'FALHOU rollback com dados: auditoria perdida'; STATUS=1; }
+P -d gv3_data_rb -1 -f $MIG
 
 # Rollback exato
 dropdb --if-exists gv3_rb >/dev/null 2>&1; createdb -T gv3_fx gv3_rb
@@ -62,6 +72,6 @@ P -d gv3_rb -1 -f $MIG || { echo 'FALHOU reaplicação'; STATUS=1; }
 P -d gv3_rb -1 -f $DOWN || { echo 'FALHOU segundo rollback'; STATUS=1; }
 chk "$(fhr)" "$(fh)" 'segundo rollback alterou funções'
 
-for d in gv3_fx gv3_run gv3_rb gv3_ref; do dropdb --if-exists $d >/dev/null 2>&1; done
+for d in gv3_fx gv3_run gv3_rb gv3_ref gv3_data_rb; do dropdb --if-exists $d >/dev/null 2>&1; done
 [ $STATUS = 0 ] && echo 'PASS: garcom_v3 (suíte, rollback exato, reaplicação)' || echo 'FAIL'
 exit $STATUS

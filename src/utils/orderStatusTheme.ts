@@ -1,5 +1,8 @@
 import { prepLimitMinutes } from '../lib/orders/sla';
 import { OrderStatus } from '../types';
+import { orderStatusColors } from '../components/establishment/ordersKanban';
+import { statusChip } from '../lib/orders/statusChip';
+import { dineInNextAction } from '../lib/orders/dineInFlow';
 
 export interface StatusTheme {
   bg: string;
@@ -167,6 +170,18 @@ export function checkIsPreparingDelayed(createdAt: string | Date, status: OrderS
   if (status !== 'PREPARING' && status !== 'CONFIRMED') return false;
   const elapsedMs = Date.now() - new Date(createdAt).getTime();
   return elapsedMs > prepLimitMinutes(maxMinutes) * 60000;
+}
+
+/** Table order details use the same status colors as the Kanban. Other fulfillment themes stay unchanged. */
+export function getOrderStatusTheme(order: { status: OrderStatus; fulfillmentType?: 'DELIVERY' | 'PICKUP' | 'DINE_IN' }, late = false): StatusTheme {
+  if (late) return DELAYED_PREPARING_THEME;
+  const theme = ORDER_STATUS_THEME[order.status] || ORDER_STATUS_THEME.PENDING;
+  if (order.fulfillmentType !== 'DINE_IN') return theme;
+  const colors = orderStatusColors(order.status);
+  const chip = statusChip(order.status, false, 'DINE_IN');
+  return { ...theme, bg: colors.tint, drawerBg: colors.tint, border: colors.color, accent: colors.color,
+    text: colors.ink, badgeBg: colors.tint, badgeText: colors.ink, badgeBorder: colors.color, label: chip.label,
+    buttonLabel: dineInNextAction({ status: order.status, fulfillmentType: 'DINE_IN' })?.label || theme.buttonLabel };
 }
 
 /**

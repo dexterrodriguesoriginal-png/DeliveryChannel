@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ supabaseUser: h.user.value }) }));
 vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: { rpc: (...a: unknown[]) => h.rpc(...a), auth: { signInAnonymously: (...a: unknown[]) => h.signIn(...a) }, from: () => ({ select: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }) }) } }));
+vi.mock('../../../lib/pwa/applyStoreIdentity', () => ({ applyStoreIdentity: vi.fn().mockResolvedValue({}) }));
 vi.mock('../../../repositories/publicStoreRepository', () => ({ publicStoreRepository: { loadPublicStore: async () => ({ status: 'ok', data: { tenant: { id: 'tn', name: 'Loja X' }, products: [] } }) } }));
 vi.mock('../../../repositories/tenantModuleRepository', () => ({ tenantModuleRepository: { getPublicEnabled: async () => new Set(['dine_in']) } }));
 vi.mock('../../../repositories/productOptionRepository', () => ({ productOptionRepository: { getPublicForProducts: async () => new Map() } }));
@@ -39,28 +40,17 @@ describe('DineInClientApp — QR da mesa', () => {
   it('banco antigo (sem get_table_qr_status) segue o fluxo normal: falha aberta, só informativo', async () => {
     route('missing');
     render(<DineInClientApp token={TOKEN} />);
-    expect(await screen.findByLabelText('Seu primeiro nome')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Cardápio' })).toBeTruthy();
     expect(screen.queryByTestId('dine-in-paused')).toBeNull();
   });
-  it('nome é opcional: entra como visitante sem digitar, sem gravar nada no aparelho', async () => {
+  it('navegação inicial não cria sessão anônima nem pede cadastro', async () => {
     route(false);
-    h.signIn.mockResolvedValue({ error: null });
     render(<DineInClientApp token={TOKEN} />);
-    const button = await screen.findByRole('button', { name: /Continuar como visitante/ });
-    expect(button.hasAttribute('disabled')).toBe(false);
-    fireEvent.click(button);
-    await waitFor(() => expect(h.signIn).toHaveBeenCalledTimes(1));
-    expect(h.signIn.mock.calls[0][0]).toEqual({ options: { data: { display_name: 'Cliente' } } });
+    await screen.findByRole('heading', { name: 'Cardápio' });
+    expect(screen.queryByTestId('identity-gate')).toBeNull();
+    expect(h.signIn).not.toHaveBeenCalled();
+    expect(h.rpc.mock.calls.some(call => call[0] === 'open_or_join_tab')).toBe(false);
     expect(localStorage.getItem('adegafood_cust_name')).toBeNull();
-  });
-  it('só o primeiro nome é enviado quando informado', async () => {
-    route(false);
-    h.signIn.mockResolvedValue({ error: null });
-    render(<DineInClientApp token={TOKEN} />);
-    fireEvent.change(await screen.findByLabelText('Seu primeiro nome'), { target: { value: '  Maria da Silva ' } });
-    fireEvent.click(screen.getByRole('button', { name: /Continuar como visitante/ }));
-    await waitFor(() => expect(h.signIn).toHaveBeenCalled());
-    expect(h.signIn.mock.calls[0][0].options.data.display_name).toBe('Maria');
   });
   it('guestDisplayName: vazio vira "Cliente", só 1ª palavra, máximo 40', () => {
     expect(guestDisplayName('')).toBe('Cliente');

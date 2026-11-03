@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Bell, CheckCircle2, ChefHat, ChevronsRight, Clock, Receipt, Utensils, X } from 'lucide-react';
 import { formatBRL } from '../../../lib/pricing/money';
-import { callLabel, formatElapsed, TableStatusKind } from '../../../lib/salon/tableStatus';
+import { callLabel, formatElapsed, STATUS_LABEL, TABLE_STATUS_COLOR, TableStatusKind } from '../../../lib/salon/tableStatus';
 import './salon.css';
 
 export type SidebarTab = 'OPEN' | 'CLOSED' | 'ORDERS' | 'CALLS';
@@ -30,7 +30,6 @@ export interface SalonSidebarProps {
 const money = (cents: number) => formatBRL(cents / 100);
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const ORDER_STATUS: Record<string, string> = { CONFIRMED: 'Recebido', PREPARING: 'Preparando', READY: 'Pronto', DELIVERED: 'Entregue', PENDING: 'Pendente' };
-const KIND_DOT: Record<TableStatusKind, string> = { FREE: '#0f766e', OCCUPIED: '#a16207', LONG_STAY: '#b91c1c', BILL: '#6d28d9' };
 
 const TABS: Array<{ id: SidebarTab; label: string; icon: React.ReactNode }> = [
   { id: 'OPEN', label: 'Abertas', icon: <Utensils className="h-3.5 w-3.5" /> },
@@ -85,11 +84,11 @@ export const SalonSidebar: React.FC<SalonSidebarProps> = ({ tab, onTabChange, op
       <div id="salon-side-panel" role="tabpanel" aria-labelledby={`salon-tab-${tab}`} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {tab === 'OPEN' && (openTabs.length === 0 ? <Empty icon={<Utensils className="h-6 w-6" />} text="Nenhuma comanda aberta agora." /> : openTabs.map(item => (
           <button key={item.tabId} type="button" className="salon-row" onClick={() => onSelectTable(item.tableId)} data-testid={`salon-open-${item.tabId}`}>
-            <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ background: KIND_DOT[item.kind] }} aria-hidden="true" />
+            <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ background: TABLE_STATUS_COLOR[item.kind] }} aria-hidden="true" />
             <span className="min-w-0 flex-1">
               <span className="flex items-center justify-between gap-2"><b className="truncate text-sm text-slate-900">{item.tableLabel}</b><b className="text-sm tabular-nums text-slate-900">{money(item.totalCents)}</b></span>
               <span className="mt-0.5 flex items-center justify-between gap-2 text-xs text-slate-600">
-                <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" aria-hidden="true" />{formatElapsed(item.elapsedMinutes)}{item.kind === 'BILL' ? ' · conta pedida' : ''}</span>
+                <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" aria-hidden="true" />{formatElapsed(item.elapsedMinutes)} · {STATUS_LABEL[item.kind]}</span>
                 <span className="tabular-nums">{item.paidPercent}% pago</span>
               </span>
               {item.needsReview && <span className="mt-1 inline-block rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-extrabold text-amber-900">PIX para conferir</span>}

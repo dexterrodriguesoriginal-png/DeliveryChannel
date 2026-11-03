@@ -100,7 +100,6 @@ describe('WaiterTableSheet — Partes A e D (Trocar responsável e Liberar mesa 
     onHandleCall: vi.fn(),
     onOpenTable: vi.fn(),
     onOrder: vi.fn(),
-    onRequestBill: vi.fn(),
     onResetHolder: vi.fn(),
     onTransferHolder: vi.fn(),
   };
@@ -138,5 +137,13 @@ describe('WaiterTableSheet — Partes A e D (Trocar responsável e Liberar mesa 
     const card = screen.getByTestId('waiter-holder-code');
     expect(card.textContent).toContain('K9P4M2');
     expect(card.querySelector('svg')).toBeTruthy();
+  });
+  it('não permite pedir conta mesmo com consumo; conta solicitada aguarda autorização do caixa', () => {
+    render(<WaiterTableSheet {...baseProps} tab={{ ...baseProps.tab!, status: 'BILL_REQUESTED' }} info={{ ...baseProps.info, totalCents: 2200 }} rounds={[{ id: 'r', tab_id: 'tab-1', status: 'READY', subtotal: 20, created_at: new Date().toISOString(), round_no: 1, order_number: 44, customer_name: 'Cliente' }]} />);
+    expect(screen.queryByRole('button', { name: 'Pedir a conta' })).toBeNull();
+    expect(screen.queryByLabelText('Cobrar conta autorizada')).toBeNull();
+    expect(screen.getByText('Conta solicitada pelo cliente. Aguarde o caixa autorizar o fechamento.')).toBeTruthy();
+    expect(screen.getByText('Pronto no balcão · balcão chamando')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Lançar pedido' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

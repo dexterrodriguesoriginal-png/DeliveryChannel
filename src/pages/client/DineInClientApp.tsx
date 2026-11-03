@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, CircleUserRound, Crown, Loader2, Minus, Plus, ReceiptText, ShoppingBag, Utensils, UserRound, Users, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CircleUserRound, Crown, Loader2, Minus, Plus, ReceiptText, ShoppingBag, UserRound, Users, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
@@ -11,7 +11,7 @@ import { billSplitAmounts, BillSplitMode, DineInPaymentMethod, parseTenderCents,
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
 import { isModuleEnabled } from '../../lib/modules';
-import { friendlyTableError, tableAppUrl } from '../../lib/salon/tableQr';
+import { friendlyTableError } from '../../lib/salon/tableQr';
 import { mesasQrRepository } from '../../repositories/mesasQrRepository';
 import { tableAccessRepository, type InvitePreview } from '../../repositories/tableAccessRepository';
 import {
@@ -22,6 +22,12 @@ import {
 import { ConfirmLoggedUserGate, IdentityGate, InvitePanel, InviteWelcomeScreen, MembersPanel, TableInUseScreen } from '../../components/client/dinein/TableAccessPanels';
 import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
+import { DineInCartSheet } from '../../components/client/dinein/DineInCartSheet';
+import { DineInTracking } from '../../components/client/dinein/DineInTracking';
+import { dineInStatus, type DineInTrackedRound } from '../../lib/customer/dineInTracking';
+import { restoreDineInCart, saveDineInCart } from '../../lib/customer/dineInCartStorage';
+import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
+import { clearDeferredPrompt, getDeferredPrompt } from '../../lib/pwa/installState';
 import {
   addDineInCartLine,
   changeDineInCartLineQuantity,
@@ -33,8 +39,8 @@ import {
 } from '../../lib/customer/dineInCart';
 
 type TableResolution = { available: boolean; tenantSlug?: string; storeName?: string; tableLabel?: string };
-type TabRound = { orderId: string; orderNumber: number; roundNo: number; status: string; customerName: string; mine?: boolean; subtotal: number; createdAt: string; items: Array<{ name: string; quantity: number; unitPrice: number; totalPrice: number }> };
-type MyTab = { tabId: string; status: 'OPEN' | 'BILL_REQUESTED' | 'CLOSED' | 'CANCELLED'; mode: 'TABLE' | 'INDIVIDUAL'; tableLabel: string; serviceFeePercent: number; serviceFeeRemoved: boolean; rounds: TabRound[]; subtotal: number;
+type TabRound = DineInTrackedRound & { customerName: string; mine?: boolean; subtotal: number; items: Array<{ name: string; quantity: number; unitPrice: number; totalPrice: number }> };
+type MyTab = { tabId: string; status: 'OPEN' | 'BILL_REQUESTED' | 'WAITER_AUTHORIZED' | 'AWAITING_PAYMENT' | 'CLOSED' | 'CANCELLED'; mode: 'TABLE' | 'INDIVIDUAL'; tableLabel: string; serviceFeePercent: number; serviceFeeRemoved: boolean; rounds: TabRound[]; subtotal: number;
   /** Only with the table-access model (capabilities v2). */
   me?: { sessionId: string; role: 'RESPONSIBLE' | 'GUEST'; approved: boolean; displayName?: string; ended?: boolean; endedReason?: string | null };
   responsibleName?: string | null; members?: TabMember[]; ended?: boolean; endedReason?: string | null };
@@ -78,10 +84,6 @@ function errorText(error: unknown): string {
   return String(error || '');
 }
 
-function isProviderDisabled(error: unknown): boolean {
-  return /anonymous.*(disabled|not enabled)|provider.*(disabled|not enabled)|anonymous sign-ins? (are )?disabled|signup is disabled/i.test(errorText(error));
-}
-
 function isMissingBillChoiceSignature(error: { code?: string; message?: string }): boolean {
   return ['PGRST202', '42883'].includes(error.code || '') && /request_bill|function/i.test(error.message || '');
 }
@@ -96,6 +98,7 @@ const paymentChoices: Array<{ value: DineInPaymentMethod; label: string }> = [
 export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const { supabaseUser, signOut } = useAuth();
   const [resolution, setResolution] = useState<TableResolution | null>(null);
+  const [resolvedToken, setResolvedToken] = useState('');
   const [storeName, setStoreName] = useState('');
   const [storeLogoUrl, setStoreLogoUrl] = useState<string | null>(null);
   const [storePrimaryColor, setStorePrimaryColor] = useState<string | null>(null);
@@ -108,13 +111,14 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [sessionId, setSessionId] = useState('');
   const [tab, setTab] = useState<MyTab | null>(null);
   const [cart, setCart] = useState<DineInCartLine[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [cartHydratedToken, setCartHydratedToken] = useState('');
+  const [checkoutPending, setCheckoutPending] = useState(false);
+  const [checkoutIdentityOpen, setCheckoutIdentityOpen] = useState(false);
   const [optionsProduct, setOptionsProduct] = useState<Product | null>(null);
   const [optionChoices, setOptionChoices] = useState<SelectedProductOption[]>([]);
   const [busy, setBusy] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [pendingApproval, setPendingApproval] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [billOpen, setBillOpen] = useState(false);
@@ -128,6 +132,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [qrPaused, setQrPaused] = useState(false);
   // Modelo de acesso (Responsável / convidado): só liga quando o banco declara capabilities v2+.
   const [access, setAccess] = useState(false);
+  const [accessReady, setAccessReady] = useState(false);
   const [entered, setEntered] = useState(false);
   const [entryDone, setEntryDone] = useState(false);
   const [inUse, setInUse] = useState(false);
@@ -168,6 +173,27 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const submitLockRef = useRef(false);
   const openedUserRef = useRef('');
   const pingedRef = useRef('');
+  const activeIdentityRef = useRef({ token, userId: supabaseUser?.id, sessionId, generation: 0 });
+  const generation = activeIdentityRef.current.generation + (activeIdentityRef.current.token !== token || activeIdentityRef.current.userId !== supabaseUser?.id ? 1 : 0);
+  activeIdentityRef.current = { token, userId: supabaseUser?.id, sessionId, generation };
+  const contextMatches = useCallback((source: typeof activeIdentityRef.current, includeSession = true) => (
+    source.token === token && source.userId === supabaseUser?.id && source.generation === activeIdentityRef.current.generation
+    && (!includeSession || source.sessionId === activeIdentityRef.current.sessionId)
+  ), [token, supabaseUser?.id]);
+  const previousUserRef = useRef(supabaseUser?.id);
+
+  useEffect(() => {
+    if (previousUserRef.current && previousUserRef.current !== supabaseUser?.id) {
+      setSessionId(''); setTab(null); setTabClosed(false); setAccountOpen(false); setBillOpen(false);
+      setBusy(false); setJoinBusy(false); setInviteBusy(false); setMembersBusy(false);
+      setEntryRole(null); setEntryApproved(null); setInUse(false); setInvite(null); setEndedReason(null);
+      setConfirmOrderOpen(false); setPendingApproval(false); setAwaitingReleaseModalOpen(false);
+      submitLockRef.current = false; submitKeyRef.current = uuid();
+      setIdentityConfirmed(false); openedUserRef.current = '';
+      try { sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${token}`); } catch { /* storage optional */ }
+    }
+    previousUserRef.current = supabaseUser?.id;
+  }, [supabaseUser?.id, token]);
 
   const subtotalCents = Math.round((tab?.subtotal || 0) * 100);
   const serviceFeeCents = tab && !tab.serviceFeeRemoved
@@ -175,12 +201,13 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     : 0;
   const accountTotalCents = subtotalCents + serviceFeeCents;
   const cashTenderStatus = tenderStatus(accountTotalCents, parseTenderCents(tendered));
-  const needsIdentity = access && (!supabaseUser || supabaseUser.is_anonymous === true);
+  const needsIdentity = !supabaseUser || supabaseUser.is_anonymous === true;
   const myRole = tab?.me?.role || entryRole;
   const approvedNow = tab?.me ? tab.me.approved : entryApproved;
   const awaitingRelease = access ? approvedNow === false : pendingApproval;
   // Parte E: Enquanto aguarda liberação, o cardápio fica visível e o cliente pode montar a sacola.
-  const orderingDisabled = qrPaused || tabClosed || tab?.status === 'BILL_REQUESTED';
+  const billRequested = !!tab && ['BILL_REQUESTED', 'WAITER_AUTHORIZED', 'AWAITING_PAYMENT'].includes(tab.status);
+  const orderingDisabled = qrPaused || tabClosed || billRequested;
   const split = useMemo(() => {
     const customCents = parseTenderCents(customShare) || 0;
     try { return billSplitAmounts(accountTotalCents, splitMode, Number(splitParts), customCents); } catch { return []; }
@@ -189,7 +216,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    setAccessReady(false);
     setResolution(null);
+    setResolvedToken('');
+    setStoreName(''); setStoreLogoUrl(null); setStorePrimaryColor(null); setProducts([]);
+    setQrPaused(false); setInvitePreview(null);
     setError('');
     void (async () => {
       if (!isSupabaseConfigured) {
@@ -213,6 +244,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       const caps = await mesasQrRepository.capabilities();
       if (!alive) return;
       setAccess(caps.tableAccess);
+      setResolvedToken(token);
+      setAccessReady(true);
       const urlInvite = caps.tableAccess ? readInviteParam(window.location.search) : null;
       const savedPending = caps.tableAccess && typeof localStorage !== 'undefined' ? readPendingMesaDetails(localStorage) : null;
       const resolvedInvite = urlInvite || (savedPending?.token === token ? savedPending.inviteCode || null : null);
@@ -239,12 +272,16 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           return;
         }
         const enabledModules = await tenantModuleRepository.getPublicEnabled(store.data.tenant.id);
+        if (!alive) return;
         const optionGroups = isModuleEnabled(enabledModules, 'addons')
           ? await productOptionRepository.getPublicForProducts(store.data.tenant.id, store.data.products.map(product => product.id))
           : new Map();
+        if (!alive) return;
         setStoreName(result.storeName || store.data.theme?.storeName || store.data.tenant.name);
         if (store.data.theme?.logoUrl) setStoreLogoUrl(store.data.theme.logoUrl);
         if (store.data.theme?.primaryColor) setStorePrimaryColor(store.data.theme.primaryColor);
+        void applyStoreIdentity({ id: store.data.tenant.id, slug: result.tenantSlug, name: store.data.tenant.name,
+          theme: { storeName: store.data.theme?.storeName, logoUrl: store.data.theme?.logoUrl, primaryColor: store.data.theme?.primaryColor } }).catch(() => { /* install hint remains optional */ });
         setProducts(store.data.products
           .filter(product => product.isActive && product.isAvailable)
           .map(product => ({ ...product, optionGroups: optionGroups.get(product.id) || [] })));
@@ -257,8 +294,33 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     return () => { alive = false; };
   }, [token]);
 
+  // Browsing never requires login. Only IDs/options are saved, under this QR, so OAuth/e-mail
+  // confirmation can return to checkout without retaining customer data or stale prices.
+  useEffect(() => {
+    if (loading || cartHydratedToken === token) return;
+    const draft = restoreDineInCart(typeof localStorage !== 'undefined' ? localStorage : null, token, products);
+    setCart(draft.cart);
+    setCheckoutPending(draft.checkoutPending);
+    setCartHydratedToken(token);
+  }, [loading, products, token, cartHydratedToken]);
+  useEffect(() => {
+    if (cartHydratedToken !== token) return;
+    saveDineInCart(typeof localStorage !== 'undefined' ? localStorage : null, token, cart, checkoutPending);
+  }, [cart, checkoutPending, token, cartHydratedToken]);
+
   useEffect(() => {
     deviceIdRef.current = deviceId();
+    setTab(null);
+    setTabClosed(false);
+    setSessionId('');
+    setEntered(false);
+    setBusy(false); setJoinBusy(false); setInviteBusy(false); setMembersBusy(false);
+    setEntryRole(null); setEntryApproved(null); setInUse(false); setEntryDone(false); setEndedReason(null); setInvite(null);
+    setAccountOpen(false); setBillOpen(false); setCartOpen(false); setConfirmOrderOpen(false); setCheckoutIdentityOpen(false);
+    setPendingApproval(false); setAwaitingReleaseModalOpen(false);
+    submitLockRef.current = false; submitKeyRef.current = uuid();
+    setIdentityConfirmed(false);
+    openedUserRef.current = '';
     try {
       const cached = sessionStorage.getItem(`${SESSION_KEY_PREFIX}${token}`);
       if (cached) {
@@ -298,8 +360,10 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   }, [token]);
 
   const openOrJoin = useCallback(async (overrideName?: string) => {
-    if (!supabaseUser || !resolution?.available || !deviceIdRef.current) return;
-    if (access && supabaseUser.is_anonymous) return;
+    if (!supabaseUser || resolvedToken !== token || !accessReady || !resolution?.available || !deviceIdRef.current) return;
+    if (supabaseUser.is_anonymous) return;
+    const source = activeIdentityRef.current;
+    if (!contextMatches(source, false)) return;
     if (openedUserRef.current === supabaseUser.id) return;
     openedUserRef.current = supabaseUser.id;
     setBusy(true);
@@ -314,6 +378,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         const pendingInvite = inviteParamRef.current || inviteCode;
         if (pendingInvite) {
           const joined = await tableAccessRepository.joinWithCode(token, pendingInvite, chosenName, deviceIdRef.current);
+          if (!contextMatches(source, false)) return;
           if (joined.entry) {
             applyEntry(joined.entry);
             return;
@@ -322,6 +387,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             inviteParamRef.current = null;
             setInviteCode(null);
             const entry = await tableAccessRepository.enterTable(token, chosenName, deviceIdRef.current);
+            if (!contextMatches(source, false)) return;
             applyEntry(entry);
             return;
           }
@@ -332,8 +398,10 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           }
         }
         const entry = await tableAccessRepository.enterTable(token, chosenName, deviceIdRef.current);
+        if (!contextMatches(source, false)) return;
         applyEntry(entry);
       } catch (openError) {
+        if (!contextMatches(source, false)) return;
         openedUserRef.current = '';
         const message = errorText(openError);
         if (/QR_PAUSED/i.test(message)) setQrPaused(true);
@@ -341,9 +409,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         setNotice(friendly);
         if (inviteParamRef.current || inviteCode) setJoinMessage(friendly);
       } finally {
-        setEntryDone(true);
-        setBusy(false);
-        setJoinBusy(false);
+        if (contextMatches(source, false)) {
+          setEntryDone(true);
+          setBusy(false);
+          setJoinBusy(false);
+        }
       }
       return;
     }
@@ -352,6 +422,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       p_display_name: guestDisplayName(overrideName || firstName),
       p_device_id: deviceIdRef.current,
     });
+    if (!contextMatches(source, false)) return;
     if (openError || !data?.sessionId) {
       openedUserRef.current = '';
       if (/QR_PAUSED/i.test(errorText(openError))) setQrPaused(true);
@@ -366,11 +437,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setNotice('');
     setBusy(false);
     setJoinBusy(false);
-  }, [access, applyEntry, displayNameForEntry, firstName, inviteCode, resolution?.available, supabaseUser, token]);
+  }, [access, accessReady, applyEntry, contextMatches, displayNameForEntry, firstName, inviteCode, resolution?.available, resolvedToken, supabaseUser, token]);
 
   // Parte E: Com conta já logada no aparelho, exige confirmação ("Entrar como <Nome>?") antes de entrar na mesa.
   useEffect(() => {
-    if (!supabaseUser || !resolution?.available) return;
+    if (!supabaseUser || supabaseUser.is_anonymous || !resolution?.available) return;
     if (access) {
       if (!supabaseUser.is_anonymous && identityConfirmed) void openOrJoin();
       return;
@@ -378,19 +449,31 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     if (!qrPaused) void openOrJoin();
   }, [supabaseUser, resolution?.available, qrPaused, access, identityConfirmed, openOrJoin]);
 
+  // Once registration/login returns, continue with the preserved cart; never send an order
+  // automatically: the customer still reviews and confirms the items.
+  useEffect(() => {
+    if (!checkoutPending || needsIdentity || !sessionId || !cart.length || busy) return;
+    setCheckoutIdentityOpen(false);
+    if (awaitingRelease) { setAwaitingReleaseModalOpen(true); return; }
+    if (!orderingDisabled) { setConfirmOrderOpen(true); setCheckoutPending(false); }
+  }, [checkoutPending, needsIdentity, sessionId, cart.length, busy, awaitingRelease, orderingDisabled]);
+
   const submitInviteCode = useCallback(async (code: string) => {
     if (!supabaseUser || !deviceIdRef.current) return;
+    const source = activeIdentityRef.current;
+    if (!contextMatches(source, false)) return;
     setJoinBusy(true);
     setJoinMessage('');
     try {
       const result = await tableAccessRepository.joinWithCode(token, code, displayNameForEntry(), deviceIdRef.current);
+      if (!contextMatches(source, false)) return;
       if (result.entry) applyEntry(result.entry);
       else if (result.free) { openedUserRef.current = ''; setInUse(false); void openOrJoin(); }
       else setJoinMessage('Código inválido ou expirado. Confira com quem abriu a mesa ou peça um novo convite.');
     } catch (joinError) {
-      setJoinMessage(friendlyAccessError(errorText(joinError)));
-    } finally { setJoinBusy(false); }
-  }, [applyEntry, displayNameForEntry, openOrJoin, supabaseUser, token]);
+      if (contextMatches(source, false)) setJoinMessage(friendlyAccessError(errorText(joinError)));
+    } finally { if (contextMatches(source, false)) setJoinBusy(false); }
+  }, [applyEntry, contextMatches, displayNameForEntry, openOrJoin, supabaseUser, token]);
 
   // Cadastro novo ou convite: lembra a mesa e o código de convite para voltar depois do e-mail de confirmação.
   useEffect(() => {
@@ -401,8 +484,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   const loadAccount = useCallback(async (silent = false) => {
     if (!sessionId) return;
+    const source = activeIdentityRef.current;
+    if (!contextMatches(source)) return;
     if (!silent) setBusy(true);
     const { data, error: accountError } = await supabase.rpc('get_my_tab', { p_session_id: sessionId });
+    if (!contextMatches(source)) return;
     if (accountError) {
       const message = errorText(accountError);
       if (/TAB_CLOSED|comanda encerrada/i.test(message)) {
@@ -429,7 +515,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       }
     }
     if (!silent) setBusy(false);
-  }, [access, sessionId, token]);
+  }, [access, contextMatches, sessionId, token]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -452,6 +538,24 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       if (channel && typeof supabase?.removeChannel === 'function') void supabase.removeChannel(channel);
     };
   }, [sessionId, loadAccount, access, awaitingRelease]);
+
+  useEffect(() => {
+    if (!tab?.tabId || typeof supabase?.channel !== 'function') return;
+    // The revision row contains only tenant/tab IDs and a timestamp, with server RLS.
+    // Never subscribe to other customers' orders to calculate a queue position.
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const refresh = () => { void loadAccount(true); };
+    try {
+      channel = supabase.channel(`dinein-tracking-${tab.tabId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'dining_tracking_revisions', filter: `tab_id=eq.${tab.tabId}` }, refresh)
+        .subscribe(status => { if (status === 'SUBSCRIBED') refresh(); });
+    } catch { /* periodic refresh remains available if realtime is offline */ }
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      if (channel && typeof supabase?.removeChannel === 'function') void supabase.removeChannel(channel);
+    };
+  }, [tab?.tabId, loadAccount]);
 
   useEffect(() => {
     if (!awaitingRelease && awaitingReleaseModalOpen) {
@@ -484,6 +588,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   const submitRound = useCallback(async () => {
     if (!sessionId || cart.length === 0 || submitLockRef.current || tabClosed) return;
+    const source = activeIdentityRef.current;
+    if (!contextMatches(source) || source.sessionId !== sessionId) return;
     submitLockRef.current = true;
     setBusy(true);
     setNotice('');
@@ -494,6 +600,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       p_session_id: sessionId,
       p_tab_id: null,
     });
+    if (!contextMatches(source)) return;
     submitLockRef.current = false;
     setBusy(false);
     if (submitError) {
@@ -519,11 +626,13 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       setAwaitingReleaseModalOpen(false);
       if (access) setEntryApproved(true);
       setCart([]);
+      setCartOpen(false);
+      setCheckoutPending(false);
       submitKeyRef.current = uuid();
       setNotice('Pedido feito! A cozinha já recebeu.');
       await loadAccount(true);
     }
-  }, [access, cart, loadAccount, sessionId, tabClosed]);
+  }, [access, cart, contextMatches, loadAccount, sessionId, tabClosed]);
 
   useEffect(() => {
     if (!pendingApproval || tabClosed) return;
@@ -533,6 +642,19 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   const handleRequestOrder = () => {
     if (cart.length === 0 || orderingDisabled || busy) return;
+    setCartOpen(false);
+    if (needsIdentity) {
+      setCheckoutPending(true);
+      setCheckoutIdentityOpen(true);
+      rememberPendingMesa(typeof localStorage !== 'undefined' ? localStorage : null, token, Date.now(), inviteCode);
+      return;
+    }
+    if (!sessionId) {
+      setCheckoutPending(true);
+      setIdentityConfirmed(true);
+      void openOrJoin();
+      return;
+    }
     if (awaitingRelease) {
       setAwaitingReleaseModalOpen(true);
       if (sessionId) void tableAccessRepository.pingPending(sessionId);
@@ -588,6 +710,10 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const handleSwitchAccount = async () => {
     try { sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${token}`); } catch { /* ignore */ }
     setSessionId('');
+    setTab(null);
+    setTabClosed(false);
+    setAccountOpen(false);
+    setBillOpen(false);
     setEntered(false);
     setIdentityConfirmed(false);
     openedUserRef.current = '';
@@ -597,32 +723,6 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     } catch {
       // ignore
     }
-  };
-
-  const enterAsGuest = async () => {
-    const name = guestDisplayName(firstName);
-    setFirstName(firstName.trim() ? name : '');
-    setAuthBusy(true);
-    setNotice('');
-    const { error: authError } = await supabase.auth.signInAnonymously({ options: { data: { display_name: name } } });
-    setAuthBusy(false);
-    if (authError) {
-      if (isProviderDisabled(authError)) {
-        setShowLogin(true);
-        setNotice('Entre com sua conta para pedir na mesa.');
-      } else {
-        setNotice(`Não foi possível continuar como visitante. ${errorText(authError)}`);
-      }
-    }
-  };
-
-  const loginWithPassword = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setAuthBusy(true);
-    const { error: loginError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    setAuthBusy(false);
-    if (loginError) setNotice(errorText(loginError));
-    else setNotice('');
   };
 
   const loginWithGoogle = async (link = false) => {
@@ -638,14 +738,17 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   const requestWaiter = async () => {
     if (!sessionId) return;
+    const source = activeIdentityRef.current;
     setBusy(true);
     const { error: callError } = await supabase.rpc('call_waiter', { p_session_id: sessionId, p_type: 'CALL' });
+    if (!contextMatches(source)) return;
     setBusy(false);
     setNotice(callError ? errorText(callError) : 'Chamamos o garçom. Ele já vai até sua mesa.');
   };
 
   const requestBill = async () => {
-    if (!sessionId) return;
+    if (!sessionId || billRequested) return;
+    const source = activeIdentityRef.current;
     if (paymentMethod === 'CASH' && cashTenderStatus !== 'ok') {
       setNotice(cashTenderStatus === 'missing' ? 'Informe quanto vai pagar em dinheiro.' : 'O valor informado é menor que o total da conta.');
       return;
@@ -657,9 +760,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       p_choice: paymentMethod,
       p_cash_tendered_cents: paymentMethod === 'CASH' ? parseTenderCents(tendered) : null,
     });
+    if (!contextMatches(source)) return;
     if (billResult.error && isMissingBillChoiceSignature(billResult.error)) {
       legacyFallback = true;
       billResult = await supabase.rpc('request_bill', { p_session_id: sessionId });
+      if (!contextMatches(source)) return;
     }
     setBusy(false);
     if (billResult.error) {
@@ -672,43 +777,48 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setTab(current => current ? { ...current, status: 'BILL_REQUESTED' } : current);
     setNotice(legacyFallback
       ? 'Solicitação enviada. Este salão ainda não registra a forma de pagamento escolhida.'
-      : `Garçom chamado para fechar a conta. Preferência: ${paymentChoices.find(choice => choice.value === paymentMethod)?.label}.`);
+      : `Conta solicitada. Aguardando autorização do caixa. Preferência: ${paymentChoices.find(choice => choice.value === paymentMethod)?.label}.`);
   };
 
   // Convite (só o Responsável): código curto que expira, revogável.
   const createInvite = async () => {
     if (!sessionId) return;
+    const source = activeIdentityRef.current;
     setInviteBusy(true);
-    try { setInvite(await tableAccessRepository.createInvite(sessionId, 15)); setNotice(''); }
-    catch (inviteError) { setNotice(friendlyAccessError(errorText(inviteError))); }
-    finally { setInviteBusy(false); }
+    try { const next = await tableAccessRepository.createInvite(sessionId, 15); if (contextMatches(source)) { setInvite(next); setNotice(''); } }
+    catch (inviteError) { if (contextMatches(source)) setNotice(friendlyAccessError(errorText(inviteError))); }
+    finally { if (contextMatches(source)) setInviteBusy(false); }
   };
   const revokeInvite = async () => {
     if (!sessionId) return;
+    const source = activeIdentityRef.current;
     setInviteBusy(true);
-    try { await tableAccessRepository.revokeInvite(sessionId); setInvite(null); }
-    catch (inviteError) { setNotice(friendlyAccessError(errorText(inviteError))); }
-    finally { setInviteBusy(false); }
+    try { await tableAccessRepository.revokeInvite(sessionId); if (contextMatches(source)) setInvite(null); }
+    catch (inviteError) { if (contextMatches(source)) setNotice(friendlyAccessError(errorText(inviteError))); }
+    finally { if (contextMatches(source)) setInviteBusy(false); }
   };
   const removeMember = async (member: TabMember) => {
+    const source = activeIdentityRef.current;
     setMembersBusy(true);
-    try { await tableAccessRepository.removeGuest(sessionId, member.sessionId); setNotice(`${member.displayName} foi removido da mesa.`); await loadAccount(true); }
-    catch (memberError) { setNotice(friendlyAccessError(errorText(memberError))); }
-    finally { setMembersBusy(false); }
+    try { await tableAccessRepository.removeGuest(sessionId, member.sessionId); if (contextMatches(source)) { setNotice(`${member.displayName} foi removido da mesa.`); await loadAccount(true); } }
+    catch (memberError) { if (contextMatches(source)) setNotice(friendlyAccessError(errorText(memberError))); }
+    finally { if (contextMatches(source)) setMembersBusy(false); }
   };
   const transferTo = async (member: TabMember) => {
+    const source = activeIdentityRef.current;
     setMembersBusy(true);
-    try { await tableAccessRepository.transferResponsibility(sessionId, member.sessionId); setNotice(`${member.displayName} agora é o responsável pela mesa.`); setInvite(null); await loadAccount(true); }
-    catch (memberError) { setNotice(friendlyAccessError(errorText(memberError))); }
-    finally { setMembersBusy(false); }
+    try { await tableAccessRepository.transferResponsibility(sessionId, member.sessionId); if (contextMatches(source)) { setNotice(`${member.displayName} agora é o responsável pela mesa.`); setInvite(null); await loadAccount(true); } }
+    catch (memberError) { if (contextMatches(source)) setNotice(friendlyAccessError(errorText(memberError))); }
+    finally { if (contextMatches(source)) setMembersBusy(false); }
   };
 
   useEffect(() => {
     if (!access || !accountOpen || myRole !== 'RESPONSIBLE' || !sessionId) return;
     let alive = true;
-    void tableAccessRepository.getInvite(sessionId).then(current => { if (alive) setInvite(current); }).catch(() => { /* optional */ });
+    const source = activeIdentityRef.current;
+    void tableAccessRepository.getInvite(sessionId).then(current => { if (alive && contextMatches(source)) setInvite(current); }).catch(() => { /* optional */ });
     return () => { alive = false; };
-  }, [access, accountOpen, myRole, sessionId]);
+  }, [access, accountOpen, contextMatches, myRole, sessionId]);
 
   const unavailable = !loading && (!resolution?.available || Boolean(error));
   const totalCartCents = cart.reduce((sum, line) => sum + dineInCartLineUnitPriceCents(line) * line.quantity, 0);
@@ -741,7 +851,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   }
   // Parte F: Quem abriu um link de convite (&convite=CODIGO) vai DIRETO para a tela de boas-vindas da loja,
   // nunca vendo "Esta mesa já está em uso".
-  if (access && inviteCode && !sessionId && !inUse) {
+  if (access && inviteCode && !sessionId && !inUse && (!needsIdentity || checkoutIdentityOpen)) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-8">
         <InviteWelcomeScreen
@@ -777,14 +887,14 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       </main>
     );
   }
-  if (needsIdentity) {
+  if (needsIdentity && checkoutIdentityOpen) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-8">
         <IdentityGate
           storeName={displayStoreName}
           tableLabel={tableName}
           initialName={firstName}
-          intro="A primeira pessoa a abrir a mesa fica como responsável. Pedimos seus dados para a loja saber quem está na mesa."
+          intro="Falta só um cadastro rápido para finalizar na loja. Sua sacola está guardada; depois você confere e confirma o pedido."
           onGoogle={() => void loginWithGoogle(false)}
           onSignedUp={info => {
             if (info.name) setFirstName(guestDisplayName(info.name));
@@ -796,12 +906,13 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             setIdentityConfirmed(true);
           }}
         />
+        <button type="button" onClick={() => { setCheckoutIdentityOpen(false); setCheckoutPending(false); }} className="mx-auto mt-4 block rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold">Voltar ao cardápio com a sacola</button>
         {notice && <p role="alert" className="mx-auto mt-4 max-w-md rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
       </main>
     );
   }
   // Parte E: Com conta já logada no aparelho, mostra sempre "Entrar como <Nome>?" antes de entrar sozinho.
-  if (access && !sessionId && !identityConfirmed) {
+  if (access && !needsIdentity && !sessionId && !identityConfirmed) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-8">
         <ConfirmLoggedUserGate
@@ -829,42 +940,13 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       </main>
     );
   }
-  if (access && !sessionId) {
+  if (access && !needsIdentity && !sessionId) {
     return (
       <main className="grid min-h-screen place-items-center bg-slate-50 p-6" data-testid="dine-in-entering">
         <section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl">
           {notice
             ? <><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><p role="alert" className="text-sm text-slate-700">{notice}</p><button type="button" onClick={() => { openedUserRef.current = ''; void openOrJoin(); }} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">Tentar de novo</button></>
             : <><Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-emerald-700" /><p className="text-sm font-semibold text-slate-700">Abrindo a {tableName}…</p></>}
-        </section>
-      </main>
-    );
-  }
-
-  if (!supabaseUser || !sessionId) {
-    return (
-      <main className="min-h-screen bg-slate-50 px-4 py-8">
-        <section className="mx-auto max-w-md rounded-3xl bg-white p-6 shadow-xl">
-          <div className="mb-5 flex items-center gap-3"><Utensils className="h-8 w-8 text-emerald-700" /><div><p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{storeName}</p><h1 className="text-xl font-black">{mesaTitle(resolution?.tableLabel)}</h1></div></div>
-          <h2 className="text-lg font-bold">Como podemos te chamar? <span className="text-sm font-semibold text-slate-500">(opcional)</span></h2>
-          <p className="mb-4 mt-1 text-sm text-slate-600">Seu nome ajuda o garçom a te encontrar. Pode pular: não guardamos dados que você não informar.</p>
-          {!showLogin ? (
-            <>
-              <input aria-label="Seu primeiro nome" value={firstName} onChange={event => setFirstName(event.target.value)} autoComplete="given-name" className="w-full rounded-xl border border-slate-300 px-4 py-3" placeholder="Primeiro nome (opcional)" />
-              <button type="button" onClick={() => void enterAsGuest()} disabled={authBusy} className="mt-3 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">{authBusy ? 'Conectando…' : 'Continuar como visitante'}</button>
-              <button type="button" onClick={() => setShowLogin(true)} className="mt-3 w-full py-2 text-sm font-semibold text-emerald-800">Já tenho uma conta</button>
-            </>
-          ) : (
-            <form onSubmit={loginWithPassword} className="space-y-3">
-              <label className="block text-sm font-semibold">Seu primeiro nome (opcional)<input aria-label="Seu primeiro nome" value={firstName} onChange={event => setFirstName(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></label>
-              <label className="block text-sm font-semibold">E-mail<input type="email" value={email} onChange={event => setEmail(event.target.value)} required className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></label>
-              <label className="block text-sm font-semibold">Senha<input type="password" value={password} onChange={event => setPassword(event.target.value)} required className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></label>
-              <button disabled={authBusy} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">{authBusy ? 'Entrando…' : 'Entrar'}</button>
-              <button type="button" onClick={() => void loginWithGoogle()} disabled={authBusy} className="w-full rounded-xl border border-slate-300 px-4 py-3 font-semibold">Continuar com Google</button>
-              <button type="button" onClick={() => setShowLogin(false)} className="w-full py-2 text-sm text-slate-600">Voltar</button>
-            </form>
-          )}
-          {notice && <p role="alert" className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
         </section>
       </main>
     );
@@ -892,15 +974,17 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <div
+            <button
+              type="button"
+              onClick={() => setCartOpen(true)}
               data-testid="dinein-bag-counter"
               aria-label={`Sacola com ${totalCartItems} ${totalCartItems === 1 ? 'item' : 'itens'}`}
               className={`relative flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-900 transition-transform duration-300 ${bagBounce ? 'scale-110 ring-2 ring-emerald-500 animate-bounce' : 'scale-100'}`}
             >
               <ShoppingBag className="h-4 w-4 text-emerald-700" />
               <span>{totalCartItems}</span>
-            </div>
-            <button type="button" onClick={() => { setAccountOpen(true); void loadAccount(); }} aria-label="Ver minha conta" className="rounded-full bg-slate-100 p-2"><CircleUserRound className="h-6 w-6" /></button>
+            </button>
+            <button type="button" disabled={!sessionId} onClick={() => { setAccountOpen(true); void loadAccount(); }} aria-label="Ver minha conta" className="rounded-full bg-slate-100 p-2 disabled:opacity-40"><CircleUserRound className="h-6 w-6" /></button>
           </div>
         </div>
       </header>
@@ -924,6 +1008,14 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         </div>
       )}
       {qrPaused && <div role="status" className="mx-auto mt-3 max-w-2xl rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Pedidos pelo QR pausados no momento. Chame um atendente para pedir.</div>}
+
+      {!!tab?.rounds?.length && resolution?.tenantSlug && <aside data-testid="dinein-app-banner" className="mx-auto mt-3 flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
+        <p className="text-slate-600">Peça também de casa com nosso app</p>
+        <a href={`/app/${encodeURIComponent(resolution.tenantSlug)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 font-bold text-emerald-800" onClick={event => {
+          const prompt = getDeferredPrompt();
+          if (prompt) { event.preventDefault(); void prompt.prompt().then(() => clearDeferredPrompt()).catch(() => { /* can retry using the store link */ }); }
+        }}>Instalar app da loja</a>
+      </aside>}
 
       <section className="mx-auto max-w-2xl px-4 py-5">
         <h2 className="mb-3 text-lg font-black">Cardápio</h2>
@@ -959,6 +1051,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
               </div>
               <input
                 type="text"
+                maxLength={500}
                 aria-label={`Observação de ${line.product.name}`}
                 value={line.notes || ''}
                 onChange={e => changeLineNotes(line.key, e.target.value)}
@@ -970,7 +1063,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           <div className="flex justify-between border-t pt-3 font-bold"><span>Subtotal estimado</span><span>{formatBRL(totalCart)}</span></div>
           <button type="button" onClick={handleRequestOrder} disabled={busy || orderingDisabled} className="mt-3 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Fazer pedido'}</button>
           {(pendingApproval || awaitingRelease) && <p className="mt-2 text-xs font-semibold text-amber-800">Aguarde a liberação da mesa. {PENDING_APPROVAL_TITLE}. {PENDING_APPROVAL_TEXT}</p>}
-          {tab?.status === 'BILL_REQUESTED' && <p className="mt-2 text-xs font-semibold text-amber-800">A conta já foi solicitada. Chame o garçom se precisar reabrir a comanda.</p>}
+          {billRequested && <p className="mt-2 text-xs font-semibold text-purple-800">Aguardando fechamento da conta. Chame o garçom se precisar reabrir a comanda.</p>}
         </section>}
         {awaitingReleaseModalOpen && awaitingRelease && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setAwaitingReleaseModalOpen(false); }}>
@@ -1077,33 +1170,36 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       </section>
 
+      {cartOpen && <DineInCartSheet cart={cart} busy={busy} disabled={orderingDisabled} onClose={() => setCartOpen(false)} onCheckout={handleRequestOrder} onQuantity={changeLineQuantity} onNotes={changeLineNotes} />}
+      <DineInTracking rounds={tab?.rounds?.filter(round => round.mine !== false) || []} />
+
       <nav aria-label="Ações da mesa" className="fixed inset-x-0 bottom-0 z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
         <div className="mx-auto grid max-w-2xl grid-cols-3 gap-2">
-          <button type="button" onClick={() => void requestWaiter()} disabled={busy || tabClosed} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><UserRound className="h-5 w-5" />Chamar garçom</button>
-          <button type="button" onClick={() => { setBillOpen(true); void loadAccount(true); }} disabled={busy || tabClosed} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><ReceiptText className="h-5 w-5" />Pedir a conta</button>
-          <button type="button" onClick={() => { setAccountOpen(true); void loadAccount(); }} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800"><CircleUserRound className="h-5 w-5" />Minha conta</button>
+          <button type="button" onClick={() => void requestWaiter()} disabled={busy || tabClosed || !sessionId} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><UserRound className="h-5 w-5" />Chamar garçom</button>
+          <button type="button" onClick={() => { setBillOpen(true); void loadAccount(true); }} disabled={busy || tabClosed || billRequested || !sessionId} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold disabled:cursor-default ${billRequested ? 'bg-purple-100 text-purple-800' : 'text-slate-800 disabled:opacity-40'}`}><ReceiptText className="h-5 w-5" />{billRequested ? 'Aguardando fechamento da conta' : 'Pedir a conta'}</button>
+          <button type="button" disabled={!sessionId} onClick={() => { setAccountOpen(true); void loadAccount(); }} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><CircleUserRound className="h-5 w-5" />Minha conta</button>
         </div>
       </nav>
 
       {accountOpen && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setAccountOpen(false); }}>
         <section role="dialog" aria-modal="true" aria-label="Minha conta" className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl">
           <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-black">Minha conta</h2><button type="button" onClick={() => setAccountOpen(false)} aria-label="Fechar"><X /></button></div>
-          <p className="text-sm text-slate-600">{mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {tab?.status === 'BILL_REQUESTED' ? 'Conta solicitada' : tab?.status === 'CLOSED' ? 'Encerrada' : 'Aberta'}</p>
+          <p className="text-sm text-slate-600">{mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {billRequested ? 'Aguardando fechamento da conta' : tab?.status === 'CLOSED' ? 'Encerrada' : 'Aberta'}</p>
           {access && myRole === 'RESPONSIBLE' && !tabClosed && tab?.status !== 'CLOSED' && <div className="mt-4 space-y-3">
             <InvitePanel invite={invite} busy={inviteBusy} link={invite && resolution?.tenantSlug ? inviteUrl(window.location.origin, resolution.tenantSlug, token, invite.code) : ''} onCreate={() => void createInvite()} onRevoke={() => void revokeInvite()} />
             <MembersPanel members={tab?.members || []} mySessionId={sessionId} busy={membersBusy} onRemove={member => void removeMember(member)} onTransfer={member => void transferTo(member)} />
           </div>}
-          <div className="my-4 space-y-3">{tab?.rounds?.length ? tab.rounds.map(round => <article key={round.orderId} className="rounded-xl bg-slate-50 p-3">
+          <div className="my-4 space-y-3">{tab?.rounds?.length ? tab.rounds.map(round => <article key={round.orderId} data-testid={`account-round-${round.orderId}`} className={`rounded-xl p-3 ${round.status === 'DELIVERED' ? 'bg-green-50 text-green-800' : round.status === 'CANCELLED' ? 'bg-red-50 text-red-800' : 'bg-slate-50 text-slate-700'}`}>
             <div className="mb-2 flex justify-between font-bold"><span>Rodada {round.roundNo}</span><span>{formatBRL(round.subtotal)}</span></div>
-            <p className="mb-2 text-xs text-slate-500">{access ? `Pedido de ${round.mine ? 'você' : round.customerName}` : round.customerName} · {round.status === 'CONFIRMED' ? 'Recebido' : round.status === 'PREPARING' ? 'Preparando' : round.status === 'READY' ? 'Pronto' : round.status === 'DELIVERED' ? 'Entregue' : round.status}</p>
-            {round.items.map((item, index) => <p key={`${round.orderId}-${index}`} className="text-sm text-slate-600">{item.quantity}× {item.name}</p>)}
+            <p className="mb-2 text-xs">{access ? `Pedido de ${round.mine ? 'você' : round.customerName}` : round.customerName} · {dineInStatus(round.status).label}</p>
+            {round.items.map((item, index) => <p key={`${round.orderId}-${index}`} className="text-sm">{item.quantity}× {item.name}</p>)}
           </article>) : <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Ainda não há pedidos nesta conta.</p>}</div>
           <div className="space-y-2 border-t pt-3 text-sm">
             <div className="flex justify-between"><span>Subtotal da conta</span><b>{formatBRL(tab?.subtotal || 0)}</b></div>
             {tab && tab.serviceFeePercent > 0 && !tab.serviceFeeRemoved && <div className="flex justify-between"><span>Taxa de serviço (opcional, {tab.serviceFeePercent}%)</span><b>{formatBRL(serviceFeeCents / 100)}</b></div>}
             <div className="flex justify-between text-base font-black"><span>Total</span><span>{formatBRL(accountTotalCents / 100)}</span></div>
           </div>
-          {tabClosed && supabaseUser.is_anonymous && !access && <>
+          {tabClosed && supabaseUser?.is_anonymous && !access && <>
             <button type="button" onClick={() => void loginWithGoogle(true)} disabled={authBusy} className="mt-5 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold">Salvar seus pontos e histórico: entrar com Google</button>
             <p className="mt-2 text-center text-xs text-slate-500">Vincule sua identidade Google para guardar seus pontos e histórico.</p>
           </>}
@@ -1133,7 +1229,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             {split.length > 0 && <p className="mt-2 text-sm text-slate-600">Cada parte: {split.map((amount, index) => <React.Fragment key={index}>{index > 0 ? ', ' : ''}{formatBRL(amount / 100)}</React.Fragment>)}</p>}
           </div>
           <button type="button" onClick={() => void requestBill()} disabled={busy || (paymentMethod === 'CASH' && cashTenderStatus !== 'ok')} className="mt-4 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50">{busy ? 'Chamando garçom…' : 'Chamar garçom para fechar a conta'}</button>
-          <p className="mt-2 text-center text-xs text-slate-500">Nenhum pagamento é processado pelo aplicativo.</p>
+          <p className="mt-2 text-center text-xs text-slate-500">Pedir a conta avisa a equipe. Sua mesa continua aberta até o pagamento ser confirmado.</p>
         </section>
       </div>}
     </main>

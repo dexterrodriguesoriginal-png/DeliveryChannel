@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const h = vi.hoisted(() => ({
+  realtimeOrders: null as null | (() => void),
+  readySound: vi.fn(),
   auth: {
     supabaseUser: null as null | { id: string; email: string },
     currentUser: { id: 'u-waiter-1', name: 'João Silva', role: 'WAITER' },
@@ -65,7 +67,7 @@ const h = vi.hoisted(() => ({
 }));
 
 const mockChannel: any = {
-  on: () => mockChannel,
+  on: (_event: string, filter: { table: string }, callback: () => void) => { if (filter.table === 'orders') h.realtimeOrders = callback; return mockChannel; },
   subscribe: () => ({}),
 };
 
@@ -78,6 +80,7 @@ vi.mock('../../../lib/supabase', () => ({
 }));
 
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => h.auth }));
+vi.mock('../../../utils/audio', () => ({ playShortBeep: h.readySound, playNewOrderSound: vi.fn(), unlockAudio: vi.fn() }));
 vi.mock('../../../hooks/useModules', () => ({ useModules: () => ({ available: true, loading: false, isModuleEnabled: () => h.modules.enabled }) }));
 vi.mock('../../../repositories/waiterV2Repository', () => ({
   waiterV2Repository: h.waiterV2,
@@ -168,5 +171,32 @@ describe('Garçom v2 — Login simples e Modos de atendimento', () => {
     await waitFor(() => {
       expect(h.waiterV2.passTables).toHaveBeenCalledWith('t-1', 'u-waiter-1', 'u-waiter-2', null);
     });
+  });
+
+  it('Meus pedidos mostra apenas suas mesas e avisa ao chegar pronto pelo realtime', async () => {
+    h.auth.supabaseUser = { id: 'u-waiter-1', email: 'joao@garcom.deliverychannel.local' };
+    h.auth.activeTenant = { id: 't-1', name: 'Pizzaria Bella', slug: 'pizzaria-bella' };
+    h.auth.activeRole = 'WAITER';
+    const base = await h.salonStaff.snapshot();
+    const makeRound = (id: string, tab_id: string, order_number: number) => ({ id, tab_id, status: 'PREPARING', subtotal: 20, created_at: new Date().toISOString(), round_no: 1, order_number, customer_name: 'Cliente' });
+    const own = makeRound('my-order', 'tab-1', 51);
+    const other = makeRound('other-order', 'tab-2', 99);
+    h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [own, other] } as never);
+    try {
+      render(<WaiterApp />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Meus pedidos' }));
+      expect(await screen.findByText('#51 · rodada 1')).toBeTruthy();
+      expect(screen.queryByText('#99 · rodada 1')).toBeNull();
+      expect(screen.getByText('Preparando seu pedido')).toBeTruthy();
+      expect(screen.queryByTestId('waiter-counter-alert')).toBeNull();
+      h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [{ ...own, status: 'READY' }, other] } as never);
+      h.realtimeOrders?.();
+      expect(await screen.findByTestId('waiter-counter-alert')).toBeTruthy();
+      expect(screen.getByText('Pronto no balcão · balcão chamando')).toBeTruthy();
+      expect(h.readySound).toHaveBeenCalledTimes(1);
+      h.realtimeOrders?.();
+      await waitFor(() => expect(h.salonStaff.snapshot).toHaveBeenCalled());
+      expect(h.readySound).toHaveBeenCalledTimes(1);
+    } finally { h.salonStaff.snapshot.mockResolvedValue(base); }
   });
 });

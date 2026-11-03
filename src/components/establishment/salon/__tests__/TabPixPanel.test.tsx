@@ -76,6 +76,29 @@ describe('TabPixPanel', () => {
     expect(onLive).toHaveBeenLastCalledWith(false);
     expect(screen.queryByTestId('tab-pix-qr')).toBeNull();
   });
+  it('falha ao cancelar mantém QR e acompanhamento ativos sem liberar fechamento', async () => {
+    api.tabPixStatus.mockResolvedValue({ pix: pix() });
+    api.cancelTabPix.mockRejectedValue(new Error('Tente cancelar novamente.'));
+    const onLive = vi.fn();
+    render(<TabPixPanel tabId="tab1" totalCents={11000} onLiveChange={onLive} onSettled={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: /Cancelar este PIX/ })); await flush();
+    expect(screen.getByTestId('tab-pix-qr')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('Tente cancelar novamente');
+    expect(onLive).toHaveBeenLastCalledWith(true);
+    await act(async () => { vi.advanceTimersByTime(PIX_POLL_MS); });
+    expect(api.tabPixStatus.mock.calls.length).toBeGreaterThan(1);
+  });
+  it('recupera o QR criado quando a resposta da geração se perde', async () => {
+    api.tabPixStatus.mockResolvedValueOnce({ pix: null }).mockResolvedValue({ pix: pix() });
+    api.createTabPix.mockRejectedValue(new Error('Falha de rede.'));
+    const onLive = vi.fn();
+    render(<TabPixPanel tabId="tab1" totalCents={11000} onLiveChange={onLive} onSettled={() => {}} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: /Gerar QR PIX/ })); await flush();
+    expect(screen.getByTestId('tab-pix-qr')).toBeTruthy();
+    expect(onLive).toHaveBeenLastCalledWith(true);
+  });
   it('helpers de contagem regressiva', () => {
     expect(mmss(125)).toBe('02:05');
     expect(pixSecondsLeft(null, 0)).toBeNull();

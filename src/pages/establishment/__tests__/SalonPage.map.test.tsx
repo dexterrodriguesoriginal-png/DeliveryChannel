@@ -70,7 +70,7 @@ describe('SalonPage — mapa de mesas', () => {
     render(<SalonPage />);
     await waitFor(() => expect(screen.getByTestId('salon-table-t1')).toBeTruthy());
     expect(status('t1')).toBe('FREE');
-    expect(status('t2')).toBe('OCCUPIED');
+    expect(status('t2')).toBe('PREPARING');
     expect(status('t5')).toBe('LONG_STAY');
     expect(status('t15')).toBe('BILL');
     expect(screen.getByTestId('salon-bell-t2')).toBeTruthy();
@@ -123,21 +123,60 @@ describe('SalonPage — mapa de mesas', () => {
       expect(screen.queryByText(/Pausar pedidos por QR/)).toBeNull();
       fireEvent.click(screen.getByTestId('salon-table-t2'));
       fireEvent.click(await screen.findByRole('button', { name: /Fechar conta/ }));
-      expect(await screen.findByRole('button', { name: 'Confirmar fechamento' })).toBeTruthy();
+      expect(await screen.findByRole('button', { name: 'Confirmar recebimento e fechar conta' })).toBeTruthy();
       expect(screen.queryByTestId('tab-pix-panel')).toBeNull();
       expect(h.pix.tabPixStatus).not.toHaveBeenCalled();
     });
   });
 
   describe('depois da migração', () => {
-    it('mostra a pausa de QR para dono/gerente e o PIX no Fechar conta', async () => {
+    it('dono autoriza a comanda solicitada e mantém contas autorizadas/aguardando no mapa', async () => {
       caps();
+      render(<SalonPage />);
+      await waitFor(() => expect(screen.getByTestId('salon-table-t15')).toBeTruthy());
+      fireEvent.click(screen.getByTestId('salon-table-t15'));
+      fireEvent.click(await screen.findByRole('button', { name: 'Autorizar garçom a fechar' }));
+      await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('authorize_waiter_to_close', { p_tab_id: 'tab15' }));
+    });
+    it('dinheiro só fecha depois de escolher a forma e confirmar recebimento', async () => {
+      caps();
+      render(<SalonPage />);
+      await waitFor(() => expect(screen.getByTestId('salon-table-t2')).toBeTruthy());
+      fireEvent.click(screen.getByTestId('salon-table-t2'));
+      fireEvent.click(await screen.findByRole('button', { name: /Fechar conta/ }));
+      const confirm = screen.getByRole('button', { name: 'Confirmar recebimento e fechar conta' });
+      expect(confirm.hasAttribute('disabled')).toBe(true);
+      fireEvent.change(screen.getByLabelText('Forma de pagamento 1'), { target: { value: 'CASH' } });
+      expect(confirm.hasAttribute('disabled')).toBe(false);
+      fireEvent.click(confirm);
+      await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('close_tab', { p_tab_id: 'tab2', p_payments: [{ method: 'CASH', amount_cents: 11000, change_given_cents: 0 }] }));
+    });
+    it('reabre o QR pendente em vez de tratar a mesa aguardando pagamento como livre', async () => {
+      (h.db.dining_tabs[0] as any).status = 'AWAITING_PAYMENT';
+      caps();
+      h.pix.tabPixStatus.mockResolvedValue({ pix: { id: 'p', tabId: 'tab2', amountCents: 11000, status: 'pending', brcode: 'PIXCODE', expiresAt: new Date(Date.now() + 600000).toISOString(), needsReview: false, reviewReason: null, tabClosed: false } });
+      render(<SalonPage />);
+      await waitFor(() => expect(status('t2')).toBe('AWAITING_PAYMENT'));
+      fireEvent.click(screen.getByTestId('salon-table-t2'));
+      fireEvent.click(await screen.findByRole('button', { name: 'Ver pagamento pendente' }));
+      expect(await screen.findByTestId('tab-pix-qr')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /Confirmar recebimento/ })).toBeNull();
+      expect(h.rpc.mock.calls.some(([name]) => name === 'close_tab')).toBe(false);
+    });
+    it('só mostra Gerar Pix depois de escolher Pix e nunca oferece fechamento manual para Pix', async () => {
+      caps();
+      h.pix.createTabPix.mockResolvedValue({ pix: { id: 'p', tabId: 'tab2', amountCents: 11000, status: 'pending', brcode: 'PIXCODE', expiresAt: new Date(Date.now() + 600000).toISOString(), needsReview: false, reviewReason: null, tabClosed: false } });
       render(<SalonPage />);
       await waitFor(() => expect(screen.getByText('Pausar pedidos por QR')).toBeTruthy());
       fireEvent.click(screen.getByTestId('salon-table-t2'));
       fireEvent.click(await screen.findByRole('button', { name: /Fechar conta/ }));
+      expect(screen.queryByTestId('tab-pix-panel')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Confirmar recebimento e fechar conta' }).hasAttribute('disabled')).toBe(true);
+      fireEvent.change(screen.getByLabelText('Forma de pagamento 1'), { target: { value: 'PIX' } });
       expect(await screen.findByTestId('tab-pix-panel')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Confirmar fechamento' }).hasAttribute('disabled')).toBe(false);
+      expect(screen.queryByRole('button', { name: /Confirmar recebimento/ })).toBeNull();
+      fireEvent.click(await screen.findByRole('button', { name: /Gerar QR PIX de/ }));
+      expect(h.rpc.mock.calls.some(([name]) => name === 'close_tab')).toBe(false);
     });
     it('PIX ativo bloqueia o fechamento manual (evita cobrança em duplicidade)', async () => {
       caps();
@@ -146,8 +185,11 @@ describe('SalonPage — mapa de mesas', () => {
       await waitFor(() => expect(screen.getByText('Pausar pedidos por QR')).toBeTruthy());
       fireEvent.click(screen.getByTestId('salon-table-t2'));
       fireEvent.click(await screen.findByRole('button', { name: /Fechar conta/ }));
+      fireEvent.change(screen.getByLabelText('Forma de pagamento 1'), { target: { value: 'PIX' } });
       await screen.findByTestId('tab-pix-qr');
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Confirmar fechamento' }).hasAttribute('disabled')).toBe(true));
+      expect(screen.queryByRole('button', { name: /Confirmar recebimento/ })).toBeNull();
+      expect(screen.getByLabelText('Forma de pagamento 1').hasAttribute('disabled')).toBe(true);
+      expect(h.rpc.mock.calls.some(([name]) => name === 'close_tab')).toBe(false);
     });
     it('garçom não vê pausa de QR nem PIX (só quem pode fechar a conta)', async () => {
       h.role.value = 'WAITER';

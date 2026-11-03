@@ -366,13 +366,14 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              if (order.fulfillmentType === 'DINE_IN' || order.fulfillmentType === 'PICKUP') onUpdateStatus(order.id, 'DELIVERED');
+              if (order.fulfillmentType === 'DINE_IN') onUpdateStatus(order.id, 'OUT_FOR_DELIVERY');
+              else if (order.fulfillmentType === 'PICKUP') onUpdateStatus(order.id, 'DELIVERED');
               else onAssignDriverClick(order);
             }}
             className="w-full py-2.5 px-4 rounded-xl bg-[#15803d] hover:bg-[#166534] text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-green-700/20 cursor-pointer"
           >
             {order.fulfillmentType === 'DINE_IN' || order.fulfillmentType === 'PICKUP' ? <CheckCircle2 className="w-4 h-4" /> : <Truck className="w-4 h-4" />}
-            <span>{order.fulfillmentType === 'DINE_IN' ? 'Entregue na mesa' : order.fulfillmentType === 'PICKUP' ? 'Confirmar retirada' : 'Pronto • Despachar'}</span>
+            <span>{order.fulfillmentType === 'DINE_IN' ? 'Servir' : order.fulfillmentType === 'PICKUP' ? 'Confirmar retirada' : 'Pronto • Despachar'}</span>
           </button>
         )}
 

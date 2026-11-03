@@ -145,7 +145,8 @@ describe('ações preservadas no Kanban', () => {
     ['CONFIRMED', 'DELIVERY', 'PREPARING'],
     ['PREPARING', 'DELIVERY', 'READY'],
     ['READY', 'PICKUP', 'DELIVERED'],
-    ['READY', 'DINE_IN', 'DELIVERED'],
+    ['READY', 'DINE_IN', 'OUT_FOR_DELIVERY'],
+    ['OUT_FOR_DELIVERY', 'DINE_IN', 'DELIVERED'],
     ['OUT_FOR_DELIVERY', 'DELIVERY', 'DELIVERED'],
   ] as const)('%s / %s avança para %s', async (status, fulfillmentType, next) => {
     const onUpdateStatus = vi.fn(async () => {});
@@ -205,6 +206,32 @@ describe('chamadas de entregador na tela de Pedidos', () => {
     mocks.offerRows = [{ ...offered(), status }]; await act(async () => mocks.offersChanged());
     expect(mocks.showToast).toHaveBeenCalledWith(expect.objectContaining({ title: status === 'DECLINED' ? 'Entregador recusou' : 'Entregador não respondeu' }));
     expect(container.textContent).toContain('Chamar outro');
+  });
+});
+
+describe('serviço na mesa em todas as visões', () => {
+  it.each(['kanban', 'table', 'drawer'] as const)('%s serve antes de confirmar entregue e não chama entregador', async view => {
+    mocks.getOrders.mockResolvedValue([order('READY', { fulfillmentType: 'DINE_IN' })]);
+    mocks.updateStatus.mockResolvedValue(order('OUT_FOR_DELIVERY', { fulfillmentType: 'DINE_IN' }));
+    if (view === 'table') localStorage.setItem(VIEW_KEY, 'table');
+    await render();
+    if (view === 'drawer') await click(container.querySelector('.orders-kanban-card')!);
+    const scope = view === 'drawer' ? container.querySelector('[data-testid="order-detail-panel"]')! : container;
+    const serve = Array.from(scope.querySelectorAll('button')).find(b => b.textContent?.trim() === 'Servir')!;
+    expect(serve).toBeDefined();
+    await click(serve);
+    expect(mocks.updateStatus).toHaveBeenCalledWith({}, 'tenant-1', 'order-1', 'OUT_FOR_DELIVERY', undefined, 'READY');
+    expect(mocks.offer).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain('Chamar entregador — Pedido');
+  });
+  it('o próximo passo depois de servir confirma a entrega na mesa', async () => {
+    mocks.getOrders.mockResolvedValue([order('OUT_FOR_DELIVERY', { fulfillmentType: 'DINE_IN' })]);
+    mocks.updateStatus.mockResolvedValue(order('DELIVERED', { fulfillmentType: 'DINE_IN' }));
+    await render();
+    expect(container.textContent).toContain('Pedido indo até a mesa');
+    await click(button('Entregue na mesa'));
+    expect(mocks.updateStatus).toHaveBeenCalledWith({}, 'tenant-1', 'order-1', 'DELIVERED', undefined, 'OUT_FOR_DELIVERY');
+    expect(mocks.offer).not.toHaveBeenCalled();
   });
 });
 
@@ -352,6 +379,14 @@ describe('arrastar no Kanban', () => {
     await render();
     await drop('ready', 'prep');
     expect(mocks.updateStatus).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'prep', 'READY', undefined, 'PREPARING');
+  });
+  it('não pula servir para concluir pedido de mesa', async () => {
+    mocks.getOrders.mockResolvedValue([order('READY', { fulfillmentType: 'DINE_IN' })]);
+    await render();
+    await drop('delivered', 'order-1');
+    expect(mocks.updateStatus).not.toHaveBeenCalled();
+    expect(mocks.offer).not.toHaveBeenCalled();
+    expect(mocks.showToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Serviço pendente' }));
   });
 
   it('zoom 10–130% na toolbar: aplica no Kanban e na Lista, persiste (chave por usuário) e o % volta a 100', async () => {
