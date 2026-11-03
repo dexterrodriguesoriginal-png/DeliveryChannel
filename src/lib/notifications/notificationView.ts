@@ -26,7 +26,10 @@ export function notificationType(n: Pick<OwnerNotification, 'kind' | 'title'>): 
   return 'default';
 }
 
-export interface OrderBrief { orderNumber: number | string | null; customerName: string | null; total: number | null }
+export interface OrderBrief {
+  orderNumber: number | string | null; customerName: string | null; total: number | null;
+  status?: string; fulfillmentType?: string; tabId?: string | null;
+}
 
 /** Remove duplicação acidental de "Mesa Mesa ..." em títulos ou nomes de notificação. */
 export function cleanMesaDuplication(text?: string | null): string {

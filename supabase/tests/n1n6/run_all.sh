@@ -41,19 +41,26 @@ for MODE in $MODES; do
   P "$DB" -f "$SQL/00_framework.sql" >/dev/null && P "$DB" -f "$SQL/03_fixtures.sql" >/dev/null || { record "build_$MODE" 0 "fixtures"; continue; }
   for f in $(ls "$SQL"/[1-9]*.sql | sort); do
     b="$(basename "$f" .sql)"
+    # Later feature suites need their historical migration window, not N1–N6 rollback state.
+    case "$b" in 80_*|81_*|82_*|83_*|84_*|86_*|87_*) continue ;; esac
     if ! psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -c "SET t.suite = '$b'" -c "\\i $f" > "$LOG_DIR/${MODE}_$b.log" 2>&1; then
       P "$DB" -c "INSERT INTO t.results(suite,name,ok,detail) VALUES ('$b','arquivo abortou por erro inesperado',false,'ver $LOG_DIR/${MODE}_$b.log')" >/dev/null
       echo "  ERRO inesperado em $b ($MODE):"; tail -5 "$LOG_DIR/${MODE}_$b.log"
     fi
   done
+  # 80–84 are later product features, exercised against the matching predecessor.
+  while IFS='|' read -r st cat name detail; do
+    case "$st" in OK) record "$cat" 1 "$MODE/$name";; FAIL) record "$cat" 0 "$MODE/$name — $detail";; esac
+  done < <("$HERE/run_features.sh" "$MODE")
+  # Suite 86 has its own strict+legacy migration/rollback runner in orders_archive.
   # Concorrência (conexões paralelas reais)
-  if [ -x "$HERE/concurrency/run_concurrency.sh" ]; then
-    "$HERE/concurrency/run_concurrency.sh" "$DB" > "$LOG_DIR/${MODE}_concurrency.log" 2>&1
+  if [ -f "$HERE/concurrency/run_concurrency.sh" ]; then
+    bash "$HERE/concurrency/run_concurrency.sh" "$DB" > "$LOG_DIR/${MODE}_concurrency.log" 2>&1
   fi
   # Prechecks que abortam + ensaio de rollback N6→N1 + N1.V (bancos separados)
   while IFS='|' read -r st cat name detail; do
     case "$st" in OK) record "$cat" 1 "$MODE/$name";; FAIL) record "$cat" 0 "$MODE/$name — $detail";; esac
-  done < <("$HERE/prechecks_and_rollback.sh" "$MODE" 2>"$LOG_DIR/${MODE}_prechecks_rollback.err")
+  done < <(bash "$HERE/prechecks_and_rollback.sh" "$MODE" 2>"$LOG_DIR/${MODE}_prechecks_rollback.err")
   while IFS='|' read -r suite name ok; do
     [ -z "$suite" ] && continue
     record "$(category_of "$suite")" "$([ "$ok" = t ] && echo 1 || echo 0)" "$MODE/$suite: $name"

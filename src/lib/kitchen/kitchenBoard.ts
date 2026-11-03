@@ -31,7 +31,7 @@ export function filterKitchenOrders(orders: readonly KitchenOrder[], station: Ki
 
 /** Únicas transições que a cozinha pode fazer. */
 export function kitchenNextAction(status: string): { to: 'PREPARING' | 'READY'; label: string } | null {
-  if (status === 'CONFIRMED') return { to: 'PREPARING', label: 'Iniciar preparo' };
+  if (status === 'CONFIRMED') return { to: 'PREPARING', label: 'Preparando' };
   if (status === 'PREPARING') return { to: 'READY', label: 'Pronto' };
   return null;
 }

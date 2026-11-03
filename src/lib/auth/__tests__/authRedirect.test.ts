@@ -66,3 +66,13 @@ describe('isEmailNotConfirmedError', () => {
     expect(isEmailNotConfirmedError(null)).toBe(false);
   });
 });
+
+
+describe('retorno do primeiro acesso da equipe', () => {
+  it('mantém loja e área no link de confirmação', () => {
+    expect(emailRedirectUrl({ origin: 'https://app.test', pathname: '/garcom/loja' })).toBe('https://app.test/garcom/loja');
+    expect(emailRedirectUrl({ origin: 'https://app.test', pathname: '/equipe/loja/kitchen' })).toBe('https://app.test/equipe/loja/kitchen');
+    expect(emailRedirectUrl({ origin: 'https://app.test', pathname: '/equipe/loja/invalido' })).toBe('https://app.test');
+    expect(emailRedirectUrl({ origin: 'https://app.test', pathname: '/garcom/../segredo' })).toBe('https://app.test');
+  });
+});

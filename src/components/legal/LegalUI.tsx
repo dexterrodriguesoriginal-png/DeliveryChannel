@@ -174,7 +174,11 @@ export function CookieBanner() {
 }
 
 export function LegalBoundary({ children }: { children: React.ReactNode }) {
-  const { supabaseUser, activeRole, isLoadingAuth, signOut } = useAuth();
+  const { supabaseUser, activeRole, isLoadingAuth, isMembershipLoading, signOut } = useAuth();
+  // A scoped invitation must be accepted before a new member has a role.
+  // The Auth trigger verifies the invitation; this client exception grants no store access.
+  const teamFirstAccess = /^\/garcom\/[a-z0-9][a-z0-9-]{0,99}\/?$/i.test(window.location.pathname)
+    || /^\/equipe\/[a-z0-9][a-z0-9-]{0,99}\/(manager|cashier|kitchen|waiter|operator|delivery_manager|driver)\/?$/i.test(window.location.pathname);
   const audience: LegalAudience = /^\/(app\/|mesa\/)/.test(
     window.location.pathname,
   )
@@ -185,8 +189,9 @@ export function LegalBoundary({ children }: { children: React.ReactNode }) {
     !!supabaseUser &&
     !supabaseUser.is_anonymous &&
     (audience === 'customer' ||
-      !activeRole ||
-      ['OWNER', 'MANAGER', 'CUSTOMER'].includes(activeRole));
+      (!activeRole && !isMembershipLoading && !teamFirstAccess) ||
+      activeRole === 'OWNER' ||
+      (activeRole === 'CUSTOMER' && !teamFirstAccess));
   const key = needsGate ? `${supabaseUser.id}:${audience}` : '';
   const [result, setResult] = useState<{
     key: string;

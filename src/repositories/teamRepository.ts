@@ -74,7 +74,7 @@ export const teamRepository = {
           .order('created_at', { ascending: true });
 
         if (error) {
-          console.warn('[teamRepository] Erro ao listar membros no Supabase:', error);
+          console.warn('[teamRepository] Erro ao listar membros no Supabase:');
           return [];
         }
 
@@ -82,7 +82,7 @@ export const teamRepository = {
           return data.map(mapRowToTeamMember);
         }
       } catch (err) {
-        console.warn('[teamRepository] Falha ao consultar membros no Supabase:', err);
+        console.warn('[teamRepository] Falha ao consultar membros no Supabase:');
       }
     }
     return [];
@@ -97,12 +97,12 @@ export const teamRepository = {
         // 0900: leitura por RPC (team_invites não tem SELECT para authenticated desde a 0800).
         const { data, error } = await supabase.rpc('list_team_invites', { p_tenant_id: tenantId });
         if (error) {
-          console.warn('[teamRepository] Erro ao listar convites no Supabase:', error);
+          console.warn('[teamRepository] Erro ao listar convites no Supabase:');
           return [];
         }
         return Array.isArray(data) ? data.map(mapInviteRpcRow) : [];
       } catch (err) {
-        console.warn('[teamRepository] Falha ao consultar convites no Supabase:', err);
+        console.warn('[teamRepository] Falha ao consultar convites no Supabase:');
       }
     }
     return [];
@@ -203,7 +203,7 @@ export const teamRepository = {
       // 0900: convites do e-mail da própria conta, resolvido no servidor.
       const { data, error } = await supabase.rpc('list_my_team_invites');
       if (error) {
-        console.error('[teamRepository] Erro ao buscar convites recebidos:', error);
+        console.error('[teamRepository] Erro ao buscar convites recebidos:');
         return [];
       }
       return Array.isArray(data) ? data.map(mapReceivedInviteRpcRow) : [];

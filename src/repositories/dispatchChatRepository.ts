@@ -1,8 +1,9 @@
 import { isOrderVisibleToStaff } from '../lib/orders/onlinePaymentGate';
 import { supabase } from '../lib/supabase';
+import type { OrderBrief } from '../lib/notifications/notificationView';
 export type DispatchMode = 'AUTO_QUEUE' | 'OWNER_PICKS';
 export interface QueueDriver { id: string; user_id: string; name: string; last_ride: string | null }
-export interface OwnerNotification { id: string; tenant_id: string; kind: 'ORDER_NEW' | 'DRIVER_JOIN_REQUEST' | 'ORDER_MESSAGE'; ref_id: string; title: string; created_at: string; read_at: string | null }
+export interface OwnerNotification { id: string; tenant_id: string; kind: 'ORDER_NEW' | 'DRIVER_JOIN_REQUEST' | 'ORDER_MESSAGE'; ref_id: string; title: string; created_at: string; read_at: string | null; /** Destino de mesa derivado do pedido autorizado, nunca do INSERT realtime. */ tableTarget?: string }
 export interface OrderMessage { id: string; tenant_id: string; order_id: string; sender_role: 'DRIVER' | 'STORE'; body: string; created_at: string }
 async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.rpc(fn, args);
@@ -26,11 +27,11 @@ export const dispatchChatRepository = {
     return dispatchChatRepository.visibleNotifications(tenantId, data || []);
   },
   /** Dados curtos dos pedidos citados nas notificações (nº, cliente, total) para a linha de detalhe. Só leitura. */
-  async orderBriefs(tenantId: string, orderIds: string[]): Promise<Record<string, { orderNumber: number | string | null; customerName: string | null; total: number | null }>> {
+  async orderBriefs(tenantId: string, orderIds: string[]): Promise<Record<string, OrderBrief>> {
     if (!orderIds.length) return {};
-    const { data, error } = await supabase.from('orders').select('id,order_number,customer_name,total_amount').eq('tenant_id', tenantId).in('id', orderIds.slice(0, 100));
+    const { data, error } = await supabase.from('orders').select('id,order_number,customer_name,total_amount,status,fulfillment_type,tab_id').eq('tenant_id', tenantId).in('id', orderIds.slice(0, 100));
     if (error) return {};
-    return Object.fromEntries((data || []).map((o: any) => [o.id, { orderNumber: o.order_number ?? null, customerName: o.customer_name ?? null, total: o.total_amount == null ? null : Number(o.total_amount) }]));
+    return Object.fromEntries((data || []).map((o: any) => [o.id, { orderNumber: o.order_number ?? null, customerName: o.customer_name ?? null, total: o.total_amount == null ? null : Number(o.total_amount), status: o.status, fulfillmentType: o.fulfillment_type, tabId: o.tab_id }]));
   },
   async read(tenantId: string, id: string): Promise<void> {
     const { error } = await supabase.from('owner_notifications').update({ read_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', id);

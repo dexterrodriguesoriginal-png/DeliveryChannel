@@ -21,6 +21,8 @@ mkbase() {
   dropdb --if-exists "$db" >/dev/null 2>&1 || true
   createdb "$db"
   P "$db" -f "$HARNESS_DIR/00_supabase_stubs.sql" >/dev/null
+  # Later regressions use the same local Supabase services as their focused runners.
+  P "$db" -c "INSERT INTO vault.secrets_stub(name,decrypted_secret) VALUES ('n1n6_ip_hash_salt','local-n1n6-fixture-salt-0123456789abcdef'); CREATE PUBLICATION supabase_realtime" >/dev/null
   if [ "$mode" = "legacy" ]; then
     P "$db" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;" >/dev/null
   fi
@@ -28,7 +30,7 @@ mkbase() {
   for f in $(ls "$MIG_DIR"/*.sql | sort); do
     b="$(basename "$f")"; v="${b%%_*}"
     [ "$v" \> "20260929000020" ] && continue
-    apply_migration "$db" "$f"
+    apply_migration "$db" "$f" || return $?
   done
 }
 
@@ -36,17 +38,24 @@ mkbase() {
 apply_migration() {
   local db="$1" f="$2" b v n
   b="$(basename "$f")"; v="${b%%_*}"; n="${b#*_}"; n="${n%.sql}"
+  if [ "$v" = 20261014000800 ]; then
+    # Historical ACL snapshot distinguishes explicit owner ACLs from implicit ownership.
+    P "$db" -c 'GRANT ALL ON public.drivers,public.team_invites,public.tenant_users TO postgres' >/dev/null
+  fi
   P "$db" -1 -f "$f" >/dev/null 2>"/tmp/n1n6_apply_$$.err" || { echo "FALHOU ao aplicar $b:"; cat "/tmp/n1n6_apply_$$.err"; return 1; }
   P "$db" -c "INSERT INTO supabase_migrations.schema_migrations(version,name) VALUES ('$v','$n')" >/dev/null
 }
 
-# Aplica as migrations N1–N6 (versões > 020)
+# Aplica somente N1–N6 e Estoque Fase 1, os itens revertidos pelo ensaio histórico.
 apply_n_series() {
   local db="$1" upto="${2:-99999999999999}" f b v
   for f in $(ls "$MIG_DIR"/*.sql | sort); do
     b="$(basename "$f")"; v="${b%%_*}"
-    [ "$v" \> "20260929000020" ] || continue
+    case "$b" in
+      20261006000[1-6]00_*|20261020003100_*) ;;
+      *) continue ;;
+    esac
     [ "$v" \> "$upto" ] && continue
-    apply_migration "$db" "$f"
+    apply_migration "$db" "$f" || return $?
   done
 }

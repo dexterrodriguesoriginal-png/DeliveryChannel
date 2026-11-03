@@ -38,8 +38,9 @@ import { useToast } from '../../context/ToastContext';
 import { ownerStatusToastMessage } from '../../lib/orders/labels';
 import { formatBRL } from '../../lib/pricing/money';
 import { StoreHeaderCard } from '../../components/establishment/dashboard/StoreHeaderCard';
+import { NewOrderCards } from '../../components/establishment/dashboard/NewOrderCards';
 import { OrderAlertsCard } from '../../components/establishment/dashboard/OrderAlertsCard';
-import { buildOrderAlerts, newPendingIds, nextStepFor, FOCUS_ORDER_KEY, NextStep } from '../../lib/orders/orderAlerts';
+import { buildOrderAlerts, newOrderIds, updateNewOrderQueue, nextStepFor, FOCUS_ORDER_KEY, NextStep } from '../../lib/orders/orderAlerts';
 import { validateStatusChange } from '../../repositories/orderMappers';
 import { applyOrderUpdate } from '../../lib/orders/applyOrderUpdate';
 import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE, shouldBlockCallDriver } from '../../lib/orders/dispatchErrors';
@@ -75,7 +76,10 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   const [handoverOrder, setHandoverOrder] = useState<Order | null>(null);
   useEffect(() => { if (activeTenant?.id) arrivalRepository.listOpen(activeTenant.id).catch(() => {}); }, [activeTenant?.id]);
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
-  const prevPendingIdsRef = useRef<Set<string> | null>(null);
+  const prevOrderIdsRef = useRef<Set<string> | null>(null);
+  const [newOrderQueue, setNewOrderQueue] = useState<Order[]>([]);
+  const currentTenantRef = useRef(activeTenant?.id);
+  currentTenantRef.current = activeTenant?.id;
   // 19/10: Tela da Cozinha — pedidos que viraram Pronto (bipe próprio + aviso com a próxima ação)
   const prevReadyIdsRef = useRef<Set<string> | null>(null);
   const [readyAlertIds, setReadyAlertIds] = useState<string[]>([]);
@@ -137,10 +141,12 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
           /* mantém pedidos mesmo se a RPC de rótulos de mesa falhar */
         }
       }
+      if (currentTenantRef.current !== activeTenant.id) return;
       setRemoteOrders(fetchedOrders);
-      // Pedido novo desde a última leitura: som existente + destaque por 15 s (a 1ª leitura não toca).
-      const fresh = newPendingIds(prevPendingIdsRef.current, fetchedOrders);
-      prevPendingIdsRef.current = new Set(fetchedOrders.filter(o => o.status === 'PENDING').map(o => o.id));
+      // Todos os IDs visíveis contam, incluindo rodadas que já chegam CONFIRMED.
+      const fresh = newOrderIds(prevOrderIdsRef.current, fetchedOrders);
+      prevOrderIdsRef.current = new Set([...(prevOrderIdsRef.current || []), ...fetchedOrders.map(o => o.id)]);
+      setNewOrderQueue(prev => updateNewOrderQueue(prev, fetchedOrders, fresh));
       if (fresh.length > 0) {
         playNewOrderSound();
         setHighlightIds(prev => new Set([...prev, ...fresh]));
@@ -180,7 +186,11 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   }, [activeTenant?.id, securityContext, canListDrivers]);
 
   useEffect(() => {
-    prevPendingIdsRef.current = null;
+    prevOrderIdsRef.current = null;
+    setNewOrderQueue([]);
+    setHighlightIds(new Set());
+    setReadyAlertIds([]);
+    setRemoteOrders(null);
     prevReadyIdsRef.current = null;
     fetchRealData();
     if (!activeTenant?.id) return;
@@ -210,6 +220,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   const handleAlertStep = async (order: Order, step: NextStep) => {
     if (!activeTenant?.id) return;
     if (step.kind === 'open_table') {
+      setNewOrderQueue(prev => prev.filter(o => o.id !== order.id));
       handleOpenOrderTable(order);
       return;
     }
@@ -229,6 +240,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
     try {
       const updated = await orderRepository.updateStatus(securityContext, activeTenant.id, order.id, step.to, check.note || undefined, order.status);
       setRemoteOrders(prev => applyOrderUpdate(prev, updated));
+      setNewOrderQueue(prev => prev.filter(o => o.id !== order.id));
       showToast({ type: 'success', title: step.label, message: ownerStatusToastMessage(updated?.status || step.to, updated?.orderNumber || order.orderNumber) });
       await fetchRealData(true);
     } catch (err: any) {
@@ -554,6 +566,13 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         onOpenTable={(o) => handleOpenOrderTable(o)}
         onDismiss={(id) => setReadyAlertIds(prev => prev.filter(x => x !== id))}
       />}
+      <NewOrderCards orders={newOrderQueue} role={activeRole} busyOrderId={busyOrderId}
+        onAccept={order => { void handleAlertStep(order, { kind: 'accept', label: 'Aceitar pedido', to: 'CONFIRMED' }); }}
+        onView={order => {
+          setNewOrderQueue(prev => prev.filter(o => o.id !== order.id));
+          if (order.fulfillmentType === 'DINE_IN') handleOpenOrderTable(order); else handleAlertView(order);
+        }}
+        onDismiss={id => setNewOrderQueue(prev => prev.filter(o => o.id !== id))} />
       <OrderAlertsCard
         alerts={orderAlerts}
         role={activeRole}

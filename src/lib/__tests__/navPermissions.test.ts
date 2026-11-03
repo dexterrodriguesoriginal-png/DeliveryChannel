@@ -1,75 +1,45 @@
 import { describe, it, expect } from 'vitest';
-import { canAccessEstTab, EST_TAB_PERMISSION, getDefaultAllowedTab } from '../navPermissions';
-
+import { canAccessEstTab, EST_TAB_PERMISSION, getDefaultAllowedTab, roleDestination } from '../navPermissions';
 const tabs = Object.keys(EST_TAB_PERMISSION);
-const visible = (r: any) => tabs.filter(t => canAccessEstTab(r, t));
+const visible = (role: any, permissions?: string[]) => tabs.filter(tab => canAccessEstTab(role, tab, permissions));
 
-describe('menu por papel (matriz de permissões)', () => {
-  it('OWNER vê todas as abas do estabelecimento e não vê security-lab', () => {
+describe('áreas e menu por papel', () => {
+  it('Dono vê todas as áreas da loja; laboratório só CEO', () => {
     expect(visible('OWNER')).toEqual(tabs);
     expect(canAccessEstTab('OWNER', 'security-lab')).toBe(false);
-  });
-
-  it('CASHIER = Dashboard, Pedidos, Salão, Clientes', () => {
-    expect(visible('CASHIER')).toEqual([
-      'est-dashboard',
-      'est-orders',
-      'est-salon',
-      'est-customers',
-    ]);
-  });
-
-  it('WAITER = só Salão (sem Pedidos do dono)', () => {
-    expect(visible('WAITER')).toEqual([
-      'est-salon',
-    ]);
-    expect(canAccessEstTab('WAITER', 'est-orders')).toBe(false);
-  });
-
-  it('KITCHEN = só Pedidos/Cozinha', () => {
-    expect(visible('KITCHEN')).toEqual([
-      'est-orders',
-      'est-kitchen',
-    ]);
-  });
-
-  it('DRIVER nunca vê o painel do estabelecimento', () => {
-    expect(visible('DRIVER')).toEqual([]);
-    for (const t of tabs) {
-      expect(canAccessEstTab('DRIVER', t)).toBe(false);
-    }
-  });
-
-  it('CUSTOMER nunca vê o painel do estabelecimento', () => {
-    expect(visible('CUSTOMER')).toEqual([]);
-  });
-
-  it('MANAGER não vê financeiro, equipe, tema nem configurações', () => {
-    const v = visible('MANAGER');
-    for (const t of ['est-finance', 'est-reports', 'est-team', 'est-theme', 'est-settings']) {
-      expect(v).not.toContain(t);
-    }
-    expect(v).toContain('est-drivers');
-    expect(v).toContain('est-modules');
-    expect(canAccessEstTab('MANAGER', 'security-lab')).toBe(false);
-  });
-
-  it('security-lab fica visível e acessível exclusivamente para CEO e SUPER_ADMIN', () => {
     expect(canAccessEstTab('CEO', 'security-lab')).toBe(true);
     expect(canAccessEstTab('SUPER_ADMIN', 'security-lab')).toBe(true);
-    expect(canAccessEstTab('OWNER', 'security-lab')).toBe(false);
-    expect(canAccessEstTab('MANAGER', 'security-lab')).toBe(false);
-    expect(canAccessEstTab('CASHIER', 'security-lab')).toBe(false);
-    expect(canAccessEstTab('WAITER', 'security-lab')).toBe(false);
-    expect(canAccessEstTab('KITCHEN', 'security-lab')).toBe(false);
-    expect(canAccessEstTab('DRIVER', 'security-lab')).toBe(false);
   });
-
-  it('getDefaultAllowedTab retorna fallback adequado por papel', () => {
-    expect(getDefaultAllowedTab('OWNER')).toBe('est-dashboard');
-    expect(getDefaultAllowedTab('MANAGER')).toBe('est-dashboard');
-    expect(getDefaultAllowedTab('CASHIER')).toBe('est-dashboard');
-    expect(getDefaultAllowedTab('WAITER')).toBe('est-salon');
-    expect(getDefaultAllowedTab('KITCHEN')).toBe('est-orders');
+  it('Caixa acessa pedidos/PDV, mesas e recebimentos', () => {
+    expect(visible('CASHIER')).toEqual(['est-orders','est-salon','est-customers']);
+    expect(getDefaultAllowedTab('CASHIER')).toBe('est-orders');
+  });
+  it('Cozinha acessa só KDS, sem a página geral de pedidos/clientes', () => {
+    expect(visible('KITCHEN')).toEqual(['est-kitchen']);
+    expect(canAccessEstTab('KITCHEN', 'est-orders', ['view_orders','manage_kitchen'])).toBe(false);
+    expect(roleDestination('KITCHEN', 'loja')).toBe('/cozinha');
+  });
+  it('Garçom usa seu app e não pedidos gerais', () => {
+    expect(visible('WAITER')).toEqual(['est-salon']);
+    expect(roleDestination('WAITER', 'loja')).toBe('/garcom/loja');
+  });
+  it('Gerente tem equipe e relatórios sem financeiro sensível ou assinatura', () => {
+    const manager = visible('MANAGER');
+    expect(manager).toContain('est-team'); expect(manager).toContain('est-reports');
+    for (const page of ['est-finance','est-settings','est-modules','est-theme','security-lab']) expect(canAccessEstTab('MANAGER', page)).toBe(false);
+    expect(canAccessEstTab('MANAGER', 'est-finance', ['view_finances'])).toBe(false);
+  });
+  it('Estoque e coordenador vão direto à sua operação', () => {
+    expect(getDefaultAllowedTab('OPERATOR')).toBe('est-inventory');
+    expect(getDefaultAllowedTab('DELIVERY_MANAGER')).toBe('est-drivers');
+    expect(roleDestination('DRIVER', 'loja')).toBe('/entregador');
+    expect(visible('DRIVER')).toEqual([]); expect(visible('CUSTOMER')).toEqual([]);
+  });
+  it('permissões recebidas do servidor substituem defaults e alteram menu/rota', () => {
+    expect(visible('MANAGER', ['manage_catalog'])).toContain('est-products');
+    expect(visible('MANAGER', ['manage_catalog'])).not.toContain('est-team');
+    expect(getDefaultAllowedTab('MANAGER', ['manage_catalog'])).toBe('est-products');
+    expect(getDefaultAllowedTab('MANAGER', [])).toBe('access-denied');
+    expect(canAccessEstTab('MANAGER', 'inventada', ['manage_catalog'])).toBe(false);
   });
 });

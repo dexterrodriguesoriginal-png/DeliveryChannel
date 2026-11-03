@@ -16,8 +16,8 @@ function fixture(provider: Provider = 'mercadopago') {
   const query = (table: string) => { const q: any = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: table === 'orders' ? order : current, error: null }) }; return q; };
   const store = {
     db: { from: vi.fn(query) },
-    membership: vi.fn(async (user: string, membership: string) => { if (user !== 'owner' || membership !== 'membership-1') throw new PaymentError('FORBIDDEN', 403); return { tenant_id: 'store-1' }; }),
-    order: vi.fn(async (user: string) => { if (!['customer','owner'].includes(user)) throw new PaymentError('ORDER_NOT_FOUND', 404); return { ...order, staffRole: user === 'owner' ? 'OWNER' : undefined }; }),
+    membership: vi.fn(async (user: string, membership: string) => { if (user !== 'owner' || membership !== 'membership-1') throw new PaymentError('FORBIDDEN', 403); return { tenant_id: 'store-1', role_id: 'OWNER' }; }),
+    order: vi.fn(async (user: string) => { if (!['customer','owner'].includes(user)) throw new PaymentError('ORDER_NOT_FOUND', 404); return { ...order, staffRole: user === 'owner' ? 'OWNER' : undefined, customerOwned: user === 'customer', canReceive: user === 'owner' }; }),
     configure: vi.fn(async (_user:string,_membership:string,p:Provider,changes:any) => { if (changes.status === 'disconnected') { version++; secrets.delete(`store-1:${p}`); for (const key of stateKeys) secrets.delete(key); stateKeys.clear(); } }),
     accounts: vi.fn(async () => [{ provider,connection_version:version }]),
     completeConnection: vi.fn(async (_user:string,_member:string,p:Provider,cipher:string,expected:number) => { if (version!==expected) throw new PaymentError('STATE_ALREADY_USED',403); secrets.set(`store-1:${p}`,cipher); }),
@@ -98,6 +98,21 @@ describe('confirmation, isolation and idempotency', () => {
     await f.service.manualConfirm('owner', 'order-1'); expect(f.store.confirm).toHaveBeenCalledWith('payment-1', null, 'owner');
     const mp = fixture(); await expect(mp.service.manualConfirm('owner', 'order-1')).rejects.toMatchObject({ code: 'MANUAL_CONFIRMATION_FORBIDDEN' });
   });
+  it.each(['MANAGER', 'CASHIER'])('rejects %s receipt mutations when the operational permission was removed', async staffRole => {
+    const f = fixture('manual_pix');
+    f.store.order.mockResolvedValue({ ...f.order, staffRole, customerOwned: false, canReceive: false });
+    await expect(f.service.create('staff', '', 'order-1', 'manual_pix', 'pix')).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(f.service.manualConfirm('staff', 'order-1')).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(f.store.reserve).not.toHaveBeenCalled();
+    expect(f.store.confirm).not.toHaveBeenCalled();
+  });
+  it('allows an authorized cashier to receive a manual payment', async () => {
+    const f = fixture('manual_pix');
+    f.setPayment({ ...row('manual_pix'), status: 'awaiting_confirmation' });
+    f.store.order.mockResolvedValue({ ...f.order, staffRole: 'CASHIER', customerOwned: false, canReceive: true });
+    await f.service.manualConfirm('cashier', 'order-1');
+    expect(f.store.confirm).toHaveBeenCalledWith('payment-1', null, 'cashier');
+  });
   it('does not return raw provider responses or credentials in the public projection', () => {
     const view = paymentView({ ...row(), raw_status: 'private-provider-response' }, true);
     expect(Object.keys(view!)).toEqual(['id','orderId','provider','method','amount','status','brcode','checkoutUrl','expiresAt','manualConfirmation','canConfirm']);
@@ -106,6 +121,30 @@ describe('confirmation, isolation and idempotency', () => {
 });
 
 describe('OAuth state and encryption', () => {
+  it('rejects manager account changes before reading credentials or changing providers', async () => {
+    const { service, store } = fixture();
+    store.membership.mockResolvedValueOnce({ tenant_id: 'store-1', role_id: 'MANAGER' });
+    await expect(service.configure('manager', 'membership-1', 'mercadopago', { action: 'disconnect' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(store.secret).not.toHaveBeenCalled();
+    expect(store.configure).not.toHaveBeenCalled();
+    expect(store.accounts).not.toHaveBeenCalled();
+  });
+  it('rejects manager OAuth before issuing a state or touching an account', async () => {
+    const { service, store } = fixture();
+    store.membership.mockResolvedValueOnce({ tenant_id: 'store-1', role_id: 'MANAGER' });
+    await expect(service.startConnect('manager', 'membership-1', 'mercadopago', 'browser-cookie')).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(store.secret).not.toHaveBeenCalled();
+    expect(store.configure).not.toHaveBeenCalled();
+  });
+  it('rechecks owner status when finishing an OAuth started before demotion', async () => {
+    const { service, store } = fixture();
+    const connect = vi.spyOn(service.adapters.mercadopago, 'connect');
+    const url = new URL(await service.startConnect('owner', 'membership-1', 'mercadopago', 'browser-cookie'));
+    store.membership.mockResolvedValueOnce({ tenant_id: 'store-1', role_id: 'MANAGER' });
+    await expect(service.finishConnect('mercadopago', url.searchParams.get('state')!, 'auth-code', 'browser-cookie')).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(connect).not.toHaveBeenCalled();
+    expect(store.completeConnection).not.toHaveBeenCalled();
+  });
   it('encrypts secrets with a tenant/provider binding and rejects modified ciphertext', () => {
     const key = encryptionKey(env.PAYMENTS_ENCRYPTION_KEY); const cipher = seal({ token: 'SECRET' }, key, 'store-1:mp');
     expect(cipher).not.toContain('SECRET'); expect(unseal(cipher, key, 'store-1:mp')).toEqual({ token: 'SECRET' });

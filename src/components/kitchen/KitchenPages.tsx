@@ -72,12 +72,16 @@ const PinPad: React.FC<{ storeName: string; onUnlocked: () => void }> = ({ store
 
 /** /cozinha — aparelho pareado (login anônimo próprio) ou equipe logada da loja ativa. */
 export const KitchenPage: React.FC = () => {
-  const { activeTenant, activeRole } = useAuth() as any;
+  const { activeTenant, activeRole, signOut } = useAuth();
+  const leave = async () => { await signOut(); window.location.replace('/'); };
   const [state, setState] = useState<{ kind: 'loading' } | { kind: 'ctx'; ctx: KitchenContext } | { kind: 'msg'; text: string; repair?: boolean } | { kind: 'none' }>({ kind: 'loading' });
   const load = useCallback(async () => {
     try {
+      if (activeTenant?.id && activeRole === 'KITCHEN') {
+        setState({ kind: 'ctx', ctx: await kitchenRepository.context(supabase, activeTenant.id) }); return;
+      }
       if (await kitchenRepository.hasDeviceSession()) { setState({ kind: 'ctx', ctx: await kitchenRepository.context(kitchenClient()) }); return; }
-      if (activeTenant?.id && ['OWNER', 'MANAGER', 'OPERATOR', 'CASHIER'].includes(activeRole)) {
+      if (activeTenant?.id && activeRole && ['OWNER', 'MANAGER', 'OPERATOR', 'CASHIER', 'KITCHEN'].includes(activeRole)) {
         setState({ kind: 'ctx', ctx: await kitchenRepository.context(supabase, activeTenant.id) }); return;
       }
       setState({ kind: 'none' });
@@ -96,13 +100,14 @@ export const KitchenPage: React.FC = () => {
   );
   if (state.kind === 'msg') return (
     <Shell><h1 className="text-xl font-black">Tela da Cozinha</h1><p className="text-sm text-gray-700 font-semibold" role="alert">{state.text}</p>
+      {activeRole === 'KITCHEN' && <button type="button" onClick={() => void leave()} className="font-bold text-blue-700">Sair da conta</button>}
       {state.repair && <button type="button" className="text-sm font-bold text-blue-700 underline" onClick={async () => { await kitchenRepository.resetDeviceSession(); setState({ kind: 'none' }); }}>Conectar de novo</button>}</Shell>
   );
   const ctx = state.ctx;
   if (ctx.locked) return <PinPad storeName={ctx.store_name} onUnlocked={load} />;
   return (
     <KitchenBoard client={ctx.mode === 'device' ? kitchenClient() : supabase} tenantId={ctx.tenant_id} storeName={ctx.store_name} deviceName={ctx.device_name}
-      mode={ctx.mode} canLock={ctx.mode === 'device' && ctx.pin_required} onLocked={load}
+      mode={ctx.mode} onSignOut={activeRole === 'KITCHEN' ? () => void leave() : undefined} canLock={ctx.mode === 'device' && ctx.pin_required} onLocked={load}
       onFatal={(code, text) => code === 'KITCHEN_LOCKED' ? load() : setState({ kind: 'msg', text, repair: code === 'KITCHEN_DEVICE_REVOKED' || code === 'NOT_PAIRED' })} />
   );
 };

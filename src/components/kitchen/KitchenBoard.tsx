@@ -10,8 +10,8 @@ import { playShortBeep } from '../../utils/audio';
 export const KitchenBoard: React.FC<{
   client: SupabaseClient; tenantId: string; storeName: string; deviceName?: string;
   mode: 'device' | 'staff'; canLock?: boolean; onLocked?: () => void; onFatal?: (code: string, msg: string) => void;
-  initialOrders?: KitchenOrder[];
-}> = ({ client, tenantId, storeName, deviceName, mode, canLock, onLocked, onFatal, initialOrders }) => {
+  initialOrders?: KitchenOrder[]; onSignOut?: () => void;
+}> = ({ client, tenantId, storeName, deviceName, mode, canLock, onLocked, onFatal, initialOrders, onSignOut }) => {
   const [orders, setOrders] = useState<KitchenOrder[] | null>(initialOrders ?? null);
   const [station, setStation] = useState<KitchenStationFilter>('ALL');
   const [busy, setBusy] = useState<string | null>(null);
@@ -108,6 +108,7 @@ export const KitchenBoard: React.FC<{
         <div className="flex items-center gap-2"><ChefHat className="w-7 h-7 text-gray-900" />
           <div><div className="text-xl font-black text-gray-950">Cozinha · {storeName}</div>
             <div className="text-xs text-gray-500">{mode === 'device' ? `Aparelho: ${deviceName || 'Cozinha'}` : 'Aberta pelo painel'}</div></div></div>
+        {onSignOut && <button type="button" onClick={onSignOut} className="rounded-xl bg-white border px-4 py-2 font-bold">Sair</button>}
         {canLock && <button type="button" onClick={async () => { try { await kitchenRepository.lock(); } catch { /* ok */ } onLocked?.(); }}
           className="flex items-center gap-1 px-3 py-2 rounded-xl bg-white border border-gray-300 font-bold text-gray-800"><Lock className="w-4 h-4" />Travar</button>}
       </header>

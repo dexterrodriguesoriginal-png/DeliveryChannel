@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { visibleStaffOrders } from '../onlinePaymentGate';
-import { buildOrderAlerts, newPendingIds, nextStepFor } from '../orderAlerts';
+import { buildOrderAlerts, newOrderIds, nextStepFor } from '../orderAlerts';
 import { countPendingRows } from '../../tenant/storeSwitcher';
 import { mapStaffOrderRow } from '../../../repositories/orderMappers';
 import type { Order } from '../../../types';
@@ -12,7 +12,7 @@ describe('online payment gate across staff views', () => {
     const rows = [order('online', true), order('cash', false), order('online-ready', true, 'READY')];
     expect(visibleStaffOrders(rows).map(o => o.id)).toEqual(['cash']);
     expect(buildOrderAlerts(rows).total).toBe(1);
-    expect(newPendingIds(new Set(), rows)).toEqual(['cash']);
+    expect(newOrderIds(new Set(), rows)).toEqual(['cash']);
     expect(nextStepFor(rows[0], 'OWNER')).toBeNull();
     expect(nextStepFor(rows[2], 'OWNER')).toBeNull();
     expect(nextStepFor(rows[1], 'OWNER')?.to).toBe('CONFIRMED');
@@ -20,7 +20,7 @@ describe('online payment gate across staff views', () => {
   it('releases the same order after confirmation and preserves delivery/PDV defaults', () => {
     const pending = order('online', true);
     expect(visibleStaffOrders([pending])).toEqual([]);
-    expect(newPendingIds(new Set(), [{ ...pending, awaitingOnlinePayment: false }])).toEqual(['online']);
+    expect(newOrderIds(new Set(), [{ ...pending, awaitingOnlinePayment: false }])).toEqual(['online']);
     expect(visibleStaffOrders([{ id: 'legacy' } as Order])).toHaveLength(1);
   });
   it('maps the database gate and filters tenant counters without hiding client orders', () => {

@@ -5,7 +5,6 @@ import { FeedbackPage } from './pages/establishment/FeedbackPage';
 import { CallScreen } from './components/pickup/CallScreen';
 import { ChegadaPage } from './components/pickup/ChegadaPage';
 import { KitchenPage, KitchenPairPage } from './components/kitchen/KitchenPages';
-import { KitchenSettingsPage } from './pages/establishment/KitchenSettingsPage';
 import { chegadaCodeFromPath } from './lib/pickup/arrival';
 import { MenuQualityPage } from './pages/establishment/MenuQualityPage';
 import { OwnerNotifications } from './components/notifications/OwnerNotifications';
@@ -74,6 +73,7 @@ import { ShieldAlert, Store, LogIn, Lock, RefreshCw, AlertTriangle, ShoppingBag 
 import { Button } from './components/ui/Button';
 import { cn } from './utils/cn';
 import { canAccessEstTab, getDefaultAllowedTab } from './lib/navPermissions';
+import { TeamAccessPage } from './pages/team/TeamAccessPage';
 import { isOwnerPanelTab } from './components/layout/ownerPanel';
 import { isPanelPathname, panelRouteHash, readPanelRoute } from './lib/panelRoute';
 import { isMarketingTab } from './lib/marketingTabs';
@@ -85,6 +85,7 @@ function AppContent() {
     currentUser, 
     activeRole, 
     activeTenant, 
+    storePermissions, storeTools, storeAccessLoading, storeAccessError, refreshStoreAccess,
     isLoadingAuth, 
     isMembershipLoading,
     membershipStatus,
@@ -179,22 +180,19 @@ function AppContent() {
     }
   }, [authState]);
 
-  // Sincroniza a aba padrão conforme o papel ativo
+  // A forbidden deep link always resolves to the member's own permitted area.
   useEffect(() => {
+    if (storeAccessLoading || !activeRole || activeRole === 'DRIVER') return;
     if ((activeRole === 'CEO' || activeRole === 'SUPER_ADMIN') && !activeTab.startsWith('ceo-') && activeTab !== 'security-lab') {
       setActiveTab('ceo-dashboard');
-    } else if (activeRole && activeRole !== 'CEO' && activeRole !== 'SUPER_ADMIN' && activeTab.startsWith('ceo-')) {
-      setActiveTab(getDefaultAllowedTab(activeRole));
-    } else if (activeRole === 'WAITER' && !canAccessEstTab('WAITER', activeTab)) {
-      setActiveTab('est-salon');
+    } else if (activeRole !== 'CEO' && activeRole !== 'SUPER_ADMIN' && !canAccessEstTab(activeRole, activeTab, storePermissions)) {
+      setActiveTab(getDefaultAllowedTab(activeRole, storePermissions));
     }
-  }, [activeRole, activeTab]);
-
-  useEffect(() => {
-    if (activeRole === 'WAITER' && window.location.pathname === '/garcom') {
-      setActiveTab('est-salon');
+    if (activeRole === 'KITCHEN' && activeTenant?.id && !['/cozinha', '/app/', '/mesa/'].some(path => window.location.pathname === path || (path.endsWith('/') && window.location.pathname.startsWith(path))) && !window.location.pathname.startsWith('/equipe/')) window.location.replace('/cozinha');
+    if (activeRole === 'WAITER' && activeTenant?.slug && !window.location.pathname.startsWith('/garcom/') && !window.location.pathname.startsWith('/app/') && !window.location.pathname.startsWith('/mesa/') && !window.location.pathname.startsWith('/equipe/')) {
+      window.location.replace(`/garcom/${encodeURIComponent(activeTenant.slug)}`);
     }
-  }, [activeRole]);
+  }, [activeRole, activeTab, activeTenant?.slug, storePermissions, storeAccessLoading]);
 
   // Restaura navegação de retorno se o login com Google veio de uma loja pública (/app/:slug)
   useEffect(() => {
@@ -236,6 +234,7 @@ function AppContent() {
 
   // App do Garçom (PWA próprio): /garcom — login com a conta da equipe, Salão, liberações, chamados e pedidos.
   if (isWaiterRoute(pathname)) return <WaiterApp />;
+  if (/^\/equipe\//.test(pathname)) return <TeamAccessPage />;
 
   // QR fixo da mesa: /app/<slug>?mesa=<token>. O token opaco é a única autoridade; o slug é só estético.
   if (pathname.startsWith('/app/')) {
@@ -257,7 +256,7 @@ function AppContent() {
 
   // 19/10: Tela da Cozinha. Pareamento do tablet (login anônimo próprio) e a tela em si.
   if (pathname === '/cozinha/parear') return <KitchenPairPage />;
-  if (pathname === '/cozinha') return <KitchenPage />;
+  if (pathname === '/cozinha') return <KitchenPage key={activeTenant?.id || 'device'} />;
 
   // 2a. Convite público de entregador: /entregador/convite/:token (antes das demais regras de /entregador)
   const inviteToken = initialInviteToken;
@@ -294,6 +293,10 @@ function AppContent() {
   // 2c. Rota para aplicativo do entregador: /entregador
   // Fix PWA: só abre o app do entregador com papel DRIVER resolvido. Sem sessão (deep link/PWA
   // após logout) ou com outro papel, /entregador segue o fluxo normal (login/painel) em vez de tela branca.
+  if (activeRole === 'KITCHEN' && activeTenant?.id) {
+    return <KitchenPage key={activeTenant?.id || 'device'} />;
+  }
+
   if (activeRole === 'DRIVER') {
     return <DriverApp activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
   }
@@ -594,24 +597,30 @@ function AppContent() {
     );
   }
 
+  if (storeAccessLoading) return <div className="min-h-screen grid place-items-center"><p>Carregando suas permissões…</p></div>;
+  if (storeAccessError) return <div className="min-h-screen grid place-items-center"><div className="space-y-3 text-center"><p role="alert">Não foi possível verificar seu acesso à loja.</p><button onClick={() => void refreshStoreAccess()} className="rounded-xl bg-emerald-700 text-white px-4 py-3">Tentar novamente</button></div></div>;
+
   // 10. Área Administrativa Liberada (CEO ou Usuário com Vínculo Ativo)
   const renderMainView = () => {
     // Guard de UI por papel (RLS continua sendo a autorização real)
     const isCeoRole = activeRole === 'CEO' || activeRole === 'SUPER_ADMIN';
-    if (!isCeoRole && activeTab === 'est-modules' && !modulesAvailable) {
-      const fallback = getDefaultAllowedTab(activeRole);
+    const page = isCeoRole || canAccessEstTab(activeRole, activeTab, storePermissions)
+      ? activeTab : getDefaultAllowedTab(activeRole, storePermissions);
+    if (page === 'access-denied') return <div className="p-6"><p>Nenhuma área está liberada para seu papel. Fale com o dono da loja.</p></div>;
+    if (!isCeoRole && page === 'est-modules' && !modulesAvailable) {
+      const fallback = getDefaultAllowedTab(activeRole, storePermissions);
       if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
       if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
-    if (!isCeoRole && activeTab === 'est-modules' && activeRole !== 'OWNER' && activeRole !== 'MANAGER') {
-      const fallback = getDefaultAllowedTab(activeRole);
+    if (!isCeoRole && page === 'est-modules' && activeRole !== 'OWNER' && activeRole !== 'MANAGER') {
+      const fallback = getDefaultAllowedTab(activeRole, storePermissions);
       if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
       if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
-    const requiredModule = tabRequiredModule(activeTab) || (
-      (activeTab === 'est-marketing' || activeTab === 'est-qrcodes') && activeSubTab === 'pickup-qr'
+    const requiredModule = (page === 'est-kitchen' ? undefined : tabRequiredModule(page)) || (
+      (page === 'est-marketing' || page === 'est-qrcodes') && activeSubTab === 'pickup-qr'
         ? 'pickup'
         : undefined
     );
@@ -624,18 +633,18 @@ function AppContent() {
         />
       );
     }
-    if (!isCeoRole && activeTab.startsWith('est-') && activeTab !== 'est-modules' && !canAccessEstTab(activeRole, activeTab)) {
-      const fallback = getDefaultAllowedTab(activeRole);
+    if (!isCeoRole && page.startsWith('est-') && page !== 'est-modules' && !canAccessEstTab(activeRole, page, storePermissions)) {
+      const fallback = getDefaultAllowedTab(activeRole, storePermissions);
       if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
       if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
       return <EstablishmentDashboard onNavigate={setActiveTab} />;
     }
-    switch (activeTab) {
+    switch (page) {
       // Security Lab (área estritamente técnica/CEO — nunca visível para dono em produção)
       case 'security-lab': {
         const isLabAllowed = activeRole === 'CEO' || activeRole === 'SUPER_ADMIN';
         if (!isLabAllowed) {
-          const fallback = getDefaultAllowedTab(activeRole);
+          const fallback = getDefaultAllowedTab(activeRole, storePermissions);
           if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
           if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
           return <EstablishmentDashboard onNavigate={setActiveTab} />;
@@ -714,19 +723,14 @@ function AppContent() {
       case 'est-modules':
         return <ModulesPage onNavigate={setActiveTab} />;
       case 'est-kitchen':
-        if (!isModuleEnabled('kds')) {
-          const fallback = getDefaultAllowedTab(activeRole);
-          if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
-          if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
-          return <EstablishmentDashboard onNavigate={setActiveTab} />;
-        }
-        return <KitchenSettingsPage />;
+        if (!storeTools.kitchen) return <div className="p-6">A ferramenta Cozinha está desligada. Fale com o dono da loja.</div>;
+        return <KitchenPage key={activeTenant?.id || 'device'} />;
 
       default: {
         if (activeRole === 'CEO' || activeRole === 'SUPER_ADMIN') {
           return <CeoDashboard onNavigate={setActiveTab} />;
         }
-        const fallback = getDefaultAllowedTab(activeRole);
+        const fallback = getDefaultAllowedTab(activeRole, storePermissions);
         if (fallback === 'est-salon') return <SalonPage onNavigate={setActiveTab} />;
         if (fallback === 'est-orders') return <OrdersPage activeTab={activeSubTab} onTabChange={setPanelSubTab} />;
         return <EstablishmentDashboard onNavigate={setActiveTab} />;
@@ -752,6 +756,10 @@ function AppContent() {
           sessionStorage.setItem(`dc:focus-driver:${n.tenant_id}`, n.ref_id);
           setActiveTab('est-drivers');
           window.dispatchEvent(new CustomEvent('dc:focus-driver', { detail: n.ref_id }));
+        } else if (n.tableTarget) {
+          sessionStorage.setItem(FOCUS_TABLE_KEY, n.tableTarget);
+          setActiveTab('est-salon');
+          window.dispatchEvent(new CustomEvent('dc:focus-table', { detail: n.tableTarget }));
         } else {
           sessionStorage.setItem(FOCUS_ORDER_KEY, n.ref_id);
           if (n.kind === 'ORDER_MESSAGE') sessionStorage.setItem(`dc:focus-chat:${n.tenant_id}`, n.ref_id);

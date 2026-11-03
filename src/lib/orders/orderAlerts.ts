@@ -81,9 +81,27 @@ export function whatsappLink(phone?: string | null): string | null {
 }
 
 /** IDs de pedidos novos que chegaram desde a última leitura (para som + destaque). Primeira leitura não toca. */
-export function newPendingIds(prevIds: ReadonlySet<string> | null, orders: readonly Pick<Order, 'id' | 'status' | 'awaitingOnlinePayment'>[]): string[] {
+export function newOrderIds(prevIds: ReadonlySet<string> | null, orders: readonly Pick<Order, 'id' | 'awaitingOnlinePayment'>[]): string[] {
   if (!prevIds) return [];
-  return orders.filter(o => isOrderVisibleToStaff(o) && o.status === 'PENDING' && !prevIds.has(o.id)).map(o => o.id);
+  return [...new Set(orders.filter(o => isOrderVisibleToStaff(o) && !prevIds.has(o.id)).map(o => o.id))];
+}
+
+/** Mantém os avisos até fechar/ver ou aceitar; atualiza os dados sem reabrir avisos fechados. */
+export function updateNewOrderQueue(previous: readonly Order[], orders: readonly Order[], freshIds: readonly string[]): Order[] {
+  const current = new Map(visibleStaffOrders(orders).map(o => [o.id, o]));
+  const retained = previous.flatMap(before => {
+    const order = current.get(before.id);
+    if (!order || (before.status === 'PENDING' && order.status !== 'PENDING')) return [];
+    return [order];
+  });
+  const queued = new Set(retained.map(o => o.id));
+  const fresh = freshIds.flatMap(id => {
+    const order = current.get(id);
+    if (!order || queued.has(id)) return [];
+    queued.add(id);
+    return [order];
+  });
+  return sortOrdersNewestFirst([...retained, ...fresh]);
 }
 
 /** Pedido que a tela Pedidos deve abrir selecionado ao vir do Dashboard ("Ver pedido"). */

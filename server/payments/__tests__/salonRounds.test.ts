@@ -3,46 +3,33 @@ import { PaymentStore } from '../store';
 
 const TENANT = '10000000-0000-0000-0000-00000000000a';
 
-function fixture(member: unknown = { id: 'membership', role_id: 'WAITER' }, enabled = true) {
-  const queries: Array<{ table: string; filters: Array<[string, string, unknown]> }> = [];
-  const from = vi.fn((table: string) => {
-    const query = { table, filters: [] as Array<[string, string, unknown]> };
-    queries.push(query);
-    const value = table === 'tenant_users' ? member : table === 'tenant_modules' ? (enabled ? { enabled: true } : null)
-      : table === 'dining_tabs' ? [{ id: 'tab' }] : [{ id: 'round', tab_id: 'tab', status: 'READY' }];
-    const result = { data: value, error: null };
-    const chain: any = { select: () => chain, maybeSingle: async () => result, order: async () => result,
-      then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve) };
-    for (const operation of ['eq', 'in', 'neq']) chain[operation] = (key: string, val: unknown) => {
-      query.filters.push([operation, key, val]); return chain;
-    };
-    return chain;
-  });
-  return { store: new PaymentStore({ from } as any), queries };
+function fixture(error: object | null = null) {
+  const rounds = [{ id: 'round', tab_id: 'assigned-tab', status: 'READY' }];
+  const db = {
+    rpc: vi.fn().mockResolvedValue({ data: error ? null : rounds, error }),
+    from: vi.fn(() => { throw new Error('Service fallback must use the scoped SQL gateway'); }),
+  };
+  return { db, rounds, store: new PaymentStore(db as any) };
 }
 
 describe('service-role Salão rounds fallback', () => {
-  it('does not read tabs or orders without an active membership in the requested store', async () => {
-    const { store, queries } = fixture(null);
-    await expect(store.salonRounds('user', TENANT)).rejects.toMatchObject({ code: 'FORBIDDEN' });
-    expect(queries.map(q => q.table)).toEqual(['tenant_users']);
-    expect(queries[0].filters).toEqual(expect.arrayContaining([
-      ['eq', 'tenant_id', TENANT], ['eq', 'user_id', 'user'], ['eq', 'status', 'ACTIVE'],
-    ]));
+  it('delegates the verified actor and selected store to the permission and table-scoped SQL gateway', async () => {
+    const { store, db, rounds } = fixture();
+    await expect(store.salonRounds('verified-user', TENANT)).resolves.toEqual(rounds);
+    expect(db.rpc).toHaveBeenCalledExactlyOnceWith('salon_rounds_for_staff', { p_user: 'verified-user', p_tenant: TENANT });
+    expect(db.from).not.toHaveBeenCalled();
   });
 
-  it('does not bypass the disabled Salão module with service role', async () => {
-    const { store, queries } = fixture(undefined, false);
-    await expect(store.salonRounds('user', TENANT)).rejects.toMatchObject({ code: 'MODULE_DISABLED' });
-    expect(queries.map(q => q.table)).toEqual(['tenant_users', 'tenant_modules']);
+  it.each(['FORBIDDEN', 'MODULE_DISABLED', 'TOOL_DISABLED'])('fails closed when SQL rejects %s', async reason => {
+    const { store, db } = fixture({ code: '42501', message: `${reason}: safe gateway rejection` });
+    await expect(store.salonRounds('verified-user', TENANT)).rejects.toMatchObject({ status: 403 });
+    expect(db.from).not.toHaveBeenCalled();
   });
 
-  it('keeps rounds visible during authorization and pending payment, scoped to the same store and tabs', async () => {
-    const { store, queries } = fixture();
-    await expect(store.salonRounds('user', TENANT)).resolves.toEqual([{ id: 'round', tab_id: 'tab', status: 'READY' }]);
-    const tabs = queries.find(q => q.table === 'dining_tabs')!;
-    expect(tabs.filters).toContainEqual(['in', 'status', ['OPEN', 'BILL_REQUESTED', 'WAITER_AUTHORIZED', 'AWAITING_PAYMENT']]);
-    for (const query of queries) expect(query.filters).toContainEqual(['eq', 'tenant_id', TENANT]);
-    expect(queries.find(q => q.table === 'orders')!.filters).toContainEqual(['in', 'tab_id', ['tab']]);
+  it('rejects malformed store selectors before invoking the gateway', async () => {
+    const { store, db } = fixture();
+    await expect(store.salonRounds('verified-user', 'invalid-store')).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(db.rpc).not.toHaveBeenCalled();
+    expect(db.from).not.toHaveBeenCalled();
   });
 });

@@ -6,13 +6,17 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 const h = vi.hoisted(() => ({
   tenant: { id: 'tenant-a', name: 'Loja A', slug: 'loja-a' },
   context: { userId: 'owner-a' },
+  role: 'OWNER',
+  tools: { waiter: true, kitchen: true },
+  settings: { listTools: vi.fn(), listPermissions: vi.fn(), setPermission: vi.fn() },
   members: [] as any[], directory: [] as any[] | null,
   toast: vi.fn(),
   team: { listTeamMembers: vi.fn(), listPendingInvites: vi.fn(), createInvite: vi.fn(), removeTeamMember: vi.fn(), revokeInvite: vi.fn() },
   waiter: { directory: vi.fn(), createWaiter: vi.fn(), deleteWaiter: vi.fn(), setActive: vi.fn(), reactivateWaiter: vi.fn() },
 }));
-vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ activeTenant: h.tenant, securityContext: h.context }) }));
+vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ activeTenant: h.tenant, securityContext: h.context, activeRole: h.role }) }));
 vi.mock('../../../context/ToastContext', () => ({ useToast: () => ({ showToast: h.toast }) }));
+vi.mock('../../../repositories/storeTeamRepository', () => ({ storeTeamRepository: h.settings }));
 vi.mock('../../../repositories/teamRepository', () => ({ teamRepository: h.team }));
 vi.mock('../../../repositories/waiterV2Repository', () => ({ waiterV2Repository: h.waiter, WaiterAdminError: class extends Error {} }));
 vi.mock('../../../components/establishment/WaiterPhonePairingCard', () => ({ WaiterPhonePairingCard: () => null }));
@@ -27,6 +31,10 @@ const member = (id: string, name: string, username: string | null) => ({
 beforeEach(() => {
   Object.values(h.team).forEach(fn => fn.mockReset()); Object.values(h.waiter).forEach(fn => fn.mockReset()); h.toast.mockReset();
   h.tenant = { id: 'tenant-a', name: 'Loja A', slug: 'loja-a' };
+  h.role = 'OWNER'; h.tools = { waiter: true, kitchen: true };
+  h.settings.listTools.mockImplementation(async () => h.tools);
+  h.settings.listPermissions.mockResolvedValue([]);
+  h.settings.setPermission.mockReset();
   const legacy = member('old', 'Garçom antigo', null), current = member('new', 'Garçom novo', 'novo');
   h.members = [legacy.member, current.member]; h.directory = [legacy.directory, current.directory];
   h.team.listTeamMembers.mockImplementation(async () => h.members);
@@ -103,6 +111,18 @@ describe('Equipe Garçom v3', () => {
     expect(h.waiter.createWaiter).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-a', name: 'João', username: 'joao', password: 'senha123' }));
   });
 
+  it('closes the previous store member modal immediately when switching stores', async () => {
+    const view = render(<TeamPage />);
+    await screen.findByText('Garçom novo');
+    fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    expect(screen.getByDisplayValue('Garçom novo')).toBeTruthy();
+    h.tenant = { id: 'tenant-b', name: 'Loja B', slug: 'loja-b' };
+    h.members = []; h.directory = [];
+    view.rerender(<TeamPage />);
+    expect(screen.queryByDisplayValue('Garçom novo')).toBeNull();
+    expect(screen.queryByText('Editar garçom')).toBeNull();
+  });
+
   it('does not show a late team response from the previous store after a store switch', async () => {
     const oldMembers = [...h.members];
     let resolveOld!: (members: any[]) => void;
@@ -115,5 +135,65 @@ describe('Equipe Garçom v3', () => {
     resolveOld(oldMembers);
     await waitFor(() => expect(screen.queryByText('Garçom antigo')).toBeNull());
     expect(screen.getByText('Equipe da loja B')).toBeTruthy();
+  });
+});
+
+
+describe('Equipe organizada por papel', () => {
+  it('groups members and pending invitations with counts and role access links', async () => {
+    h.members.push({ ...member('k', 'Maria cozinha', null).member, role: 'KITCHEN' });
+    h.team.listPendingInvites.mockResolvedValue([{ id: 'invite-k', tenantId: 'tenant-a', email: 'cozinha@example.com', roleId: 'KITCHEN', status: 'PENDING', expiresAt: '2026-12-01T00:00:00Z' }]);
+    render(<TeamPage />);
+    await screen.findByText('Maria cozinha');
+    const kitchen = screen.getByTestId('team-role-KITCHEN');
+    expect(kitchen.textContent).toContain('Cozinha (2)');
+    expect(kitchen.textContent).toContain('1 membros · 1 convites pendentes');
+    expect(kitchen.querySelector('a[href="/equipe/loja-a/kitchen?signup=1"]')).toBeTruthy();
+    expect(screen.getByTestId('team-role-WAITER').querySelector('a[href="/garcom/loja-a?signup=1"]')).toBeTruthy();
+  });
+  it('hides optional roles, members and QR when tools are disabled', async () => {
+    h.tools = { waiter: false, kitchen: false };
+    render(<TeamPage />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Adicionar membro da equipe' }).hasAttribute('disabled')).toBe(false));
+    expect(screen.queryByTestId('team-role-WAITER')).toBeNull();
+    expect(screen.queryByTestId('team-role-KITCHEN')).toBeNull();
+    expect(screen.queryByText('Garçom antigo')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar membro da equipe' }));
+    expect(screen.queryByRole('option', { name: /Garçom|Cozinha/ })).toBeNull();
+  });
+  it('allows the owner to toggle role permission through the validated RPC', async () => {
+    h.settings.listPermissions.mockResolvedValue([{ role: 'MANAGER', permission: 'view_reports', enabled: true }, { role: 'OWNER', permission: 'view_reports', enabled: true }, { role: 'MANAGER', permission: 'view_finances', enabled: false }]);
+    render(<TeamPage />);
+    await screen.findByText('Garçom antigo');
+    fireEvent.click(screen.getByText('Permissões de Gerente'));
+    const toggle = screen.getByRole('switch', { name: 'Relatórios: Gerente' });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(h.settings.setPermission).toHaveBeenCalledWith('tenant-a', 'MANAGER', 'view_reports', false));
+    expect((toggle as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole('switch', { name: 'Financeiro sensível: Gerente' }) as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(screen.getByText('Permissões de Dono'));
+    expect((screen.getByRole('switch', { name: 'Relatórios: Dono' }) as HTMLInputElement).disabled).toBe(true);
+  });
+  it('keeps permission switches read only for managers', async () => {
+    h.role = 'MANAGER';
+    h.settings.listPermissions.mockResolvedValue([{ role: 'MANAGER', permission: 'view_reports', enabled: true }]);
+    render(<TeamPage />);
+    await screen.findByText('Garçom antigo');
+    fireEvent.click(screen.getByText('Permissões de Gerente'));
+    const toggle = screen.getByRole('switch', { name: 'Relatórios: Gerente' });
+    expect((toggle as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(toggle);
+    expect(h.settings.setPermission).not.toHaveBeenCalled();
+  });
+  it('supports an email invitation for a waiter from the single add flow', async () => {
+    render(<TeamPage />);
+    await screen.findByText('Garçom antigo');
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar membro da equipe' }));
+    fireEvent.change(screen.getByLabelText('Tipo de membro *'), { target: { value: 'WAITER' } });
+    fireEvent.change(screen.getByLabelText('Forma de acesso'), { target: { value: 'invite' } });
+    fireEvent.change(screen.getByLabelText('E-mail do Colaborador *'), { target: { value: 'waiter@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar Convite' }));
+    await waitFor(() => expect(h.team.createInvite).toHaveBeenCalledWith(h.context, 'tenant-a', 'waiter@example.com', 'WAITER'));
+    expect(h.waiter.createWaiter).not.toHaveBeenCalled();
   });
 });

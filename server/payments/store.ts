@@ -22,12 +22,14 @@ export class PaymentStore {
     if (error || !data.user) throw new PaymentError('AUTH_REQUIRED', 401, 'Entre na sua conta para continuar.');
     return data.user;
   }
-  async membership(userId: string, membershipId: string, cashier = false) {
+  // Provider accounts/credentials are sensitive financial settings. Receipt
+  // operations use order()/the validated payment RPCs instead of this boundary.
+  async membership(userId: string, membershipId: string) {
     if (!/^[\da-f-]{36}$/i.test(membershipId)) throw new PaymentError('MEMBERSHIP_REQUIRED', 403);
     const { data, error } = await this.db.from('tenant_users').select('id,tenant_id,role_id,tenants!inner(status)')
       .eq('id', membershipId).eq('user_id', userId).eq('status', 'ACTIVE').eq('tenants.status', 'ACTIVE')
-      .in('role_id', cashier ? ['OWNER', 'MANAGER', 'CASHIER'] : ['OWNER', 'MANAGER']).maybeSingle();
-    if (error || !data) throw new PaymentError('FORBIDDEN', 403, 'Somente o proprietário ou gerente pode configurar os pagamentos.');
+      .in('role_id', ['OWNER']).maybeSingle();
+    if (error || !data || data.role_id !== 'OWNER') throw new PaymentError('FORBIDDEN', 403, 'Somente o dono da loja pode configurar as contas de pagamento.');
     return data;
   }
   async order(userId: string, id: string, includePayer = false) {
@@ -38,8 +40,17 @@ export class PaymentStore {
       this.db.from('customers').select('id').eq('id', order.customer_id).eq('tenant_id', order.tenant_id).eq('user_id', userId).maybeSingle(),
       this.db.from('tenant_users').select('id,role_id').eq('tenant_id', order.tenant_id).eq('user_id', userId).eq('status', 'ACTIVE').in('role_id', ['OWNER','MANAGER','CASHIER']).maybeSingle(),
     ]);
-    if (!customer.data && !staff.data) throw new PaymentError('ORDER_NOT_FOUND', 404, 'Pedido indisponível.');
-    return { ...order, staffRole: staff.data?.role_id as string | undefined };
+    let canRead = false;
+    let canReceive = false;
+    if (staff.data) {
+      const permissions = await Promise.all(['view_orders', 'manage_orders', 'manage_cashier'].map(p_perm =>
+        this.rpc<boolean>('_store_user_permission', { p_user: userId, p_tenant: order.tenant_id, p_perm })));
+      canRead = permissions.some(allowed => allowed === true);
+      canReceive = permissions[1] === true || permissions[2] === true;
+    }
+    if (!customer.data && !canRead) throw new PaymentError('ORDER_NOT_FOUND', 404, 'Pedido indisponível.');
+    return { ...order, customerOwned: !!customer.data, canReceive,
+      staffRole: canRead ? staff.data?.role_id as string | undefined : undefined };
   }
   async accounts(tenantId: string) {
     const { data, error } = await this.db.from('store_payment_accounts').select('provider,status,account_label,is_primary,accepts_pix,accepts_card,connected_at,connection_version').eq('tenant_id', tenantId);
@@ -86,25 +97,10 @@ export class PaymentStore {
   }
   async salonRounds(userId: string, tenantId: string) {
     if (!/^[\da-f-]{36}$/i.test(tenantId)) throw new PaymentError('FORBIDDEN', 403);
-    const { data: member, error: memberErr } = await this.db.from('tenant_users')
-      .select('id,role_id,tenants!inner(status)')
-      .eq('tenant_id', tenantId).eq('user_id', userId).eq('status', 'ACTIVE').eq('tenants.status', 'ACTIVE')
-      .in('role_id', ['OWNER', 'MANAGER', 'CASHIER', 'WAITER', 'OPERATOR']).maybeSingle();
-    if (memberErr || !member) throw new PaymentError('FORBIDDEN', 403, 'Acesso negado ao salão.');
-    // This fallback uses service role, so it must enforce the module gate normally applied by RLS.
-    const { data: module, error: moduleErr } = await this.db.from('tenant_modules')
-      .select('enabled').eq('tenant_id', tenantId).eq('module_key', 'dine_in').eq('enabled', true).maybeSingle();
-    if (moduleErr || !module) throw new PaymentError('MODULE_DISABLED', 403, 'O salão está desativado nesta loja.');
-    const { data: tabs } = await this.db.from('dining_tabs')
-      .select('id').eq('tenant_id', tenantId).in('status', ['OPEN', 'BILL_REQUESTED', 'WAITER_AUTHORIZED', 'AWAITING_PAYMENT']);
-    const tabIds = (tabs || []).map((t: { id: string }) => t.id);
-    if (!tabIds.length) return [];
-    const { data: rounds, error } = await this.db.from('orders')
-      .select('id,tab_id,order_number,customer_name,status,subtotal,created_at,round_no,waiter_id')
-      .eq('tenant_id', tenantId).eq('fulfillment_type', 'DINE_IN')
-      .in('tab_id', tabIds).neq('status', 'CANCELLED').order('round_no');
-    if (error) return [];
-    return rounds || [];
+    // This fallback executes as service_role. The SQL gateway verifies the
+    // explicit authenticated actor, effective permissions, optional tool and
+    // module, then limits waiters to their assigned tabs before reading orders.
+    return this.rpc<any[]>('salon_rounds_for_staff', { p_user: userId, p_tenant: tenantId });
   }
   async manualBrcode(orderId: string) { return this.rpc<string>('manual_order_payment_brcode', { p_order: orderId }); }
 }

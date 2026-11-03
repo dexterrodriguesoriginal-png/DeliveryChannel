@@ -45,7 +45,7 @@ SOK=$(grep -l -E '^[0-9a-f-]{36}$' "$OUT"/stock_*.out | wc -l)
 SOUT=$(grep -l 'OUT_OF_STOCK' "$OUT"/stock_*.out | wc -l)
 STOCK=$(Q "SELECT stock_quantity FROM public.products WHERE id='d0000000-0000-0000-0000-0000000000a4'")
 echo "estoque: sucesso=$SOK sem_estoque=$SOUT estoque_final=$STOCK"
-rec "estoque 1 sob 8 compradores paralelos: 1 sucesso, 7 OUT_OF_STOCK, estoque 0" "$([ "$SOK" = 1 ] && [ "$SOUT" = 7 ] && [ "$STOCK" = 0 ] && echo true || echo false)" "ok=$SOK out=$SOUT stock=$STOCK"
+rec "estoque 1 sob 8 compradores paralelos: 1 sucesso, 7 OUT_OF_STOCK, estoque 0" "$([ "$SOK" = 1 ] && [ "$SOUT" = 7 ] && [ "$(Q "SELECT stock_quantity = 0 FROM public.products WHERE id = 'd0000000-0000-0000-0000-0000000000a4'")" = t ] && echo true || echo false)" "ok=$SOK out=$SOUT stock=$STOCK"
 
 # Dois pedidos aceitos concorrem pela última unidade no gatilho de reserva.
 PRODUCT='d0000000-0000-0000-0000-0000000000a4'
@@ -80,7 +80,7 @@ RA_PENDING=$(Q "SELECT count(*) FROM public.orders WHERE id IN ('$ORDER_A','$ORD
 RA_STOCK=$(Q "SELECT stock_quantity FROM public.products WHERE id='$PRODUCT'")
 RA_HELD=$(Q "SELECT count(*) FROM public.stock_reservations WHERE order_id IN ('$ORDER_A','$ORDER_B') AND status='ACTIVE'")
 echo "reserva: aceitos=$RA_OK sem_estoque=$RA_OUT estoque=$RA_STOCK reservados=$RA_HELD"
-rec "reserva da última unidade sob duas aceitações concorrentes: exatamente um pedido confirmado" "$([ "$RA_OK" = 1 ] && [ "$RA_OUT" = 1 ] && [ "$RA_STATUS" = 1 ] && [ "$RA_PENDING" = 1 ] && [ "$RA_STOCK" = 0 ] && [ "$RA_HELD" = 1 ] && echo true || echo false)" "ok=$RA_OK out=$RA_OUT status=$RA_STATUS pending=$RA_PENDING stock=$RA_STOCK reserved=$RA_HELD"
+rec "reserva da última unidade sob duas aceitações concorrentes: exatamente um pedido confirmado" "$([ "$RA_OK" = 1 ] && [ "$RA_OUT" = 1 ] && [ "$RA_STATUS" = 1 ] && [ "$RA_PENDING" = 1 ] && [ "$(Q "SELECT stock_quantity = 0 FROM public.products WHERE id = '$PRODUCT'")" = t ] && [ "$RA_HELD" = 1 ] && echo true || echo false)" "ok=$RA_OK out=$RA_OUT status=$RA_STATUS pending=$RA_PENDING stock=$RA_STOCK reserved=$RA_HELD"
 
 # Cancelamentos simultâneos do mesmo pedido com cupom
 ORD=$(grep -h -E '^[0-9a-f-]{36}$' "$OUT"/coupon_*.out | head -1)

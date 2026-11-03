@@ -56,7 +56,7 @@ describe('Sidebar — isolamento de módulos e matriz de permissões', () => {
 
   it('filtra itens do menu por papel estritamente conforme a matriz', () => {
     // CASHIER: Dashboard, Pedidos, Salão, Clientes
-    expect(canAccessEstTab('CASHIER', 'est-dashboard')).toBe(true);
+    expect(canAccessEstTab('CASHIER', 'est-dashboard')).toBe(false);
     expect(canAccessEstTab('CASHIER', 'est-orders')).toBe(true);
     expect(canAccessEstTab('CASHIER', 'est-salon')).toBe(true);
     expect(canAccessEstTab('CASHIER', 'est-customers')).toBe(true);
@@ -70,7 +70,7 @@ describe('Sidebar — isolamento de módulos e matriz de permissões', () => {
     expect(canAccessEstTab('WAITER', 'est-finance')).toBe(false);
 
     // KITCHEN: só Pedidos e Cozinha
-    expect(canAccessEstTab('KITCHEN', 'est-orders')).toBe(true);
+    expect(canAccessEstTab('KITCHEN', 'est-orders')).toBe(false);
     expect(canAccessEstTab('KITCHEN', 'est-kitchen')).toBe(true);
     expect(canAccessEstTab('KITCHEN', 'est-dashboard')).toBe(false);
     expect(canAccessEstTab('KITCHEN', 'est-customers')).toBe(false);

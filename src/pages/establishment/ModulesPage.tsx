@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, Bike, CalendarClock, Check, ChefHat, ConciergeBell, CreditCard, ExternalLink, FileText, Gauge, Gift, LayoutGrid, LoaderCircle,
-  PlusCircle, Percent, Printer, QrCode, Repeat, Scale, ScanBarcode, Shirt, SlidersHorizontal, Smartphone, Store, UserPlus, Utensils, Wallet,
+  PlusCircle, Percent, Printer, QrCode, Repeat, Scale, ScanBarcode, Shirt, SlidersHorizontal, Store, Utensils, Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -10,7 +10,8 @@ import { tenantModuleRepository } from '../../repositories/tenantModuleRepositor
 import { useModules } from '../../hooks/useModules';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { WaiterAccessBlock } from '../../components/establishment/WaiterAccessBlock';
+import { storeTeamRepository } from '../../repositories/storeTeamRepository';
+import type { StoreTools } from '../../lib/teamAccess';
 import { SalonSetupPanel } from '../../components/establishment/SalonSetupPanel';
 import { salonPermissions } from '../../components/establishment/salonSetup';
 
@@ -29,7 +30,9 @@ const PlanBadge: React.FC<{ tool: Parameters<typeof toolPlanBadge>[0] }> = ({ to
 };
 
 export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ onNavigate }) => {
-  const { activeTenant, activeRole } = useAuth();
+  const { activeTenant, activeRole, refreshStoreAccess } = useAuth();
+  const currentTenant = useRef(activeTenant?.id);
+  currentTenant.current = activeTenant?.id;
   const { showToast } = useToast();
   const { available, loading, modules, refresh, checkCanDisable } = useModules();
   const [businessType, setBusinessType] = useState<BusinessType>('OUTRO');
@@ -37,6 +40,10 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
   const [savingKey, setSavingKey] = useState<ModuleKey | null>(null);
   const [savingPreset, setSavingPreset] = useState(false);
   const [showSalonSetup, setShowSalonSetup] = useState(false);
+  const [storeTools, setStoreTools] = useState<StoreTools>({ waiter: false, kitchen: false });
+  const [toolsTenant, setToolsTenant] = useState<string | null>(null);
+  const [savingTool, setSavingTool] = useState<keyof StoreTools | null>(null);
+  const [toolError, setToolError] = useState('');
   const canChange = activeRole === 'OWNER';
   const salonAccess = salonPermissions(activeRole);
 
@@ -53,9 +60,36 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
     return () => { mounted = false; };
   }, [activeTenant?.id, available, showToast]);
 
+  useEffect(() => {
+    let current = true;
+    if (!activeTenant?.id) return;
+    setToolsTenant(null); setToolError(''); setSavingTool(null);
+    storeTeamRepository.listTools(activeTenant.id).then(tools => {
+      if (current) { setStoreTools(tools); setToolsTenant(activeTenant.id); }
+    }).catch(() => { if (current) setToolError('Não foi possível carregar Garçom e Cozinha. Atualize a página e tente novamente.'); });
+    return () => { current = false; };
+  }, [activeTenant?.id]);
+
+  const handleStoreTool = async (tool: keyof StoreTools) => {
+    if (!activeTenant?.id || !canChange || savingTool || toolsTenant !== activeTenant.id) return;
+    const tenantId = activeTenant.id;
+    const next = !storeTools[tool];
+    setSavingTool(tool);
+    try {
+      await storeTeamRepository.setTool(tenantId, tool, next);
+      if (currentTenant.current !== tenantId) return;
+      await refreshStoreAccess?.();
+      if (currentTenant.current !== tenantId) return;
+      window.dispatchEvent(new Event('dc:store-access-changed'));
+      setStoreTools(tools => ({ ...tools, [tool]: next }));
+      showToast({ type: 'success', title: 'Ferramenta atualizada', message: `${tool === 'waiter' ? 'Garçom' : 'Cozinha'} ${next ? 'ativado' : 'desativado'}. Gerencie os membros em Equipe e permissões.` });
+    } catch (error) {
+      if (currentTenant.current === tenantId) showToast({ type: 'error', title: 'Não foi possível alterar a ferramenta', message: error instanceof Error ? error.message : 'Tente novamente.' });
+    } finally { if (currentTenant.current === tenantId) setSavingTool(null); }
+  };
+
   const enabled = useMemo(() => new Set(modules || []), [modules]);
-  const shortcuts = useMemo(() => visibleToolShortcuts(modules, activeRole), [modules, activeRole]);
-  const garcom = shortcuts.find(tool => tool.id === 'garcom');
+  const shortcuts = useMemo(() => visibleToolShortcuts(modules, activeRole).filter(tool => tool.id !== 'garcom'), [modules, activeRole]);
   const openShortcut = (tool: (typeof shortcuts)[number]) => {
     if (tool.action.kind === 'path') window.location.assign(tool.action.path);
     else onNavigate?.(tool.action.tab);
@@ -107,7 +141,7 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
 
   const cards = (category: ToolCategory) => ({
     shortcuts: shortcuts.filter(tool => tool.category === category),
-    modules: MODULES.filter(module => (module.category || 'Operação') === category),
+    modules: MODULES.filter(module => module.key !== 'kds' && (module.category || 'Operação') === category),
   });
 
   return (
@@ -126,28 +160,17 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
         </div>
       )}
 
-      {garcom && (
-        <section data-testid="waiter-app-card" className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-900 p-5 text-white shadow-lg sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-3">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/10 ring-1 ring-white/20"><ConciergeBell className="h-6 w-6" /></span>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-black">Aplicativo do Garçom</h2><span className="rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-bold text-emerald-200">Novo</span><PlanBadge tool={garcom} /></div>
-                <p className="mt-1 max-w-xl text-sm text-slate-300">O garçom entra com a conta da equipe, vê o mapa do salão, libera quem leu o QR com som e aviso, atende chamados, abre mesa e lança pedidos. Funciona no celular, como um aplicativo.</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => openShortcut(garcom)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-black text-slate-950 shadow-sm transition hover:bg-emerald-400"><ExternalLink className="h-4 w-4" />Acessar Garçom</button>
-            </div>
-          </div>
-          <ol className="mt-5 grid gap-3 text-sm sm:grid-cols-3" aria-label="Como adicionar garçons">
-            <li className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10"><p className="flex items-center gap-2 font-bold"><span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-400 text-xs font-black text-slate-950">1</span>Convide o garçom</p><p className="mt-1 text-xs text-slate-300">Em <b>Equipe & Permissões</b> → <b>Convidar Colaborador</b>, escolha o cargo <b>Garçom</b> e informe o e-mail dele.</p>{onNavigate && <button type="button" onClick={() => onNavigate('est-team')} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20"><UserPlus className="h-3.5 w-3.5" />Convidar garçom</button>}</li>
-            <li className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10"><p className="flex items-center gap-2 font-bold"><span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-400 text-xs font-black text-slate-950">2</span>Ele entra no celular</p><p className="mt-1 text-xs text-slate-300">O garçom lê o QR abaixo no celular e entra (ou cria a conta) com o e-mail do convite.</p></li>
-            <li className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10"><p className="flex items-center gap-2 font-bold"><span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-400 text-xs font-black text-slate-950">3</span>Instale como app</p><p className="mt-1 text-xs text-slate-300 flex items-start gap-1.5"><Smartphone className="mt-0.5 h-3.5 w-3.5 shrink-0" />Dentro do Garçom toque em <b>Instalar</b> (ou, no navegador, “Adicionar à tela inicial”). Fica com ícone próprio.</p></li>
-          </ol>
-          <div className="mt-4"><WaiterAccessBlock storeName={activeTenant?.name} /></div>
-        </section>
-      )}
+      <section aria-label="Ferramentas da equipe" className="grid gap-3 sm:grid-cols-2">
+        {(['waiter', 'kitchen'] as const).map(tool => {
+          const isEnabled = toolsTenant === activeTenant.id && storeTools[tool];
+          const label = tool === 'waiter' ? 'Garçom' : 'Cozinha';
+          return <Card key={tool} className="flex items-center justify-between gap-4 p-4" data-testid={`store-tool-${tool}`}>
+            <div><h2 className="text-sm font-bold text-gray-900">{label}</h2><p className="mt-1 text-xs text-gray-600">{tool === 'waiter' ? 'Atendimento das mesas pelo aplicativo do garçom.' : 'Preparação de pedidos na tela da cozinha.'}</p><p className="mt-2 text-xs text-gray-500">Pessoas, convites e QR ficam em Equipe e permissões.</p></div>
+            <button type="button" role="switch" aria-label={`${isEnabled ? 'Desativar' : 'Ativar'} ${label}`} aria-checked={isEnabled} disabled={!canChange || toolsTenant !== activeTenant.id || !!savingTool} onClick={() => void handleStoreTool(tool)} className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full disabled:opacity-50 ${isEnabled ? 'bg-emerald-600' : 'bg-gray-300'}`}><span className={`h-4 w-4 rounded-full bg-white transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`} /></button>
+          </Card>;
+        })}
+      </section>
+      {toolError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">{toolError}</p>}
 
       <Card className="space-y-3 p-4">
         <label htmlFor="modules-business-type" className="block text-sm font-semibold text-gray-900">Tipo de negócio</label>

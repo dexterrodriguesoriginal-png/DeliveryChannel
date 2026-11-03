@@ -23,9 +23,11 @@ const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: 'Super Administrador',
   OWNER: 'Proprietário',
   MANAGER: 'Gerente',
-  OPERATOR: 'Operador',
+  OPERATOR: 'Estoque/Separação',
   CASHIER: 'Caixa',
-  DELIVERY_MANAGER: 'Gestão de Entregas',
+  WAITER: 'Garçom',
+  KITCHEN: 'Cozinha',
+  DELIVERY_MANAGER: 'Coordenador de Entregas',
   DRIVER: 'Entregador',
   CUSTOMER: 'Cliente',
 };

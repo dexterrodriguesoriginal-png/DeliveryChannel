@@ -10,7 +10,7 @@ import { BOTTOM_ACTIONS_VAR, floatingAboveActionsStyle, floatingSideStyle } from
 import { clampPoint, loadPosition, placePanel, pointFromSaved, savePosition, snapToEdge, type Point, type SavedPosition, type Size, type Viewport } from '../../lib/ui/floatingPosition';
 import './notifications.css';
 
-const PANEL = { w: 400, h: 560 }, TOAST = { w: 340, h: 92 }, PILL_FALLBACK: Size = { w: 196, h: 52 };
+const PANEL = { w: 400, h: 560 }, TOAST = { w: 340, h: 420 }, PILL_FALLBACK: Size = { w: 196, h: 52 };
 
 const TYPE_META: Record<NotificationType, { Icon: LucideIcon; fg: string; label: string }> = {
   order: { Icon: ShoppingBag, fg: '#16a34a', label: 'Novo pedido' },
@@ -93,11 +93,12 @@ const readViewport = (): Viewport => {
 };
 
 export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) => void }) {
-  const { activeTenant, supabaseUser, activeRole } = useAuth();
+  const { activeTenant, supabaseUser, activeRole, securityContext } = useAuth();
   const tenant = activeTenant?.id, user = supabaseUser?.id;
   const allowed = activeRole === 'OWNER' || activeRole === 'MANAGER';
   const [rows, setRows] = useState<OwnerNotification[]>([]);
-  const [balloon, setBalloon] = useState<OwnerNotification | null>(null);
+  const [balloons, setBalloons] = useState<OwnerNotification[]>([]);
+  const [accepting, setAccepting] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [error, setError] = useState('');
@@ -116,36 +117,64 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
   const bellRef = useRef<HTMLButtonElement>(null);
   const drag = useRef<{ id: number; sx: number; sy: number; ox: number; oy: number; active: boolean; last: Point } | null>(null);
   const justDragged = useRef(false);
-  const requested = useRef(new Set<string>());
   const prevUnread = useRef(0);
 
   useEffect(() => {
-    setRows([]); setBalloon(null); setOpen(false); setError(''); setLoaded(false);
+    setRows([]); setBalloons([]); setBriefs({}); setOpen(false); setError(''); setLoaded(false);
     if (!tenant || !user || !allowed) return;
-    let alive = true;
+    let alive = true, initialized = false, loadNumber = 0;
     const seen = new Set<string>();
-    const load = () => repo.notifications(tenant).then(data => { if (alive) { setRows(data); setError(''); setLoaded(true); } }).catch(e => { if (alive) setError(e.message); });
+    const initialStatus = new Map<string, string>();
+    const announce = (notifications: OwnerNotification[]) => {
+      const fresh = notifications.filter(n => n.tenant_id === tenant && !n.read_at && !seen.has(n.id));
+      fresh.forEach(n => seen.add(n.id));
+      if (!fresh.length) return;
+      const preferences = readPreferences(localStorage, tenant, user);
+      if (preferences.balloon) setBalloons(previous => {
+        const ids = new Set(previous.map(n => n.id));
+        return [...previous, ...fresh.filter(n => !ids.has(n.id))]
+          .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id.localeCompare(a.id));
+      });
+      if (preferences.sound) playNewOrderSound();
+    };
+    const load = async () => {
+      const number = ++loadNumber;
+      try {
+        const data = (await repo.notifications(tenant)).filter(n => n.tenant_id === tenant);
+        const ids = [...new Set(data.filter(n => n.kind !== 'DRIVER_JOIN_REQUEST').map(n => n.ref_id))];
+        const details: Record<string, OrderBrief> = await Promise.resolve(repo.orderBriefs?.(tenant, ids)).catch(() => ({})) || {};
+        if (!alive || number !== loadNumber) return;
+        if (initialized) announce(data);
+        else { data.forEach(n => seen.add(n.id)); initialized = true; }
+        setRows(data); setBriefs(details); setError(''); setLoaded(true);
+        const byId = new Map(data.map(n => [n.id, n]));
+        setBalloons(previous => previous.filter(n => {
+          const latest = byId.get(n.id);
+          if (latest?.read_at) return false;
+          const status = details[n.ref_id]?.status;
+          const original = initialStatus.get(n.id);
+          if (status && !original) initialStatus.set(n.id, status);
+          return !(original === 'PENDING' && status && status !== 'PENDING');
+        }));
+      } catch (e: any) {
+        if (alive && number === loadNumber) setError(e.message);
+      }
+    };
     const channel = supabase.channel(`owner-notifications:${tenant}:${user}`).on('postgres_changes', { event: '*', schema: 'public', table: 'owner_notifications', filter: `tenant_id=eq.${tenant}` }, payload => {
       if (!alive) return;
       const n = payload.new as OwnerNotification;
       if (payload.eventType === 'INSERT' && n.tenant_id === tenant && !seen.has(n.id)) {
-        seen.add(n.id);
         void repo.visibleNotifications(tenant, [n]).then(visible => {
-          if (!alive || !visible.length) return;
-          const prefs = readPreferences(localStorage, tenant, user);
-          if (prefs.balloon) setBalloon(n);
-          if (prefs.sound) playNewOrderSound();
-        }).catch(() => { /* The next successful reload will recover the list. */ });
+          if (alive) announce(visible);
+        }).catch(() => { /* O polling também recupera os avisos perdidos. */ });
       }
       void load();
     }).subscribe(() => { void load(); });
     void load();
-    const timer = window.setInterval(load, 15000);
+    const timer = window.setInterval(() => { void load(); }, 15000);
     return () => { alive = false; window.clearInterval(timer); void supabase.removeChannel(channel); };
   }, [tenant, user, allowed]);
 
-  // Aviso some em 5 s.
-  useEffect(() => { if (!balloon) return; const t = window.setTimeout(() => setBalloon(null), 5000); return () => window.clearTimeout(t); }, [balloon]);
   // Tempo relativo atualiza sozinho.
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 30000); return () => window.clearInterval(t); }, []);
   // Preferências (som) sincronizam com a tela de Configurações.
@@ -155,17 +184,6 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
     sync(); window.addEventListener('dc:notification-preferences', sync);
     return () => window.removeEventListener('dc:notification-preferences', sync);
   }, [tenant, user]);
-  // Linha de detalhe (#nº · cliente · total): só leitura, uma vez por pedido.
-  useEffect(() => {
-    if (!tenant || !rows.length) return;
-    const ids = [...new Set(rows.filter(n => n.kind !== 'DRIVER_JOIN_REQUEST').map(n => n.ref_id))].filter(id => !requested.current.has(id));
-    if (!ids.length) return;
-    ids.forEach(id => requested.current.add(id));
-    let alive = true;
-    void Promise.resolve(repo.orderBriefs?.(tenant, ids)).then(b => { if (alive && b) setBriefs(prev => ({ ...prev, ...b })); }).catch(() => { ids.forEach(id => requested.current.delete(id)); });
-    return () => { alive = false; };
-  }, [tenant, rows]);
-
   const unreadCount = rows.filter(n => !n.read_at).length;
   useEffect(() => {
     if (loaded && unreadCount > prevUnread.current) { setRing(true); const t = window.setTimeout(() => setRing(false), 1000); prevUnread.current = unreadCount; return () => window.clearTimeout(t); }
@@ -218,7 +236,23 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
     try { await repo.read(tenant, n.id); setRows(rs => rs.map(r => r.id === n.id ? { ...r, read_at: new Date().toISOString() } : r)); }
     catch (e: any) { setError(e.message); }
   };
-  const view = (n: OwnerNotification) => { void read(n); setBalloon(null); setOpen(false); onOpen(n); };
+  const dismiss = (id: string) => setBalloons(previous => previous.filter(n => n.id !== id));
+  const view = (n: OwnerNotification) => {
+    void read(n); dismiss(n.id); setOpen(false);
+    const detail = briefs[n.ref_id];
+    onOpen(detail?.fulfillmentType === 'DINE_IN' && detail.tabId ? { ...n, tableTarget: detail.tabId } : n);
+  };
+  const accept = async (n: OwnerNotification) => {
+    setAccepting(n.id); setError('');
+    try {
+      const { orderRepository } = await import('../../repositories/orderRepository');
+      await orderRepository.updateStatus(securityContext, tenant, n.ref_id, 'CONFIRMED', undefined, 'PENDING');
+      dismiss(n.id); void read(n);
+      setBriefs(previous => ({ ...previous, [n.ref_id]: { ...previous[n.ref_id], status: 'CONFIRMED' } }));
+    } catch {
+      setError('Não foi possível aceitar o pedido. Tente novamente.');
+    } finally { setAccepting(null); }
+  };
   const readAll = () => { void Promise.all(rows.filter(n => !n.read_at).map(read)); };
   const toggleSound = () => { const next = { ...prefs, sound: !prefs.sound }; setPrefs(next); savePreferences(localStorage, tenant, user, next); if (next.sound) playNewOrderSound(); };
   const restore = () => { savePosition(localStorage, user, null); setPos(null); setLive(null); };
@@ -234,7 +268,7 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
     const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
     if (!d.active) {
       if (Math.hypot(dx, dy) < 6) return;
-      d.active = true; setOpen(false); setBalloon(null);
+      d.active = true; setOpen(false);
       try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* sem captura */ }
     }
     d.last = clampPoint({ x: d.ox + dx, y: d.oy + dy }, vp, pillSize);
@@ -257,9 +291,6 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
 
   const asideStyle: React.CSSProperties = custom && point ? { left: point.x, top: point.y } : { ...floatingAboveActionsStyle, ...floatingSideStyle };
   const bellLabel = `Notificações, ${unreadCount} não ${unreadCount === 1 ? 'lida' : 'lidas'}`;
-  const orderToast = balloon && balloon.kind !== 'DRIVER_JOIN_REQUEST';
-  const toastMeta = balloon ? TYPE_META[notificationType(balloon)] : null;
-  const toastDetail = balloon && balloon.kind !== 'DRIVER_JOIN_REQUEST' ? notificationDetail(briefs[balloon.ref_id]) : '';
 
   // Container não captura cliques (só o próprio botão); sobe acima da barra fixa de ações no modo padrão.
   return <>
@@ -283,18 +314,34 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
       <NotificationList rows={rows} briefs={briefs} now={now} error={open ? error : ''} onRead={n => { void read(n); }} onOpen={view} onReadAll={readAll}
         sound={prefs.sound} onToggleSound={toggleSound} onClose={() => { setOpen(false); bellRef.current?.focus(); }} onRestore={pos ? restore : undefined} />
     </div>}
-    {balloon && !open && toastMeta && <div role="status" data-testid="notification-toast" className="dcn-toast pointer-events-auto z-[62] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_40px_-10px_rgba(15,23,42,.35)]" style={placeStyle(toastPlace)}>
-      <span className="absolute inset-y-0 left-0 w-1.5 bg-[#16a34a]" />
-      <div className="flex items-start gap-3 py-3 pl-5 pr-3">
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: `color-mix(in srgb, ${toastMeta.fg} 14%, #ffffff)`, color: toastMeta.fg }}><toastMeta.Icon size={17} /></span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-900">{cleanMesaDuplication(balloon.title)}</p>
-          {toastDetail && <p className="truncate text-xs text-slate-500">{toastDetail}</p>}
-          <button type="button" onClick={() => view(balloon)} className="mt-2 rounded-lg bg-[#16a34a] px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-green-700">{orderToast ? 'Ver pedido' : 'Ver solicitação'}</button>
-        </div>
-        <button type="button" aria-label="Fechar aviso" onClick={() => setBalloon(null)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"><X size={15} /></button>
-      </div>
-      <span className="dcn-toast-bar absolute bottom-0 left-0 h-0.5 w-full bg-[#16a34a]/50" />
+    {balloons.length > 0 && <div aria-label="Avisos de novas notificações" className="pointer-events-auto z-[62] flex flex-col gap-2 overflow-y-auto" style={placeStyle(toastPlace)}>
+      {balloons.slice(0, 3).map(balloon => {
+        const meta = TYPE_META[notificationType(balloon)];
+        const detail = briefs[balloon.ref_id];
+        const orderToast = balloon.kind === 'ORDER_NEW';
+        const pending = orderToast && detail?.status === 'PENDING';
+        const dineIn = detail?.fulfillmentType === 'DINE_IN';
+        const toastDetail = balloon.kind !== 'DRIVER_JOIN_REQUEST' ? notificationDetail(detail) : '';
+        return <div key={balloon.id} role="status" data-testid="notification-toast" data-notification-id={balloon.id} className="dcn-toast relative shrink-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_40px_-10px_rgba(15,23,42,.35)]">
+          <span className="absolute inset-y-0 left-0 w-1.5 bg-[#16a34a]" />
+          <div className="flex items-start gap-3 py-3 pl-5 pr-3">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: `color-mix(in srgb, ${meta.fg} 14%, #ffffff)`, color: meta.fg }}><meta.Icon size={17} /></span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-900">{cleanMesaDuplication(balloon.title)}</p>
+              {toastDetail && <p className="truncate text-xs text-slate-500">{toastDetail}</p>}
+              {orderToast && dineIn && !pending && <p className="mt-1 text-xs font-semibold text-emerald-800">Enviado à cozinha</p>}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {pending && <button type="button" disabled={!!accepting} onClick={() => { void accept(balloon); }} className="rounded-lg bg-[#16a34a] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">{accepting === balloon.id ? 'Salvando…' : 'Aceitar pedido'}</button>}
+                <button type="button" onClick={() => view(balloon)} className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-bold text-emerald-800">{balloon.kind === 'DRIVER_JOIN_REQUEST' ? 'Ver solicitação' : dineIn ? 'Ver mesa' : 'Ver pedido'}</button>
+              </div>
+            </div>
+            <button type="button" aria-label="Fechar aviso" onClick={() => dismiss(balloon.id)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={15} /></button>
+          </div>
+        </div>;
+      })}
+      {balloons.length > 3 && <button type="button" data-testid="notification-toasts-more" onClick={() => setOpen(true)} className="rounded-lg bg-white p-2 text-sm font-semibold text-emerald-900 shadow">+{balloons.length - 3} {balloons.length - 3 === 1 ? 'aviso' : 'avisos'}</button>}
+      {error && <p role="alert" className="rounded-lg bg-red-50 p-2 text-xs text-red-700">{error}</p>}
     </div>}
+
   </>;
 }

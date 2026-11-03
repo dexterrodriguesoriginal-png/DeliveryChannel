@@ -7,7 +7,8 @@ import { StoreLogo } from '../client/StoreLogo';
 import { buildStoreSwitcherEntries, otherStoresWithPending, pendingLabel, isStaffMembership } from '../../lib/tenant/storeSwitcher';
 
 const ROLE_SHORT: Record<string, string> = {
-  OWNER: 'Proprietário', MANAGER: 'Gerente', OPERATOR: 'Operador', CASHIER: 'Caixa', DELIVERY_MANAGER: 'Gestão de entregas',
+  WAITER: 'Garçom', KITCHEN: 'Cozinha',
+  OWNER: 'Proprietário', MANAGER: 'Gerente', OPERATOR: 'Estoque/Separação', CASHIER: 'Caixa', DELIVERY_MANAGER: 'Coordenador de Entregas',
 };
 const POLL_MS = 20000;
 

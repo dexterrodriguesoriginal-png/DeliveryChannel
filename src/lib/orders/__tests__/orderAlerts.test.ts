@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextStepFor, canCancelOrder, cancelLabel, waitingLabel, buildOrderAlerts, canAcceptOrders, canCallDriverRole, itemsSummary, addressLine, whatsappLink, newPendingIds, lateThresholdMs, alertCounts, alertList, shortPlace } from '../orderAlerts';
+import { nextStepFor, canCancelOrder, cancelLabel, waitingLabel, buildOrderAlerts, canAcceptOrders, canCallDriverRole, itemsSummary, addressLine, whatsappLink, newOrderIds, lateThresholdMs, alertCounts, alertList, shortPlace } from '../orderAlerts';
 
 const NOW = Date.parse('2026-10-19T20:00:00Z');
 const MIN = 60000;
@@ -50,9 +50,9 @@ describe('orderAlerts: Novos / Atrasados / Prontos aguardando entregador', () =>
   });
   it('pedido novo desde a última leitura toca som; primeira leitura não', () => {
     const a = o('PENDING', 1), b = o('PENDING', 0);
-    expect(newPendingIds(null, [a])).toEqual([]);
-    expect(newPendingIds(new Set([a.id]), [a, b])).toEqual([b.id]);
-    expect(newPendingIds(new Set([a.id]), [a, { ...b, status: 'CONFIRMED' }])).toEqual([]);
+    expect(newOrderIds(null, [a])).toEqual([]);
+    expect(newOrderIds(new Set([a.id]), [a, b])).toEqual([b.id]);
+    expect(newOrderIds(new Set([a.id]), [a, { ...b, status: 'CONFIRMED', fulfillmentType: 'DINE_IN' }])).toEqual([b.id]);
   });
 });
 

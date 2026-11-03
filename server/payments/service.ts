@@ -11,7 +11,10 @@ import { encryptionKey, seal, sha256, signedState, unseal, validState } from './
 import type { Transport } from './http';
 
 interface OAuthState { userId: string; membership: string; provider: Provider; verifier: string; cookieHash: string; version: number; }
-export const canManage = (role?: string) => role === 'OWNER' || role === 'MANAGER';
+export const canConfigurePayments = (role?: string) => role === 'OWNER';
+// Operational receipt confirmation is distinct from provider account settings.
+export const canManage = (role?: string) => ['OWNER', 'MANAGER', 'CASHIER'].includes(role || '');
+const canReceivePayment = (order: { staffRole?: string; canReceive?: boolean }) => canManage(order.staffRole) && order.canReceive === true;
 export function assertConfirmation(p: PaymentRow, c: Confirmation) {
   if (!c.paid) return;
   if (c.orderId !== p.order_id || c.currency !== 'BRL' || !Number.isSafeInteger(c.amountCents) || c.amountCents !== Math.round(Number(p.amount) * 100)) {
@@ -81,8 +84,13 @@ export class PaymentService {
   private saveCredentials(tenant: string, provider: Provider, c: Credentials, expectedCipher: string) {
     return this.store.secret('set', tenant, provider, expectedCipher, seal(c, encryptionKey(this.env.PAYMENTS_ENCRYPTION_KEY), `${tenant}:${provider}`));
   }
+  private async ownerMembership(userId: string, membershipId: string) {
+    const membership = await this.store.membership(userId, membershipId);
+    if (!canConfigurePayments(membership.role_id)) throw new PaymentError('FORBIDDEN', 403, 'Somente o dono da loja pode configurar as contas de pagamento.');
+    return membership;
+  }
   async startConnect(userId: string, membership: string, provider: Provider, cookie: string) {
-    const member = await this.store.membership(userId, membership);
+    const member = await this.ownerMembership(userId, membership);
     if (!this.available(provider) || !['mercadopago','pagbank'].includes(provider)) throw new PaymentError('PAYMENTS_UNAVAILABLE', 503, 'Este provedor estará disponível em breve.');
     await this.store.configure(userId, membership, provider, { status:'disconnected' });
     const version = (await this.store.accounts(member.tenant_id)).find(a => a.provider === provider)?.connection_version ?? 0;
@@ -103,12 +111,12 @@ export class PaymentService {
     if (!cipher) throw new PaymentError('STATE_ALREADY_USED', 403, 'Conexão expirada. Inicie novamente.');
     const payload = unseal<OAuthState>(cipher, encryptionKey(this.env.PAYMENTS_ENCRYPTION_KEY), state);
     if (payload.provider !== provider || payload.cookieHash !== sha256(cookie)) throw new PaymentError('INVALID_STATE', 403);
-    const membership = await this.store.membership(payload.userId, payload.membership);
+    const membership = await this.ownerMembership(payload.userId, payload.membership);
     const c = await this.adapters[provider].connect({ code, verifier: payload.verifier, redirectUri: `${this.origin}/api/payments/oauth/${provider}/callback` });
     await this.store.completeConnection(payload.userId, payload.membership, provider, seal(c, encryptionKey(this.env.PAYMENTS_ENCRYPTION_KEY), `${membership.tenant_id}:${provider}`), payload.version);
   }
   async configure(userId: string, membershipId: string, provider: Provider, body: Record<string, unknown>) {
-    const membership = await this.store.membership(userId, membershipId);
+    const membership = await this.ownerMembership(userId, membershipId);
     if (body.action === 'disconnect') {
       // The SQL status trigger atomically erases credentials, webhook tokens and pending OAuth states.
       const cipher = provider === 'manual_pix' ? null : await this.store.secret('get', membership.tenant_id, provider);
@@ -151,11 +159,12 @@ export class PaymentService {
   }
   async create(userId: string, email: string, orderId: string, provider: Provider, method: Method, taxId?: string) {
     const order = await this.store.order(userId, orderId, method === 'pix' && ['mercadopago','pagbank'].includes(provider));
+    if (!order.customerOwned && !canReceivePayment(order)) throw new PaymentError('FORBIDDEN', 403);
     if (!this.available(provider)) throw new PaymentError('PAYMENTS_UNAVAILABLE', 503);
     if (provider === 'pagbank' && method === 'pix' && (!taxId || !/^\d{11}(\d{3})?$/.test(taxId))) throw new PaymentError('TAX_ID_REQUIRED', 400, 'Informe o CPF ou CNPJ do pagador para gerar o PIX.');
     const { payment, claimed } = await this.store.reserve(orderId, userId, provider, method);
     if (payment.anonymized_at || !payment.tenant_id || !payment.order_id) throw new PaymentError('PAYMENT_UNAVAILABLE',409);
-    if (!claimed) return paymentView(payment, canManage(order.staffRole));
+    if (!claimed) return paymentView(payment, canReceivePayment(order));
     const input = this.input(order, payment, email, taxId);
     if (!input.email && method === 'pix' && provider === 'mercadopago') throw new PaymentError('EMAIL_REQUIRED', 400, 'Cadastre um e-mail para gerar o pagamento.');
     const adapter = this.adapters[provider];
@@ -163,7 +172,7 @@ export class PaymentService {
     if (provider === 'pagbank') await this.store.secret('webhook_set', undefined, undefined, payment.id, seal({ accessToken: c.accessToken }, encryptionKey(this.env.PAYMENTS_ENCRYPTION_KEY), `webhook:${payment.id}`));
     const charge = await (method === 'pix' ? adapter.createPixCharge(input, c) : adapter.createCardCheckout(input, c));
     await this.store.saveCharge(payment.id, charge);
-    return paymentView(await this.store.payment(orderId), canManage(order.staffRole));
+    return paymentView(await this.store.payment(orderId), canReceivePayment(order));
   }
   async refresh(p: PaymentRow, order: any, email: string, paymentHint?: string, webhook = false) {
     if (p.anonymized_at || !p.order_id || !p.tenant_id || p.status !== 'pending' || !p.provider_payment_id || ['manual_pix','infinitepay'].includes(p.provider)) return;
@@ -188,12 +197,12 @@ export class PaymentService {
     const p = await this.store.payment(orderId);
     if (p && (order.status === 'CANCELLED' || order.payment_status === 'REFUNDED')) return { ...paymentView(p, false)!, status: order.status === 'CANCELLED' ? 'cancelled' : 'refunded', brcode: null, checkoutUrl: null };
     if (p) await this.refresh(p, order, email);
-    return paymentView(p ? await this.store.payment(orderId) : null, canManage(order.staffRole));
+    return paymentView(p ? await this.store.payment(orderId) : null, canReceivePayment(order));
   }
   async manualConfirm(userId: string, orderId: string) {
     const order = await this.store.order(userId, orderId);
-    // Manual confirmation marks money as received: OWNER/MANAGER only (never CASHIER or customer).
-    if (!canManage(order.staffRole)) throw new PaymentError('FORBIDDEN', 403);
+    // Staff must retain an operational receipt permission at the time of action.
+    if (!canReceivePayment(order)) throw new PaymentError('FORBIDDEN', 403);
     const payment = await this.store.payment(orderId);
     if (!payment || !['manual_pix','infinitepay'].includes(payment.provider)) throw new PaymentError('MANUAL_CONFIRMATION_FORBIDDEN', 403);
     await this.store.confirm(payment.id, null, userId);

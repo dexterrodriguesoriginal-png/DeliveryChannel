@@ -17,6 +17,8 @@ import { driverInviteRepository } from '../repositories/driverRepository';
 import { BusinessType } from '../lib/modules';
 import { DemoSegment } from '../lib/demoPacks';
 import { themeService } from '../services/themeService';
+import { storeTeamRepository } from '../repositories/storeTeamRepository';
+import type { StoreTools } from '../lib/teamAccess';
 
 export interface TenantMembership {
   tenantId: string;
@@ -59,6 +61,11 @@ interface AuthContextType {
   currentUser: AppUser | null;
   activeRole: RoleId | null;
   activeTenant: Tenant | null;
+  storePermissions: string[] | null;
+  storeTools: StoreTools;
+  storeAccessLoading: boolean;
+  storeAccessError: boolean;
+  refreshStoreAccess: () => Promise<void>;
   isCeoSupportMode: boolean;
   securityContext: SecurityContext;
 
@@ -214,6 +221,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeTenant, setActiveTenantState] = useState<Tenant | null>(null);
   const [isCeoSupportMode, setIsCeoSupportMode] = useState<boolean>(false);
   const [isPreviewBypass, setIsPreviewBypass] = useState<boolean>(() => isPreviewBypassActive());
+
+  const [storePermissions, setStorePermissions] = useState<string[] | null>(null);
+  const [storeTools, setStoreTools] = useState<StoreTools>({ waiter: false, kitchen: false });
+  const [storeAccessError, setStoreAccessError] = useState(false);
+  const accessGeneration = useRef(0);
+  const [accessScope, setAccessScope] = useState<string | null>(null);
+  const currentAccessScope = `${activeTenant?.id || ''}:${activeRole || ''}`;
+  const refreshStoreAccess = useCallback(async () => {
+    const generation = ++accessGeneration.current;
+    setStoreAccessError(false);
+    if (!activeTenant?.id || !activeRole || ['CEO', 'SUPER_ADMIN', 'CUSTOMER'].includes(activeRole) || !isSupabaseConfigured) {
+      setStorePermissions(null); setAccessScope(`${activeTenant?.id || ''}:${activeRole || ''}`); return;
+    }
+    try {
+      const result = await storeTeamRepository.getAccess(activeTenant.id);
+      if (generation !== accessGeneration.current) return;
+      setAccessScope(`${activeTenant.id}:${activeRole}`);
+      setStorePermissions(Array.isArray(result.permissions) ? result.permissions : []);
+      setStoreTools({ waiter: result.tools?.waiter === true, kitchen: result.tools?.kitchen === true });
+    } catch {
+      if (generation === accessGeneration.current) { setAccessScope(`${activeTenant.id}:${activeRole}`); setStorePermissions([]); setStoreAccessError(true); }
+    }
+  }, [activeTenant?.id, activeRole]);
+  useEffect(() => {
+    void refreshStoreAccess();
+    const refresh = () => { void refreshStoreAccess(); };
+    window.addEventListener('dc:store-access-changed', refresh);
+    // Permission changes by the owner also reach already logged-in team members.
+    const timer = window.setInterval(refresh, 15000);
+    return () => { ++accessGeneration.current; window.clearInterval(timer); window.removeEventListener('dc:store-access-changed', refresh); };
+  }, [refreshStoreAccess]);
 
   // Bypass de login removido (bloqueador do piloto): não existe acesso ao painel sem sessão Supabase.
   // Limpa qualquer marcador legado deixado por versões anteriores.
@@ -1235,7 +1273,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<{ success: boolean; requiresEmailConfirmation?: boolean; error?: string }> => {
     setAuthError(null);
     try {
-      if (metadata?.legal_accepted !== true || metadata?.legal_version !== LEGAL_VERSION || !['owner','customer'].includes(metadata?.legal_audience)) {
+      const invitedTeamSignup = typeof metadata?.waiter_signup_slug === 'string' && /^[a-z0-9][a-z0-9-]{0,99}$/i.test(metadata.waiter_signup_slug)
+        || typeof metadata?.team_signup_slug === 'string' && /^[a-z0-9][a-z0-9-]{0,99}$/i.test(metadata.team_signup_slug)
+          && ['MANAGER','CASHIER','KITCHEN','WAITER','OPERATOR','DELIVERY_MANAGER','DRIVER'].includes(metadata.team_signup_role);
+      // The signup trigger independently verifies the exact store, email and role invitation.
+      if (!invitedTeamSignup && (metadata?.legal_accepted !== true || metadata?.legal_version !== LEGAL_VERSION || !['owner','customer'].includes(metadata?.legal_audience))) {
         return { success: false, error: 'Aceite os Termos de Uso e a Política de Privacidade atuais para criar sua conta.' };
       }
       const cleanEmail = email.trim();
@@ -1883,6 +1925,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser,
         activeRole,
         activeTenant,
+        storePermissions: accessScope === currentAccessScope ? storePermissions : [],
+        storeTools: accessScope === currentAccessScope ? storeTools : { waiter: false, kitchen: false },
+        storeAccessLoading: accessScope !== currentAccessScope, storeAccessError, refreshStoreAccess,
         isCeoSupportMode,
         securityContext,
 

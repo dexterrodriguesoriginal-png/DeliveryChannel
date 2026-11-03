@@ -76,9 +76,19 @@ SELECT t.throws(format($$SELECT public.update_order_status(%L,'CONFIRMED')$$, cu
 SELECT t.login('c0000000-0000-0000-0000-000000000001');
 SELECT t.throws(format($$SELECT public.update_order_status(%L,'READY')$$, current_setting('t.o4')), 'ORDER_NOT_FOUND', 'CEO: sem poder operacional escopado');
 
--- Exclusão de pedidos foi substituída por arquivamento reversível.
+-- N1 allows deletion only for eligible terminal orders. The later 4300 archive
+-- suite separately verifies the replacement policy and unconditional delete guard.
+SELECT to_regprocedure('public.archive_orders(uuid[],boolean)') IS NOT NULL AS has_archive \gset
 SELECT t.login('a0000000-0000-0000-0000-000000000001');
+\if :has_archive
 SELECT t.throws(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.o1')), 'permission denied', 'OWNER: exclusão de cancelado negada');
 SELECT t.is(t.order_status(current_setting('t.o1')::uuid), 'CANCELLED', 'pedido cancelado preservado');
 RESET ROLE;
 SELECT t.throws(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.o1')), 'ORDER_DELETE_FORBIDDEN', 'trigger: nem operação de sistema exclui pedido');
+\else
+SELECT t.lives(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.o1')), 'N1: OWNER remove cancelado elegível antes do arquivamento 4300');
+SELECT t.ok(t.order_status(current_setting('t.o1')::uuid) IS NULL, 'N1: cancelado elegível removido');
+RESET ROLE;
+SELECT set_config('t.delete_active', t.mk_order(:A,'PREPARING')::text, false);
+SELECT t.throws(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.delete_active')), 'ORDER_DELETE_FORBIDDEN|DELETE_FORBIDDEN|Somente|somente', 'N1: trigger preserva pedido em preparo na sessão autenticada');
+\endif

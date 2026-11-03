@@ -58,7 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   onCloseMobile = () => {},
 }) => {
-  const { activeRole, activeTenant } = useAuth();
+  const { activeRole, activeTenant, storePermissions, storeTools } = useAuth();
   const { available: modulesAvailable, modules: enabledModuleSet, isModuleEnabled } = useModules();
   const [hasDiningTables, setHasDiningTables] = useState(false);
 
@@ -162,7 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ? [{ id: 'est-modules', label: 'Ferramentas', icon: <SlidersHorizontal className="w-4 h-4 shrink-0" /> }]
           : []),
         { id: 'est-team', label: 'Equipe & Permissões', icon: <UserPlus className="w-4 h-4 shrink-0" /> },
-        ...(modulesAvailable && isModuleEnabled('kds')
+        ...(storeTools?.kitchen
           ? [{ id: 'est-kitchen', label: 'Tela da Cozinha', icon: <ChefHat className="w-4 h-4 shrink-0" /> }]
           : []),
         { id: 'est-settings', label: 'Configurações da Loja', icon: <Settings className="w-4 h-4 shrink-0" /> },
@@ -202,8 +202,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         .map(g => ({
           ...g,
           items: g.items.filter(it =>
-            canAccessEstTab(activeRole, it.id) &&
-            isTabModuleEnabled(enabledModuleSet, it.id)
+            canAccessEstTab(activeRole, it.id, storePermissions) &&
+            (it.id === 'est-kitchen' ? storeTools?.kitchen === true : isTabModuleEnabled(enabledModuleSet, it.id))
           ),
         }))
         .filter(g => g.items.length > 0);

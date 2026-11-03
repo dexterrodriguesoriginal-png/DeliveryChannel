@@ -22,6 +22,9 @@ done
 psql -v ON_ERROR_STOP=1 -f supabase/tests/n1n6/sql/01_legacy_data.sql
 for file in supabase/migrations/*.sql; do
   version=${file##*/}
+  # Check 04100 against its original predecessor; later wrappers belong to later suites.
+  migration_version=${version%%_*}
+  [ "$migration_version" -gt 20261026004100 ] && continue
   case "$version" in
     202609*) ;;
     20261026004100_*) ;;

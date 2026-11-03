@@ -4,13 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const h = vi.hoisted(() => ({
-  auth: { supabaseUser: null as null | { email: string }, activeTenant: null as null | { id: string; name: string }, activeRole: null as null | string, availableTenants: [] as Array<{ tenantId: string; tenantName: string; roleId: string }>, switchTenant: vi.fn(), isLoadingAuth: false, isMembershipLoading: false, authState: 'AUTHENTICATED', signOut: vi.fn(), signUp: vi.fn(), signInWithPassword: vi.fn(), refreshSession: vi.fn() },
+  auth: { supabaseUser: null as null | { email: string }, activeTenant: null as null | { id: string; name: string; slug?: string }, activeRole: null as null | string, availableTenants: [] as Array<{ tenantId: string; tenantName: string; roleId: string; tenantSlug?: string; status?: string }>, switchTenant: vi.fn(), isLoadingAuth: false, isMembershipLoading: false, authState: 'AUTHENTICATED', signOut: vi.fn(), signUp: vi.fn(), signInWithPassword: vi.fn(), refreshSession: vi.fn() },
   team: { listMyReceivedInvites: vi.fn(), acceptInvite: vi.fn() },
+  rpc: vi.fn(),
   modules: { enabled: true },
   getForTenant: vi.fn(async (_id: string) => ({ available: true, modules: [{ key: 'dine_in', enabled: true }] })),
   getPublicEnabled: vi.fn(async (_id: string) => new Set<string>()),
 }));
-vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: {} }));
+vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: { rpc: h.rpc } }));
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => h.auth }));
 vi.mock('../../../hooks/useModules', () => ({ useModules: () => ({ available: true, loading: false, isModuleEnabled: () => h.modules.enabled }) }));
 vi.mock('../../../repositories/teamRepository', () => ({ teamRepository: h.team }));
@@ -20,7 +21,7 @@ import { WaiterApp } from '../WaiterApp';
 import { WaiterTableSheet } from '../WaiterTableSheet';
 
 const invite = (id: string, roleId = 'WAITER') => ({ id, roleId, status: 'PENDING', tenantName: 'Bar do Zé' });
-beforeEach(() => { Object.values(h.team).forEach(m => m.mockReset()); h.auth.refreshSession.mockReset(); h.auth.switchTenant.mockReset(); h.auth.supabaseUser = { email: 'ana@loja.com' }; h.auth.activeTenant = null; h.auth.activeRole = null; h.auth.availableTenants = []; h.modules.enabled = true; h.getPublicEnabled.mockReset(); h.getPublicEnabled.mockResolvedValue(new Set<string>()); window.history.replaceState(null, '', '/garcom'); });
+beforeEach(() => { h.rpc.mockReset(); h.auth.signUp.mockReset(); h.auth.signInWithPassword.mockReset(); Object.values(h.team).forEach(m => m.mockReset()); h.auth.refreshSession.mockReset(); h.auth.switchTenant.mockReset(); h.auth.switchTenant.mockResolvedValue(true); h.auth.supabaseUser = { email: 'ana@loja.com' }; h.auth.activeTenant = null; h.auth.activeRole = null; h.auth.availableTenants = []; h.modules.enabled = true; h.getPublicEnabled.mockReset(); h.getPublicEnabled.mockResolvedValue(new Set<string>()); window.history.replaceState(null, '', '/garcom'); });
 afterEach(cleanup);
 
 describe('/garcom — convite pendente', () => {
@@ -49,6 +50,87 @@ describe('/garcom — convite pendente', () => {
     render(<WaiterApp />);
     expect((screen.getByLabelText('E-mail') as HTMLInputElement).value).toBe('ana@loja.com');
     expect(screen.getByRole('button', { name: 'Criar conta e entrar' })).toBeTruthy();
+  });
+
+  it('QR da loja A não lista nem aceita convite da loja B', async () => {
+    window.history.replaceState(null, '', '/garcom/adega-a');
+    h.team.listMyReceivedInvites.mockResolvedValue([{ ...invite('convite-b'), tenantId: 'tenant-b', tenantName: 'SEGREDO_LOJA_B' }]);
+    h.rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'INVITE_REQUIRED' } });
+    render(<WaiterApp />);
+    expect((await screen.findByTestId('waiter-no-access')).textContent).toContain('Este e-mail não foi convidado. Fale com o estabelecimento.');
+    expect(h.rpc).toHaveBeenCalledWith('team_accept_invite', { p_slug: 'adega-a', p_role: 'WAITER' });
+    expect(h.team.listMyReceivedInvites).not.toHaveBeenCalled();
+    expect(h.team.acceptInvite).not.toHaveBeenCalled();
+    expect(h.auth.refreshSession).not.toHaveBeenCalled();
+    expect(screen.queryByText(/SEGREDO_LOJA_B/)).toBeNull();
+  });
+  it('QR aceita exclusivamente o convite da loja e recarrega a sessão', async () => {
+    window.history.replaceState(null, '', '/garcom/adega-a');
+    h.rpc.mockResolvedValue({ data: { tenant_id: 'tenant-a', role: 'WAITER' }, error: null });
+    render(<WaiterApp />);
+    await waitFor(() => expect(h.auth.refreshSession).toHaveBeenCalledTimes(1));
+    expect(h.rpc).toHaveBeenCalledWith('team_accept_invite', { p_slug: 'adega-a', p_role: 'WAITER' });
+    expect(h.team.listMyReceivedInvites).not.toHaveBeenCalled();
+    expect(h.team.acceptInvite).not.toHaveBeenCalled();
+  });
+
+  it('QR da loja A seleciona só o vínculo A e não monta dados da loja B durante a troca', async () => {
+    window.history.replaceState(null, '', '/garcom/adega-a');
+    h.auth.activeTenant = { id: 'tenant-b', name: 'SEGREDO_LOJA_B', slug: 'adega-b' };
+    h.auth.activeRole = 'WAITER';
+    h.auth.availableTenants = [
+      { tenantId: 'tenant-b', tenantName: 'SEGREDO_LOJA_B', tenantSlug: 'adega-b', roleId: 'WAITER', status: 'ACTIVE' },
+      { tenantId: 'tenant-a', tenantName: 'Loja A', tenantSlug: 'adega-a', roleId: 'WAITER', status: 'ACTIVE' },
+    ];
+    render(<WaiterApp />);
+    await waitFor(() => expect(h.auth.switchTenant).toHaveBeenCalledExactlyOnceWith('tenant-a'));
+    expect(screen.getByTestId('waiter-loading')).toBeTruthy();
+    expect(screen.queryByText(/SEGREDO_LOJA_B/)).toBeNull();
+    expect(h.getPublicEnabled).not.toHaveBeenCalled();
+    expect(h.team.listMyReceivedInvites).not.toHaveBeenCalled();
+  });
+  it('QR sem vínculo A verifica somente convite A e não usa a loja B ativa', async () => {
+    window.history.replaceState(null, '', '/garcom/adega-a');
+    h.auth.activeTenant = { id: 'tenant-b', name: 'SEGREDO_LOJA_B', slug: 'adega-b' };
+    h.auth.activeRole = 'WAITER';
+    h.auth.availableTenants = [{ tenantId: 'tenant-b', tenantName: 'SEGREDO_LOJA_B', tenantSlug: 'adega-b', roleId: 'WAITER', status: 'ACTIVE' }];
+    h.rpc.mockResolvedValue({ data: null, error: { code: '42501' } });
+    render(<WaiterApp />);
+    await screen.findByTestId('waiter-no-access');
+    expect(h.auth.switchTenant).not.toHaveBeenCalled();
+    expect(h.rpc).toHaveBeenCalledWith('team_accept_invite', { p_slug: 'adega-a', p_role: 'WAITER' });
+    expect(screen.queryByText(/SEGREDO_LOJA_B/)).toBeNull();
+  });
+  it('slug ambíguo em vínculos falha fechado sem escolher outra loja', () => {
+    window.history.replaceState(null, '', '/garcom/adega-a');
+    h.auth.activeTenant = { id: 'tenant-b', name: 'SEGREDO_LOJA_B', slug: 'adega-b' };
+    h.auth.activeRole = 'WAITER';
+    h.auth.availableTenants = [
+      { tenantId: 'tenant-a1', tenantName: 'Loja A1', tenantSlug: 'adega-a', roleId: 'WAITER', status: 'ACTIVE' },
+      { tenantId: 'tenant-a2', tenantName: 'Loja A2', tenantSlug: 'adega-a', roleId: 'WAITER', status: 'ACTIVE' },
+    ];
+    render(<WaiterApp />);
+    expect(screen.getByTestId('waiter-scope-ambiguous')).toBeTruthy();
+    expect(h.auth.switchTenant).not.toHaveBeenCalled(); expect(h.rpc).not.toHaveBeenCalled();
+    expect(screen.queryByText(/SEGREDO_LOJA_B/)).toBeNull();
+  });
+
+  it('salão desligado no QR A não muda automaticamente para B nem mostra seletor de outras lojas', async () => {
+    window.history.replaceState(null, '', '/garcom/adega-a');
+    h.auth.activeTenant = { id: 'tenant-a', name: 'Loja A', slug: 'adega-a' };
+    h.auth.activeRole = 'WAITER';
+    h.auth.availableTenants = [
+      { tenantId: 'tenant-a', tenantName: 'Loja A', tenantSlug: 'adega-a', roleId: 'WAITER', status: 'ACTIVE' },
+      { tenantId: 'tenant-b', tenantName: 'SEGREDO_LOJA_B', tenantSlug: 'adega-b', roleId: 'WAITER', status: 'ACTIVE' },
+    ];
+    h.modules.enabled = false;
+    h.getForTenant.mockClear();
+    render(<WaiterApp />);
+    await screen.findByTestId('waiter-tool-off');
+    expect(h.auth.switchTenant).not.toHaveBeenCalled();
+    expect(h.getForTenant).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('waiter-store-picker')).toBeNull();
+    expect(screen.queryByText(/SEGREDO_LOJA_B/)).toBeNull();
   });
 
   it('Parte H: quando a loja ativa está com salão desligado mas outra loja do garçom tem dine_in ligado (ex.: ADEGASHOW), troca automaticamente e mostra seletor de loja', async () => {
@@ -145,5 +227,94 @@ describe('WaiterTableSheet — Partes A e D (Trocar responsável e Liberar mesa 
     expect(screen.getByText('Conta solicitada pelo cliente. Aguarde o caixa autorizar o fechamento.')).toBeTruthy();
     expect(screen.getByText('Pronto no balcão · balcão chamando')).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Lançar pedido' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+
+describe('/garcom — cadastro só após convite da loja', () => {
+  const openSignup = () => {
+    h.auth.supabaseUser = null;
+    window.history.replaceState(null, '', '/garcom/bar-do-ze?signup=1');
+    render(<WaiterApp />);
+    fireEvent.change(screen.getByLabelText('Seu nome'), { target: { value: 'Ana Silva' } });
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'Ana@loja.com' } });
+    fireEvent.change(screen.getByLabelText('Senha'), { target: { value: 'segura123' } });
+  };
+  const submitSignup = () => fireEvent.click(screen.getByRole('button', { name: 'Criar conta e entrar' }));
+
+  it('não convidado: mensagem imediata e não chama signUp nem dispara confirmação', async () => {
+    h.rpc.mockResolvedValue({ data: { invited: false }, error: null });
+    openSignup(); submitSignup();
+    expect((await screen.findByRole('alert')).textContent).toBe('Este e-mail não foi convidado. Fale com o estabelecimento.');
+    expect(h.rpc).toHaveBeenCalledWith('waiter_invite_check', { p_slug: 'bar-do-ze', p_email: 'Ana@loja.com' });
+    expect(h.auth.signUp).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('waiter-confirm-email')).toBeNull();
+  });
+
+  it('convidado: checa primeiro, envia a loja para a defesa do servidor e não aceita termos de dono', async () => {
+    h.rpc.mockResolvedValue({ data: { invited: true }, error: null });
+    h.auth.signUp.mockResolvedValue({ success: true, requiresEmailConfirmation: true });
+    openSignup(); submitSignup();
+    await screen.findByTestId('waiter-confirm-email');
+    expect(h.auth.signUp).toHaveBeenCalledWith('Ana@loja.com', 'segura123', 'Ana Silva', undefined, { audience: 'team', waiter_signup_slug: 'bar-do-ze' });
+    expect(h.rpc.mock.invocationCallOrder[0]).toBeLessThan(h.auth.signUp.mock.invocationCallOrder[0]);
+  });
+
+  it('limite da checagem também recusa cadastro sem enviar e-mail', async () => {
+    h.rpc.mockResolvedValue({ data: { invited: false, rate_limited: true }, error: null });
+    openSignup(); submitSignup();
+    expect((await screen.findByRole('alert')).textContent).toBe('Este e-mail não foi convidado. Fale com o estabelecimento.');
+    expect(h.auth.signUp).not.toHaveBeenCalled();
+  });
+
+  it('falha na checagem bloqueia signUp e permite tentar de novo', async () => {
+    h.rpc.mockResolvedValue({ data: null, error: { message: 'offline' } });
+    openSignup(); submitSignup();
+    expect((await screen.findByRole('alert')).textContent).toBe('Não foi possível verificar o convite. Tente novamente em instantes.');
+    expect(h.auth.signUp).not.toHaveBeenCalled();
+    expect((screen.getByRole('button', { name: 'Criar conta e entrar' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('rota sem loja exige o identificador antes de consultar convite', async () => {
+    h.auth.supabaseUser = null;
+    window.history.replaceState(null, '', '/garcom?signup=1');
+    render(<WaiterApp />);
+    fireEvent.change(screen.getByLabelText('Seu nome'), { target: { value: 'Ana' } });
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'ana@loja.com' } });
+    fireEvent.change(screen.getByLabelText('Senha'), { target: { value: '123456' } });
+    fireEvent.submit(screen.getByRole('button', { name: 'Criar conta e entrar' }).closest('form')!);
+    expect((await screen.findByRole('alert')).textContent).toContain('Informe o identificador da loja');
+    expect(h.rpc).not.toHaveBeenCalled(); expect(h.auth.signUp).not.toHaveBeenCalled();
+    h.rpc.mockResolvedValue({ data: { invited: false }, error: null });
+    fireEvent.change(screen.getByLabelText('Identificador da loja'), { target: { value: 'outra-loja' } });
+    submitSignup();
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('waiter_invite_check', { p_slug: 'outra-loja', p_email: 'ana@loja.com' }));
+  });
+
+  it('olho alterna senha no signup e login por e-mail, sem enviar formulário', () => {
+    openSignup();
+    const password = screen.getByLabelText('Senha') as HTMLInputElement;
+    expect(password.type).toBe('password');
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar senha' }));
+    expect(password.type).toBe('text');
+    fireEvent.click(screen.getByRole('button', { name: 'Ocultar senha' }));
+    expect(password.type).toBe('password');
+    fireEvent.click(screen.getByRole('button', { name: 'Já tenho conta' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar senha' }));
+    expect(password.type).toBe('text');
+    expect(h.auth.signInWithPassword).not.toHaveBeenCalled(); expect(h.auth.signUp).not.toHaveBeenCalled();
+  });
+
+  it('olho no login por usuário usa Mostrar senha/Ocultar senha', async () => {
+    h.auth.supabaseUser = null;
+    h.rpc.mockResolvedValue({ data: { name: 'Bar do Zé', slug: 'bar-do-ze' }, error: null });
+    window.history.replaceState(null, '', '/garcom/bar-do-ze');
+    render(<WaiterApp />);
+    await screen.findByText('Bar do Zé');
+    const password = screen.getByLabelText('Senha') as HTMLInputElement;
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar senha' }));
+    expect(password.type).toBe('text');
+    fireEvent.click(screen.getByRole('button', { name: 'Ocultar senha' }));
+    expect(password.type).toBe('password');
   });
 });

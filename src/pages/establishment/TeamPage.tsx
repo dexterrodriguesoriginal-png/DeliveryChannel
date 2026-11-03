@@ -7,10 +7,12 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { TeamMember, TeamInvite, RoleId } from '../../types';
-import { Users, UserPlus, Trash2, Mail, Phone, Clock, RefreshCw, XCircle, Send, Pencil, KeyRound, Power, UserCheck, AtSign } from 'lucide-react';
+import { Users, UserPlus, Trash2, Mail, Phone, Clock, RefreshCw, XCircle, Send, Pencil, KeyRound, Power, AtSign } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { TeamMemberStatusBadge } from '../../components/establishment/statusBadges';
-import { WaiterPhonePairingCard } from '../../components/establishment/WaiterPhonePairingCard';
+import { TeamRoleAccessBlock } from '../../components/establishment/TeamRoleAccessBlock';
+import { storeTeamRepository, type StoreRolePermission } from '../../repositories/storeTeamRepository';
+import { TEAM_ROLE_LABELS, STORE_PERMISSION_LABELS, visibleTeamRoles, canCustomizeRolePermission, type StoreTools } from '../../lib/teamAccess';
 import { WaiterAccessBlock } from '../../components/establishment/WaiterAccessBlock';
 import { CreateWaiterModal, EditWaiterModal, ResetWaiterPasswordModal } from '../../components/establishment/waiter/WaiterTeamModals';
 import { waiterV2Repository, type DirectoryMember } from '../../repositories/waiterV2Repository';
@@ -18,12 +20,17 @@ import { initials } from '../../lib/waiter/waiterRouting';
 import { isWaiterSyntheticEmail } from '../../lib/waiter/waiterIdentity';
 
 export const TeamPage: React.FC = () => {
-  const { activeTenant, securityContext } = useAuth();
+  const { activeTenant, securityContext, activeRole, refreshStoreAccess } = useAuth();
   const { showToast } = useToast();
 
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [pendingInvites, setPendingInvites] = useState<TeamInvite[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [tools, setTools] = useState<StoreTools>({ waiter: false, kitchen: false });
+  const [permissions, setPermissions] = useState<StoreRolePermission[]>([]);
+  const [settingsError, setSettingsError] = useState('');
+  const [savingPermission, setSavingPermission] = useState<string | null>(null);
+  const [waiterMode, setWaiterMode] = useState<'login' | 'invite'>('login');
   const currentTenant = useRef(activeTenant?.id);
   currentTenant.current = activeTenant?.id;
   const [loadedTenant, setLoadedTenant] = useState<string | null>(null);
@@ -31,7 +38,6 @@ export const TeamPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [waiterShare, setWaiterShare] = useState<string | null>(null);
-  const [openAccessId, setOpenAccessId] = useState<string | null>(null);
   // Garçom v2 (login por usuário e senha): só aparece com a migration 20261027004900 aplicada.
   const [directory, setDirectory] = useState<Map<string, DirectoryMember> | null>(null);
   const [createWaiterOpen, setCreateWaiterOpen] = useState(false);
@@ -47,16 +53,21 @@ export const TeamPage: React.FC = () => {
     if (!activeTenant?.id || currentTenant.current !== activeTenant.id) return;
     setIsLoading(true);
     try {
-      const [members, invites, dir] = await Promise.all([
+      const [members, invites, dir, toolResult, permissionResult] = await Promise.all([
         teamRepository.listTeamMembers(securityContext, activeTenant.id),
         teamRepository.listPendingInvites(securityContext, activeTenant.id),
         waiterV2Repository.directory(activeTenant.id).catch(() => null),
+        storeTeamRepository.listTools(activeTenant.id).then(data => ({ data, failed: false })).catch(() => ({ data: { waiter: false, kitchen: false }, failed: true })),
+        storeTeamRepository.listPermissions(activeTenant.id).catch(() => []),
       ]);
       if (currentTenant.current !== activeTenant.id) return;
       // O diretório (RPC) traz nome/telefone reais: a tabela users só é legível pelo próprio usuário (cards "Colaborador / Sem e-mail").
       const visibleMembers = members.filter(m => m.status !== 'INACTIVE'); // removidos/revogados não aparecem na lista
       const byUser = dir ? new Map(dir.map(d => [d.userId, d])) : null;
       setDirectory(byUser);
+      setTools(toolResult.data);
+      setSettingsError(toolResult.failed ? 'Não foi possível carregar as ferramentas. Atualize os dados antes de adicionar Garçom ou Cozinha.' : '');
+      setPermissions(permissionResult);
       setTeam(byUser ? visibleMembers.map(m => {
         const d = byUser.get(m.userId);
         return d ? { ...m, name: d.name || m.name, email: isWaiterSyntheticEmail(d.email) ? '' : d.email, phone: d.phone || m.phone } : m;
@@ -64,7 +75,7 @@ export const TeamPage: React.FC = () => {
       setPendingInvites(invites);
       setLoadedTenant(activeTenant.id);
     } catch (err) {
-      console.warn('[TeamPage] Erro ao carregar equipe do Supabase:', err);
+      showToast({ type: 'error', title: 'Não foi possível carregar a equipe', message: 'Atualize os dados e tente novamente.' });
     } finally {
       if (currentTenant.current === activeTenant.id) setIsLoading(false);
     }
@@ -74,12 +85,38 @@ export const TeamPage: React.FC = () => {
     fetchTeamData();
   }, [fetchTeamData]);
 
+  useEffect(() => {
+    setIsModalOpen(false); setCreateWaiterOpen(false); setEditWaiter(null); setResetWaiter(null);
+    setStoreAccess(null); setWaiterShare(null); setSavingPermission(null); setIsSubmitting(false); setSettingsError('');
+    setFormData({ email: '', role: 'OPERATOR' });
+  }, [activeTenant?.id]);
+
   if (!activeTenant) return null;
-  const visibleTeam = loadedTenant === activeTenant.id ? team : [];
-  const visibleInvites = loadedTenant === activeTenant.id ? pendingInvites : [];
+  const roleList = visibleTeamRoles(loadedTenant === activeTenant.id ? tools : { waiter: false, kitchen: false });
+  const visibleTeam = loadedTenant === activeTenant.id ? team.filter(member => roleList.includes(member.role)) : [];
+  const visibleInvites = loadedTenant === activeTenant.id ? pendingInvites.filter(invite => roleList.includes(invite.roleId)) : [];
+  const canManage = activeRole === 'OWNER' || activeRole === 'MANAGER';
+  const canEditPermissions = activeRole === 'OWNER';
+  const togglePermission = async (row: StoreRolePermission) => {
+    if (!canEditPermissions || !canCustomizeRolePermission(row.role, row.permission) || savingPermission) return;
+    const tenantId = activeTenant.id;
+    const key = `${row.role}:${row.permission}`;
+    setSavingPermission(key);
+    try {
+      await storeTeamRepository.setPermission(tenantId, row.role, row.permission, !row.enabled);
+      window.dispatchEvent(new Event('dc:store-access-changed'));
+      await refreshStoreAccess?.();
+      if (currentTenant.current !== tenantId) return;
+      setPermissions(rows => rows.map(item => item.role === row.role && item.permission === row.permission ? { ...item, enabled: !row.enabled } : item));
+      showToast({ type: 'success', title: 'Permissão atualizada', message: 'O acesso do papel foi atualizado.' });
+    } catch (err) {
+      if (currentTenant.current === tenantId) showToast({ type: 'error', title: 'Não foi possível alterar a permissão', message: err instanceof Error ? err.message : 'Tente novamente.' });
+    } finally { if (currentTenant.current === tenantId) setSavingPermission(null); }
+  };
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage || !roleList.includes(formData.role) || formData.role === 'OWNER') return;
     if (!formData.email) {
       showToast({
         type: 'error',
@@ -89,6 +126,7 @@ export const TeamPage: React.FC = () => {
       return;
     }
 
+    const tenantId = activeTenant.id;
     setIsSubmitting(true);
     try {
       await teamRepository.createInvite(
@@ -97,11 +135,12 @@ export const TeamPage: React.FC = () => {
         formData.email.trim(),
         formData.role
       );
+      if (currentTenant.current !== tenantId) return;
 
       showToast({
         type: 'success',
         title: 'Convite criado',
-        message: `Convite criado para ${formData.email} com papel de ${formData.role}. Avise o colaborador: ele entra com este e-mail.`,
+        message: `Convite criado para ${formData.email} com papel de ${TEAM_ROLE_LABELS[formData.role] || formData.role}. Avise o colaborador: ele entra com este e-mail.`,
       });
       if (formData.role === 'WAITER') setWaiterShare(formData.email.trim().toLowerCase());
 
@@ -109,19 +148,23 @@ export const TeamPage: React.FC = () => {
       setFormData({ email: '', role: 'OPERATOR' });
       await fetchTeamData();
     } catch (err: any) {
+      if (currentTenant.current !== tenantId) return;
       showToast({
         type: 'error',
         title: 'Erro ao Convidar',
         message: err.message || 'Falha ao processar convite.',
       });
     } finally {
-      setIsSubmitting(false);
+      if (currentTenant.current === tenantId) setIsSubmitting(false);
     }
   };
 
   const handleRevokeInvite = async (invite: TeamInvite) => {
+    if (!canManage) return;
+    const tenantId = activeTenant.id;
     try {
       await teamRepository.revokeInvite(securityContext, activeTenant.id, invite.id);
+      if (currentTenant.current !== tenantId) return;
       showToast({
         type: 'success',
         title: 'Convite Revogado',
@@ -129,6 +172,7 @@ export const TeamPage: React.FC = () => {
       });
       await fetchTeamData();
     } catch (err: any) {
+      if (currentTenant.current !== tenantId) return;
       showToast({
         type: 'error',
         title: 'Erro ao Revogar',
@@ -138,16 +182,21 @@ export const TeamPage: React.FC = () => {
   };
 
   const waiterAction = async (member: TeamMember, run: () => Promise<unknown>, done: { title: string; message: string }) => {
+    if (!canManage) return;
+    const tenantId = activeTenant.id;
     try {
       await run();
+      if (currentTenant.current !== tenantId) return;
       showToast({ type: 'success', ...done });
       await fetchTeamData();
     } catch (err: any) {
+      if (currentTenant.current !== tenantId) return;
       showToast({ type: 'error', title: 'Não foi possível concluir', message: err.message || 'Tente novamente.' });
     }
   };
 
   const handleRemove = async (member: TeamMember) => {
+    if (!canManage) return;
     if (member.role === 'OWNER') {
       showToast({
         type: 'error',
@@ -162,9 +211,11 @@ export const TeamPage: React.FC = () => {
       ? `Remover o garçom ${member.name} desta loja? Ele perderá o acesso ao salão. O histórico de pedidos será mantido.`
       : `Tem certeza que deseja remover ${member.name} da equipe?`)) return;
 
+    const tenantId = activeTenant.id;
     try {
       if (isWaiter) await waiterV2Repository.deleteWaiter(activeTenant.id, member.userId);
       else await teamRepository.removeTeamMember(securityContext, activeTenant.id, member.id);
+      if (currentTenant.current !== tenantId) return;
       setTeam(prev => prev.filter(m => m.id !== member.id)); // some da lista na hora
       showToast({
         type: 'warning',
@@ -173,6 +224,7 @@ export const TeamPage: React.FC = () => {
       });
       await fetchTeamData();
     } catch (err: any) {
+      if (currentTenant.current !== tenantId) return;
       showToast({
         type: 'error',
         title: 'Erro ao Remover',
@@ -188,7 +240,7 @@ export const TeamPage: React.FC = () => {
         <div>
           <h2 className="text-xl font-bold text-gray-900">Equipe & Permissões da Loja</h2>
           <p className="text-xs text-gray-500">
-            Gerencie gerentes, caixas, operadores, motoboys e níveis de acesso (RBAC) com vínculo seguro
+            Organize a equipe por papel e escolha o acesso de cada área.
           </p>
         </div>
 
@@ -202,11 +254,11 @@ export const TeamPage: React.FC = () => {
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-700' : ''}`} />
           </button>
 
-          {/* Botão único (A3). Antes: "Convidar garçom" abria o cadastro v2 (usuário+senha, sem e-mail) e
-              "+ Convidar Colaborador" abria o convite por e-mail para qualquer papel (inclusive Garçom legado). */}
+
           <Button
             variant="primary"
-            onClick={() => { setFormData({ email: '', role: 'OPERATOR' as RoleId }); setIsModalOpen(true); }}
+            onClick={() => { setFormData({ email: '', role: 'OPERATOR' as RoleId }); setWaiterMode('login'); setIsModalOpen(true); }}
+            disabled={!canManage || loadedTenant !== activeTenant.id}
             leftIcon={<UserPlus className="w-4 h-4" />}
             className="shadow-xs text-xs"
             data-testid="add-team-member-btn"
@@ -216,17 +268,35 @@ export const TeamPage: React.FC = () => {
         </div>
       </div>
 
-      <WaiterPhonePairingCard />
+      {settingsError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">{settingsError}</p>}
+      <p className="text-xs text-gray-500">Garçom e Cozinha aparecem quando a ferramenta está ativa. O Dono pode ativá-las em Ferramentas.</p>
+      {roleList.map(role => {
+        const roleMembers = visibleTeam.filter(member => member.role === role);
+        const roleInvites = visibleInvites.filter(invite => invite.roleId === role);
+        const rolePermissions = loadedTenant === activeTenant.id ? permissions.filter(permission => permission.role === role) : [];
+        return <section key={role} className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50/40 p-4" data-testid={`team-role-${role}`}>
+          <h3 className="text-sm font-bold text-gray-900">{TEAM_ROLE_LABELS[role]} ({roleMembers.length + roleInvites.length})</h3>
+          <p className="text-xs text-gray-500">{roleMembers.length} membros · {roleInvites.length} convites pendentes</p>
+          {activeTenant.slug && <details className="text-xs"><summary className="cursor-pointer font-semibold text-emerald-800">QR e link de acesso: {TEAM_ROLE_LABELS[role]}</summary><div className="mt-2"><TeamRoleAccessBlock slug={activeTenant.slug} role={role} /></div></details>}
+          {rolePermissions.length > 0 && <details className="text-xs"><summary className="cursor-pointer font-semibold text-gray-700">Permissões de {TEAM_ROLE_LABELS[role]}</summary>
+            {role === 'OWNER' && <p className="mt-2 text-gray-500">O Dono mantém acesso completo.</p>}
+            {!canEditPermissions && <p className="mt-2 text-gray-500">Somente o Dono pode alterar permissões.</p>}
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">{rolePermissions.map(permission => <label key={permission.permission} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-2">
+              <span>{STORE_PERMISSION_LABELS[permission.permission] || permission.permission}</span>
+              <input type="checkbox" role="switch" aria-label={`${STORE_PERMISSION_LABELS[permission.permission] || permission.permission}: ${TEAM_ROLE_LABELS[role]}`} checked={permission.enabled} disabled={!canEditPermissions || !canCustomizeRolePermission(role, permission.permission) || !!savingPermission} onChange={() => void togglePermission(permission)} />
+            </label>)}</div>
+          </details>}
+
 
       {/* Membros Ativos */}
       <div className="space-y-3">
         <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
           <Users className="w-4 h-4 text-emerald-700" />
-          Colaboradores Ativos ({visibleTeam.length})
+          Membros ({roleMembers.length})
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {visibleTeam.map((member) => (
+          {roleMembers.map((member) => (
             <Card key={member.id} className="p-4 flex flex-col justify-between space-y-3">
               <div className="space-y-2">
                 <div className="flex items-start justify-between">
@@ -239,12 +309,12 @@ export const TeamPage: React.FC = () => {
                     <div>
                       <h4 className="font-bold text-xs text-gray-900 leading-snug">{member.name}</h4>
                       <Badge variant={member.role === 'OWNER' ? 'brand' : 'neutral'} size="sm">
-                        {member.role}
+                        {TEAM_ROLE_LABELS[member.role] || member.role}
                       </Badge>
                     </div>
                   </div>
 
-                  {member.role !== 'OWNER' && (
+                  {canManage && member.role !== 'OWNER' && (
                     <button
                       type="button"
                       onClick={() => handleRemove(member)}
@@ -283,7 +353,7 @@ export const TeamPage: React.FC = () => {
                 </div>
               </div>
 
-              {directory?.get(member.userId)?.username && (
+              {canManage && directory?.get(member.userId)?.username && (
                 <div className="flex flex-wrap gap-1.5" data-testid="waiter-actions">
                   {(() => {
                     const d = directory.get(member.userId)!;
@@ -315,15 +385,15 @@ export const TeamPage: React.FC = () => {
       </div>
 
       {/* Convites Pendentes */}
-      {visibleInvites.length > 0 && (
+      {roleInvites.length > 0 && (
         <div className="space-y-3 pt-4 border-t border-gray-200">
           <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
             <Clock className="w-4 h-4 text-amber-600" />
-            Convites Pendentes ({visibleInvites.length})
+            Convites pendentes ({roleInvites.length})
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {visibleInvites.map((invite) => (
+            {roleInvites.map((invite) => (
               <Card key={invite.id} className="p-4 border-amber-200 bg-amber-50/20 flex flex-col justify-between space-y-3">
                 <div className="space-y-2">
                   <div className="flex items-start justify-between">
@@ -331,13 +401,14 @@ export const TeamPage: React.FC = () => {
                       <span className="text-[11px] font-mono text-gray-500">Convite para:</span>
                       <h4 className="font-bold text-xs text-gray-900 truncate">{invite.email}</h4>
                       <Badge variant="warning" size="sm" className="mt-1">
-                        Cargo: {invite.roleId}
+                        Papel: {TEAM_ROLE_LABELS[invite.roleId] || invite.roleId}
                       </Badge>
                     </div>
 
                     <button
                       type="button"
-                      onClick={() => handleRevokeInvite(invite)}
+                      onClick={() => canManage && handleRevokeInvite(invite)}
+                      disabled={!canManage}
                       className="text-gray-400 hover:text-rose-600 p-1 rounded-lg cursor-pointer transition-colors"
                       title="Cancelar Convite"
                     >
@@ -353,29 +424,28 @@ export const TeamPage: React.FC = () => {
                 <div className="pt-2 border-t border-amber-100 text-[10px] text-gray-400">
                   Aguardando o usuário criar conta ou autenticar com este e-mail.
                 </div>
-                {String(invite.roleId) === 'WAITER' && (
-                  <div>
-                    <button type="button" onClick={() => setOpenAccessId(openAccessId === invite.id ? null : invite.id)} className="w-full rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700" aria-expanded={openAccessId === invite.id}>{openAccessId === invite.id ? 'Ocultar acesso do garçom' : 'Acesso do garçom (QR e link)'}</button>
-                    {openAccessId === invite.id && <div className="mt-3"><WaiterAccessBlock email={invite.email} storeName={activeTenant?.name} compact /></div>}
-                  </div>
-                )}
+                {activeTenant.slug && <details><summary className="cursor-pointer text-xs font-semibold text-emerald-800">QR e link do convite</summary><div className="mt-2"><TeamRoleAccessBlock slug={activeTenant.slug} role={invite.roleId} /></div></details>}
               </Card>
             ))}
           </div>
         </div>
       )}
 
+        </section>;
+      })}
+
       {/* Modal Convidar */}
       <Modal
-        isOpen={isModalOpen}
+        isOpen={isModalOpen && loadedTenant === activeTenant.id}
         onClose={() => setIsModalOpen(false)}
         title="Adicionar membro da equipe"
-        description="Escolha o papel. Garçom entra com usuário e senha (sem e-mail); os demais papéis recebem convite por e-mail."
+        description="Escolha o papel e convide pelo e-mail. Garçons também podem ser cadastrados com usuário e senha."
         size="md"
       >
         <form
           onSubmit={(e) => {
-            if (formData.role === 'WAITER') {
+            if (loadedTenant !== activeTenant.id || !canManage) { e.preventDefault(); return; }
+            if (formData.role === 'WAITER' && waiterMode === 'login' && tools.waiter) {
               e.preventDefault();
               setIsModalOpen(false);
               setCreateWaiterOpen(true);
@@ -385,7 +455,7 @@ export const TeamPage: React.FC = () => {
           }}
           className="space-y-4 text-xs"
         >
-          {formData.role !== 'WAITER' && (
+          {(formData.role !== 'WAITER' || waiterMode === 'invite') && (
             <Input
               label="E-mail do Colaborador *"
               type="email"
@@ -406,16 +476,9 @@ export const TeamPage: React.FC = () => {
               required
               data-testid="team-role-select"
             >
-              <option value="WAITER">Garçom (usuário e senha, atendimento do salão)</option>
-              <option value="MANAGER">Gerente Operacional (Operações, cardápio, relatórios)</option>
-              <option value="CASHIER">Operador de Caixa (Frente de caixa e pedidos)</option>
-              <option value="OPERATOR">Operador de Loja (Separação e estoque)</option>
-              <option value="DELIVERY_MANAGER">Coordenador de Entregas (Despacho de motoboys)</option>
-              <option value="DRIVER">Entregador / Motorista (Acesso a entregas atribuídas)</option>
+              {roleList.filter(role => role !== 'OWNER').map(role => <option key={role} value={role}>{TEAM_ROLE_LABELS[role]}{role === 'WAITER' ? ' (atendimento do salão)' : ''}</option>)}
             </select>
-            <p className="text-[10px] text-gray-400 mt-1">
-              * Conforme a arquitetura de segurança, convites para OWNER, CEO e SUPER_ADMIN são bloqueados pelo banco.
-            </p>
+            {formData.role === 'WAITER' && <div className="mt-3"><label className="block font-semibold text-gray-700" htmlFor="waiter-member-mode">Forma de acesso</label><select id="waiter-member-mode" value={waiterMode} onChange={event => setWaiterMode(event.target.value as 'login' | 'invite')} className="mt-1 w-full rounded-xl border p-2.5"><option value="login">Cadastrar com usuário e senha</option><option value="invite">Convidar por e-mail</option></select></div>}
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
@@ -433,32 +496,33 @@ export const TeamPage: React.FC = () => {
               disabled={isSubmitting}
               leftIcon={<Send className="w-3.5 h-3.5" />}
             >
-              {isSubmitting ? 'Emitindo Convite...' : (formData.role === 'WAITER' ? 'Continuar' : 'Enviar Convite')}
+              {isSubmitting ? 'Emitindo Convite...' : (formData.role === 'WAITER' && waiterMode === 'login' ? 'Continuar' : 'Enviar Convite')}
             </Button>
           </div>
         </form>
       </Modal>
 
       <CreateWaiterModal
-        isOpen={createWaiterOpen}
+        isOpen={createWaiterOpen && loadedTenant === activeTenant.id}
         onClose={() => setCreateWaiterOpen(false)}
         tenantId={activeTenant.id}
         storeSlug={activeTenant.slug}
         onDone={({ username }) => {
+          if (currentTenant.current !== activeTenant.id) return;
           setCreateWaiterOpen(false);
           setStoreAccess({ username });
           showToast({ type: 'success', title: 'Garçom cadastrado', message: `Usuário "${username}" criado. Mostre o QR da loja ou envie o link.` });
           void fetchTeamData();
         }}
       />
-      <EditWaiterModal member={editWaiter} onClose={() => setEditWaiter(null)} tenantId={activeTenant.id} onDone={() => { setEditWaiter(null); showToast({ type: 'success', title: 'Garçom atualizado', message: 'Dados salvos.' }); void fetchTeamData(); }} />
-      <ResetWaiterPasswordModal member={resetWaiter} onClose={() => setResetWaiter(null)} tenantId={activeTenant.id} onDone={() => { setResetWaiter(null); showToast({ type: 'success', title: 'Senha redefinida', message: 'Passe a nova senha ao garçom pessoalmente.' }); }} />
-      <Modal isOpen={!!storeAccess} onClose={() => setStoreAccess(null)} title="Acesso único do garçom" description="Um QR fixo da loja: o garçom entra com usuário e senha." size="lg">
+      <EditWaiterModal member={loadedTenant === activeTenant.id ? editWaiter : null} onClose={() => setEditWaiter(null)} tenantId={activeTenant.id} onDone={() => { if (currentTenant.current !== activeTenant.id) return; setEditWaiter(null); showToast({ type: 'success', title: 'Garçom atualizado', message: 'Dados salvos.' }); void fetchTeamData(); }} />
+      <ResetWaiterPasswordModal member={loadedTenant === activeTenant.id ? resetWaiter : null} onClose={() => setResetWaiter(null)} tenantId={activeTenant.id} onDone={() => { if (currentTenant.current !== activeTenant.id) return; setResetWaiter(null); showToast({ type: 'success', title: 'Senha redefinida', message: 'Passe a nova senha ao garçom pessoalmente.' }); }} />
+      <Modal isOpen={!!storeAccess && loadedTenant === activeTenant.id} onClose={() => setStoreAccess(null)} title="Acesso único do garçom" description="Um QR fixo da loja: o garçom entra com usuário e senha." size="lg">
         {storeAccess && <WaiterAccessBlock storeName={activeTenant?.name} slug={activeTenant.slug} username={storeAccess.username} />}
       </Modal>
 
-      <Modal isOpen={!!waiterShare} onClose={() => setWaiterShare(null)} title="Convite do garçom criado" description="Nenhum e-mail é enviado automaticamente. Mostre o QR ou envie o link para o garçom." size="lg">
-        {waiterShare && <WaiterAccessBlock email={waiterShare} storeName={activeTenant?.name} />}
+      <Modal isOpen={!!waiterShare && loadedTenant === activeTenant.id} onClose={() => setWaiterShare(null)} title="Convite do garçom criado" description="Nenhum e-mail é enviado automaticamente. Mostre o QR ou envie o link para o garçom." size="lg">
+        {waiterShare && activeTenant.slug && <TeamRoleAccessBlock slug={activeTenant.slug} role="WAITER" />}
       </Modal>
     </div>
   );

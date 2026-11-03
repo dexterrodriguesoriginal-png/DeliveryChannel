@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRightLeft, BellRing, ChevronRight, Eye, EyeOff, LayoutGrid, LogOut, Loader2, MoreHorizontal, Search, ShieldAlert, ShoppingBag, UserCheck, Volume2, WifiOff, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { LegalCheckbox } from '../../components/legal/LegalUI';
-import { legalSignupMetadata } from '../../lib/legal/documents';
 import { teamRepository } from '../../repositories/teamRepository';
 import { readWaiterEmailParam } from '../../lib/waiter/waiterAccess';
 import { normalizeWaiterUsername, parseWaiterLoginPath } from '../../lib/waiter/waiterIdentity';
@@ -104,10 +102,11 @@ const WaiterSlugLoginScreen: React.FC<{ slug: string; onSwitchToEmail: () => voi
           />
         </label>
 
-        <label className="block text-sm font-semibold">
-          Senha
+        <div className="block text-sm font-semibold">
+          <label htmlFor="waiter-slug-password">Senha</label>
           <div className="relative mt-1">
             <input
+              id="waiter-slug-password"
               aria-label="Senha"
               type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
@@ -121,12 +120,13 @@ const WaiterSlugLoginScreen: React.FC<{ slug: string; onSwitchToEmail: () => voi
               type="button"
               onClick={() => setShowPassword(v => !v)}
               className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-500 hover:text-slate-700 cursor-pointer"
-              aria-label={showPassword ? 'Ocultar senha' : 'Ver senha'}
+              aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+              aria-pressed={showPassword}
             >
               {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>
-        </label>
+        </div>
 
         {error && (
           <p role="alert" className="rounded-xl bg-rose-500/15 p-3 text-sm text-rose-200">
@@ -157,12 +157,13 @@ const WaiterSlugLoginScreen: React.FC<{ slug: string; onSwitchToEmail: () => voi
   );
 };
 
-const LoginScreen: React.FC = () => {
+const LoginScreen: React.FC<{ slug: string | null }> = ({ slug }) => {
   const { signInWithPassword, signUp } = useAuth();
   const invited = useMemo(() => (typeof window === 'undefined' ? null : readWaiterEmailParam(window.location.search)), []);
-  const [mode, setMode] = useState<'login' | 'signup'>(invited ? 'signup' : 'login');
+  const [mode, setMode] = useState<'login' | 'signup'>(() => invited || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('signup') === '1') ? 'signup' : 'login');
   const [email, setEmail] = useState(invited || ''); const [password, setPassword] = useState(''); const [name, setName] = useState('');
-  const [legal, setLegal] = useState(false);
+  const [storeSlug, setStoreSlug] = useState(slug || '');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState(''); const [confirmEmail, setConfirmEmail] = useState('');
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setMessage('');
@@ -173,7 +174,13 @@ const LoginScreen: React.FC = () => {
       } else {
         if (name.trim().length < 2) { setMessage('Informe seu nome.'); return; }
         if (password.length < 6) { setMessage('A senha precisa ter pelo menos 6 caracteres.'); return; }
-        const res = await signUp(email.trim(), password, name.trim(), undefined, legalSignupMetadata(legal, 'owner'));
+        const cleanSlug = storeSlug.trim().toLowerCase();
+        if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(cleanSlug)) { setMessage('Informe o identificador da loja ou abra o link enviado pelo estabelecimento.'); return; }
+        const { data, error } = await supabase.rpc('waiter_invite_check', { p_slug: cleanSlug, p_email: email.trim() });
+        if (error) { setMessage('Não foi possível verificar o convite. Tente novamente em instantes.'); return; }
+        if (data?.invited !== true) { setMessage('Este e-mail não foi convidado. Fale com o estabelecimento.'); return; }
+        // O servidor valida o convite novamente antes de criar a identidade Auth.
+        const res = await signUp(email.trim(), password, name.trim(), undefined, { audience: 'team', waiter_signup_slug: cleanSlug });
         if (!res.success) setMessage(res.error || 'Não foi possível criar a conta.');
         else if (res.requiresEmailConfirmation) setConfirmEmail(email.trim());
       }
@@ -188,11 +195,18 @@ const LoginScreen: React.FC = () => {
       <Brand />
       <form onSubmit={submit} className="space-y-3 rounded-3xl bg-white/5 p-5 ring-1 ring-white/10">
         <p className="text-sm text-slate-300">{mode === 'signup' ? 'Crie sua conta com o e-mail que o dono usou no convite.' : 'Entre com a conta que o dono da loja convidou para a equipe.'}</p>
+        {mode === 'signup' && !slug && <label className="block text-sm font-semibold">Identificador da loja<input aria-label="Identificador da loja" autoCapitalize="none" autoCorrect="off" placeholder="ex: minha-loja" required value={storeSlug} onChange={e => setStoreSlug(e.target.value)} className={inputCls} /></label>}
         {mode === 'signup' && <label className="block text-sm font-semibold">Seu nome<input aria-label="Seu nome" autoComplete="name" required value={name} onChange={e => setName(e.target.value)} className={inputCls} /></label>}
         <label className="block text-sm font-semibold">E-mail<input aria-label="E-mail" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} className={inputCls} /></label>
-        <label className="block text-sm font-semibold">Senha<input aria-label="Senha" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required value={password} onChange={e => setPassword(e.target.value)} className={inputCls} /></label>
-        {mode === 'signup' && <div className="rounded-2xl bg-white p-3 text-slate-900"><LegalCheckbox checked={legal} onChange={setLegal} audience="owner" /></div>}
-        <button disabled={busy || (mode === 'signup' && !legal)} className="h-14 w-full rounded-2xl bg-emerald-500 text-base font-black text-slate-950 disabled:opacity-60">{busy ? 'Aguarde…' : mode === 'login' ? 'Entrar' : 'Criar conta e entrar'}</button>
+        <div className="block text-sm font-semibold"><label htmlFor="waiter-email-password">Senha</label>
+          <div className="relative mt-1">
+            <input id="waiter-email-password" aria-label="Senha" type={showPassword ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required value={password} onChange={e => setPassword(e.target.value)} className={`${inputCls} mt-0 pr-12`} />
+            <button type="button" aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)} className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700">
+              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
+        <button disabled={busy} className="h-14 w-full rounded-2xl bg-emerald-500 text-base font-black text-slate-950 disabled:opacity-60">{busy ? 'Aguarde…' : mode === 'login' ? 'Entrar' : 'Criar conta e entrar'}</button>
         {message && <p role="alert" className="rounded-xl bg-rose-500/15 p-3 text-sm text-rose-200">{message}</p>}
         <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(''); }} className="w-full py-1 text-center text-sm font-bold text-emerald-300">{mode === 'login' ? 'Primeiro acesso? Criar conta' : 'Já tenho conta'}</button>
       </form>
@@ -201,8 +215,43 @@ const LoginScreen: React.FC = () => {
   );
 };
 
-/** Conta sem equipe: se existe convite pendente de Garçom para o e-mail da conta, entra na equipe (um convite = automático). */
-const JoinInvite: React.FC<{ email: string; signOutBtn: React.ReactNode }> = ({ email, signOutBtn }) => {
+/** O QR de uma loja nunca lista ou aceita convites de outra loja. */
+const ScopedJoinInvite: React.FC<{ slug: string; signOutBtn: React.ReactNode }> = ({ slug, signOutBtn }) => {
+  const { refreshSession } = useAuth();
+  const refreshRef = useRef(refreshSession);
+  refreshRef.current = refreshSession;
+  const [attempt, setAttempt] = useState(0);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let alive = true;
+    setError('');
+    void (async () => {
+      try {
+        const { error: inviteError } = await supabase.rpc('team_accept_invite', { p_slug: slug, p_role: 'WAITER' });
+        if (inviteError) {
+          if (alive) setError(inviteError.code === '42501' ? 'Este e-mail não foi convidado. Fale com o estabelecimento.' : 'Não foi possível entrar na equipe. Tente novamente em instantes.');
+          return;
+        }
+        if (alive) await refreshRef.current();
+      } catch {
+        if (alive) setError('Não foi possível entrar na equipe. Tente novamente em instantes.');
+      }
+    })();
+    return () => { alive = false; };
+  }, [slug, attempt]);
+  if (error) return <Notice testId="waiter-no-access" title="Sem acesso à loja" text={error}>
+    <button type="button" onClick={() => setAttempt(value => value + 1)} className="h-12 rounded-2xl bg-emerald-500 font-bold text-slate-950">Tentar novamente</button>
+    {signOutBtn}
+  </Notice>;
+  return <Center testId="waiter-joining"><Brand /><div className="flex items-center gap-3 rounded-3xl bg-white/5 p-5 text-slate-200 ring-1 ring-white/10"><Loader2 className="h-5 w-5 animate-spin" />Entrando na equipe…</div></Center>;
+};
+
+/** A rota sem loja mantém a escolha explícita dos convites da própria conta. */
+const JoinInvite: React.FC<{ slug: string | null; email: string; signOutBtn: React.ReactNode }> = ({ slug, ...props }) => (
+  slug ? <ScopedJoinInvite slug={slug} signOutBtn={props.signOutBtn} /> : <UnscopedJoinInvite {...props} />
+);
+
+const UnscopedJoinInvite: React.FC<{ email: string; signOutBtn: React.ReactNode }> = ({ email, signOutBtn }) => {
   const { refreshSession } = useAuth();
   const [invites, setInvites] = useState<Array<TeamInvite & { tenantName?: string }> | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -252,29 +301,47 @@ export const WaiterApp: React.FC = () => {
   const routeSlug = useMemo(() => {
     return typeof window === 'undefined' ? null : parseWaiterLoginPath(window.location.pathname);
   }, []);
-  const [forceEmailLogin, setForceEmailLogin] = useState(false);
+  const scopedStoreMatches = !routeSlug || activeTenant?.slug?.trim().toLowerCase() === routeSlug;
+  const scopedMemberships = routeSlug ? availableTenants.filter(tenant => tenant.tenantSlug?.trim().toLowerCase() === routeSlug && tenant.status === 'ACTIVE') : [];
+  const scopedMembershipId = scopedMemberships.length === 1 ? scopedMemberships[0].tenantId : null;
+  const scopedSwitchRef = useRef('');
+  const [scopedSwitchError, setScopedSwitchError] = useState('');
+  const [scopedSwitchAttempt, setScopedSwitchAttempt] = useState(0);
+  const [forceEmailLogin, setForceEmailLogin] = useState(() => typeof window !== 'undefined' && (new URLSearchParams(window.location.search).get('signup') === '1' || !!readWaiterEmailParam(window.location.search)));
   // Confirma "Mesa/Comanda desligada" na mesma fonte da tela Ferramentas (tenant_modules) via RPC pública
   // (SECURITY DEFINER), que não depende de RLS de leitura do cargo do usuário.
   const [publicDineIn, setPublicDineIn] = useState<{ tenantId: string; enabled: boolean } | null>(null);
   const autoTriedRef = useRef<Set<string>>(new Set());
   const moduleOff = !!available && !isModuleEnabled('dine_in');
   useEffect(() => {
-    if (!activeTenant?.id || !moduleOff) return;
+    if (!activeTenant?.id || !moduleOff || !scopedStoreMatches) return;
     const tenantId = activeTenant.id;
     let alive = true;
     void tenantModuleRepository.getPublicEnabled(tenantId)
       .then(keys => { if (alive) setPublicDineIn({ tenantId, enabled: !!keys?.has('dine_in') }); })
       .catch(() => { if (alive) setPublicDineIn({ tenantId, enabled: false }); });
     return () => { alive = false; };
-  }, [activeTenant?.id, moduleOff]);
+  }, [activeTenant?.id, moduleOff, scopedStoreMatches]);
   const dineInConfirmedByServer = publicDineIn?.tenantId === activeTenant?.id && publicDineIn?.enabled === true;
   const dineInChecking = moduleOff && publicDineIn?.tenantId !== activeTenant?.id;
   const signOutBtn = <button type="button" onClick={() => void signOut()} className="h-12 rounded-2xl border border-white/20 text-sm font-bold">Entrar com outra conta</button>;
 
+  // Enquanto a loja do QR não está selecionada, nenhum dado da loja anterior é montado.
+  useEffect(() => {
+    if (!supabaseUser || !routeSlug || scopedStoreMatches || !scopedMembershipId || isLoadingAuth || isMembershipLoading) return;
+    const key = `${supabaseUser.id}|${routeSlug}|${scopedMembershipId}|${scopedSwitchAttempt}`;
+    if (scopedSwitchRef.current === key) return;
+    scopedSwitchRef.current = key;
+    setScopedSwitchError('');
+    void switchTenant(scopedMembershipId).then(success => {
+      if (success === false) setScopedSwitchError('Não foi possível abrir a loja deste link. Tente novamente.');
+    }).catch(() => setScopedSwitchError('Não foi possível abrir a loja deste link. Tente novamente.'));
+  }, [supabaseUser, routeSlug, scopedStoreMatches, scopedMembershipId, scopedSwitchAttempt, isLoadingAuth, isMembershipLoading, switchTenant]);
+
   // Se o usuário tem vínculo em mais de uma loja e a loja ativa está com Mesa/Comanda desligada,
   // procura automaticamente outra loja vinculada que tenha Mesa/Comanda (dine_in) ligada.
   useEffect(() => {
-    if (!activeTenant?.id || !available || isModuleEnabled('dine_in') || dineInChecking || dineInConfirmedByServer) return;
+    if (routeSlug || !activeTenant?.id || !available || isModuleEnabled('dine_in') || dineInChecking || dineInConfirmedByServer) return;
     if (!availableTenants || availableTenants.length <= 1 || typeof switchTenant !== 'function') return;
     if (autoTriedRef.current.has(activeTenant.id)) return;
     autoTriedRef.current.add(activeTenant.id);
@@ -299,7 +366,7 @@ export const WaiterApp: React.FC = () => {
       }
     })();
     return () => { alive = false; };
-  }, [activeTenant?.id, available, isModuleEnabled, availableTenants, switchTenant, dineInChecking, dineInConfirmedByServer]);
+  }, [routeSlug, activeTenant?.id, available, isModuleEnabled, availableTenants, switchTenant, dineInChecking, dineInConfirmedByServer]);
 
   if (isLoadingAuth || isMembershipLoading || autoSwitchingStore || authState === 'AUTHENTICATING' || authState === 'AUTHENTICATED_RESOLVING_MEMBERSHIP') {
     return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
@@ -308,9 +375,18 @@ export const WaiterApp: React.FC = () => {
     if (routeSlug && !forceEmailLogin) {
       return <WaiterSlugLoginScreen slug={routeSlug} onSwitchToEmail={() => setForceEmailLogin(true)} />;
     }
-    return <LoginScreen />;
+    return <LoginScreen slug={routeSlug} />;
   }
-  if (!activeTenant) return <JoinInvite email={supabaseUser.email || ''} signOutBtn={signOutBtn} />;
+  if (routeSlug && !scopedStoreMatches) {
+    if (scopedMemberships.length > 1) return <Notice testId="waiter-scope-ambiguous" title="Não foi possível identificar a loja" text="Peça um novo link de acesso ao estabelecimento.">{signOutBtn}</Notice>;
+    if (!scopedMembershipId) return <ScopedJoinInvite slug={routeSlug} signOutBtn={signOutBtn} />;
+    if (scopedSwitchError) return <Notice testId="waiter-scope-error" title="Não foi possível abrir a loja" text={scopedSwitchError}>
+      <button type="button" onClick={() => setScopedSwitchAttempt(value => value + 1)} className="h-12 rounded-2xl bg-emerald-500 font-bold text-slate-950">Tentar novamente</button>
+      {signOutBtn}
+    </Notice>;
+    return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Abrindo a loja do link…</div></Center>;
+  }
+  if (!activeTenant) return <JoinInvite slug={routeSlug} email={supabaseUser.email || ''} signOutBtn={signOutBtn} />;
   if (!canUseWaiterApp(activeRole)) return <Notice testId="waiter-wrong-role" title="Acesso só para a equipe do salão" text="O aplicativo do Garçom é para Garçom, Caixa, Gerente e Dono.">{signOutBtn}</Notice>;
   if (modulesLoading && !available) return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
   if (dineInChecking) return <Center testId="waiter-loading"><div className="flex items-center gap-3 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" />Carregando…</div></Center>;
@@ -321,7 +397,7 @@ export const WaiterApp: React.FC = () => {
         title="Salão desligado"
         text={`A ferramenta Mesa/Comanda está desligada na loja ${activeTenant.name || 'atual'}. O dono liga em Ferramentas, no painel.`}
       >
-        {availableTenants.length > 1 && typeof switchTenant === 'function' && (
+        {!routeSlug && availableTenants.length > 1 && typeof switchTenant === 'function' && (
           <div className="space-y-2 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10" data-testid="waiter-store-picker">
             <p className="text-xs font-bold uppercase tracking-wide text-emerald-300">Escolher outra loja</p>
             {availableTenants.map(t => (
