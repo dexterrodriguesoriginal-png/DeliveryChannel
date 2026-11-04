@@ -61,12 +61,15 @@ const h = vi.hoisted(() => ({
     })),
     accessExtras: vi.fn(async () => ({ responsibleSessionByTab: new Map(), claimableTabs: new Set() })),
     handleCall: vi.fn(async () => {}),
+    closeTab: vi.fn(async (_tabId: string, _method: string, _totalCents: number) => {}),
+    releaseEmptyTab: vi.fn(async (_tabId: string, _reason: string) => {}),
     loadMenu: vi.fn(async () => ({ products: [], categories: [] })),
     joinTables: vi.fn(async () => ({ tabId: 'tab-1', primaryTableId: 't-1', joinedTableIds: ['t-1', 't-2'] })),
     separateTable: vi.fn(async () => ({ tabId: 'tab-1', separatedTableId: 't-2' })),
   },
   modules: { enabled: true },
   delivery: { markDelivered: vi.fn(async () => {}), openDisputes: vi.fn(async () => []), resolve: vi.fn(async () => {}), observe: vi.fn(() => vi.fn()) },
+  payments: { tabPixStatus: vi.fn(), observeTabPix: vi.fn(() => vi.fn()) },
 }));
 
 const mockChannel: any = {
@@ -91,6 +94,8 @@ vi.mock('../../../repositories/waiterV2Repository', () => ({
 }));
 vi.mock('../../../repositories/salonStaffRepository', () => ({ salonStaffRepository: h.salonStaff }));
 vi.mock('../../../repositories/deliveryRepository', () => ({ deliveryRepository: h.delivery }));
+vi.mock('../../../repositories/paymentRepository', () => ({ paymentRepository: h.payments }));
+vi.mock('../../../repositories/tabReceiptRepository', () => ({ tabReceiptRepository: { target: vi.fn(async () => ({ exists: false, maskedEmail: null })) } }));
 vi.mock('../../../repositories/tenantModuleRepository', () => ({
   tenantModuleRepository: {
     getForTenant: vi.fn(async () => ({ available: true, modules: [{ key: 'dine_in', enabled: true }] })),
@@ -278,6 +283,60 @@ describe('Garçom v2 — Login simples e Modos de atendimento', () => {
     render(<WaiterApp />);
     fireEvent.click(await screen.findByRole('button', { name: 'Mais' }));
     expect(screen.queryByRole('link', { name: 'Abrir o Salão' })).toBeNull();
+  });
+
+  it.each(['CASH', 'CREDIT_CARD'] as const)('avisa pagamento recebido e mesa liberada em verde claro após %s confirmado', async method => {
+    h.auth.supabaseUser = { id: 'u-waiter-1', email: 'joao@garcom.deliverychannel.local' };
+    h.auth.activeTenant = { id: 't-1', name: 'Pizzaria Bella', slug: 'pizzaria-bella' };
+    h.auth.activeRole = 'WAITER';
+    const base = await h.salonStaff.snapshot();
+    const round = { id: 'paid-order', tab_id: 'tab-1', status: 'DELIVERED', subtotal: 20, created_at: new Date().toISOString(), round_no: 1, order_number: 55, customer_name: 'Cliente' };
+    h.salonStaff.snapshot.mockResolvedValue({ ...base, calls: [], tabs: base.tabs.map(tab => tab.id === 'tab-1' ? { ...tab, status: 'WAITER_AUTHORIZED' } : tab), rounds: [round] } as never);
+    try {
+      render(<WaiterApp />);
+      fireEvent.click(await screen.findByTestId('salon-table-t-1'));
+      fireEvent.change(await screen.findByLabelText('Forma de pagamento da conta'), { target: { value: method } });
+      fireEvent.click(screen.getByRole('checkbox'));
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmar pagamento recebido' }));
+      const toast = await screen.findByText('Pagamento confirmado. Mesa liberada.');
+      expect(h.salonStaff.closeTab).toHaveBeenCalledWith('tab-1', method, 2200);
+      expect(toast.style.backgroundColor).toBe('#DCFCE7');
+      expect(toast.style.color).toBe('#0F172A');
+    } finally { h.salonStaff.snapshot.mockResolvedValue(base); }
+  });
+
+  it('avisa em verde claro ao concluir PIX confirmado pelo servidor sem repetir o fechamento', async () => {
+    h.auth.supabaseUser = { id: 'u-waiter-1', email: 'joao@garcom.deliverychannel.local' };
+    h.auth.activeTenant = { id: 't-1', name: 'Pizzaria Bella', slug: 'pizzaria-bella' };
+    h.auth.activeRole = 'WAITER';
+    const base = await h.salonStaff.snapshot();
+    h.salonStaff.snapshot.mockResolvedValue({ ...base, calls: [], tabs: base.tabs.map(tab => tab.id === 'tab-1' ? { ...tab, status: 'AWAITING_PAYMENT' } : tab) } as never);
+    h.payments.tabPixStatus.mockResolvedValue({ pix: { id: 'pix-1', tabId: 'tab-1', status: 'paid', tabClosed: true, amountCents: 2200, paidAt: '2026-11-04T01:10:00Z' } });
+    try {
+      render(<WaiterApp />);
+      fireEvent.click(await screen.findByTestId('salon-table-t-1'));
+      expect(await screen.findByRole('heading', { name: 'Pagamento confirmado' })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Concluir' }));
+      const toast = await screen.findByText('Pagamento confirmado. Mesa liberada.');
+      expect(toast.style.backgroundColor).toBe('#DCFCE7');
+      expect(toast.style.color).toBe('#0F172A');
+      expect(h.salonStaff.closeTab).not.toHaveBeenCalled();
+    } finally { h.salonStaff.snapshot.mockResolvedValue(base); }
+  });
+
+  it('avisa em verde claro ao liberar mesa sem consumo', async () => {
+    h.auth.supabaseUser = { id: 'u-waiter-1', email: 'joao@garcom.deliverychannel.local' };
+    h.auth.activeTenant = { id: 't-1', name: 'Pizzaria Bella', slug: 'pizzaria-bella' };
+    h.auth.activeRole = 'WAITER';
+    render(<WaiterApp />);
+    fireEvent.click(await screen.findByTestId('salon-table-t-1'));
+    fireEvent.click(screen.getByTestId('waiter-release-empty-btn'));
+    fireEvent.change(screen.getByLabelText('Motivo para liberar a mesa'), { target: { value: 'Aberta por engano' } });
+    fireEvent.click(screen.getByTestId('waiter-release-empty-confirm'));
+    const toast = await screen.findByText('Mesa liberada.');
+    expect(h.salonStaff.releaseEmptyTab).toHaveBeenCalledWith('tab-1', 'Aberta por engano');
+    expect(toast.style.backgroundColor).toBe('#DCFCE7');
+    expect(toast.style.color).toBe('#0F172A');
   });
 
   it('exige código de 4 dígitos para marcar Entregue quando ativado e permite Juntar/Separar mesas na comanda', async () => {

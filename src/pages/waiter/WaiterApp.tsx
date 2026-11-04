@@ -695,9 +695,9 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const selectedTab = selected ? tabByTable.get(selected.id) : undefined;
   const labelByTab = useMemo(() => { const m = new Map<string, string>(); for (const t of tabs) m.set(t.id, formatTableLabel(tables.find(x => x.id === t.table_id)?.label, 'Mesa')); return m; }, [tabs, tables]);
 
-  const run = async (key: string, action: () => Promise<unknown>, ok?: string) => {
+  const run = async (key: string, action: () => Promise<unknown>, ok?: string, tone: ToastTone = 'default') => {
     setBusy(key); setMessage('');
-    try { await action(); await Promise.all([load(), approvals.refresh()]); if (ok) setToast(ok); }
+    try { await action(); await Promise.all([load(), approvals.refresh()]); if (ok) setToast(ok, tone); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível concluir a ação.'); }
     finally { setBusy(null); }
   };
@@ -1067,11 +1067,11 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             try {
               await salonStaffRepository.closeTab(selectedTab.id, method, infoByTable.get(selected.id)!.totalCents);
               await Promise.all([load(), approvals.refresh()]);
-              setToast('Pagamento confirmado. Mesa liberada.');
+              setToast('Pagamento confirmado. Mesa liberada.', 'positive');
               return true;
             } finally { setBusy(null); }
           }}
-          onPaymentSettled={() => { setSelectedId(null); void load(); setToast('Pagamento confirmado. Mesa liberada.'); }}
+          onPaymentSettled={() => { setSelectedId(null); void load(); setToast('Pagamento confirmado. Mesa liberada.', 'positive'); }}
           onReopenBill={() => selectedTab && void run('reopen-tab', async () => {
             const { error } = await supabase.rpc('staff_reopen_tab', { p_tab: selectedTab.id });
             if (error) throw new Error('Não foi possível reabrir. Confira se há um PIX pendente ou pago nesta conta.');
@@ -1088,7 +1088,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             await salonStaffRepository.releaseEmptyTab(selectedTab.id, reason);
             setSelectedId(null);
             setHolderCode(null);
-          }, 'Mesa liberada.')}
+          }, 'Mesa liberada.', 'positive')}
           onTransferHolder={id => selectedTab && void run('transfer-holder', () => salonStaffRepository.transferHolder(selectedTab.id, id, true), 'Responsável alterado.')}
         />
       )}
