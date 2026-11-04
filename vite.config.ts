@@ -1,6 +1,5 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { execFileSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
@@ -20,16 +19,6 @@ function resolveViteBuildVersion(env: Record<string, string | undefined>): strin
     ''
   ).trim();
   if (fromEnv) return fromEnv;
-  try {
-    const sha = execFileSync('git', ['rev-parse', '--short=12', 'HEAD'], {
-      encoding: 'utf8',
-      timeout: 1500,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    if (/^[0-9a-f]{7,40}$/i.test(sha)) return sha;
-  } catch {
-    /* fallback para timestamp de build */
-  }
   return `build-${Date.now().toString(36)}`;
 }
 
