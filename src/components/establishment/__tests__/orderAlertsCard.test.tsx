@@ -19,7 +19,7 @@ describe('OrderAlertsCard (Dashboard, faixa compacta)', () => {
     const html = render([o('o1', status, 1, { fulfillmentType: 'DINE_IN' })], 'OWNER', { highlightIds: new Set(['o1']) });
     const row = html.match(/<li[^>]*data-testid="alert-order"[^>]*>/)?.[0];
     const colors = statusColorTokens(status);
-    expect(row).toContain(`background-color:${colors.bg}`);
+    expect(row).toContain(`background-color:${colors.alertBg}`);
     expect(row).toContain(`color:${colors.fg}`);
     expect(row).toContain(`border-color:${colors.border}`);
     expect(row).not.toContain('ring-blue');
@@ -31,7 +31,9 @@ describe('OrderAlertsCard (Dashboard, faixa compacta)', () => {
     expect(html).not.toContain('data-order-id="o2"');
     expect(html).not.toContain('data-order-id="o3"');
     const preparing = render([o('o1', 'PREPARING', 1)], 'OWNER');
-    expect(preparing.match(/<div[^>]*data-testid="order-alerts-card"[^>]*>/)?.[0]).toContain(`background-color:${statusColorTokens('PREPARING').bg}`);
+    expect(preparing.match(/<div[^>]*data-testid="order-alerts-card"[^>]*>/)?.[0]).toContain(`background-color:${statusColorTokens('PREPARING').alertBg}`);
+    const mixed = render([o('o1', 'READY', 1, { fulfillmentType: 'DINE_IN' }), o('o2', 'PENDING', 1)], 'OWNER');
+    expect(mixed.match(/<div[^>]*data-testid="order-alerts-card"[^>]*>/)?.[0]).toContain(`background-color:${statusColorTokens('PENDING').alertBg}`);
   });
   it('estado vazio: só a faixa com "Nenhum pedido pendente", chips zerados e sem lista', () => {
     const html = render([], 'OWNER', { onViewAll: vi.fn() });

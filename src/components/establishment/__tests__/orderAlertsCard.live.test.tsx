@@ -21,6 +21,6 @@ describe('Alertas de pedidos muda de cor ao vivo (Entrega 1.5)', () => {
     r.rerender(card('READY'));
     const third = bg();
     expect(new Set([first, second, third]).size).toBe(3);
-    expect([first, second, third].join('|')).toMatch(/(#fdecec|253, 236, 236).*\|.*(#fef1e7|254, 241, 231).*\|.*(#f6eefe|246, 238, 254)/);
+    expect([first, second, third].join('|')).toMatch(/(#fbd5d5|251, 213, 213).*\|.*(#fee2cc|254, 226, 204).*\|.*(#ecdcfc|236, 220, 252)/);
   });
 });

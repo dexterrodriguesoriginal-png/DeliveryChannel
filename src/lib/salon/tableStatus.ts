@@ -132,6 +132,12 @@ export const TABLE_STATUS_COLOR: Record<TableStatusKind, string> = {
   AWAITING_PAYMENT: SALON_TABLE_COLORS.AWAITING_PAYMENT.solid,
 };
 
+/**
+ * Roxo (Pronto no balcão) do READY até o garçom entregar: o "Servir" do dono leva o pedido
+ * de mesa a OUT_FOR_DELIVERY (indo até a mesa); só o "Entregue" do garçom (DELIVERED) volta a mesa ao amarelo.
+ */
+export const READY_ROUND_STATUSES: readonly string[] = ['READY', 'WAITING_FOR_DRIVER', 'OUT_FOR_DELIVERY'];
+
 export interface DeriveInput {
   tab?: TabLike | null;
   calls?: CallLike[];
@@ -159,7 +165,7 @@ export function deriveTableStatus(input: DeriveInput): TableStatusInfo {
   const kind: TableStatusKind = tab.status === 'AWAITING_PAYMENT' ? 'AWAITING_PAYMENT'
     : tab.status === 'WAITER_AUTHORIZED' ? 'AUTHORIZED'
     : tab.status === 'BILL_REQUESTED' ? 'BILL'
-    : rounds.some(round => round.status === 'READY') ? 'READY'
+    : rounds.some(round => READY_ROUND_STATUSES.includes(round.status)) ? 'READY'
     : rounds.some(round => round.status === 'PREPARING') ? 'PREPARING'
     : rounds.some(round => ['PENDING', 'CONFIRMED'].includes(round.status)) ? 'NEW_ORDER'
     : minutes >= long ? 'LONG_STAY' : 'OCCUPIED';

@@ -11,63 +11,68 @@ describe('tokens compartilhados de status', () => {
   it('preserva os hex reais do Kanban e distingue conta pedida, autorizado, PIX e Livre', () => {
     expect(Object.fromEntries(['PENDING', 'PREPARING', 'READY', 'DELIVERED', 'CANCELLED', 'BILL', 'AUTHORIZED', 'AWAITING_PAYMENT', 'FREE']
       .map(status => [status, statusColorTokens(status)]))).toMatchInlineSnapshot(`
-      {
-        "AUTHORIZED": {
-          "bg": "#9B4DE0",
-          "border": "#6B21A8",
-          "fg": "#FFFFFF",
-          "solid": "#9B4DE0",
-        },
-        "AWAITING_PAYMENT": {
-          "bg": "#8B5A2B",
-          "border": "#FF5050",
-          "fg": "#FFFFFF",
-          "solid": "#8B5A2B",
-        },
-        "BILL": {
-          "bg": "#8B5A2B",
-          "border": "#5C3A1B",
-          "fg": "#FFFFFF",
-          "solid": "#8B5A2B",
-        },
-        "CANCELLED": {
-          "bg": "#f0f1f2",
-          "border": "#caccd1",
-          "fg": "#374151",
-          "solid": "#6b7280",
-        },
-        "DELIVERED": {
-          "bg": "#e8f6ed",
-          "border": "#abdebe",
-          "fg": "#15803d",
-          "solid": "#16a34a",
-        },
-        "FREE": {
-          "bg": "#2DBE4E",
-          "border": "#1E8E38",
-          "fg": "#0F172A",
-          "solid": "#2DBE4E",
-        },
-        "PENDING": {
-          "bg": "#fdecec",
-          "border": "#f9bcbc",
-          "fg": "#b91c1c",
-          "solid": "#ef4444",
-        },
-        "PREPARING": {
-          "bg": "#fef1e7",
-          "border": "#fdcdab",
-          "fg": "#c2410c",
-          "solid": "#f97316",
-        },
-        "READY": {
-          "bg": "#f6eefe",
-          "border": "#e0c2fc",
-          "fg": "#7e22ce",
-          "solid": "#a855f7",
-        },
-      }
-    `);
+        {
+          "AUTHORIZED": {
+            "bg": "#9B4DE0",
+            "border": "#6B21A8",
+            "fg": "#FFFFFF",
+            "solid": "#9B4DE0",
+          },
+          "AWAITING_PAYMENT": {
+            "bg": "#8B5A2B",
+            "border": "#FF5050",
+            "fg": "#FFFFFF",
+            "solid": "#8B5A2B",
+          },
+          "BILL": {
+            "bg": "#8B5A2B",
+            "border": "#5C3A1B",
+            "fg": "#FFFFFF",
+            "solid": "#8B5A2B",
+          },
+          "CANCELLED": {
+            "alertBg": "#e4e6e9",
+            "bg": "#f0f1f2",
+            "border": "#caccd1",
+            "fg": "#374151",
+            "solid": "#6b7280",
+          },
+          "DELIVERED": {
+            "alertBg": "#d3efdd",
+            "bg": "#e8f6ed",
+            "border": "#abdebe",
+            "fg": "#15803d",
+            "solid": "#16a34a",
+          },
+          "FREE": {
+            "bg": "#2DBE4E",
+            "border": "#1E8E38",
+            "fg": "#0F172A",
+            "solid": "#2DBE4E",
+          },
+          "PENDING": {
+            "alertBg": "#fbd5d5",
+            "bg": "#fdecec",
+            "border": "#f9bcbc",
+            "fg": "#b91c1c",
+            "solid": "#ef4444",
+          },
+          "PREPARING": {
+            "alertBg": "#fee2cc",
+            "bg": "#fef1e7",
+            "border": "#fdcdab",
+            "fg": "#c2410c",
+            "solid": "#f97316",
+          },
+          "READY": {
+            "alertBg": "#ecdcfc",
+            "bg": "#f6eefe",
+            "border": "#e0c2fc",
+            "fg": "#7e22ce",
+            "solid": "#a855f7",
+          },
+        }
+      `);
     expect(STATUS_COLORS.AUTHORIZED.solid).toBe('#9B4DE0');
     expect(STATUS_COLORS.AWAITING_PAYMENT.solid).not.toBe(STATUS_COLORS.FREE.solid);
   });

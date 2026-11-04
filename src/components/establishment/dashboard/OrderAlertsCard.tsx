@@ -5,7 +5,7 @@ import { formatBRL } from '../../../lib/pricing/money';
 import { paymentMethodLabel } from '../../../lib/orders/labels';
 import { OrderAgeBadge } from '../OrderAgeBadge';
 import { FILTER_CHIP_CLASS, FILTER_CHIP_COLORS } from '../../../lib/orders/statusChip';
-import { statusColorStyle, statusColorTokens } from '../../../lib/orders/statusColors';
+import { alertColorStyle, statusColorStyle, statusColorTokens } from '../../../lib/orders/statusColors';
 import { OrderStatusChip } from '../StatusIcon';
 import { SlaTimerChip } from '../SlaTimerChip';
 import { prepLimitMinutes } from '../../../lib/orders/sla';
@@ -111,7 +111,7 @@ export const OrderAlertsCard: React.FC<Props> = ({
     return (
       <li key={o.id} data-testid="alert-order" data-order-id={o.id} data-status={o.status}
         title={itemsSummary(o) || undefined}
-        style={statusColorStyle(late ? 'LATE' : o.status)}
+        style={late ? statusColorStyle('LATE') : alertColorStyle(o.status)}
         className={`flex flex-col sm:flex-row sm:items-center gap-x-2 gap-y-1 min-h-11 px-2.5 py-1.5 rounded-xl border ${
           hl ? 'ring-2 ring-current animate-pulse' : ''}`}>
         <div className="flex items-center gap-2 min-w-0 sm:flex-1">
@@ -164,11 +164,11 @@ export const OrderAlertsCard: React.FC<Props> = ({
 
   const hasOrders = alerts.total > 0;
   const tone = alertTone(counts, filter, onGoInventory ? lowStockCount : 0);
-  const toneStatus = { red: 'LATE', amber: 'PENDING', green: 'READY', blue: 'PREPARING' }[tone as 'red' | 'amber' | 'green' | 'blue'];
+  const toneStatus = { red: 'PENDING', amber: 'PENDING', green: 'READY', blue: 'PREPARING' }[tone as 'red' | 'amber' | 'green' | 'blue'];
   const toneColors = toneStatus ? statusColorTokens(toneStatus) : null;
   return (
     <div data-testid="order-alerts-card" data-tone={tone}
-      style={toneColors ? { ...statusColorStyle(toneColors), borderLeftColor: toneColors.solid } : undefined}
+      style={toneColors ? { ...alertColorStyle(toneColors), borderLeftColor: toneColors.solid } : undefined}
       className={`rounded-xl border border-l-4 p-3 shadow-sm transition-colors duration-300 ${toneColors ? '' : ALERT_TONE_CLASS[tone]}`}>
       <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:gap-3">
         <div className="flex items-center gap-2 shrink-0">

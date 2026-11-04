@@ -78,6 +78,9 @@ describe('deriveTableStatus', () => {
     expect(deriveTableStatus({ tab: tab(), rounds: [round('CONFIRMED')], now: NOW }).kind).toBe('NEW_ORDER');
     expect(deriveTableStatus({ tab: tab(), rounds: [round('CONFIRMED'), round('PREPARING')], now: NOW }).kind).toBe('PREPARING');
     expect(deriveTableStatus({ tab: tab(), rounds: [round('PREPARING'), round('READY')], now: NOW }).kind).toBe('READY');
+    // Servir do dono (OUT_FOR_DELIVERY) mantém roxo; só o Entregue do garçom (DELIVERED) volta ao amarelo.
+    expect(deriveTableStatus({ tab: tab(), rounds: [round('OUT_FOR_DELIVERY')], now: NOW }).kind).toBe('READY');
+    expect(deriveTableStatus({ tab: tab(), rounds: [round('DELIVERED')], now: NOW }).kind).toBe('OCCUPIED');
     expect(deriveTableStatus({ tab: tab({ status: 'WAITER_AUTHORIZED' }), rounds: [round('READY')], now: NOW }).kind).toBe('AUTHORIZED');
     expect(deriveTableStatus({ tab: tab({ status: 'AWAITING_PAYMENT' }), rounds: [round('READY')], now: NOW }).kind).toBe('AWAITING_PAYMENT');
     expect(deriveTableStatus({ tab: tab(), rounds: [round('CANCELLED')], now: NOW })).toMatchObject({ kind: 'OCCUPIED', totalCents: 0 });

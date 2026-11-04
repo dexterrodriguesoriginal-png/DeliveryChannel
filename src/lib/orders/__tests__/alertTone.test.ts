@@ -12,11 +12,11 @@ describe('alertTone (cor da faixa de alertas, padrão KDS)', () => {
     expect(alertTone(all, 'novos')).toBe('amber');
     expect(alertTone(all, 'atrasados')).toBe('red');
   });
-  it('sem filtro: Atrasados > Novos > Prontos > Em preparo > Estoque baixo > neutro', () => {
+  it('sem filtro: Atrasados > Novos > Em preparo > Prontos > Estoque baixo > neutro', () => {
     expect(alertTone(c({ novos: 2, atrasados: 1 }), null)).toBe('red');
     expect(alertTone(c({ novos: 1, prontos: 3 }), null)).toBe('amber');
-    expect(alertTone(c({ prontos: 1, emPreparo: 4 }), null)).toBe('green');
-    expect(alertTone(c({ emPreparo: 1 }), null, 5)).toBe('blue');
+    expect(alertTone(c({ prontos: 1, emPreparo: 4 }), null)).toBe('blue');
+    expect(alertTone(c({ prontos: 1 }), null, 5)).toBe('green');
     expect(alertTone(c(), null, 2)).toBe('stock');
     expect(alertTone(c(), null, 0)).toBe('neutral');
   });

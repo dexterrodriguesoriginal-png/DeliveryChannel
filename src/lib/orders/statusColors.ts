@@ -1,14 +1,14 @@
 import type { OrderStatus } from '../../types';
 
-export interface StatusColorTokens { bg: string; fg: string; border: string; solid: string }
+export interface StatusColorTokens { bg: string; fg: string; border: string; solid: string; /** Fundo do painel/linhas de "Alertas de pedidos" no Dashboard: um tom mais forte que o bg de Pedidos (texto fg mantém AA). */ alertBg?: string }
 
 // Canonical palette from the Pedidos Kanban. Borders are its 36% solid / 64%
 // white sRGB mix, rounded to hex so every surface has exactly the same values.
-const waiting = { bg: '#fdecec', fg: '#b91c1c', border: '#f9bcbc', solid: '#ef4444' } as const;
-const production = { bg: '#fef1e7', fg: '#c2410c', border: '#fdcdab', solid: '#f97316' } as const;
-const ready = { bg: '#f6eefe', fg: '#7e22ce', border: '#e0c2fc', solid: '#a855f7' } as const;
-const delivered = { bg: '#e8f6ed', fg: '#15803d', border: '#abdebe', solid: '#16a34a' } as const;
-const cancelled = { bg: '#f0f1f2', fg: '#374151', border: '#caccd1', solid: '#6b7280' } as const;
+const waiting = { bg: '#fdecec', fg: '#b91c1c', border: '#f9bcbc', solid: '#ef4444', alertBg: '#fbd5d5' } as const;
+const production = { bg: '#fef1e7', fg: '#c2410c', border: '#fdcdab', solid: '#f97316', alertBg: '#fee2cc' } as const;
+const ready = { bg: '#f6eefe', fg: '#7e22ce', border: '#e0c2fc', solid: '#a855f7', alertBg: '#ecdcfc' } as const;
+const delivered = { bg: '#e8f6ed', fg: '#15803d', border: '#abdebe', solid: '#16a34a', alertBg: '#d3efdd' } as const;
+const cancelled = { bg: '#f0f1f2', fg: '#374151', border: '#caccd1', solid: '#6b7280', alertBg: '#e4e6e9' } as const;
 const bill = { bg: '#8B5A2B', fg: '#FFFFFF', border: '#5C3A1B', solid: '#8B5A2B' } as const;
 const authorized = { bg: '#9B4DE0', fg: '#FFFFFF', border: '#6B21A8', solid: '#9B4DE0' } as const;
 const awaitingPayment = { bg: '#8B5A2B', fg: '#FFFFFF', border: '#FF5050', solid: '#8B5A2B' } as const;
@@ -41,4 +41,10 @@ export function statusColorTokens(status: string): Readonly<StatusColorTokens> {
 export function statusColorStyle(status: string | Readonly<StatusColorTokens>) {
   const colors = typeof status === 'string' ? statusColorTokens(status) : status;
   return { backgroundColor: colors.bg, color: colors.fg, borderColor: colors.border };
+}
+
+/** Cores do Dashboard "Alertas de pedidos": mesma paleta de Pedidos, fundo um pouco mais forte (alertBg). */
+export function alertColorStyle(status: string | Readonly<StatusColorTokens>) {
+  const colors = typeof status === 'string' ? statusColorTokens(status) : status;
+  return { backgroundColor: colors.alertBg ?? colors.bg, color: colors.fg, borderColor: colors.border };
 }

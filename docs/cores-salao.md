@@ -27,3 +27,11 @@ Os cards de mesa no **Salão do Dono** (`SalonPage.tsx`) e no **App do Garçom**
 ## Fonte única (Entrega 1.5)
 
 As cores de Pedido novo / Em preparo / Pronto no balcão das mesas são derivadas de `STATUS_COLORS` em `src/lib/orders/statusColors.ts` (mesma paleta do Kanban de Pedidos e das linhas de "Alertas de pedidos" do Dashboard), via `SALON_TABLE_COLORS` em `src/lib/salon/tableStatus.ts`. Não use hex soltos: altere só `statusColors.ts`.
+
+## Entrega 1.5b (04/11) — Servir x Entregue e Alertas do Dashboard
+
+- **Servir (dono, mesa)** leva o pedido de `READY` para `OUT_FOR_DELIVERY` ("Pedido indo até a mesa"). A mesa **continua roxa** (`READY_ROUND_STATUSES` = `READY`, `WAITING_FOR_DRIVER`, `OUT_FOR_DELIVERY`).
+- **Entregue (garçom, com ou sem código)** leva a `DELIVERED`: só aí a mesa volta ao **amarelo** (Ocupada).
+- **Alertas de pedidos (Dashboard)**: painel e linhas usam `STATUS_COLORS[x].alertBg`, um tom um pouco mais forte que o fundo claro de Pedidos, mantendo o texto `fg` (AA):
+  vermelho `#fbd5d5` (novo/atrasado), laranja `#fee2cc` (em preparo), roxo `#ecdcfc` (pronto/servido), verde `#d3efdd`, cinza `#e4e6e9`.
+  Prioridade do painel: Atrasados/Novos (vermelho) > Em preparo (laranja) > Prontos (roxo). Linha atrasada segue `LATE` (vermelho sólido).

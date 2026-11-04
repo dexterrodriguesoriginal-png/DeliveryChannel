@@ -3,7 +3,7 @@ import type { AlertFilter } from './orderAlerts';
 /**
  * 19/10 (padrão KDS): cor da faixa "Alertas de pedidos".
  * Com filtro selecionado: a cor daquele status. Sem filtro: o mais urgente presente —
- * Atrasados (vermelho) > Novos (âmbar) > Prontos (verde) > Em preparo (azul) > Estoque baixo
+ * 04/11 (David): mesmas cores de Pedidos, fundo alertBg. Atrasados/Novos (vermelho) > Em preparo (laranja) > Prontos (roxo) > Estoque baixo
  * (faixa branca com acento laranja, diferente do âmbar dos Novos). Nada pendente: neutro.
  */
 export type AlertTone = 'red' | 'amber' | 'green' | 'blue' | 'stock' | 'neutral';
@@ -18,7 +18,7 @@ export function alertTone(
   lowStockCount = 0,
 ): AlertTone {
   if (filter) return FILTER_TONE[filter];
-  for (const k of ['atrasados', 'novos', 'prontos', 'emPreparo'] as AlertFilter[]) {
+  for (const k of ['atrasados', 'novos', 'emPreparo', 'prontos'] as AlertFilter[]) {
     if (counts[k] > 0) return FILTER_TONE[k];
   }
   return lowStockCount > 0 ? 'stock' : 'neutral';
