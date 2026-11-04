@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: false }));
-import { openDiningTabLabels } from '../OpenDiningTabsWarning';
+import { openDiningTabLabels, openDiningTabWarnings } from '../OpenDiningTabsWarning';
 
 describe('open dining tab warning', () => {
   it('uses table labels and elapsed whole hours for open and bill-requested tabs', () => {
@@ -36,3 +36,12 @@ describe('open dining tab warning', () => {
     ], Date.parse('2026-10-19T23:41:00.000Z'))).toEqual(['Mesa 01 aberta há 2 h']);
   });
 });
+
+ it('conta pedida fornece ação de checkout e awaiting PIX permanece separado', () => {
+   const rows = openDiningTabWarnings([
+     {id:'b',table_id:'5',status:'BILL_REQUESTED',opened_at:new Date().toISOString()},
+     {id:'p',table_id:'6',status:'AWAITING_PAYMENT',opened_at:new Date().toISOString()},
+   ], []);
+   expect(rows[0]).toMatchObject({billRequested:true,checkoutHref:'#/painel/est-salon?table=5&checkout=1'});
+   expect(rows[1].billRequested).toBe(false);
+ });

@@ -1,0 +1,24 @@
+.dinein-bill-requested {
+  color: #8B5E3C;
+  background-color: #F3E9DF;
+  border: 1px solid #8B5E3C;
+  animation: dinein-bill-pulse 1.2s ease-in-out infinite;
+}
+
+.dinein-bill-awaiting-pix {
+  color: #075985;
+  background-color: #e0f2fe;
+  border: 1px solid #0284c7;
+}
+
+@keyframes dinein-bill-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(139 94 60 / 12%); }
+  50% { box-shadow: 0 0 0 4px rgb(139 94 60 / 30%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dinein-bill-requested {
+    animation: none;
+    border-width: 3px;
+  }
+}

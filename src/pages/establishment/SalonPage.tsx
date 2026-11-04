@@ -109,6 +109,9 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
   const [closeOpen, setCloseOpen] = useState(false);
+  const [checkout, setCheckout] = useState<{ tenantId: string; tabId: string; tableLabel: string; totalCents: number } | null>(null);
+  const [receivedConfirmed, setReceivedConfirmed] = useState(false);
+  const [requestedCheckoutTable, setRequestedCheckoutTable] = useState<string | null>(null);
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: '', amount: '', tendered: '' }]);
   const seenCalls = useRef<Set<string>>(new Set());
   const seenRounds = useRef<Set<string> | null>(null);
@@ -290,6 +293,9 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     setLongStay(readLongStay(typeof window === 'undefined' ? undefined : window.localStorage, activeTenant.id));
     setTables([]); setTabs([]); setSessions([]); setCalls([]); setRounds([]);
     setSelectedTableId(null); setPaidByTab(new Map()); setReviews(new Set()); setClosedToday([]);
+    setOrderOpen(false); setProducts([]); setCategories([]); setCatalogProducts([]); setProductId('');
+    setCaps(NO_CAPABILITIES); setHolderCode(null); setDispatchCall(null); setAccess(null);
+    setConfirmReject(null); setTransferOpen(false); setModesOpen(false); setMessage(null);
   }, [activeTenant?.id]);
 
   useEffect(() => {
@@ -362,13 +368,29 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     setReleaseEmptyOpen(false);
     setCloseOpen(false);
     setPixLive(false);
+    setCheckout(null);
+    setReceivedConfirmed(false);
   }, [selectedTableId]);
 
   useEffect(() => {
-    if (closeOpen && !loading && !selectedTab) {
+    if (closeOpen && !checkout && !loading && !selectedTab) {
       setCloseOpen(false); setPixLive(false); setSelectedTableId(null);
     }
-  }, [closeOpen, loading, selectedTab]);
+  }, [closeOpen, checkout, loading, selectedTab]);
+
+  useEffect(() => {
+    setCheckout(null); setCloseOpen(false); setReceivedConfirmed(false);
+  }, [activeTenant?.id]);
+
+  useEffect(() => {
+    const readTarget = () => {
+      const query = new URLSearchParams(window.location.hash.split('?')[1] || '');
+      const tableId = query.get('table');
+      if (tableId) { setSelectedTableId(tableId); setRequestedCheckoutTable(query.get('checkout') === '1' ? tableId : null); }
+    };
+    readTarget(); window.addEventListener('hashchange', readTarget);
+    return () => window.removeEventListener('hashchange', readTarget);
+  }, []);
 
   // Responsável pela mesa (só com o modelo de acesso novo; antes dele nada disso existe no banco).
   useEffect(() => {
@@ -480,17 +502,26 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const canClose = activeRole === 'OWNER' || (canManageBill && closeRoles.includes(activeRole || ''));
   const pixSelected = payments.some(payment => payment.method === 'PIX');
   const openCheckout = () => {
+    if (!selectedTab || !selectedTable || !activeTenant?.id) return;
     if (totalCents <= 0) { setMessage('Não há valor pendente para cobrar nesta comanda.'); return; }
+    setCheckout({ tenantId: activeTenant.id, tabId: selectedTab.id, tableLabel: selectedTable.label, totalCents });
+    setReceivedConfirmed(false);
     setPayments([{ method: selectedTab?.status === 'AWAITING_PAYMENT' ? 'PIX' : '', amount: (totalCents / 100).toFixed(2), tendered: '' }]);
     setPixLive(false);
     setCloseOpen(true);
   };
+  useEffect(() => {
+    if (requestedCheckoutTable && !loading && selectedTable?.id === requestedCheckoutTable && selectedTab && canClose) {
+      setRequestedCheckoutTable(null); openCheckout();
+    }
+  }, [requestedCheckoutTable, loading, selectedTable?.id, selectedTab?.id, canClose]);
   const authorizeWaiter = () => {
     if (!selectedTab || selectedTab.status !== 'BILL_REQUESTED') return;
     void run('authorize-close', () => salonStaffRepository.authorizeWaiterToClose(selectedTab.id));
   };
   const closeTab = () => {
     if (!selectedTab) return;
+    if (!receivedConfirmed) { setMessage('Confirme o recebimento antes de fechar a conta.'); return; }
     if (pixSelected || pixLive || payments.some(payment => !payment.method)) {
       setMessage(pixSelected ? 'Gere o Pix e aguarde a confirmação do pagamento para liberar a mesa.' : 'Escolha a forma de pagamento e confirme o recebimento.');
       return;
@@ -690,7 +721,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
             <button type="button" onClick={() => setSelectedTableId(null)} aria-label="Fechar detalhes"><X className="h-5 w-5" /></button>
           </div>
           {!selectedTab ? <div className="mt-6 rounded-xl bg-gray-50 p-4 text-sm text-gray-600"><p>Mesa livre, sem comanda aberta.</p>{caps.tableAccess && <button type="button" disabled={!!busy} onClick={() => selectedTableId && void run('open-table', () => salonStaffRepository.openTab(selectedTableId))} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-bold text-white"><Plus className="h-4 w-4" />Abrir mesa para o cliente</button>}</div> : <>
-            {selectedTab.status !== 'OPEN' && <p role="status" className={`mt-4 rounded-xl p-3 text-sm font-bold ${selectedTab.status === 'WAITER_AUTHORIZED' ? 'bg-violet-800 text-white' : selectedTab.status === 'BILL_REQUESTED' ? 'bg-violet-100 text-violet-900' : 'bg-teal-50 text-teal-900'}`}>
+            {selectedTab.status !== 'OPEN' && <p role="status" className={`mt-4 rounded-xl p-3 text-sm font-bold ${['WAITER_AUTHORIZED', 'BILL_REQUESTED'].includes(selectedTab.status) ? 'salon-bill-alert' : 'border border-sky-300 bg-sky-50 text-sky-900'}`}>
               {selectedTab.status === 'BILL_REQUESTED' ? 'Conta solicitada. Feche no caixa ou autorize o garçom a cobrar esta comanda.' : selectedTab.status === 'WAITER_AUTHORIZED' ? 'Garçom autorizado a fechar esta conta após confirmar o pagamento.' : 'Aguardando pagamento. A mesa permanece aberta até a confirmação.'}
             </p>}
             <div className="mt-5 space-y-3" data-testid="salon-people">
@@ -819,7 +850,11 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
                   <Receipt className="h-4 w-4" />{selectedTab.status === 'AWAITING_PAYMENT' ? 'Ver pagamento pendente' : 'Fechar conta'}
                 </button>
               ) : null}
-              {canManageBill && selectedTab.status === 'BILL_REQUESTED' && <button type="button" disabled={!!busy} onClick={authorizeWaiter} className="inline-flex items-center gap-2 rounded-xl bg-violet-800 px-4 py-3 font-bold text-white">Autorizar garçom a fechar</button>}
+              {canManageBill && selectedTab.status === 'BILL_REQUESTED' && <button type="button" disabled={!!busy} onClick={authorizeWaiter} className="inline-flex items-center gap-2 rounded-xl bg-[#8B5E3C] px-4 py-3 font-bold text-white">Autorizar garçom a fechar</button>}
+              {['BILL_REQUESTED', 'WAITER_AUTHORIZED'].includes(selectedTab.status) && <button type="button" disabled={!!busy} onClick={() => void run('reopen-tab', async () => {
+                const { error } = await supabase.rpc('staff_reopen_tab', { p_tab: selectedTab.id });
+                if (error) throw error;
+              })} className="rounded-xl border border-[#8B5E3C] px-4 py-3 font-bold text-[#593820]">Pedir mais</button>}
             </div>
             {releaseEmptyOpen && (
               <div role="alertdialog" aria-label="Liberar mesa sem consumo" data-testid="salon-release-empty-dialog" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-slate-900">
@@ -952,7 +987,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
       </Modal>
       <Modal isOpen={closeOpen} onClose={() => setCloseOpen(false)} title="Revisar e fechar conta">
         <div className="space-y-3">
-          <p className="text-lg font-black">Total: {money(totalCents / 100)}</p>
+          <p className="text-lg font-black">Total: {money((checkout?.totalCents ?? totalCents) / 100)}</p>
           <p className="text-sm text-slate-600">Escolha Dinheiro, Cartão ou Pix. Confirme dinheiro/cartão somente depois de receber o pagamento.</p>
           {pixLive && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Aguardando pagamento do Pix. A conta permanece aberta; o QR continua disponível até a confirmação.</p>}
           {payments.map((payment, index) => <div key={index} className="grid grid-cols-1 gap-2 rounded-xl border p-3 sm:grid-cols-3">
@@ -966,14 +1001,15 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
             {payment.method !== 'PIX' && <input aria-label={`Valor do pagamento ${index + 1}`} value={payment.amount} onChange={event => setPayments(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} placeholder="Valor" inputMode="decimal" className="rounded-lg border px-2 py-2" />}
             {payment.method === 'CASH' ? <input aria-label="Troco para" value={payment.tendered} onChange={event => setPayments(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, tendered: event.target.value } : row))} placeholder="Troco para R$" inputMode="decimal" className="rounded-lg border px-2 py-2" /> : <span />}
           </div>)}
-          {pixSelected && selectedTab && caps.tabPix && canClose && <TabPixPanel key={selectedTab.id} tabId={selectedTab.id} totalCents={totalCents} onLiveChange={onPixLive} onSettled={onPixSettled} />}
+          {pixSelected && checkout?.tenantId === activeTenant.id && caps.tabPix && canClose && <TabPixPanel key={checkout.tabId} tabId={checkout.tabId} tableLabel={checkout.tableLabel} totalCents={checkout.totalCents} onLiveChange={onPixLive} onSettled={onPixSettled} />}
           {pixSelected && !caps.tabPix && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">O Pix da conta não está disponível. Configure o pagamento online ou escolha dinheiro/cartão.</p>}
           {!pixSelected && <div className="flex gap-2">
             <button type="button" onClick={() => setPayments(rows => [...rows, { method: 'CASH', amount: '', tendered: '' }])} className="rounded-lg border px-3 py-2 text-sm font-bold">Adicionar pagamento</button>
             {payments.length > 1 && <button type="button" onClick={() => setPayments(rows => rows.slice(0, -1))} className="rounded-lg border px-3 py-2 text-sm font-bold">Remover último</button>}
           </div>}
           {payments.some(payment => payment.method === 'CASH' && payment.tendered && Number(payment.tendered.replace(',', '.')) * 100 < Number(payment.amount.replace(',', '.')) * 100) && <p role="alert" className="text-sm font-bold text-red-700">O valor precisa ser maior que a conta</p>}
-          {!pixSelected && <button type="button" disabled={!!busy || pixLive || payments.some(payment => !payment.method)} onClick={closeTab} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar recebimento e fechar conta</button>}
+          {!pixSelected && <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={receivedConfirmed} onChange={event => setReceivedConfirmed(event.target.checked)} />Confirmei o recebimento</label>}
+          {!pixSelected && <button type="button" disabled={!!busy || pixLive || !receivedConfirmed || payments.some(payment => !payment.method)} onClick={closeTab} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar recebimento e fechar conta</button>}
         </div>
       </Modal>
 

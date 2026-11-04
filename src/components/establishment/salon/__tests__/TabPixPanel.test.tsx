@@ -3,8 +3,10 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
-const api = vi.hoisted(() => ({ createTabPix: vi.fn(), tabPixStatus: vi.fn(), cancelTabPix: vi.fn() }));
+const api = vi.hoisted(() => ({ createTabPix: vi.fn(), tabPixStatus: vi.fn(), cancelTabPix: vi.fn(), observeTabPix: vi.fn() }));
+const receipts = vi.hoisted(() => ({ target: vi.fn(), send: vi.fn() }));
 vi.mock('../../../../repositories/paymentRepository', () => ({ paymentRepository: api }));
+vi.mock('../../../../repositories/tabReceiptRepository', () => ({ tabReceiptRepository: receipts }));
 
 import { mmss, PIX_POLL_MS, pixSecondsLeft, TabPixPanel } from '../TabPixPanel';
 
@@ -12,7 +14,7 @@ const future = () => new Date(Date.now() + 10 * 60_000).toISOString();
 const pix = (over: Record<string, unknown> = {}) => ({ id: 'p1', tabId: 'tab1', amountCents: 11000, status: 'pending', brcode: '00020126PIXCODE', expiresAt: future(), needsReview: false, reviewReason: null, tabClosed: false, ...over });
 const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
 
-beforeEach(() => { vi.useFakeTimers(); Object.values(api).forEach(m => m.mockReset()); });
+beforeEach(() => { vi.useFakeTimers(); Object.values(api).forEach(m => m.mockReset()); Object.values(receipts).forEach(m => m.mockReset()); api.observeTabPix.mockReturnValue(vi.fn()); receipts.target.mockResolvedValue({ exists: true, maskedEmail: 'jo***@gm***.com' }); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('TabPixPanel', () => {
@@ -34,17 +36,39 @@ describe('TabPixPanel', () => {
     expect(writeText).toHaveBeenCalledWith('00020126PIXCODE');
     expect(onSettled).not.toHaveBeenCalled();
   });
-  it('consulta o status a cada ~4 s e, ao pagar, mostra "Mesa liberada" e avisa o pai', async () => {
-    api.tabPixStatus.mockResolvedValueOnce({ pix: pix() }).mockResolvedValue({ pix: pix({ status: 'paid', tabClosed: true }) });
+  it('consulta o status a cada 5 s e mantém comprovante visível até Concluir', async () => {
+    api.tabPixStatus.mockResolvedValueOnce({ pix: pix() }).mockResolvedValue({ pix: pix({ status: 'paid', tabClosed: true, paidAt: '2026-11-04T01:10:00Z' }) });
     const onLive = vi.fn(); const onSettled = vi.fn();
-    render(<TabPixPanel tabId="tab1" totalCents={11000} onLiveChange={onLive} onSettled={onSettled} />);
+    render(<TabPixPanel tabId="tab1" tableLabel="Mesa 5" totalCents={11000} onLiveChange={onLive} onSettled={onSettled} />);
     await flush();
     expect(screen.getByTestId('tab-pix-qr')).toBeTruthy();
     await act(async () => { vi.advanceTimersByTime(PIX_POLL_MS + 50); await Promise.resolve(); await Promise.resolve(); });
-    expect(screen.getByText('Pagamento confirmado!')).toBeTruthy();
-    expect(onLive).toHaveBeenLastCalledWith(false);
+    expect(screen.getByRole('heading', { name: 'Pagamento confirmado' })).toBeTruthy();
+    expect(screen.getByText('Mesa 5')).toBeTruthy();
+    expect(screen.getByText(/Destinatário: jo\*\*\*@gm\*\*\*\.com/)).toBeTruthy();
+    expect(onLive).toHaveBeenLastCalledWith(true);
     await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(onSettled).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Concluir' }));
     expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+  it('realtime consulta o servidor e remove a assinatura ao fechar a tela', async () => {
+    const stop = vi.fn(); api.observeTabPix.mockReturnValue(stop);
+    api.tabPixStatus.mockResolvedValueOnce({ pix: pix() }).mockResolvedValue({ pix: pix({ status: 'paid', tabClosed: true }) });
+    const { unmount } = render(<TabPixPanel tabId="tab1" totalCents={11000} onLiveChange={vi.fn()} onSettled={vi.fn()} />);
+    await flush();
+    await act(async () => { api.observeTabPix.mock.calls[0][1](); await Promise.resolve(); });
+    expect(screen.getByRole('heading', { name: 'Pagamento confirmado' })).toBeTruthy();
+    unmount(); expect(stop).toHaveBeenCalledOnce();
+  });
+  it('contagem local expirada não libera pagamento manual nem gera outra cobrança', async () => {
+    api.tabPixStatus.mockResolvedValue({ pix: pix({ expiresAt: new Date(Date.now() + 1000).toISOString() }) });
+    const onLive = vi.fn();
+    render(<TabPixPanel tabId="tab1" totalCents={11000} onLiveChange={onLive} onSettled={vi.fn()} />);
+    await flush(); await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(screen.queryByRole('button', { name: 'Gerar novo QR PIX' })).toBeNull();
+    expect(onLive).toHaveBeenLastCalledWith(true);
+    expect(screen.getByText(/Aguardando o servidor confirmar a expiração/)).toBeTruthy();
   });
   it('PIX pago mas conta ainda aberta (total mudou) exige conferência e não fecha a mesa', async () => {
     api.tabPixStatus.mockResolvedValue({ pix: pix({ status: 'paid', tabClosed: false, needsReview: true, reviewReason: 'Total mudou após o PIX' }) });

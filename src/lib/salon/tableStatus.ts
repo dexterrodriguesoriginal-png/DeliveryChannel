@@ -82,13 +82,13 @@ export interface TableStatusInfo {
 export const STATUS_LABEL: Record<TableStatusKind, string> = {
   FREE: 'Livre', OCCUPIED: 'Ocupada', LONG_STAY: 'Ocupada há muito tempo', BILL: 'Conta solicitada',
   NEW_ORDER: 'Pedido novo', PREPARING: 'Em preparo', READY: 'Pronto no balcão',
-  AUTHORIZED: 'Garçom autorizado a fechar', AWAITING_PAYMENT: 'Aguardando pagamento',
+  AUTHORIZED: 'Garçom autorizado a fechar', AWAITING_PAYMENT: 'Aguardando PIX',
 };
 
-/** Same families used by the orders Kanban; bill authorization remains a distinct, stronger purple. */
+/** A pending PIX is occupied and must remain visually distinct from a free table. */
 export const TABLE_STATUS_COLOR: Record<TableStatusKind, string> = {
   FREE: '#0f766e', OCCUPIED: '#a16207', LONG_STAY: '#b91c1c', NEW_ORDER: '#dc2626',
-  PREPARING: '#ea580c', READY: '#7c3aed', BILL: '#a78bfa', AUTHORIZED: '#5b21b6', AWAITING_PAYMENT: '#0f766e',
+  PREPARING: '#ea580c', READY: '#7c3aed', BILL: '#8B5E3C', AUTHORIZED: '#8B5E3C', AWAITING_PAYMENT: '#0369a1',
 };
 
 export interface DeriveInput {

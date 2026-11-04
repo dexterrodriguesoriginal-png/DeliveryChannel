@@ -3,13 +3,15 @@ import { QRCodeSVG } from 'qrcode.react';
 import { AlertTriangle, CheckCircle2, Copy, Loader2, QrCode, RefreshCw, XCircle } from 'lucide-react';
 import { formatBRL } from '../../../lib/pricing/money';
 import { paymentRepository, type TabPix } from '../../../repositories/paymentRepository';
+import { TabPaymentConfirmation } from './TabPaymentConfirmation';
 import './salon.css';
 
-export const PIX_POLL_MS = 4000;
+export const PIX_POLL_MS = 5000;
 
 export interface TabPixPanelProps {
   tabId: string;
   totalCents: number;
+  tableLabel?: string;
   /** a PIX is live (QR on screen): the parent blocks manual closing so the customer can't pay twice */
   onLiveChange: (live: boolean) => void;
   /** the PIX was confirmed by the provider and the tab is closed on the server */
@@ -25,13 +27,13 @@ export function pixSecondsLeft(expiresAt: string | null, now: number): number | 
 }
 export const mmss = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 
-export const TabPixPanel: React.FC<TabPixPanelProps> = ({ tabId, totalCents, onLiveChange, onSettled }) => {
+export const TabPixPanel: React.FC<TabPixPanelProps> = ({ tabId, totalCents, tableLabel, onLiveChange, onSettled }) => {
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [copied, setCopied] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const settledRef = useRef(false);
+  const confirmedRef = useRef(false);
   const alive = useRef(true);
   // Callbacks live in refs so a parent re-render can never restart polling.
   const liveRef = useRef(onLiveChange); liveRef.current = onLiveChange;
@@ -40,34 +42,37 @@ export const TabPixPanel: React.FC<TabPixPanelProps> = ({ tabId, totalCents, onL
 
   const apply = useCallback((pix: TabPix | null) => {
     if (!alive.current) return;
+    // A delayed pending response cannot replace a server-confirmed payment.
+    if (confirmedRef.current && (!pix || pix.status !== 'paid' || !pix.tabClosed)) return;
+    if (pix?.status === 'paid' && pix.tabClosed) confirmedRef.current = true;
     setView(pix ? { kind: 'pix', pix } : { kind: 'idle' });
-    liveRef.current(!!pix && pix.status === 'pending' && (!pix.expiresAt || Date.parse(pix.expiresAt) > Date.now()));
-    if (pix && pix.status === 'paid' && pix.tabClosed && !settledRef.current) {
-      settledRef.current = true;
-      window.setTimeout(() => { if (alive.current) settledCb.current(); }, 1800);
-    }
+    // A local countdown is not permission to collect a second payment.
+    liveRef.current(!!pix && ['creating', 'pending', 'paid'].includes(pix.status));
   }, []);
 
   // Show a charge that already exists (created earlier / on another device) without creating a new one.
   useEffect(() => {
     let cancelled = false;
+    confirmedRef.current = false;
     liveRef.current(true);
     void paymentRepository.tabPixStatus(tabId)
-      .then(r => { if (!cancelled) apply(r.pix && ['pending', 'paid'].includes(r.pix.status) ? r.pix : null); })
+      .then(r => { if (!cancelled) apply(r.pix && ['creating', 'pending', 'paid'].includes(r.pix.status) ? r.pix : null); })
       .catch(() => { if (!cancelled) { setView({ kind: 'idle' }); liveRef.current(false); } });
     return () => { cancelled = true; liveRef.current(false); };
   }, [tabId, apply]);
 
   const pix = view.kind === 'pix' ? view.pix : null;
-  const polling = !!pix && pix.status === 'pending';
+  const polling = !!pix && (pix.status === 'creating' || pix.status === 'pending' || (pix.status === 'paid' && !pix.tabClosed));
   useEffect(() => {
-    if (!polling) return;
+    let active = true;
+    const refresh = () => { void paymentRepository.tabPixStatus(tabId).then(r => { if (active) apply(r.pix); }).catch(() => { /* transient: keep polling */ }); };
+    const unsubscribe = paymentRepository.observeTabPix(tabId, refresh);
     const timer = window.setInterval(() => {
       setNow(Date.now());
-      void paymentRepository.tabPixStatus(tabId).then(r => apply(r.pix)).catch(() => { /* transient: keep polling */ });
+      if (!confirmedRef.current) refresh();
     }, PIX_POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [polling, tabId, apply]);
+    return () => { active = false; window.clearInterval(timer); unsubscribe(); };
+  }, [tabId, apply]);
   useEffect(() => {
     if (!polling) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -81,7 +86,7 @@ export const TabPixPanel: React.FC<TabPixPanelProps> = ({ tabId, totalCents, onL
       // The provider may have created the charge even if the response was lost. Recover it before offering another payment.
       try {
         const recovered = (await paymentRepository.tabPixStatus(tabId)).pix;
-        if (recovered && ['pending', 'paid'].includes(recovered.status)) { apply(recovered); return; }
+        if (recovered && ['creating', 'pending', 'paid'].includes(recovered.status)) { apply(recovered); return; }
       } catch { /* show the creation error; the server still prevents closing over a pending charge */ }
       if (alive.current) { setView({ kind: 'error', message: error instanceof Error ? error.message : 'Não foi possível gerar o PIX.' }); liveRef.current(false); }
     }
@@ -112,13 +117,15 @@ export const TabPixPanel: React.FC<TabPixPanelProps> = ({ tabId, totalCents, onL
       {view.kind === 'error' && <div role="alert" className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900"><XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{view.message}</div>}
       {cancelError && <p role="alert" className="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">{cancelError} A conta continua aguardando o pagamento.</p>}
 
-      {(view.kind === 'idle' || view.kind === 'error' || expired || (pix && ['expired', 'cancelled', 'failed'].includes(pix.status))) && (
+      {(view.kind === 'idle' || view.kind === 'error' || (pix && ['expired', 'cancelled', 'failed'].includes(pix.status))) && (
         <button type="button" onClick={() => void generate()} disabled={totalCents <= 0}
           className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 font-extrabold text-white shadow-sm transition hover:bg-teal-800 active:scale-[.99] disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
           {expired || (pix && pix.status !== 'pending') ? <RefreshCw className="h-4 w-4" aria-hidden="true" /> : <QrCode className="h-4 w-4" aria-hidden="true" />}
           {expired || (pix && pix.status !== 'pending') ? 'Gerar novo QR PIX' : `Gerar QR PIX de ${formatBRL(totalCents / 100)}`}
         </button>
       )}
+      {pix?.status === 'creating' && <p role="status" className="mt-4 text-sm font-semibold text-slate-700">A cobrança está sendo preparada. Aguarde a confirmação do servidor.</p>}
+      {expired && <p role="status" className="mt-4 text-sm font-semibold text-amber-900">O prazo do QR terminou. Aguardando o servidor confirmar a expiração; a mesa continua ocupada.</p>}
 
       {pix && pix.status === 'pending' && !expired && pix.brcode && (
         <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
@@ -138,7 +145,7 @@ export const TabPixPanel: React.FC<TabPixPanelProps> = ({ tabId, totalCents, onL
       )}
 
       {pix && pix.status === 'paid' && pix.tabClosed && (
-        <div role="status" className="mt-4 flex items-center gap-3 rounded-2xl bg-emerald-50 p-4 text-emerald-900"><CheckCircle2 className="h-8 w-8 shrink-0" aria-hidden="true" /><div><p className="font-black">Pagamento confirmado!</p><p className="text-sm">Conta fechada e mesa liberada.</p></div></div>
+        <TabPaymentConfirmation tabId={tabId} tableLabel={tableLabel} amountCents={pix.amountCents} paidAt={pix.paidAt} onDone={() => settledCb.current()} />
       )}
       {pix && pix.status === 'paid' && !pix.tabClosed && (
         <div role="alert" className="mt-4 flex items-start gap-3 rounded-2xl bg-amber-50 p-4 text-amber-950"><AlertTriangle className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" /><div><p className="font-black">PIX de {formatBRL(pix.amountCents / 100)} recebido — confira</p><p className="text-sm">{pix.reviewReason || 'O total da conta mudou depois do PIX.'}. O Pix recebido precisa de conferência no caixa e a conta permanece aberta. Confira a cobrança antes de registrar outro pagamento.</p></div></div>

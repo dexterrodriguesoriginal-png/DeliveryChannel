@@ -64,7 +64,7 @@ export function NotificationList({ rows, onRead, onOpen, briefs = {}, now = Date
         </div>
         : <ul className="divide-y divide-slate-100">{shown.map(n => {
           const type = notificationType(n), { Icon, fg, label } = TYPE_META[type];
-          const detail = n.kind === 'DRIVER_JOIN_REQUEST' ? '' : notificationDetail(briefs[n.ref_id]);
+          const detail = n.kind === 'ORDER_NEW' || n.kind === 'ORDER_MESSAGE' ? notificationDetail(briefs[n.ref_id]) : '';
           const isUnread = !n.read_at;
           return <li key={n.id} data-testid="notification-item" data-unread={isUnread} data-type={type} className="dcn-item relative">
             <button type="button" className="dcn-main flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50" onClick={() => onOpen(n)}
@@ -141,7 +141,7 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
       const number = ++loadNumber;
       try {
         const data = (await repo.notifications(tenant)).filter(n => n.tenant_id === tenant);
-        const ids = [...new Set(data.filter(n => n.kind !== 'DRIVER_JOIN_REQUEST').map(n => n.ref_id))];
+        const ids = [...new Set(data.filter(n => n.kind === 'ORDER_NEW' || n.kind === 'ORDER_MESSAGE').map(n => n.ref_id))];
         const details: Record<string, OrderBrief> = await Promise.resolve(repo.orderBriefs?.(tenant, ids)).catch(() => ({})) || {};
         if (!alive || number !== loadNumber) return;
         if (initialized) announce(data);
@@ -239,7 +239,7 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
   const dismiss = (id: string) => setBalloons(previous => previous.filter(n => n.id !== id));
   const view = (n: OwnerNotification) => {
     void read(n); dismiss(n.id); setOpen(false);
-    const detail = briefs[n.ref_id];
+    const detail = n.kind === 'ORDER_NEW' || n.kind === 'ORDER_MESSAGE' ? briefs[n.ref_id] : undefined;
     onOpen(detail?.fulfillmentType === 'DINE_IN' && detail.tabId ? { ...n, tableTarget: detail.tabId } : n);
   };
   const accept = async (n: OwnerNotification) => {
@@ -317,11 +317,11 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
     {balloons.length > 0 && <div aria-label="Avisos de novas notificações" className="pointer-events-auto z-[62] flex flex-col gap-2 overflow-y-auto" style={placeStyle(toastPlace)}>
       {balloons.slice(0, 3).map(balloon => {
         const meta = TYPE_META[notificationType(balloon)];
-        const detail = briefs[balloon.ref_id];
+        const detail = balloon.kind === 'ORDER_NEW' || balloon.kind === 'ORDER_MESSAGE' ? briefs[balloon.ref_id] : undefined;
         const orderToast = balloon.kind === 'ORDER_NEW';
         const pending = orderToast && detail?.status === 'PENDING';
         const dineIn = detail?.fulfillmentType === 'DINE_IN';
-        const toastDetail = balloon.kind !== 'DRIVER_JOIN_REQUEST' ? notificationDetail(detail) : '';
+        const toastDetail = notificationDetail(detail);
         return <div key={balloon.id} role="status" data-testid="notification-toast" data-notification-id={balloon.id} className="dcn-toast relative shrink-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_40px_-10px_rgba(15,23,42,.35)]">
           <span className="absolute inset-y-0 left-0 w-1.5 bg-[#16a34a]" />
           <div className="flex items-start gap-3 py-3 pl-5 pr-3">
@@ -332,7 +332,7 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
               {orderToast && dineIn && !pending && <p className="mt-1 text-xs font-semibold text-emerald-800">Enviado à cozinha</p>}
               <div className="mt-2 flex flex-wrap gap-2">
                 {pending && <button type="button" disabled={!!accepting} onClick={() => { void accept(balloon); }} className="rounded-lg bg-[#16a34a] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">{accepting === balloon.id ? 'Salvando…' : 'Aceitar pedido'}</button>}
-                <button type="button" onClick={() => view(balloon)} className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-bold text-emerald-800">{balloon.kind === 'DRIVER_JOIN_REQUEST' ? 'Ver solicitação' : dineIn ? 'Ver mesa' : 'Ver pedido'}</button>
+                <button type="button" onClick={() => view(balloon)} className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-bold text-emerald-800">{balloon.kind === 'DRIVER_JOIN_REQUEST' ? 'Ver solicitação' : balloon.kind === 'TAB_REOPENED' || dineIn ? 'Ver mesa' : 'Ver pedido'}</button>
               </div>
             </div>
             <button type="button" aria-label="Fechar aviso" onClick={() => dismiss(balloon.id)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={15} /></button>

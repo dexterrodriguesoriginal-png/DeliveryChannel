@@ -12,6 +12,7 @@ import express from 'express';
 import { isRuntimeArtifactPath } from './server/payments/privacy';
 import { startPaymentRetention } from './server/payments/retention';
 import { createPaymentsRouter } from './server/payments/routes';
+import { createReceiptsRouter } from './server/receipts/routes';
 import path from 'node:path';
 import { createPwaRouter } from './server/pwa/routes';
 import fs from 'node:fs/promises';
@@ -31,6 +32,7 @@ async function start() {
   const app = express();
   app.disable('x-powered-by');
   app.use('/api/payments', createPaymentsRouter());
+  app.use('/api/receipts', createReceiptsRouter());
   const port = Number(process.env.PORT) || 3000;
   const distDir = path.resolve(process.cwd(), 'dist');
   const { resolver, mode } = pickResolver();

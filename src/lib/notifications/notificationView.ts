@@ -18,6 +18,7 @@ export function relativeTime(iso: string, now = Date.now()): string {
 export type NotificationType = 'order' | 'payment' | 'driver' | 'table' | 'chat' | 'default';
 export function notificationType(n: Pick<OwnerNotification, 'kind' | 'title'>): NotificationType {
   const title = (n.title || '').toLowerCase();
+  if (n.kind === 'TAB_REOPENED') return 'table';
   if (n.kind === 'ORDER_MESSAGE') return 'chat';
   if (n.kind === 'DRIVER_JOIN_REQUEST') return 'driver';
   if (/pagamento|pix|pago/.test(title)) return 'payment';

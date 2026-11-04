@@ -50,7 +50,7 @@ describe('TableCard', () => {
     const info = deriveTableStatus({ tab: tab(5), rounds, needsReview: true, now: NOW });
     expect(tableAriaLabel('Mesa 1', info, 2)).toContain('PIX para conferir');
   });
-  it('autorização roxa e Pix aguardando pagamento continuam com a comanda ocupada', () => {
+  it('conta autorizada marrom e Pix aguardando pagamento continuam com a comanda ocupada', () => {
     const authorized = deriveTableStatus({ tab: { ...tab(10), status: 'WAITER_AUTHORIZED' }, rounds, now: NOW });
     const awaiting = deriveTableStatus({ tab: { ...tab(10), status: 'AWAITING_PAYMENT' }, rounds, now: NOW });
     const { rerender } = render(<TableCard id="t1" label="Mesa 1" area={null} seats={2} info={authorized} onOpen={() => {}} />);
@@ -59,6 +59,6 @@ describe('TableCard', () => {
     rerender(<TableCard id="t1" label="Mesa 1" area={null} seats={2} info={awaiting} onOpen={() => {}} />);
     expect(screen.getByTestId('salon-table-t1').getAttribute('data-status')).toBe('AWAITING_PAYMENT');
     expect(screen.getByRole('progressbar')).toBeTruthy();
-    expect(screen.getByTestId('salon-table-t1').textContent).toContain('Aguardando pagamento');
+    expect(screen.getByTestId('salon-table-t1').textContent).toContain('Aguardando PIX');
   });
 });

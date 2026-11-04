@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  callLabel, compareTables, deriveTableStatus, elapsedMinutes, formatElapsed, matchesFilter, matchesSearch, normalizeLongStay, paidPercent,
+  TABLE_STATUS_COLOR, STATUS_LABEL, callLabel, compareTables, deriveTableStatus, elapsedMinutes, formatElapsed, matchesFilter, matchesSearch, normalizeLongStay, paidPercent,
   readLongStay, statusCounts, tabTotals, tableDisplayNumber, writeLongStay, TabLike,
 } from '../tableStatus';
 
@@ -135,3 +135,11 @@ describe('filters, counts and search', () => {
     expect([callLabel('CALL'), callLabel('BILL'), callLabel('HELP')]).toEqual(['Chamou o garçom', 'Pediu a conta', 'Precisa de ajuda']);
   });
 });
+
+ it('PIX pendente tem identidade própria e nunca fica Livre; conta pedida é marrom', () => {
+   expect(TABLE_STATUS_COLOR.AWAITING_PAYMENT).not.toBe(TABLE_STATUS_COLOR.FREE);
+   expect(STATUS_LABEL.AWAITING_PAYMENT).toBe('Aguardando PIX');
+   expect(TABLE_STATUS_COLOR.BILL).toBe('#8B5E3C');
+   expect(TABLE_STATUS_COLOR.AUTHORIZED).toBe('#8B5E3C');
+   expect(deriveTableStatus({tab:tab({status:'AWAITING_PAYMENT'}),now:NOW}).kind).toBe('AWAITING_PAYMENT');
+ });

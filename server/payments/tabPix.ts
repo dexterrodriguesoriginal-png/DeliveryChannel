@@ -18,7 +18,7 @@ export function tabPixView(c: TabChargeRow | null, tabStatus?: string) {
   if (!c) return null;
   const payable = c.status === 'pending' && (!c.expires_at || Date.parse(c.expires_at) > Date.now());
   return { id: c.id, tabId: c.tab_id, amountCents: c.amount_cents, status: c.status,
-    brcode: payable ? c.brcode || null : null, expiresAt: c.expires_at || null,
+    brcode: payable ? c.brcode || null : null, expiresAt: c.expires_at || null, paidAt: c.paid_at || null,
     needsReview: c.needs_review, reviewReason: c.needs_review ? c.review_reason || null : null,
     tabClosed: tabStatus ? tabStatus === 'CLOSED' : c.status === 'paid' && !c.needs_review };
 }

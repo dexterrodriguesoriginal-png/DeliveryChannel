@@ -6,7 +6,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 const h = vi.hoisted(() => ({
   db: {} as Record<string, unknown[]>,
   rpc: vi.fn(),
-  pix: { createTabPix: vi.fn(), tabPixStatus: vi.fn(), cancelTabPix: vi.fn() },
+  pix: { createTabPix: vi.fn(), tabPixStatus: vi.fn(), cancelTabPix: vi.fn(), observeTabPix: vi.fn().mockReturnValue(() => {}), receiptTarget: vi.fn(), sendTabReceipt: vi.fn() },
   role: { value: 'OWNER' },
   tenant: { id: 'tenant-1', slug: 'loja' },
   security: {},
@@ -61,7 +61,7 @@ const caps = (over: Record<string, unknown> = {}) => h.rpc.mockImplementation(as
 const noMigration = () => h.rpc.mockImplementation(async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.mesas_qr_capabilities' } }));
 const status = (id: string) => screen.getByTestId(`salon-table-${id}`).getAttribute('data-status');
 
-beforeEach(() => { seed(); h.rpc.mockReset(); Object.values(h.pix).forEach(m => m.mockReset()); h.pix.tabPixStatus.mockResolvedValue({ pix: null }); h.role.value = 'OWNER'; localStorage.clear(); localStorage.setItem('salon_sidebar_open', 'true'); });
+beforeEach(() => { seed(); h.rpc.mockReset(); Object.values(h.pix).forEach(m => m.mockReset()); h.pix.tabPixStatus.mockResolvedValue({ pix: null }); h.pix.observeTabPix.mockReturnValue(() => {});  h.role.value = 'OWNER'; localStorage.clear(); localStorage.setItem('salon_sidebar_open', 'true'); window.location.hash = '';  });
 afterEach(cleanup);
 
 describe('SalonPage — mapa de mesas', () => {
@@ -138,6 +138,19 @@ describe('SalonPage — mapa de mesas', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Autorizar garçom a fechar' }));
       await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('authorize_waiter_to_close', { p_tab_id: 'tab15' }));
     });
+    it('link de fechar conta do dashboard abre a mesa da loja e o checkout', async () => {
+      caps(); window.location.hash = '#/painel/est-salon?table=t15&checkout=1';
+      render(<SalonPage />);
+      expect(await screen.findByRole('heading', { name: /Revisar e fechar conta/ })).toBeTruthy();
+      expect(screen.getByLabelText('Forma de pagamento 1')).toBeTruthy();
+      expect(h.rpc.mock.calls.some(([name]) => name === 'close_tab')).toBe(false);
+    });
+    it('não abre checkout para mesa de outra loja no link', async () => {
+      caps(); window.location.hash = '#/painel/est-salon?table=outra-loja&checkout=1';
+      render(<SalonPage />);
+      await screen.findByTestId('salon-table-t1');
+      expect(screen.queryByRole('heading', { name: /Revisar e fechar conta/ })).toBeNull();
+    });
     it('dinheiro só fecha depois de escolher a forma e confirmar recebimento', async () => {
       caps();
       render(<SalonPage />);
@@ -147,6 +160,8 @@ describe('SalonPage — mapa de mesas', () => {
       const confirm = screen.getByRole('button', { name: 'Confirmar recebimento e fechar conta' });
       expect(confirm.hasAttribute('disabled')).toBe(true);
       fireEvent.change(screen.getByLabelText('Forma de pagamento 1'), { target: { value: 'CASH' } });
+      expect(confirm.hasAttribute('disabled')).toBe(true);
+      fireEvent.click(screen.getByLabelText('Confirmei o recebimento'));
       expect(confirm.hasAttribute('disabled')).toBe(false);
       fireEvent.click(confirm);
       await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('close_tab', { p_tab_id: 'tab2', p_payments: [{ method: 'CASH', amount_cents: 11000, change_given_cents: 0 }] }));

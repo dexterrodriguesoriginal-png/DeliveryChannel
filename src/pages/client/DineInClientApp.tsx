@@ -8,6 +8,8 @@ import type { Product, SelectedProductOption } from '../../types';
 import { waiterV2Repository, type TableWaiter } from '../../repositories/waiterV2Repository';
 import { initials } from '../../lib/waiter/waiterRouting';
 import { billSplitAmounts, BillSplitMode, DineInPaymentMethod, parseTenderCents, tenderStatus } from '../../lib/customer/dineIn';
+import { canReopenBill } from '../../lib/customer/billReopen';
+import './DineInClientApp.css';
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
 import { isModuleEnabled } from '../../lib/modules';
@@ -40,7 +42,7 @@ import {
 
 type TableResolution = { available: boolean; tenantSlug?: string; storeName?: string; tableLabel?: string };
 type TabRound = DineInTrackedRound & { customerName: string; mine?: boolean; subtotal: number; items: Array<{ name: string; quantity: number; unitPrice: number; totalPrice: number }> };
-type MyTab = { tabId: string; status: 'OPEN' | 'BILL_REQUESTED' | 'WAITER_AUTHORIZED' | 'AWAITING_PAYMENT' | 'CLOSED' | 'CANCELLED'; mode: 'TABLE' | 'INDIVIDUAL'; tableLabel: string; serviceFeePercent: number; serviceFeeRemoved: boolean; rounds: TabRound[]; subtotal: number;
+type MyTab = { tabId: string; status: 'OPEN' | 'BILL_REQUESTED' | 'WAITER_AUTHORIZED' | 'AWAITING_PAYMENT' | 'CLOSED' | 'CANCELLED'; pixStatus?: string | null; mode: 'TABLE' | 'INDIVIDUAL'; tableLabel: string; serviceFeePercent: number; serviceFeeRemoved: boolean; rounds: TabRound[]; subtotal: number;
   /** Only with the table-access model (capabilities v2). */
   me?: { sessionId: string; role: 'RESPONSIBLE' | 'GUEST'; approved: boolean; displayName?: string; ended?: boolean; endedReason?: string | null };
   responsibleName?: string | null; members?: TabMember[]; ended?: boolean; endedReason?: string | null };
@@ -207,6 +209,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const awaitingRelease = access ? approvedNow === false : pendingApproval;
   // Parte E: Enquanto aguarda liberação, o cardápio fica visível e o cliente pode montar a sacola.
   const billRequested = !!tab && ['BILL_REQUESTED', 'WAITER_AUTHORIZED', 'AWAITING_PAYMENT'].includes(tab.status);
+  const billReopenAllowed = !!sessionId && !tabClosed && !qrPaused && canReopenBill(tab?.status, tab?.pixStatus);
+  const awaitingPix = tab?.status === 'AWAITING_PAYMENT';
+  const billStatusLabel = awaitingPix ? 'Aguardando PIX' : 'Conta pedida';
   const orderingDisabled = qrPaused || tabClosed || billRequested;
   const split = useMemo(() => {
     const customCents = parseTenderCents(customShare) || 0;
@@ -780,6 +785,32 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       : `Conta solicitada. Aguardando autorização do caixa. Preferência: ${paymentChoices.find(choice => choice.value === paymentMethod)?.label}.`);
   };
 
+  const reopenBill = async () => {
+    if (!billReopenAllowed || busy) return;
+    const source = activeIdentityRef.current;
+    setBusy(true);
+    try {
+      const { error: reopenError } = await supabase.rpc('reopen_tab_from_bill', { p_session_id: sessionId });
+      if (!contextMatches(source)) return;
+      if (reopenError) {
+        const message = errorText(reopenError);
+        setNotice(/PIX|PAYMENT|TAB_CLOSED/i.test(message)
+          ? 'O pagamento já está em andamento ou foi confirmado. Chame o garçom para conferir.'
+          : /RATE|LIMIT/i.test(message)
+            ? 'Aguarde um pouco antes de tentar reabrir a conta novamente.'
+            : 'Não foi possível reabrir a conta. Chame o garçom para ajudar.');
+      } else {
+        setBillOpen(false);
+        setNotice('Comanda reaberta. Você já pode pedir mais; a equipe foi avisada.');
+      }
+      await loadAccount(true);
+    } catch {
+      if (contextMatches(source)) setNotice('Não foi possível reabrir a conta. Confira sua conexão e tente novamente.');
+    } finally {
+      if (contextMatches(source)) setBusy(false);
+    }
+  };
+
   // Convite (só o Responsável): código curto que expira, revogável.
   const createInvite = async () => {
     if (!sessionId) return;
@@ -1063,7 +1094,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           <div className="flex justify-between border-t pt-3 font-bold"><span>Subtotal estimado</span><span>{formatBRL(totalCart)}</span></div>
           <button type="button" onClick={handleRequestOrder} disabled={busy || orderingDisabled} className="mt-3 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Fazer pedido'}</button>
           {(pendingApproval || awaitingRelease) && <p className="mt-2 text-xs font-semibold text-amber-800">Aguarde a liberação da mesa. {PENDING_APPROVAL_TITLE}. {PENDING_APPROVAL_TEXT}</p>}
-          {billRequested && <p className="mt-2 text-xs font-semibold text-purple-800">Aguardando fechamento da conta. Chame o garçom se precisar reabrir a comanda.</p>}
+          {billRequested && <p className="mt-2 text-xs font-semibold text-[#8B5E3C]">{awaitingPix ? 'Aguardando a confirmação do PIX. Sua mesa continua ocupada.' : billReopenAllowed ? 'Conta pedida. Use “Pedir mais” para continuar consumindo.' : 'Conta pedida. O pagamento está em andamento; chame o garçom se precisar de ajuda.'}</p>}
         </section>}
         {awaitingReleaseModalOpen && awaitingRelease && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setAwaitingReleaseModalOpen(false); }}>
@@ -1166,6 +1197,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             </button>
           </section>
         </div>}
+        {billRequested && !tabClosed && <section aria-label="Situação da conta" className={`mt-4 rounded-xl p-3 text-sm ${awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested'}`}>
+          <p className="font-bold">{billStatusLabel}</p>
+          <p className="mt-1">{awaitingPix ? 'Sua mesa continua ocupada até a confirmação do pagamento.' : billReopenAllowed ? 'Quer uma saideira? Reabra a comanda para fazer mais pedidos.' : 'O pagamento está em andamento. Aguarde a confirmação ou chame o garçom.'}</p>
+          {billReopenAllowed && <button type="button" onClick={() => void reopenBill()} disabled={busy} className="mt-3 rounded-lg border border-current bg-white px-4 py-2 font-bold disabled:opacity-50">{busy ? 'Reabrindo…' : 'Pedir mais'}</button>}
+        </section>}
         {tabClosed && <div role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Conta encerrada. Para pedir de novo, chame o garçom.</div>}
         {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       </section>
@@ -1176,7 +1212,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       <nav aria-label="Ações da mesa" className="fixed inset-x-0 bottom-0 z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
         <div className="mx-auto grid max-w-2xl grid-cols-3 gap-2">
           <button type="button" onClick={() => void requestWaiter()} disabled={busy || tabClosed || !sessionId} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><UserRound className="h-5 w-5" />Chamar garçom</button>
-          <button type="button" onClick={() => { setBillOpen(true); void loadAccount(true); }} disabled={busy || tabClosed || billRequested || !sessionId} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold disabled:cursor-default ${billRequested ? 'bg-purple-100 text-purple-800' : 'text-slate-800 disabled:opacity-40'}`}><ReceiptText className="h-5 w-5" />{billRequested ? 'Aguardando fechamento da conta' : 'Pedir a conta'}</button>
+          <button type="button" onClick={() => { setBillOpen(true); void loadAccount(true); }} disabled={busy || tabClosed || billRequested || !sessionId} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold disabled:cursor-default ${billRequested ? awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested' : 'text-slate-800 disabled:opacity-40'}`}><ReceiptText className="h-5 w-5" />{billRequested ? billStatusLabel : 'Pedir a conta'}</button>
           <button type="button" disabled={!sessionId} onClick={() => { setAccountOpen(true); void loadAccount(); }} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><CircleUserRound className="h-5 w-5" />Minha conta</button>
         </div>
       </nav>

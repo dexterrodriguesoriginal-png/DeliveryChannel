@@ -8,7 +8,7 @@ import type { OrderBrief } from '../../../lib/notifications/notificationView';
 const state = vi.hoisted(() => ({
   rows: [] as OwnerNotification[], details: {} as Record<string, OrderBrief>,
   event: null as null | ((payload: any) => void),
-  sound: vi.fn(), read: vi.fn(async () => {}), update: vi.fn(async () => ({})),
+  sound: vi.fn(), read: vi.fn(async () => {}), update: vi.fn(async () => ({})), briefCalls: vi.fn(),
 }));
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ activeTenant: { id: 'T1' }, supabaseUser: { id: 'U1' }, activeRole: 'OWNER', securityContext: { userId: 'U1' } }) }));
 vi.mock('../../../lib/supabase', () => {
@@ -17,7 +17,7 @@ vi.mock('../../../lib/supabase', () => {
 });
 vi.mock('../../../repositories/dispatchChatRepository', () => ({ dispatchChatRepository: {
   notifications: async () => [...state.rows], visibleNotifications: async (_tenant: string, rows: OwnerNotification[]) => rows.filter(n => n.tenant_id === 'T1'),
-  orderBriefs: async () => ({ ...state.details }), read: (...args: any[]) => (state.read as any)(...args),
+  orderBriefs: async (tenant: string, ids: string[]) => { state.briefCalls(tenant, ids); return { ...state.details }; }, read: (...args: any[]) => (state.read as any)(...args),
 } }));
 vi.mock('../../../repositories/orderRepository', () => ({ orderRepository: { updateStatus: (...args: any[]) => (state.update as any)(...args) } }));
 vi.mock('../../../utils/audio', () => ({ playNewOrderSound: () => state.sound() }));
@@ -29,7 +29,7 @@ const notification = (id: string, extra: Partial<OwnerNotification> = {}): Owner
 });
 let poll: () => void;
 beforeEach(() => {
-  state.rows = []; state.details = {}; state.event = null; state.sound.mockClear(); state.read.mockClear(); state.update.mockClear();
+  state.rows = []; state.details = {}; state.event = null; state.sound.mockClear(); state.read.mockClear(); state.update.mockClear(); state.briefCalls.mockClear();
   localStorage.setItem('dc:notifications:T1:U1', JSON.stringify({ balloon: true, sound: true }));
   const original = window.setInterval.bind(window);
   vi.spyOn(window, 'setInterval').mockImplementation(((callback: TimerHandler, timeout: number, ...args: any[]) => {
@@ -109,5 +109,19 @@ describe('Cards de novas notificações: realtime e fallback', () => {
     await act(async () => { state.event!({ eventType: 'INSERT', new: notification('9', { tenant_id: 'OTHER' }) }); });
     expect(ui.queryByTestId('notification-toast')).toBeNull();
     expect(state.sound).not.toHaveBeenCalled();
+  });
+  it('reabertura notifica o dono e abre a mesa sem buscar detalhes nem aceitar como pedido', async () => {
+    const onOpen = vi.fn();
+    const ui = await mount(onOpen);
+    const row = notification('8', { kind: 'TAB_REOPENED', ref_id: 'tab-8', tableTarget: 'table-8', title: 'Pedir mais: Mesa 8' });
+    state.rows.unshift(row);
+    await act(async () => { state.event!({ eventType: 'INSERT', new: row }); });
+    const toast = await waitFor(() => ui.getByTestId('notification-toast'));
+    expect(within(toast).getByText('Pedir mais: Mesa 8')).toBeTruthy();
+    expect(within(toast).queryByRole('button', { name: 'Aceitar pedido' })).toBeNull();
+    expect(state.briefCalls.mock.calls.every(([, ids]) => !ids.includes('tab-8'))).toBe(true);
+    fireEvent.click(within(toast).getByRole('button', { name: 'Ver mesa' }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ kind: 'TAB_REOPENED', tableTarget: 'table-8' }));
+    expect(state.update).not.toHaveBeenCalled();
   });
 });

@@ -108,7 +108,7 @@ describe('Garçom v3 — cliente QR', () => {
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     await screen.findByRole('button', { name: 'Pedir a conta' });
     await act(async () => finishOldBill({ data: null, error: null }));
-    expect(screen.queryByRole('button', { name: 'Aguardando fechamento da conta' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Conta pedida' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Pedir a conta' }).hasAttribute('disabled')).toBe(false);
   });
 
@@ -182,8 +182,8 @@ describe('Garçom v3 — cliente QR', () => {
     render(<DineInClientApp token={TOKEN} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Pedir a conta' }));
     fireEvent.click(screen.getByRole('button', { name: 'Chamar garçom para fechar a conta' }));
-    const pending = await screen.findByRole('button', { name: 'Aguardando fechamento da conta' });
-    expect(pending.hasAttribute('disabled')).toBe(true); expect(pending.className).toContain('bg-purple-100');
+    const pending = await screen.findByRole('button', { name: 'Conta pedida' });
+    expect(pending.hasAttribute('disabled')).toBe(true); expect(pending.className).toContain('dinein-bill-requested');
     expect(h.rpc).toHaveBeenCalledWith('request_bill', { p_session_id: 's1', p_choice: 'CAIXA', p_cash_tendered_cents: null });
     account = { ...account, status: 'AWAITING_PAYMENT' };
     fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
@@ -191,6 +191,62 @@ describe('Garçom v3 — cliente QR', () => {
     expect(screen.getByTestId('account-round-o1').className).toContain('text-green-800');
     expect(screen.getByTestId('account-round-o2').className).toContain('text-red-800');
     expect(screen.queryByRole('button', { name: 'Pedir a conta' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Adicionar Chopp' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it.each(['BILL_REQUESTED', 'WAITER_AUTHORIZED'])('Pedir mais reabre %s pela sessão e libera novos pedidos após confirmação do servidor', async status => {
+    h.user = { id: 'u1' }; sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1'); account = myTab([round()], status);
+    const originalRpc = h.rpc.getMockImplementation()!;
+    h.rpc.mockImplementation(async (name: string, args: unknown) => {
+      if (name === 'reopen_tab_from_bill') { account = myTab([round()]); return { data: { status: 'OPEN' }, error: null }; }
+      return originalRpc(name, args);
+    });
+    render(<DineInClientApp token={TOKEN} />);
+    const reopen = await screen.findByRole('button', { name: 'Pedir mais' });
+    expect(screen.getByRole('button', { name: 'Adicionar Chopp' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('region', { name: 'Situação da conta' }).className).toContain('dinein-bill-requested');
+    fireEvent.click(reopen);
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('reopen_tab_from_bill', { p_session_id: 's1' }));
+    await screen.findByText('Comanda reaberta. Você já pode pedir mais; a equipe foi avisada.');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Adicionar Chopp' }).hasAttribute('disabled')).toBe(false));
+    expect(screen.queryByRole('button', { name: 'Pedir mais' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Pedir a conta' }).hasAttribute('disabled')).toBe(false);
+  });
+
+  it.each([
+    { status: 'AWAITING_PAYMENT', pixStatus: 'pending' },
+    { status: 'BILL_REQUESTED', pixStatus: 'creating' },
+    { status: 'WAITER_AUTHORIZED', pixStatus: 'paid' },
+    { status: 'CLOSED', pixStatus: 'paid' },
+  ])('não oferece Pedir mais para $status com PIX $pixStatus', async state => {
+    h.user = { id: 'u1' }; sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1'); account = { ...myTab([round()], state.status), ...state };
+    render(<DineInClientApp token={TOKEN} />);
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('get_my_tab', { p_session_id: 's1' }));
+    if (state.status === 'CLOSED') await screen.findByRole('alert');
+    else await screen.findByRole('region', { name: 'Situação da conta' });
+    expect(screen.queryByRole('button', { name: 'Pedir mais' })).toBeNull();
+    if (state.status === 'AWAITING_PAYMENT') {
+      const awaiting = screen.getByRole('button', { name: 'Aguardando PIX' });
+      expect(awaiting.className).toContain('dinein-bill-awaiting-pix');
+      expect(awaiting.className).not.toContain('dinein-bill-requested');
+    }
+  });
+
+  it('recusa de reabertura mantém pedidos bloqueados e atualiza o PIX iniciado em outra tela', async () => {
+    h.user = { id: 'u1' }; sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1'); account = myTab([round()], 'BILL_REQUESTED');
+    const originalRpc = h.rpc.getMockImplementation()!;
+    h.rpc.mockImplementation(async (name: string, args: unknown) => {
+      if (name === 'reopen_tab_from_bill') {
+        account = { ...account, status: 'AWAITING_PAYMENT' };
+        return { data: null, error: { message: 'PIX_PENDING' } };
+      }
+      return originalRpc(name, args);
+    });
+    render(<DineInClientApp token={TOKEN} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pedir mais' }));
+    await screen.findByText('O pagamento já está em andamento ou foi confirmado. Chame o garçom para conferir.');
+    await screen.findByRole('button', { name: 'Aguardando PIX' });
+    expect(screen.queryByRole('button', { name: 'Pedir mais' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Adicionar Chopp' }).hasAttribute('disabled')).toBe(true);
   });
 });

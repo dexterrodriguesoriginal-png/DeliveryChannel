@@ -36,8 +36,8 @@ describe('staff list and notification defense', () => {
     expect(await orderRepository.countPendingByTenant([state.rows[0].tenant_id])).toEqual({ [state.rows[0].tenant_id]: 0 });
   });
   it('checks notification orders before sound/balloon; join requests need no order', async () => {
-    state.rows = [{ id: 'paid', awaiting_online_payment: false }, { id: 'unpaid', awaiting_online_payment: true }];
-    const rows = [{ id:'n1', kind:'ORDER_NEW', ref_id:'unpaid' },{ id:'n2',kind:'ORDER_NEW',ref_id:'paid' },{ id:'n3',kind:'DRIVER_JOIN_REQUEST',ref_id:'driver' }] as OwnerNotification[];
+    state.rows = [{ id: 'paid', tenant_id: 'A', awaiting_online_payment: false }, { id: 'unpaid', tenant_id: 'A', awaiting_online_payment: true }];
+    const rows = [{ id:'n1', tenant_id: 'A', kind:'ORDER_NEW', ref_id:'unpaid' },{ id:'n2',tenant_id: 'A',kind:'ORDER_NEW',ref_id:'paid' },{ id:'n3',tenant_id: 'A',kind:'DRIVER_JOIN_REQUEST',ref_id:'driver' }] as OwnerNotification[];
     expect((await notifications.visibleNotifications('A',rows)).map(n => n.id)).toEqual(['n2','n3']);
     expect(query.eq).toHaveBeenCalledWith('tenant_id','A');
   });

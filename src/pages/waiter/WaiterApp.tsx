@@ -953,6 +953,10 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             }, 'Pagamento confirmado. Mesa liberada.');
           }}
           onPaymentSettled={() => { setSelectedId(null); void load(); setToast('Pix confirmado. Mesa liberada.'); }}
+          onReopenBill={() => selectedTab && void run('reopen-tab', async () => {
+            const { error } = await supabase.rpc('staff_reopen_tab', { p_tab: selectedTab.id });
+            if (error) throw new Error('Não foi possível reabrir. Confira se há um PIX pendente ou pago nesta conta.');
+          }, 'Conta reaberta. O cliente já pode pedir mais.')}
           onResetHolder={() => selectedTab && void run('change-holder', async () => {
             const created = await salonStaffRepository.createHolderCode(selectedTab.id);
             setHolderCode(created);

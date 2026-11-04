@@ -13,6 +13,7 @@ export interface OnlinePayment {
 export interface TabPix {
   id: string; tabId: string; amountCents: number; status: 'creating' | 'pending' | 'paid' | 'expired' | 'cancelled' | 'failed';
   brcode: string | null; expiresAt: string | null; needsReview: boolean; reviewReason: string | null; tabClosed: boolean;
+  paidAt?: string | null;
 }
 export const PROVIDER_LABELS: Record<OnlineProvider, string> = {
   mercadopago: 'Mercado Pago', pagbank: 'PagBank', infinitepay: 'InfinitePay', manual_pix: 'Chave PIX (manual)',
@@ -58,5 +59,13 @@ export const paymentRepository = {
   createTabPix: (tabId: string) => request<{ pix: TabPix | null }>(`/tabs/${encodeURIComponent(tabId)}/pix`, {}),
   tabPixStatus: (tabId: string) => request<{ pix: TabPix | null }>(`/tabs/${encodeURIComponent(tabId)}/pix`),
   cancelTabPix: (tabId: string) => request(`/tabs/${encodeURIComponent(tabId)}/pix/cancel`, {}),
+  /** Realtime is only a wake-up signal: authoritative payment status still comes from the server. */
+  observeTabPix(tabId: string, refresh: () => void): () => void {
+    const channel = supabase.channel(`tab-pix:${tabId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_pix_charges', filter: `tab_id=eq.${tabId}` }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dining_tabs', filter: `id=eq.${tabId}` }, refresh)
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  },
   confirm: (id: string) => request(`/orders/${encodeURIComponent(id)}/confirm`, {}),
 };
