@@ -92,7 +92,7 @@ export const STATUS_LABEL: Record<TableStatusKind, string> = {
  * - Amarelo (#FFDD00, texto #0F172A): Ocupada
  * - Pedido novo / Em preparo / Pronto no balcão: MESMAS cores de Pedidos (STATUS_COLORS.solid):
  *   vermelho #ef4444, laranja #f97316, roxo #a855f7 — texto #0F172A (AA).
- * - Vermelho (#FF5050, texto #0F172A, 5.52:1): Ocupada há muito tempo
+ * - Ocupada há muito tempo: mesmo amarelo de Ocupada; só o tempo de ocupação aparece.
  * - Marrom sólido (#8B5A2B, texto #FFFFFF, 5.85:1): Conta solicitada (piscando) e Aguardando PIX (piscando + borda vermelha #FF5050)
  * - Autorização mantém a mesa marrom; roxo é exclusivo do selo dentro do cartão.
  */
@@ -108,7 +108,8 @@ export const SALON_TABLE_COLORS: Readonly<Record<TableStatusKind, Readonly<Statu
   NEW_ORDER: solidTile('NEW_ORDER'),
   PREPARING: solidTile('PREPARING'),
   READY: solidTile('READY'),
-  LONG_STAY: STATUS_COLORS.LONG_STAY,
+  // Ocupada há muito tempo continua amarela (decisão do David): só o tempo aparece no card.
+  LONG_STAY: STATUS_COLORS.OCCUPIED,
   BILL: STATUS_COLORS.BILL,
   AUTHORIZED: STATUS_COLORS.BILL,
   AWAITING_PAYMENT: STATUS_COLORS.AWAITING_PAYMENT,

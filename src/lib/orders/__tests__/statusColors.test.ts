@@ -94,7 +94,7 @@ describe('tokens compartilhados de status', () => {
     expect(TABLE_STATUS_COLOR.READY).toBe('#a855f7');
     expect(TABLE_STATUS_COLOR.BILL).toBe('#8B5A2B');
     expect(TABLE_STATUS_COLOR.AUTHORIZED).toBe('#8B5A2B');
-    expect(TABLE_STATUS_COLOR.LONG_STAY).toBe('#FF5050');
+    expect(TABLE_STATUS_COLOR.LONG_STAY).toBe(TABLE_STATUS_COLOR.OCCUPIED); // ocupada é sempre amarela, só o tempo muda
     expect(TABLE_STATUS_COLOR.BILL).toBe('#8B5A2B');
     expect(TABLE_STATUS_COLOR.AUTHORIZED).toBe('#8B5A2B');
     expect(TABLE_STATUS_COLOR.AWAITING_PAYMENT).toBe('#8B5A2B');
