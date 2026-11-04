@@ -169,7 +169,9 @@ function useOpenDiningTabs(includeTotals = false, allowed = true) {
     void load();
     if (!enabled || !activeTenant?.id) return () => { latestRequest.current += 1; };
     const timer = window.setInterval(() => void load(), 5_000);
-    const channel = supabase.channel?.(`open-tabs:${activeTenant.id}`)
+    // Unique topic per mount: supabase.channel() returns an already-subscribed channel for a repeated
+    // topic, and .on('postgres_changes') then throws, crashing the whole panel (dashboard warning + global toast).
+    const channel = supabase.channel?.(`open-tabs:${activeTenant.id}:${Math.random().toString(36).slice(2, 10)}`)
       ?.on('postgres_changes', { event: '*', schema: 'public', table: 'dining_tabs', filter: `tenant_id=eq.${activeTenant.id}` }, () => void load())
       ?.subscribe();
     return () => {

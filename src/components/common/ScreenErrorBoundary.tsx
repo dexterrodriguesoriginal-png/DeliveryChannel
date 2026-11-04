@@ -4,6 +4,11 @@ import React from 'react';
 export class ScreenErrorBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: unknown, info: React.ErrorInfo) {
+    // Diagnostics only: error name/message and component stack, no props or state.
+    const e = error instanceof Error ? error : new Error(String(error));
+    console.error('[ScreenErrorBoundary]', e.name, e.message, info?.componentStack ?? '');
+  }
   render() {
     if (!this.state.failed) return this.props.children;
     return <main role="alert" className="grid min-h-[100dvh] place-items-center bg-slate-50 p-6 text-slate-900">
