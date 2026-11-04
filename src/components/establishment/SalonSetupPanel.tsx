@@ -40,6 +40,7 @@ export const SalonSetupPanel: React.FC<Props> = ({
   const { showToast } = useToast();
   const [tables, setTables] = useState<DiningTable[]>([]);
   const [config, setConfig] = useState<DineInConfig>(readDineInConfig());
+  const [requireDeliveryCode, setRequireDeliveryCode] = useState(false);
   const [feeEnabled, setFeeEnabled] = useState(false);
   const [feePercent, setFeePercent] = useState(10);
   const [loading, setLoading] = useState(true);
@@ -65,6 +66,7 @@ export const SalonSetupPanel: React.FC<Props> = ({
       const dineIn = snapshot.modules.find(module => module.key === 'dine_in');
       const fee = snapshot.modules.find(module => module.key === 'service_fee');
       setConfig(readDineInConfig(dineIn?.config));
+      setRequireDeliveryCode(Boolean(dineIn?.config?.require_delivery_code));
       setFeeEnabled(Boolean(fee?.enabled));
       const percent = Number(fee?.config.percent ?? 10);
       setFeePercent(Number.isFinite(percent) ? percent : 10);
@@ -90,7 +92,7 @@ export const SalonSetupPanel: React.FC<Props> = ({
       const fee = snapshot.modules.find(module => module.key === 'service_fee');
       await tenantModuleRepository.configureDineIn(
         tenantId,
-        config,
+        { ...config, require_delivery_code: requireDeliveryCode },
         feeEnabled,
         { ...(fee?.config || {}), percent: feePercent },
       );
@@ -223,6 +225,20 @@ export const SalonSetupPanel: React.FC<Props> = ({
           <label className="flex items-center gap-2 text-xs text-gray-700">
             <input type="checkbox" checked={config.salon_open} disabled={!canConfigure || savingConfig} onChange={e => setConfig({ ...config, salon_open: e.target.checked })} />
             Salão aberto (permite atendimento quando a loja estiver fechada)
+          </label>
+          <label className="flex items-start gap-2 text-xs text-gray-700 sm:col-span-2">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              data-testid="salon-setup-require-delivery-code"
+              checked={requireDeliveryCode}
+              disabled={!canConfigure || savingConfig}
+              onChange={e => setRequireDeliveryCode(e.target.checked)}
+            />
+            <span>
+              <b>Exigir código de entrega na mesa</b>
+              <span className="block text-gray-500">Quando ativado (padrão desligado), cada rodada gera um código de 4 dígitos exibido apenas no app do cliente da comanda. O garçom só pode marcar &ldquo;Entregue&rdquo; informando esse código, bloqueando &ldquo;Não recebi&rdquo;.</span>
+            </span>
           </label>
         </div>
         <fieldset disabled={!canConfigure || savingConfig} className="space-y-2">

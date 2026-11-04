@@ -15,7 +15,7 @@ import { productOptionRepository } from '../../repositories/productOptionReposit
 import { isModuleEnabled } from '../../lib/modules';
 import { friendlyTableError } from '../../lib/salon/tableQr';
 import { mesasQrRepository } from '../../repositories/mesasQrRepository';
-import { tableAccessRepository, type InvitePreview } from '../../repositories/tableAccessRepository';
+import { tableAccessRepository, type FreeSalonTable, type InvitePreview } from '../../repositories/tableAccessRepository';
 import {
   clearPendingMesa, endedMessage, friendlyAccessError, inviteUrl, readInviteParam, readPendingMesaDetails, rememberPendingMesa,
   PENDING_APPROVAL_TEXT, PENDING_APPROVAL_TITLE, PENDING_TABLE_TEXT,
@@ -44,7 +44,7 @@ import {
 
 type TableResolution = { available: boolean; tenantSlug?: string; storeName?: string; tableLabel?: string };
 type TabRound = DineInTrackedRound & DeliveryState & { customerName: string; mine?: boolean; subtotal: number; items: Array<{ name: string; quantity: number; unitPrice: number; totalPrice: number; deliveredAt?: string | null }> };
-type MyTab = { tabId: string; status: 'OPEN' | 'BILL_REQUESTED' | 'WAITER_AUTHORIZED' | 'AWAITING_PAYMENT' | 'CLOSED' | 'CANCELLED'; pixStatus?: string | null; mode: 'TABLE' | 'INDIVIDUAL'; tableLabel: string; serviceFeePercent: number; serviceFeeRemoved: boolean; rounds: TabRound[]; subtotal: number;
+type MyTab = { tabId: string; status: 'OPEN' | 'BILL_REQUESTED' | 'WAITER_AUTHORIZED' | 'AWAITING_PAYMENT' | 'CLOSED' | 'CANCELLED'; pixStatus?: string | null; mode: 'TABLE' | 'INDIVIDUAL'; tableId?: string; tableLabel: string; joinedTables?: Array<{ id: string; label: string }>; tableMoves?: Array<{ id: string; action: 'MOVE' | 'JOIN' | 'SEPARATE'; fromLabel: string; toLabel: string; actorKind: string; actorName?: string; createdAt: string }>; serviceFeePercent: number; serviceFeeRemoved: boolean; rounds: TabRound[]; subtotal: number;
   /** Only with the table-access model (capabilities v2). */
   me?: { sessionId: string; role: 'RESPONSIBLE' | 'GUEST'; approved: boolean; displayName?: string; ended?: boolean; endedReason?: string | null };
   responsibleName?: string | null; members?: TabMember[]; ended?: boolean; endedReason?: string | null };
@@ -163,6 +163,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [awaitingReleaseModalOpen, setAwaitingReleaseModalOpen] = useState(false);
   const [tableWaiter, setTableWaiter] = useState<TableWaiter | null>(null);
   const [disputeBusyId, setDisputeBusyId] = useState<string | null>(null);
+  const [moveTableOpen, setMoveTableOpen] = useState(false);
+  const [freeTables, setFreeTables] = useState<FreeSalonTable[]>([]);
+  const [moveTableBusy, setMoveTableBusy] = useState(false);
+  const [moveQrTokenInput, setMoveQrTokenInput] = useState('');
+  const [moveTableError, setMoveTableError] = useState('');
 
   useEffect(() => {
     if (!sessionId) { setTableWaiter(null); return; }
@@ -871,6 +876,48 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     finally { if (contextMatches(source)) setMembersBusy(false); }
   };
 
+  const openMoveTableModal = async () => {
+    if (!sessionId || tabClosed || billRequested) return;
+    setMoveTableError('');
+    setMoveQrTokenInput('');
+    setMoveTableOpen(true);
+    setMoveTableBusy(true);
+    try {
+      const list = await tableAccessRepository.listFreeTables(sessionId);
+      setFreeTables(list);
+    } catch (err) {
+      setMoveTableError(errorText(err) || 'Não foi possível carregar as mesas livres.');
+    } finally {
+      setMoveTableBusy(false);
+    }
+  };
+
+  const submitMoveTable = async (target: { tableId?: string; qrToken?: string }) => {
+    if (!sessionId || moveTableBusy) return;
+    setMoveTableBusy(true);
+    setMoveTableError('');
+    try {
+      const res = await tableAccessRepository.moveTable(sessionId, target);
+      setMoveTableOpen(false);
+      setMoveQrTokenInput('');
+      setNotice(`Mesa trocada (${res.notice}). Sua comanda, pedidos e valores foram junto para a nova mesa.`);
+      await loadAccount(true);
+    } catch (err) {
+      const msg = errorText(err);
+      setMoveTableError(
+        /TABLE_OCCUPIED/i.test(msg)
+          ? 'Esta mesa já está ocupada. Peça ao garçom para juntar as mesas.'
+          : /MOVE_BLOCKED_BILL/i.test(msg)
+            ? 'Não é permitido mudar de mesa com conta pedida ou aguardando PIX.'
+            : /TABLE_UNAVAILABLE/i.test(msg)
+              ? 'Mesa indisponível ou de outro estabelecimento.'
+              : msg || 'Não foi possível mudar de mesa.',
+      );
+    } finally {
+      setMoveTableBusy(false);
+    }
+  };
+
   useEffect(() => {
     if (!access || !accountOpen || myRole !== 'RESPONSIBLE' || !sessionId) return;
     let alive = true;
@@ -1018,7 +1065,10 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       <header className="sticky top-0 z-20 border-b bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-2">
           <div>
-            <p className="font-extrabold">Você está na {mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {storeName}</p>
+            <p className="font-extrabold">
+              Você está na {mesaTitle(tab?.tableLabel || resolution?.tableLabel)}
+              {tab?.joinedTables?.length ? ` + ${tab.joinedTables.map(jt => jt.label).join(' + ')}` : ''} · {storeName}
+            </p>
             {access && myRole && <p data-testid="role-chip" className="mt-0.5 flex items-center gap-1 text-xs font-bold text-slate-500">{myRole === 'RESPONSIBLE' ? <><Crown className="h-3.5 w-3.5 text-amber-500" />Você é o responsável pela mesa</> : <>Convidado{tab?.responsibleName ? ` de ${tab.responsibleName}` : ''}</>}</p>}
             {tableWaiter && (
               <div data-testid="my-table-waiter" className="mt-1 flex items-center gap-1.5 text-xs text-slate-600 font-medium">
@@ -1035,6 +1085,18 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {sessionId && !tabClosed && (
+              <button
+                type="button"
+                data-testid="dinein-move-table-btn"
+                disabled={busy || billRequested || awaitingRelease}
+                title={billRequested ? 'Mudança bloqueada com conta pedida ou aguardando PIX' : 'Mudar de mesa'}
+                onClick={() => void openMoveTableModal()}
+                className="rounded-full border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 disabled:opacity-40"
+              >
+                Mudar de mesa
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setCartOpen(true)}
@@ -1251,7 +1313,23 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       {accountOpen && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setAccountOpen(false); }}>
         <section role="dialog" aria-modal="true" aria-label="Minha conta" className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl">
           <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-black">Minha conta</h2><button type="button" onClick={() => setAccountOpen(false)} aria-label="Fechar"><X /></button></div>
-          <p className="text-sm text-slate-600">{mesaTitle(tab?.tableLabel || resolution?.tableLabel)} · {billRequested ? 'Aguardando fechamento da conta' : tab?.status === 'CLOSED' ? 'Encerrada' : 'Aberta'}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-slate-600">
+              {mesaTitle(tab?.tableLabel || resolution?.tableLabel)}
+              {tab?.joinedTables?.length ? ` + ${tab.joinedTables.map(jt => jt.label).join(' + ')}` : ''} · {billRequested ? 'Aguardando fechamento da conta' : tab?.status === 'CLOSED' ? 'Encerrada' : 'Aberta'}
+            </p>
+            {sessionId && !tabClosed && (
+              <button
+                type="button"
+                disabled={busy || billRequested || awaitingRelease}
+                onClick={() => { setAccountOpen(false); void openMoveTableModal(); }}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 disabled:opacity-40"
+              >
+                Mudar de mesa
+              </button>
+            )}
+          </div>
+          {billRequested && <p className="mt-1 text-xs font-semibold text-amber-800">Mudança de mesa bloqueada com conta pedida ou aguardando PIX.</p>}
           {access && myRole === 'RESPONSIBLE' && !tabClosed && tab?.status !== 'CLOSED' && <div className="mt-4 space-y-3">
             <InvitePanel invite={invite} busy={inviteBusy} link={invite && resolution?.tenantSlug ? inviteUrl(window.location.origin, resolution.tenantSlug, token, invite.code) : ''} onCreate={() => void createInvite()} onRevoke={() => void revokeInvite()} />
             <MembersPanel members={tab?.members || []} mySessionId={sessionId} busy={membersBusy} onRemove={member => void removeMember(member)} onTransfer={member => void transferTo(member)} />
@@ -1259,12 +1337,33 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           <div className="my-4 space-y-3">{tab?.rounds?.length ? tab.rounds.map(round => <article key={round.orderId} data-testid={`account-round-${round.orderId}`} className="rounded-xl border p-3" style={statusColorStyle(round.status)}>
             <div className="mb-2 flex justify-between font-bold"><span>Rodada {round.roundNo}</span><span>{formatBRL(round.subtotal)}</span></div>
             <p className="mb-2 text-xs">{access ? `Pedido de ${round.mine ? 'você' : round.customerName}` : round.customerName} · {dineInStatus(round.status).label}</p>
+            {round.deliveryCode && !['DELIVERED', 'CANCELLED'].includes(round.status) && (
+              <div data-testid={`account-round-code-${round.orderId}`} className="mb-2 rounded-lg border border-emerald-300 bg-white/90 px-2.5 py-1.5 text-xs text-slate-900">
+                <span className="font-semibold">Código de entrega: </span>
+                <b className="font-mono text-sm tracking-widest">{round.deliveryCode}</b>
+              </div>
+            )}
+            {round.deliveryConfirmedWithCode && <p className="mb-2 text-xs font-bold">Entrega confirmada com código</p>}
             {round.deliveryDispute && <p className="mb-2 text-xs font-semibold">{deliveryNoticeLabel(round)}</p>}
             {round.items.map((item, index) => {
               const deliveredAt = round.status === 'DELIVERED' ? item.deliveredAt || round.deliveredAt : null;
               return <p key={`${round.orderId}-${index}`} className="text-sm">{item.quantity}× {item.name}{deliveredAt && Number.isFinite(Date.parse(deliveredAt)) && <span className="ml-2 text-xs">Entregue às <time dateTime={deliveredAt}>{new Date(deliveredAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time></span>}</p>;
             })}
           </article>) : <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Ainda não há pedidos nesta conta.</p>}</div>
+          {!!tab?.tableMoves?.length && (
+            <div data-testid="account-table-moves" className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+              <p className="mb-1.5 font-extrabold text-slate-900">Histórico de mesas</p>
+              <ul className="space-y-1">
+                {tab.tableMoves.map(m => (
+                  <li key={m.id}>
+                    <b>{m.fromLabel} → {m.toLabel}</b>
+                    {m.actorName ? ` · ${m.actorName}` : ''}
+                    {m.createdAt && Number.isFinite(Date.parse(m.createdAt)) ? ` (${new Date(m.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="space-y-2 border-t pt-3 text-sm">
             <div className="flex justify-between"><span>Subtotal da conta</span><b>{formatBRL(tab?.subtotal || 0)}</b></div>
             {tab && tab.serviceFeePercent > 0 && !tab.serviceFeeRemoved && <div className="flex justify-between"><span>Taxa de serviço (opcional, {tab.serviceFeePercent}%)</span><b>{formatBRL(serviceFeeCents / 100)}</b></div>}
@@ -1303,6 +1402,68 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           <p className="mt-2 text-center text-xs text-slate-500">Pedir a conta avisa a equipe. Sua mesa continua aberta até o pagamento ser confirmado.</p>
         </section>
       </div>}
+
+      {moveTableOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !moveTableBusy) setMoveTableOpen(false); }}>
+          <section role="dialog" aria-modal="true" aria-label="Mudar de mesa" data-testid="dinein-move-table-modal" className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-xl font-black">Mudar de mesa</h2>
+              <button type="button" disabled={moveTableBusy} onClick={() => setMoveTableOpen(false)} aria-label="Fechar mudança de mesa"><X /></button>
+            </div>
+            <p className="text-sm text-slate-600">
+              Escolha uma mesa livre ou informe o QR Code da nova mesa. Seus pedidos, valores e pessoas vão junto para a nova mesa, e a mesa antiga fica livre.
+            </p>
+            {moveTableError && <p role="alert" className="mt-3 rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-800">{moveTableError}</p>}
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-extrabold uppercase tracking-wide text-slate-500">Mesas livres disponíveis</p>
+              {moveTableBusy && !freeTables.length ? (
+                <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Carregando mesas livres…</p>
+              ) : freeTables.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {freeTables.map(ft => (
+                    <button
+                      key={ft.id}
+                      type="button"
+                      disabled={moveTableBusy}
+                      data-testid={`move-to-table-${ft.id}`}
+                      onClick={() => void submitMoveTable({ tableId: ft.id })}
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left text-sm font-bold text-slate-900 hover:border-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                    >
+                      <span className="block">{mesaTitle(ft.label)}</span>
+                      <span className="block text-xs font-normal text-slate-500">{ft.area ? `${ft.area} · ` : ''}{ft.seats} lugares</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Nenhuma mesa livre no momento. Se quiser juntar com outra mesa, chame o garçom.</p>
+              )}
+            </div>
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              <label className="block text-xs font-extrabold uppercase tracking-wide text-slate-500" htmlFor="move-qr-token-input">
+                Ou leia / cole o QR da nova mesa
+              </label>
+              <div className="mt-2 flex gap-2">
+                <input
+                  id="move-qr-token-input"
+                  type="text"
+                  value={moveQrTokenInput}
+                  onChange={e => setMoveQrTokenInput(e.target.value)}
+                  placeholder="Link ou código QR da nova mesa"
+                  className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  disabled={moveTableBusy || !moveQrTokenInput.trim()}
+                  onClick={() => void submitMoveTable({ qrToken: moveQrTokenInput })}
+                  className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 };

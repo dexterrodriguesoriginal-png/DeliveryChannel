@@ -18,6 +18,22 @@ export interface InvitePreview {
   responsibleName?: string;
 }
 
+export interface FreeSalonTable {
+  id: string;
+  label: string;
+  area: string | null;
+  seats: number;
+}
+
+export interface MoveTableResult {
+  tabId: string;
+  fromTableId: string;
+  fromLabel: string;
+  toTableId: string;
+  toLabel: string;
+  notice: string;
+}
+
 /** Customer-side calls of the "Responsável / convidado" model (migration 20261027004700). Each call is tenant-scoped on the server. */
 export const tableAccessRepository = {
   async resolveInvite(token: string, code: string): Promise<InvitePreview | null> {
@@ -85,5 +101,21 @@ export const tableAccessRepository = {
   /** Fire-and-forget: tells the staff alert that this customer is waiting. Never throws. */
   async pingPending(sessionId: string): Promise<void> {
     try { await supabase.rpc('ping_pending_approval', { p_session_id: sessionId }); } catch { /* best effort */ }
+  },
+
+  async listFreeTables(sessionId: string): Promise<FreeSalonTable[]> {
+    const { data, error } = await supabase.rpc('list_free_tables_for_session', { p_session_id: sessionId });
+    if (error) fail(error);
+    return Array.isArray(data) ? (data as FreeSalonTable[]) : [];
+  },
+
+  async moveTable(sessionId: string, target: { tableId?: string; qrToken?: string }): Promise<MoveTableResult> {
+    const { data, error } = await supabase.rpc('customer_move_table', {
+      p_session_id: sessionId,
+      p_target_table_id: target.tableId ?? null,
+      p_target_qr_token: target.qrToken?.trim() || null,
+    });
+    if (error) fail(error);
+    return data as MoveTableResult;
   },
 };

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const h = vi.hoisted(() => ({
-  rpc: vi.fn(), enterTable: vi.fn(), signUp: vi.fn(),
+  rpc: vi.fn(), enterTable: vi.fn(), listFreeTables: vi.fn(), moveTable: vi.fn(), signUp: vi.fn(),
   user: null as null | { id: string; is_anonymous?: boolean; user_metadata?: Record<string, string> },
   subscriptions: [] as Array<{ table: string; filter: string; callback: () => void }>,
   removed: vi.fn(),
@@ -23,7 +23,12 @@ vi.mock('../../../repositories/publicStoreRepository', () => ({ publicStoreRepos
 vi.mock('../../../repositories/tenantModuleRepository', () => ({ tenantModuleRepository: { getPublicEnabled: async () => new Set(['dine_in']) } }));
 vi.mock('../../../repositories/productOptionRepository', () => ({ productOptionRepository: { getPublicForProducts: async () => new Map() } }));
 vi.mock('../../../repositories/mesasQrRepository', () => ({ mesasQrRepository: { capabilities: async () => ({ tableAccess: true }) } }));
-vi.mock('../../../repositories/tableAccessRepository', () => ({ tableAccessRepository: { enterTable: (...args: unknown[]) => h.enterTable(...args), pingPending: vi.fn() } }));
+vi.mock('../../../repositories/tableAccessRepository', () => ({ tableAccessRepository: {
+  enterTable: (...args: unknown[]) => h.enterTable(...args),
+  listFreeTables: (...args: unknown[]) => h.listFreeTables(...args),
+  moveTable: (...args: unknown[]) => h.moveTable(...args),
+  pingPending: vi.fn(),
+} }));
 vi.mock('../../../repositories/waiterV2Repository', () => ({ waiterV2Repository: { myTableWaiter: async () => null } }));
 
 import { DineInClientApp, SESSION_KEY_PREFIX } from '../DineInClientApp';
@@ -35,10 +40,11 @@ const myTab = (rounds: ReturnType<typeof round>[] = [], status = 'OPEN') => ({ t
 let account = myTab();
 
 beforeEach(() => {
-  h.rpc.mockReset(); h.enterTable.mockReset(); h.signUp.mockReset(); h.subscriptions.length = 0; h.removed.mockReset();
+  h.rpc.mockReset(); h.enterTable.mockReset(); h.listFreeTables.mockReset(); h.moveTable.mockReset(); h.signUp.mockReset(); h.subscriptions.length = 0; h.removed.mockReset();
   localStorage.clear(); sessionStorage.clear(); h.user = null; account = myTab();
   window.history.replaceState(null, '', '/app/loja-x?mesa=' + TOKEN);
   h.enterTable.mockResolvedValue({ state: 'GUEST', sessionId: 's1', approved: true });
+  h.listFreeTables.mockResolvedValue([]);
   h.rpc.mockImplementation(async (name: string) => {
     if (name === 'resolve_table_qr') return { data: { available: true, tenantSlug: 'loja-x', storeName: 'Loja X', tableLabel: 'Mesa 03' }, error: null };
     if (name === 'get_my_tab') return { data: account, error: null };
@@ -298,5 +304,65 @@ describe('Garçom v3 — cliente QR', () => {
     await screen.findByText('O prazo de 5 minutos terminou. Chame o garçom para conferir sua entrega.');
     await screen.findByText('Pedido recebido');
     expect(screen.queryByRole('button', { name: 'Não recebi' })).toBeNull();
+  });
+
+  it('cliente muda de mesa escolhendo mesa livre ou QR, move a comanda e bloqueia troca com conta pedida', async () => {
+    h.user = { id: 'u1' };
+    sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
+    h.listFreeTables.mockResolvedValue([
+      { id: 't7', label: 'Mesa 07', area: 'Varanda', seats: 4 },
+    ]);
+    h.moveTable.mockImplementation(async () => {
+      account = {
+        ...account,
+        tableLabel: 'Mesa 07',
+        tableMoves: [
+          { id: 'mv1', action: 'MOVE', fromLabel: 'Mesa 03', toLabel: 'Mesa 07', actorKind: 'CUSTOMER', actorName: 'Ana', createdAt: '2026-11-04T12:10:00Z' },
+        ],
+      } as any;
+      return { tabId: 'tb', fromTableId: 't3', toTableId: 't7', fromLabel: 'Mesa 03', toLabel: 'Mesa 07', notice: 'Mesa 03 → Mesa 07', qrToken: TOKEN };
+    });
+
+    render(<DineInClientApp token={TOKEN} />);
+    const moveBtn = await screen.findByTestId('dinein-move-table-btn');
+    expect(moveBtn.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(moveBtn);
+
+    expect(await screen.findByTestId('dinein-move-table-modal')).toBeTruthy();
+    expect(h.listFreeTables).toHaveBeenCalledWith('s1');
+    fireEvent.click(await screen.findByTestId('move-to-table-t7'));
+
+    await waitFor(() => expect(h.moveTable).toHaveBeenCalledWith('s1', { tableId: 't7' }));
+    await screen.findByText(/Mesa trocada \(Mesa 03 → Mesa 07\)/);
+
+    // Em Minha conta, exibe o histórico de mesas
+    fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
+    expect((await screen.findByTestId('account-table-moves')).textContent).toContain('Mesa 03 → Mesa 07');
+  });
+
+  it('exibe código de entrega de 4 dígitos por rodada e bloqueia "Não recebi" quando confirmado com código', async () => {
+    h.user = { id: 'u1' };
+    sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
+    const deliveredAt = new Date().toISOString();
+    account = {
+      ...myTab([
+        { ...round('READY', 'o-ready'), deliveryCode: '4821' } as any,
+        { ...round('DELIVERED', 'o-confirmed'), deliveredAt, canDisputeDelivery: false, deliveryConfirmedWithCode: true } as any,
+      ]),
+      requireDeliveryCode: true,
+    } as any;
+
+    render(<DineInClientApp token={TOKEN} />);
+    const trackingBar = await screen.findByTestId('dinein-track-order');
+    expect(trackingBar.textContent).toContain('Código: 4821');
+    expect(screen.getByTestId('delivery-notice-o-confirmed').textContent).toContain('Entrega confirmada com código');
+    expect(screen.queryByRole('button', { name: 'Não recebi' })).toBeNull();
+
+    fireEvent.click(trackingBar);
+    expect((await screen.findByTestId('round-delivery-code-o-ready')).textContent).toContain('4821');
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar acompanhamento' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
+    expect((await screen.findByTestId('account-round-code-o-ready')).textContent).toContain('4821');
   });
 });

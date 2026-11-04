@@ -10,6 +10,7 @@ export interface TableCardProps {
   area: string | null;
   seats: number;
   info: TableStatusInfo;
+  joinedLabel?: string | null;
   index?: number;
   onOpen: (id: string) => void;
 }
@@ -30,7 +31,7 @@ export function tableAriaLabel(label: string, info: TableStatusInfo, seats: numb
   return parts.join(', ');
 }
 
-export const TableCard: React.FC<TableCardProps> = React.memo(({ id, label, area, seats, info, index = 0, onOpen }) => {
+export const TableCard: React.FC<TableCardProps> = React.memo(({ id, label, area, seats, info, joinedLabel, index = 0, onOpen }) => {
   const attention = info.hasActiveCall || info.pendingRelease;
   const occupied = info.kind !== 'FREE';
   const colors = tableColorTokens(info.kind);
@@ -54,6 +55,7 @@ export const TableCard: React.FC<TableCardProps> = React.memo(({ id, label, area
       )}
       <div className="flex flex-wrap items-start justify-between gap-1.5 pr-9">
         <span className="salon-chip"><i className="salon-dot" />{info.kind === 'LONG_STAY' ? 'Muito tempo' : info.label}</span>
+        {joinedLabel && <span className="salon-chip" data-testid={`salon-joined-${id}`}>Mesas juntas: {joinedLabel}</span>}
         {info.pendingRelease && <span className="salon-pending" data-testid={`salon-pending-${id}`}>Aguardando liberação</span>}
       </div>
       <div className="min-w-0">

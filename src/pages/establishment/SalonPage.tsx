@@ -25,7 +25,7 @@ import { SalonSidebar, SidebarTab } from '../../components/establishment/salon/S
 import { TabPixPanel } from '../../components/establishment/salon/TabPixPanel';
 import { TabPaymentConfirmation } from '../../components/establishment/salon/TabPaymentConfirmation';
 import { FOCUS_TABLE_KEY } from '../../components/establishment/salon/ApprovalsAlert';
-import { salonStaffRepository, type SalonAccessExtras, type StaffHolderCode } from '../../repositories/salonStaffRepository';
+import { salonStaffRepository, type SalonAccessExtras, type StaffHolderCode, type TabTableMoveRow, type JoinedTableLink } from '../../repositories/salonStaffRepository';
 import { QRCodeSVG } from 'qrcode.react';
 import { inviteUrl } from '../../lib/customer/tableAccess';
 import { WaiterModesModal } from '../../components/establishment/waiter/WaiterModesModal';
@@ -142,10 +142,31 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const [releaseEmptyCustomReason, setReleaseEmptyCustomReason] = useState('');
   const [modesOpen, setModesOpen] = useState(false);
   const [dispatchCall, setDispatchCall] = useState<{ id: string; tableLabel: string; type: string; createdAt: string; route: string } | null>(null);
+  const [joinedTables, setJoinedTables] = useState<JoinedTableLink[]>([]);
+  const [tableMoves, setTableMoves] = useState<TabTableMoveRow[]>([]);
+  const [requireDeliveryCode, setRequireDeliveryCode] = useState(false);
+  const [joinModalOpen, setJoinModalOpen] = useState(false);
+  const [selectedJoinTables, setSelectedJoinTables] = useState<string[]>([]);
 
   const centralCallsWaiting = useMemo(() => {
     return calls.filter(call => call.status === 'OPEN' && call.route === 'CENTRAL' && !call.assigned_to && !call.accepted_by);
   }, [calls]);
+
+  const tabByTable = useMemo(() => {
+    const map = new Map<string, DiningTab>();
+    const byId = new Map<string, DiningTab>();
+    for (const tab of tabs) {
+      map.set(tab.table_id, tab);
+      byId.set(tab.id, tab);
+    }
+    for (const link of joinedTables) {
+      const tab = byId.get(link.tab_id);
+      if (tab && !map.has(link.table_id)) {
+        map.set(link.table_id, tab);
+      }
+    }
+    return map;
+  }, [tabs, joinedTables]);
 
   const resolvedTableId = useMemo(() => {
     if (!selectedTableId) return null;
@@ -158,7 +179,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     );
     return byLabel ? byLabel.id : selectedTableId;
   }, [selectedTableId, tables, tabs]);
-  const selectedTab = useMemo(() => tabs.find(tab => tab.table_id === resolvedTableId), [tabs, resolvedTableId]);
+  const selectedTab = useMemo(() => (resolvedTableId ? tabByTable.get(resolvedTableId) : undefined), [tabByTable, resolvedTableId]);
   const selectedTable = useMemo(() => tables.find(table => table.id === resolvedTableId), [tables, resolvedTableId]);
   const selectedProduct = useMemo(() => catalogProducts.find(product => product.id === productId), [catalogProducts, productId]);
   const derivedCategories = useMemo<Array<{ id: string; name: string }>>(() => {
@@ -207,25 +228,32 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
       setTabs(loadedTabs);
       setProducts(menuResult.products);
       setCategories(menuResult.categories);
-      const config = configResult.data?.config as { close_roles?: string[] } | null;
+      const config = configResult.data?.config as { close_roles?: string[]; require_delivery_code?: boolean } | null;
       setCloseRoles(Array.isArray(config?.close_roles) ? config.close_roles : ['OWNER', 'MANAGER', 'CASHIER']);
+      setRequireDeliveryCode(Boolean(config?.require_delivery_code));
       if (!loadedTabs.length) {
         setSessions([]);
         setCalls([]);
         setRounds([]);
+        setJoinedTables([]);
+        setTableMoves([]);
         if (seenRounds.current === null) seenRounds.current = new Set();
       } else {
         const tabIds = loadedTabs.map(tab => tab.id);
-        const [sessionResult, callResult, roundResult] = await Promise.all([
+        const [sessionResult, callResult, roundResult, joinedResult, movesResult] = await Promise.all([
           supabase.from('tab_sessions').select('id,tab_id,display_name,approved_at,expires_at').eq('tenant_id', activeTenant.id).in('tab_id', tabIds).gt('expires_at', new Date().toISOString()),
           supabase.from('waiter_calls').select('id,tab_id,type,status,created_at').eq('tenant_id', activeTenant.id).in('tab_id', tabIds).eq('status', 'OPEN').order('created_at'),
           supabase.from('orders').select('id,tab_id,order_number,customer_name,status,subtotal,created_at,round_no').eq('tenant_id', activeTenant.id).eq('fulfillment_type', 'DINE_IN').in('tab_id', tabIds).neq('status', 'CANCELLED').order('round_no'),
+          salonStaffRepository.loadJoinedTables(activeTenant.id, tabIds).catch(() => [] as JoinedTableLink[]),
+          salonStaffRepository.loadTableMoves(activeTenant.id, tabIds).catch(() => [] as TabTableMoveRow[]),
         ]);
         if (currentTenantId.current !== activeTenant.id) return;
         if (sessionResult.error) throw sessionResult.error;
         if (callResult.error) throw callResult.error;
         if (roundResult.error) throw roundResult.error;
         setSessions((sessionResult.data || []) as TabSession[]);
+        setJoinedTables(joinedResult);
+        setTableMoves(movesResult);
         const nextCalls = (callResult.data || []) as WaiterCall[];
         const newCalls = nextCalls.filter(call => !seenCalls.current.has(call.id));
         if (seenCalls.current.size && newCalls.length) playShortBeep();
@@ -579,17 +607,56 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   };
 
   const tableLabelById = useMemo(() => new Map(tables.map(table => [table.id, formatTableLabel(table.label, 'Mesa')])), [tables]);
+  const joinedLabelByTable = useMemo(() => {
+    const tablesByTab = new Map<string, string[]>();
+    for (const tab of tabs) {
+      tablesByTab.set(tab.id, [tab.table_id]);
+    }
+    for (const link of joinedTables) {
+      const list = tablesByTab.get(link.tab_id) || [];
+      if (!list.includes(link.table_id)) list.push(link.table_id);
+      tablesByTab.set(link.tab_id, list);
+    }
+    const labelMap = new Map<string, string>();
+    for (const [, tableIds] of tablesByTab.entries()) {
+      if (tableIds.length > 1) {
+        const joinedLabel = tableIds.map(id => tableLabelById.get(id) || 'Mesa').join(' + ');
+        for (const id of tableIds) {
+          labelMap.set(id, joinedLabel);
+        }
+      }
+    }
+    return labelMap;
+  }, [tabs, joinedTables, tableLabelById]);
   const infoByTable = useMemo(() => {
     const map = new Map<string, ReturnType<typeof deriveTableStatus>>();
     for (const table of tables) {
-      const tab = tabs.find(item => item.table_id === table.id);
+      const tab = tabByTable.get(table.id);
       map.set(table.id, deriveTableStatus({
         tab, calls: calls as CallLike[], sessions, rounds, paidCents: tab ? paidByTab.get(tab.id) : 0,
         needsReview: tab ? reviews.has(tab.id) : false, now, longStayMinutes: longStay,
       }));
     }
     return map;
-  }, [tables, tabs, calls, sessions, rounds, paidByTab, reviews, now, longStay]);
+  }, [tables, tabByTable, calls, sessions, rounds, paidByTab, reviews, now, longStay]);
+  const recentMoves = useMemo(
+    () => tableMoves.filter(m => m.action === 'MOVE').slice(0, 3),
+    [tableMoves],
+  );
+  const joinedTablesForSelectedTab = useMemo(() => {
+    if (!selectedTab) return [] as Array<{ id: string; label: string }>;
+    const ids = [selectedTab.table_id];
+    for (const link of joinedTables) {
+      if (link.tab_id === selectedTab.id && !ids.includes(link.table_id)) {
+        ids.push(link.table_id);
+      }
+    }
+    return ids.map(id => ({ id, label: tableLabelById.get(id) || 'Mesa' }));
+  }, [selectedTab, joinedTables, tableLabelById]);
+  const movesForSelectedTab = useMemo(
+    () => (selectedTab ? tableMoves.filter(m => m.tab_id === selectedTab.id) : []),
+    [selectedTab, tableMoves],
+  );
   const counts = useMemo(() => statusCounts(Array.from(infoByTable.values())), [infoByTable]);
   const visibleTables = useMemo(
     () => tables.filter(table => matchesSearch(table, search) && matchesFilter(infoByTable.get(table.id)!, filter)).sort(compareTables),
@@ -622,6 +689,31 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível alterar o QR.'); }
     finally { setPauseBusy(false); }
   };
+  const toggleDeliveryCode = () => {
+    if (!activeTenant) return;
+    const next = !requireDeliveryCode;
+    void run('toggle-delivery-code', async () => {
+      await salonStaffRepository.setDeliveryCodeRequired(activeTenant.id, next);
+      setRequireDeliveryCode(next);
+    });
+  };
+  const confirmJoinTables = () => {
+    if (selectedJoinTables.length < 2) {
+      setMessage('Selecione pelo menos 2 mesas para juntar.');
+      return;
+    }
+    void run('join-tables', async () => {
+      await salonStaffRepository.joinTables(selectedJoinTables);
+      setJoinModalOpen(false);
+      setSelectedJoinTables([]);
+    });
+  };
+  const separateJoinedTable = (tableId: string) => {
+    if (!selectedTab) return;
+    void run(`separate-${tableId}`, async () => {
+      await salonStaffRepository.separateTable(selectedTab.id, tableId);
+    });
+  };
   const onPixSettled = useCallback(() => { setCloseOpen(false); setSelectedTableId(null); setPixLive(false); void load(true); }, [load]);
   const onPixLive = useCallback((live: boolean) => setPixLive(live), []);
 
@@ -633,6 +725,27 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-xl font-black text-gray-950">Salão</h1><p className="text-sm text-gray-600">Mapa de mesas e comandas em andamento</p></div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => { setSelectedJoinTables([]); setJoinModalOpen(true); }}
+            className="salon-btn"
+            data-testid="salon-join-tables-btn"
+          >
+            <Users className="h-4 w-4" aria-hidden="true" />
+            Juntar mesas
+          </button>
+          {canPause && (
+            <button
+              type="button"
+              onClick={toggleDeliveryCode}
+              disabled={busy === 'toggle-delivery-code'}
+              aria-pressed={requireDeliveryCode}
+              className={`salon-btn${requireDeliveryCode ? ' salon-btn--warn' : ''}`}
+              data-testid="salon-toggle-delivery-code"
+            >
+              {requireDeliveryCode ? 'Código de entrega: Ligado' : 'Exigir código de entrega na mesa'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setModesOpen(true)}
@@ -649,6 +762,16 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
         </div>
       </header>
       {message && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{message}</div>}
+      {recentMoves.length > 0 && (
+        <div role="status" data-testid="salon-table-move-banner" className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 p-3 text-sm font-bold text-sky-950">
+          <span>Troca de mesa recente:</span>
+          {recentMoves.map(m => (
+            <span key={m.id} className="rounded-lg bg-white px-2.5 py-1 text-xs font-black text-slate-900 shadow-xs">
+              {m.from_label || 'Mesa'} → {m.to_label}
+            </span>
+          ))}
+        </div>
+      )}
       {storePaused && <div role="status" className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-950"><PauseCircle className="h-5 w-5" aria-hidden="true" />Pedidos pelo QR das mesas estão pausados. Os clientes veem um aviso e o garçom ainda pode lançar pedidos.</div>}
       {centralCallsWaiting.length > 0 && (
         <div
@@ -729,7 +852,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
             <p className="rounded-2xl bg-white p-8 text-center text-sm text-gray-600 shadow-sm">Nenhuma mesa encontrada com esse filtro. <button type="button" className="font-bold text-teal-800 underline" onClick={() => { setSearch(''); setFilter('ALL'); }}>Limpar filtros</button></p>
           ) : (
             <div className="salon-grid">
-              {visibleTables.map((table, index) => <TableCard key={table.id} id={table.id} label={table.label} area={table.area} seats={table.seats} info={infoByTable.get(table.id)!} index={index} onOpen={openTable} />)}
+              {visibleTables.map((table, index) => <TableCard key={table.id} id={table.id} label={table.label} area={table.area} seats={table.seats} info={infoByTable.get(table.id)!} index={index} onOpen={openTable} joinedLabel={joinedLabelByTable.get(table.id) || null} />)}
             </div>
           )}
         </div>
@@ -752,6 +875,42 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
             {selectedTab.status !== 'OPEN' && <p role="status" className={`mt-4 rounded-xl p-3 text-sm font-bold ${['WAITER_AUTHORIZED', 'BILL_REQUESTED'].includes(selectedTab.status) ? 'salon-bill-alert' : 'border border-sky-300 bg-sky-50 text-sky-900'}`}>
               {selectedTab.status === 'BILL_REQUESTED' ? 'Conta solicitada. Feche no caixa ou autorize o garçom a cobrar esta comanda.' : selectedTab.status === 'WAITER_AUTHORIZED' ? 'Garçom autorizado a fechar esta conta após confirmar o pagamento.' : 'Aguardando pagamento. A mesa permanece aberta até a confirmação.'}
             </p>}
+            {joinedTablesForSelectedTab.length > 1 && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm" data-testid="salon-joined-tables">
+                <p className="font-black text-slate-900">Mesas juntas nesta comanda</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {joinedTablesForSelectedTab.map(jt => (
+                    <div key={jt.id} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800">
+                      <span>{jt.label}</span>
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        onClick={() => separateJoinedTable(jt.id)}
+                        data-testid={`salon-separate-table-${jt.id}`}
+                        className="rounded bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700 hover:bg-rose-100"
+                      >
+                        Separar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {movesForSelectedTab.length > 0 && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700" data-testid="salon-table-moves">
+                <p className="font-black text-slate-900">Histórico de mesas</p>
+                <ul className="mt-1.5 space-y-1">
+                  {movesForSelectedTab.map(m => (
+                    <li key={m.id} className="flex flex-wrap items-center justify-between gap-2">
+                      <span>
+                        <b>{m.from_label ? `${m.from_label} → ${m.to_label}` : m.to_label}</b> ({m.action === 'MOVE' ? 'Troca de mesa' : m.action === 'JOIN' ? 'Mesas juntas' : 'Mesa separada'} · {m.actor_name || (m.actor_kind === 'STAFF' ? 'Equipe' : 'Cliente')})
+                      </span>
+                      <span className="text-slate-500">{new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="mt-5 space-y-3" data-testid="salon-people">
               <h3 className="font-black">Pessoas e liberação</h3>
               {activeSessions.some(session => !session.approved_at) && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-950">Há pessoas aguardando liberação nesta mesa. Aprove para elas poderem pedir.</p>}
@@ -1049,6 +1208,50 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
             {!pixSelected && <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={receivedConfirmed} onChange={event => setReceivedConfirmed(event.target.checked)} />Confirmei o recebimento</label>}
             {!pixSelected && <button type="button" disabled={!!busy || pixLive || !receivedConfirmed || payments.some(payment => !payment.method)} onClick={closeTab} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar recebimento e fechar conta</button>}
           </>)}
+        </div>
+      </Modal>
+
+      <Modal isOpen={joinModalOpen} onClose={() => setJoinModalOpen(false)} title="Juntar mesas">
+        <div className="space-y-3" data-testid="salon-join-tables-modal">
+          <p className="text-sm text-slate-600">
+            Selecione 2 ou mais mesas para unir em uma única comanda. As mesas juntas aparecem ligadas no Salão com a mesma cor e comanda.
+          </p>
+          <div className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+            {tables.map(table => {
+              const checked = selectedJoinTables.includes(table.id);
+              return (
+                <button
+                  key={table.id}
+                  type="button"
+                  aria-pressed={checked}
+                  data-testid={`salon-join-option-${table.id}`}
+                  onClick={() => setSelectedJoinTables(prev => prev.includes(table.id) ? prev.filter(id => id !== table.id) : [...prev, table.id])}
+                  className={`rounded-xl border p-2.5 text-left text-xs font-bold transition ${checked ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300'}`}
+                >
+                  <div>{table.label}</div>
+                  <div className={`text-[11px] font-normal ${checked ? 'text-slate-300' : 'text-slate-500'}`}>{table.area || 'Salão'}</div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setJoinModalOpen(false)}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              data-testid="salon-confirm-join-tables"
+              disabled={selectedJoinTables.length < 2 || busy === 'join-tables'}
+              onClick={confirmJoinTables}
+              className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+            >
+              Confirmar junção ({selectedJoinTables.length})
+            </button>
+          </div>
         </div>
       </Modal>
 

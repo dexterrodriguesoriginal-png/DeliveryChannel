@@ -7,9 +7,26 @@ export interface DeliveryDispute {
 export type DeliveryResolution = 'CONFIRMED_DELIVERED' | 'RESENT';
 
 export const deliveryRepository = {
-  async markDelivered(orderId: string): Promise<void> {
-    const { error } = await supabase.rpc('waiter_mark_delivered', { p_order: orderId });
-    if (error) throw new Error('Não foi possível registrar a entrega. Atualize os pedidos e tente novamente.');
+  async markDelivered(orderId: string, code?: string): Promise<void> {
+    const args = code === undefined ? { p_order: orderId } : { p_order: orderId, p_code: code.trim() };
+    const { data, error } = await supabase.rpc('waiter_mark_delivered', args);
+    if (error) {
+      const msg = String(error.message || '');
+      if (msg.includes('DELIVERY_CODE_REQUIRED')) {
+        throw Object.assign(new Error('Informe o código de 4 dígitos do cliente para confirmar a entrega.'), { code: 'DELIVERY_CODE_REQUIRED' });
+      }
+      if (msg.includes('DELIVERY_CODE_LOCKED')) {
+        throw Object.assign(new Error('Código bloqueado após 5 tentativas incorretas.'), { code: 'DELIVERY_CODE_LOCKED' });
+      }
+      throw new Error('Não foi possível registrar a entrega. Atualize os pedidos e tente novamente.');
+    }
+    if (data && typeof data === 'object' && (data as { success?: boolean }).success === false) {
+      const attemptsLeft = (data as { attempts_left?: number }).attempts_left ?? 0;
+      throw Object.assign(
+        new Error(`Código incorreto. Tentativas restantes: ${attemptsLeft}.`),
+        { code: 'DELIVERY_CODE_INVALID', attemptsLeft },
+      );
+    }
   },
   async openDisputes(tenantId: string): Promise<DeliveryDispute[]> {
     const { data, error } = await supabase.rpc('list_open_delivery_disputes', { p_tenant: tenantId });

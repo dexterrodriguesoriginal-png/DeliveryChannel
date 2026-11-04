@@ -43,7 +43,7 @@ export const DineInTracking: React.FC<{ rounds: Array<DineInTrackedRound & Deliv
   return <>
     {current && status && currentColors && <button type="button" data-testid="dinein-track-order" onClick={() => setOpen(true)} className="fixed bottom-24 right-4 z-30 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-2xl border px-4 py-3 text-left shadow-lg" style={statusColorStyle(currentColors)}>
       <Clock3 className="h-5 w-5 shrink-0" />
-      <span><b className="block text-sm">Acompanhar pedido</b><span aria-live="polite" className="block text-xs">{status.label}{queuePositionLabel(current.queuePosition) ? ` · ${queuePositionLabel(current.queuePosition)}` : ''}</span></span>
+      <span><b className="block text-sm">Acompanhar pedido</b><span aria-live="polite" className="block text-xs">{status.label}{queuePositionLabel(current.queuePosition) ? ` · ${queuePositionLabel(current.queuePosition)}` : ''}{current.deliveryCode ? ` · Código: ${current.deliveryCode}` : ''}</span></span>
     </button>}
     {open && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
       <section role="dialog" aria-modal="true" aria-label="Acompanhar pedido" className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5">
@@ -55,6 +55,14 @@ export const DineInTracking: React.FC<{ rounds: Array<DineInTrackedRound & Deliv
           return <article key={round.orderId} className="rounded-2xl border p-4" style={{ borderColor: colors.border }}>
             <p className="text-sm font-extrabold">Pedido #{round.orderNumber || round.roundNo} · Rodada {round.roundNo}</p>
             <p className="mt-1 rounded-lg px-3 py-2 text-sm font-bold" style={statusColorStyle(colors)}>{state.label}</p>
+            {round.deliveryCode && !['DELIVERED', 'CANCELLED'].includes(round.status) && (
+              <div data-testid={`round-delivery-code-${round.orderId}`} className="mt-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
+                <span className="font-semibold">Código de entrega: </span>
+                <b className="font-mono text-base tracking-widest">{round.deliveryCode}</b>
+                <span className="block text-[11px] text-emerald-800">Informe este código de 4 dígitos ao garçom ao receber o pedido.</span>
+              </div>
+            )}
+            {round.deliveryConfirmedWithCode && <p className="mt-2 text-xs font-bold text-emerald-800">Entrega confirmada com código</p>}
             {round.deliveryDispute && <p className="mt-2 text-sm font-semibold">{deliveryNoticeLabel(round)}</p>}
             {queuePositionLabel(round.queuePosition) && <p className="mt-2 text-sm font-bold text-slate-700">{queuePositionLabel(round.queuePosition)}</p>}
             <ol className="mt-3 space-y-2">{trackingSteps(round).map(step => <li key={step.label} className={`flex items-center justify-between gap-3 text-sm ${step.at ? 'text-slate-800' : 'text-slate-400'}`}>

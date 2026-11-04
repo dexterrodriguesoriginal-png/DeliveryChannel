@@ -19,4 +19,17 @@ describe('RPCs de entrega', () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'private-other-store-data' } });
     await expect(deliveryRepository.openDisputes('other')).rejects.toThrow('Não foi possível carregar as entregas contestadas.');
   });
+  it('envia o código de 4 dígitos ao confirmar entrega e traduz erros de código inválido/bloqueado', async () => {
+    await deliveryRepository.markDelivered('order1', ' 4821 ');
+    expect(rpc).toHaveBeenLastCalledWith('waiter_mark_delivered', { p_order: 'order1', p_code: '4821' });
+
+    rpc.mockResolvedValueOnce({ data: { success: false, error: 'DELIVERY_CODE_INVALID', attempts_left: 3 }, error: null });
+    await expect(deliveryRepository.markDelivered('order1', '9999')).rejects.toThrow(/Código incorreto\. Tentativas restantes: 3\./);
+
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'DELIVERY_CODE_LOCKED' } });
+    await expect(deliveryRepository.markDelivered('order1', '9999')).rejects.toThrow(/Código bloqueado após 5 tentativas incorretas\./);
+
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'DELIVERY_CODE_REQUIRED' } });
+    await expect(deliveryRepository.markDelivered('order1')).rejects.toThrow(/Informe o código de 4 dígitos do cliente/);
+  });
 });

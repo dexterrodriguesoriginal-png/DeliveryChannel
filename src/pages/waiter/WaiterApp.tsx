@@ -474,6 +474,9 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [serviceSettings, setServiceSettings] = useState<ServiceSettings>(DEFAULT_SERVICE_SETTINGS);
   const [assignments, setAssignments] = useState<TableAssignment[]>([]);
   const [passShiftOpen, setPassShiftOpen] = useState(false);
+  const [joinTablesOpen, setJoinTablesOpen] = useState(false);
+  const [joinSelectedIds, setJoinSelectedIds] = useState<string[]>([]);
+  const [orderDeliveryCodes, setOrderDeliveryCodes] = useState<Record<string, string>>({});
   const [helpSuccess, setHelpSuccess] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const notificationRef = useRef(true); notificationRef.current = notificationsEnabled;
@@ -641,14 +644,38 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     return priority(a.status) - priority(b.status) || a.created_at.localeCompare(b.created_at);
   }), [rounds, myTabIds]);
   const readyRounds = myRounds.filter(r => r.status === 'READY');
+  const joinedLinks = snap?.joinedTables || [];
+  const tableMoves = snap?.tableMoves || [];
+  const requireDeliveryCode = Boolean(snap?.requireDeliveryCode);
+  const tabByTable = useMemo(() => {
+    const map = new Map<string, (typeof tabs)[number]>();
+    for (const t of tabs) map.set(t.table_id, t);
+    for (const link of joinedLinks) {
+      const parent = tabs.find(t => t.id === link.tab_id);
+      if (parent && !map.has(link.table_id)) map.set(link.table_id, parent);
+    }
+    return map;
+  }, [tabs, joinedLinks]);
+  const joinedTablesByTab = useMemo(() => {
+    const map = new Map<string, typeof tables>();
+    for (const t of tabs) {
+      const secondaryIds = joinedLinks.filter(l => l.tab_id === t.id).map(l => l.table_id);
+      if (secondaryIds.length > 0) {
+        const allIds = [t.table_id, ...secondaryIds];
+        const linked = allIds.map(id => tables.find(tb => tb.id === id)).filter((x): x is (typeof tables)[number] => Boolean(x));
+        if (linked.length > 1) map.set(t.id, linked);
+      }
+    }
+    return map;
+  }, [tabs, joinedLinks, tables]);
   const infoByTable = useMemo(() => {
     const map = new Map<string, ReturnType<typeof deriveTableStatus>>();
     for (const table of tables) {
-      const t = tabs.find(item => item.table_id === table.id);
+      const t = tabByTable.get(table.id);
       map.set(table.id, deriveTableStatus({ tab: t, calls, sessions, rounds, now }));
     }
     return map;
-  }, [tables, tabs, calls, sessions, rounds, now]);
+  }, [tables, tabByTable, calls, sessions, rounds, now]);
   const counts = useMemo(() => statusCounts(Array.from(infoByTable.values())), [infoByTable]);
   const visible = useMemo(() => tables.filter(t => {
     const info = infoByTable.get(t.id)!;
@@ -656,7 +683,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   }).sort(compareTables), [tables, infoByTable, search, filter]);
 
   const selected = tables.find(t => t.id === selectedId) || null;
-  const selectedTab = selected ? tabs.find(t => t.table_id === selected.id) : undefined;
+  const selectedTab = selected ? tabByTable.get(selected.id) : undefined;
   const labelByTab = useMemo(() => { const m = new Map<string, string>(); for (const t of tabs) m.set(t.id, formatTableLabel(tables.find(x => x.id === t.table_id)?.label, 'Mesa')); return m; }, [tabs, tables]);
 
   const run = async (key: string, action: () => Promise<unknown>, ok?: string) => {
@@ -788,7 +815,19 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <button type="button" onClick={() => setFilter('ATTN')} className="rounded-2xl bg-rose-500/10 p-3 ring-1 ring-rose-400/30"><p className="text-2xl font-black text-rose-300">{counts.CALL}</p>Atenção</button>
           </div>
           <label className="relative mb-3 block"><Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><input aria-label="Buscar mesa" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar mesa" className="h-12 w-full rounded-2xl border-0 bg-white/10 pl-10 pr-3 text-base text-white placeholder:text-slate-400" /></label>
-          <div className="mb-3 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Filtrar mesas">{FILTERS.map(f => <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${filter === f.id ? 'bg-emerald-500 text-slate-950' : 'bg-white/10 text-slate-200'}`}>{f.label}</button>)}</div>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Filtrar mesas">{FILTERS.map(f => <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${filter === f.id ? 'bg-emerald-500 text-slate-950' : 'bg-white/10 text-slate-200'}`}>{f.label}</button>)}</div>
+            {tables.length >= 2 && (
+              <button
+                type="button"
+                data-testid="waiter-join-tables-btn"
+                onClick={() => { setJoinSelectedIds([]); setJoinTablesOpen(true); }}
+                className="shrink-0 rounded-full bg-emerald-500 px-3.5 py-2 text-xs font-black text-slate-950"
+              >
+                Juntar mesas
+              </button>
+            )}
+          </div>
           <ul className="salon-legend mb-3 text-slate-300" aria-label="Legenda das cores" data-testid="waiter-color-legend">
             <li><i style={{ background: '#2DBE4E' }} />Livre</li>
             <li><i style={{ background: '#FFDD00' }} />Ocupada / Em preparo</li>
@@ -801,7 +840,23 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           {!snap && <p className="flex items-center gap-2 py-10 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Carregando o salão…</p>}
           {snap && !tables.length && <p className="rounded-2xl bg-white/5 p-5 text-sm text-slate-300">Nenhuma mesa cadastrada. O dono cadastra em Mesas e QR Code, no painel.</p>}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="waiter-tables">
-            {visible.map((table, index) => <TableCard key={table.id} id={table.id} label={table.label} area={table.area} seats={table.seats} info={infoByTable.get(table.id)!} index={index} onOpen={id => { unlockAudio(); setMessage(''); setSelectedId(id); }} />)}
+            {visible.map((table, index) => {
+              const t = tabByTable.get(table.id);
+              const joined = t ? joinedTablesByTab.get(t.id) : undefined;
+              return (
+                <TableCard
+                  key={table.id}
+                  id={table.id}
+                  label={table.label}
+                  area={table.area}
+                  seats={table.seats}
+                  info={infoByTable.get(table.id)!}
+                  joinedLabel={joined ? joined.map(x => x.label).join(' + ') : null}
+                  index={index}
+                  onOpen={id => { unlockAudio(); setMessage(''); setSelectedId(id); }}
+                />
+              );
+            })}
           </div>
           {snap && tables.length > 0 && !visible.length && <p className="py-8 text-center text-sm text-slate-400">Nenhuma mesa neste filtro.</p>}
         </>)}
@@ -811,11 +866,24 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           {!myRounds.length ? <p className="rounded-2xl bg-white/5 p-5 text-sm text-slate-300">Nenhum pedido nas suas mesas. Ao assumir um chamado ou receber uma mesa, os pedidos aparecem aqui.</p> : <div className="space-y-3">{myRounds.map(r => {
             const status = waiterOrderStatus(r.status);
             const table = tabs.find(t => t.id === r.tab_id);
+            const needsCode = Boolean(requireDeliveryCode || r.delivery_code_required);
+            const codeVal = orderDeliveryCodes[r.id] || '';
             return <article key={r.id} className="w-full space-y-2 rounded-2xl border-l-4 bg-white/5 p-4 ring-1 ring-white/10" style={{ borderLeftColor: statusColorTokens(r.status).solid }}>
               <button type="button" onClick={() => table && setSelectedId(table.table_id)} className="block w-full space-y-2 text-left"><span className="flex items-start justify-between gap-2"><strong>{labelByTab.get(r.tab_id) || 'Mesa'}</strong><span className="text-xs text-slate-400">#{r.order_number} · rodada {r.round_no}</span></span>
               <span className="block rounded-lg border px-2 py-1 font-bold" style={statusColorStyle(r.status)}>{status.label}</span><span className="block text-xs text-slate-400">Pedido feito às {new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></button>
-              {r.status === 'DELIVERED' && r.delivered_at && <p className="text-xs text-slate-300">Entregue às {new Date(r.delivered_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
-              {!['DELIVERED', 'CANCELLED'].includes(r.status) && <button type="button" title={canDeliverRound(r.status) ? undefined : 'Aguardando balcão'} disabled={!!busy || !canDeliverRound(r.status)} onClick={() => void run(`delivered-${r.id}`, () => deliveryRepository.markDelivered(r.id), 'Entrega registrada.')} className="min-h-11 w-full rounded-xl px-3 text-sm font-black disabled:opacity-50" style={{ backgroundColor: statusColorTokens('DELIVERED').solid, color: '#fff' }}>Entregue</button>}
+              {r.status === 'DELIVERED' && r.delivered_at && <p className="text-xs text-slate-300">Entregue às {new Date(r.delivered_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}{r.delivery_confirmed_with_code ? ' · Confirmado com código' : ''}</p>}
+              {!['DELIVERED', 'CANCELLED'].includes(r.status) && needsCode && canDeliverRound(r.status) && (
+                <input
+                  aria-label={`Código de entrega do pedido ${r.order_number}`}
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={codeVal}
+                  onChange={e => setOrderDeliveryCodes(prev => ({ ...prev, [r.id]: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                  placeholder="Código 4 dígitos do cliente"
+                  className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 font-mono text-sm font-bold tracking-widest text-white placeholder:text-slate-400"
+                />
+              )}
+              {!['DELIVERED', 'CANCELLED'].includes(r.status) && <button type="button" title={canDeliverRound(r.status) ? undefined : 'Aguardando balcão'} disabled={!!busy || !canDeliverRound(r.status) || (needsCode && codeVal.length !== 4)} onClick={() => void run(`delivered-${r.id}`, () => needsCode ? deliveryRepository.markDelivered(r.id, codeVal) : deliveryRepository.markDelivered(r.id), 'Entrega registrada.')} className="min-h-11 w-full rounded-xl px-3 text-sm font-black disabled:opacity-50" style={{ backgroundColor: statusColorTokens('DELIVERED').solid, color: '#fff' }}>Entregue</button>}
               {!['DELIVERED', 'CANCELLED'].includes(r.status) && !canDeliverRound(r.status) && <p className="text-xs text-slate-300">Aguardando balcão</p>}
             </article>;
           })}</div>}
@@ -974,7 +1042,11 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           helpSuccess={helpSuccess}
           onOpenTable={openTable}
           onOrder={() => selectedTab && void openOrder(selectedTab.id, selected.label)}
-          onMarkDelivered={orderId => void run(`delivered-${orderId}`, () => deliveryRepository.markDelivered(orderId), 'Entrega registrada.')}
+          requireDeliveryCode={requireDeliveryCode}
+          joinedTables={selectedTab ? (joinedTablesByTab.get(selectedTab.id) || []) : []}
+          onSeparateTable={tableId => selectedTab && void run(`separate-${tableId}`, () => salonStaffRepository.separateTable(selectedTab.id, tableId), 'Mesa separada.')}
+          tableMoves={selectedTab ? tableMoves.filter(m => m.tab_id === selectedTab.id) : []}
+          onMarkDelivered={(orderId, code) => void run(`delivered-${orderId}`, () => code === undefined ? deliveryRepository.markDelivered(orderId) : deliveryRepository.markDelivered(orderId, code), 'Entrega registrada.')}
           canCollect={canCollectTab(selectedTab?.status, activeRole, !!selectedTab && (myTabIds.has(selectedTab.id) || !assignments.some(a => a.table_id === selected.id)))}
           onConfirmPayment={method => {
             if (!selectedTab || selectedTab.status === 'AWAITING_PAYMENT' || !canCollectTab(selectedTab.status, activeRole, myTabIds.has(selectedTab.id) || !assignments.some(a => a.table_id === selected.id))) return;
@@ -1004,6 +1076,48 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         />
       )}
       {orderTarget && <WaiterOrderSheet tableLabel={orderTarget.label} products={products} categories={categories} loading={productsLoading} error={productsError} sending={sending} onClose={() => setOrderTarget(null)} onSubmit={cart => void sendOrder(cart)} />}
+      {joinTablesOpen && (
+        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/70 p-3 sm:items-center" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget && !busy) setJoinTablesOpen(false); }}>
+          <section role="dialog" aria-modal="true" aria-label="Juntar mesas" data-testid="waiter-join-tables-modal" className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-5 text-slate-900 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-black">Juntar mesas</h2>
+              <button type="button" onClick={() => setJoinTablesOpen(false)} aria-label="Fechar"><X className="h-5 w-5" /></button>
+            </div>
+            <p className="text-xs text-slate-600">Selecione 2 ou mais mesas para uni-las em uma única conta.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {tables.map(t => {
+                const checked = joinSelectedIds.includes(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    aria-pressed={checked}
+                    data-testid={`waiter-join-option-${t.id}`}
+                    onClick={() => setJoinSelectedIds(prev => checked ? prev.filter(x => x !== t.id) : [...prev, t.id])}
+                    className={`rounded-xl border p-3 text-left text-sm font-bold ${checked ? 'border-emerald-600 bg-emerald-50 text-emerald-950' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
+                  >
+                    <span className="block">{t.label}</span>
+                    <span className="block text-[11px] font-normal text-slate-500">{infoByTable.get(t.id)?.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              disabled={!!busy || joinSelectedIds.length < 2}
+              data-testid="waiter-join-confirm-btn"
+              onClick={() => void run('join-tables', async () => {
+                await salonStaffRepository.joinTables(joinSelectedIds);
+                setJoinTablesOpen(false);
+                setJoinSelectedIds([]);
+              }, 'Mesas juntadas na mesma conta.')}
+              className="mt-4 w-full rounded-2xl bg-emerald-600 py-3 text-sm font-black text-white disabled:opacity-50"
+            >
+              Juntar mesas selecionadas ({joinSelectedIds.length})
+            </button>
+          </section>
+        </div>
+      )}
       {passShiftOpen && (
         <PassShiftModal
           isOpen={passShiftOpen}

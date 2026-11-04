@@ -62,6 +62,8 @@ const h = vi.hoisted(() => ({
     accessExtras: vi.fn(async () => ({ responsibleSessionByTab: new Map(), claimableTabs: new Set() })),
     handleCall: vi.fn(async () => {}),
     loadMenu: vi.fn(async () => ({ products: [], categories: [] })),
+    joinTables: vi.fn(async () => ({ tabId: 'tab-1', primaryTableId: 't-1', joinedTableIds: ['t-1', 't-2'] })),
+    separateTable: vi.fn(async () => ({ tabId: 'tab-1', separatedTableId: 't-2' })),
   },
   modules: { enabled: true },
   delivery: { markDelivered: vi.fn(async () => {}), openDisputes: vi.fn(async () => []), resolve: vi.fn(async () => {}), observe: vi.fn(() => vi.fn()) },
@@ -270,5 +272,51 @@ describe('Garçom v2 — Login simples e Modos de atendimento', () => {
     render(<WaiterApp />);
     fireEvent.click(await screen.findByRole('button', { name: 'Mais' }));
     expect(screen.queryByRole('link', { name: 'Abrir o Salão' })).toBeNull();
+  });
+
+  it('exige código de 4 dígitos para marcar Entregue quando ativado e permite Juntar/Separar mesas na comanda', async () => {
+    h.auth.supabaseUser = { id: 'u-waiter-1', email: 'joao@garcom.deliverychannel.local' };
+    h.auth.activeTenant = { id: 't-1', name: 'Pizzaria Bella', slug: 'pizzaria-bella' };
+    h.auth.activeRole = 'WAITER';
+    const base = await h.salonStaff.snapshot();
+    const own = {
+      id: 'ready-order',
+      tab_id: 'tab-1',
+      status: 'OUT_FOR_DELIVERY',
+      subtotal: 20,
+      created_at: new Date().toISOString(),
+      round_no: 1,
+      order_number: 55,
+      customer_name: 'Cliente',
+      delivery_code_required: true,
+    };
+    h.salonStaff.snapshot.mockResolvedValue({
+      ...base,
+      requireDeliveryCode: true,
+      joinedTables: [{ tab_id: 'tab-1', table_id: 't-2' }],
+      tableMoves: [{ id: 'mv-1', tab_id: 'tab-1', action: 'MOVE', from_label: 'Mesa 01', to_label: 'Mesa 02', actor_kind: 'CUSTOMER', actor_name: 'Ana', created_at: new Date().toISOString() }],
+      rounds: [own],
+    } as never);
+    try {
+      render(<WaiterApp />);
+      const table = await screen.findByTestId('salon-table-t-1');
+      fireEvent.click(table);
+
+      expect(await screen.findByTestId('waiter-joined-tables')).toBeTruthy();
+      expect(screen.getByTestId('waiter-table-moves').textContent).toContain('Mesa 01 → Mesa 02');
+
+      const deliverBtn = screen.getByRole('button', { name: 'Entregue' }) as HTMLButtonElement;
+      expect(deliverBtn.disabled).toBe(true);
+      const codeInput = screen.getByTestId('waiter-delivery-code-ready-order');
+      fireEvent.change(codeInput, { target: { value: '4821' } });
+      expect(deliverBtn.disabled).toBe(false);
+      fireEvent.click(deliverBtn);
+      await waitFor(() => expect(h.delivery.markDelivered).toHaveBeenCalledWith('ready-order', '4821'));
+
+      fireEvent.click(screen.getByTestId('waiter-separate-table-t-2'));
+      await waitFor(() => expect(h.salonStaff.separateTable).toHaveBeenCalledWith('tab-1', 't-2'));
+    } finally {
+      h.salonStaff.snapshot.mockResolvedValue(base);
+    }
   });
 });

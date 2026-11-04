@@ -5,7 +5,7 @@ import { formatBRL } from '../../lib/pricing/money';
 import { statusColorStyle, statusColorTokens } from '../../lib/orders/statusColors';
 import { inviteUrl } from '../../lib/customer/tableAccess';
 import type { TableStatusInfo } from '../../lib/salon/tableStatus';
-import type { StaffHolderCode, WaiterCallRow, WaiterRound, WaiterSession, WaiterTab, WaiterTable } from '../../repositories/salonStaffRepository';
+import type { StaffHolderCode, TabTableMoveRow, WaiterCallRow, WaiterRound, WaiterSession, WaiterTab, WaiterTable } from '../../repositories/salonStaffRepository';
 import { callTitle, canDeliverRound, waiterOrderStatus, type WaiterFeatures } from './waiterLogic';
 import { WaiterBillPanel } from './WaiterBillPanel';
 import { TabPaymentConfirmation } from '../../components/establishment/salon/TabPaymentConfirmation';
@@ -36,7 +36,11 @@ export const WaiterTableSheet: React.FC<{
   onConfirmPayment?: (method: 'CASH' | 'CREDIT_CARD') => void;
   onPaymentSettled?: () => void;
   onReopenBill?: () => void;
-  onMarkDelivered?: (orderId: string) => void;
+  onMarkDelivered?: (orderId: string, code?: string) => void;
+  requireDeliveryCode?: boolean;
+  joinedTables?: WaiterTable[];
+  onSeparateTable?: (tableId: string) => void;
+  tableMoves?: TabTableMoveRow[];
   onResetHolder: () => void;
   onChangeHolder?: () => void;
   onReleaseEmptyTab?: (reason: string) => void;
@@ -46,12 +50,13 @@ export const WaiterTableSheet: React.FC<{
   canHelp?: boolean;
   onHelpTable?: () => void;
   helpSuccess?: boolean;
-}> = ({ table, tab, info, sessions, calls, rounds, holderSessionId, holderCode, tenantSlug, features, busy, message, onClose, onApprove, onReject, onHandleCall, onOpenTable, onOrder, canCollect, onConfirmPayment, onPaymentSettled, onReopenBill, onMarkDelivered, onResetHolder, onChangeHolder, onReleaseEmptyTab, onTransferHolder, currentUserId, onAcceptCall, canHelp, onHelpTable, helpSuccess }) => {
+}> = ({ table, tab, info, sessions, calls, rounds, holderSessionId, holderCode, tenantSlug, features, busy, message, onClose, onApprove, onReject, onHandleCall, onOpenTable, onOrder, canCollect, onConfirmPayment, onPaymentSettled, onReopenBill, onMarkDelivered, requireDeliveryCode = false, joinedTables = [], onSeparateTable, tableMoves = [], onResetHolder, onChangeHolder, onReleaseEmptyTab, onTransferHolder, currentUserId, onAcceptCall, canHelp, onHelpTable, helpSuccess }) => {
   const [confirmReject, setConfirmReject] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [releaseEmptyOpen, setReleaseEmptyOpen] = useState(false);
   const [releaseEmptyReason, setReleaseEmptyReason] = useState('Cliente desistiu');
   const [releaseEmptyCustomReason, setReleaseEmptyCustomReason] = useState('');
+  const [deliveryCodes, setDeliveryCodes] = useState<Record<string, string>>({});
   // Active snapshots remove the tab after the webhook closes it. Keep this bill's
   // payment panel mounted until the waiter finishes reading/sending the receipt.
   const [billContext, setBillContext] = useState<{ tableId: string; tab: WaiterTab; totalCents: number } | null>(null);
@@ -233,8 +238,90 @@ export const WaiterTableSheet: React.FC<{
             <div className="space-y-2">
               <h3 className="text-sm font-black text-slate-700">Rodadas</h3>
               {rounds.length === 0 && <p className="text-sm text-slate-500">Nenhuma rodada enviada.</p>}
-              {rounds.map(r => { const status = waiterOrderStatus(r.status); return <div key={r.id} className="rounded-2xl border p-3" style={{ borderColor: statusColorTokens(r.status).border }}><div className="flex justify-between gap-2 font-bold"><span>Rodada {r.round_no} · #{r.order_number}</span><span>{formatBRL(Number(r.subtotal))}</span></div><p className="mt-1 rounded-lg border px-2 py-1 text-sm font-bold" style={statusColorStyle(r.status)}>{status.label}</p><p className="mt-1 text-xs text-slate-500"><Clock className="mr-1 inline h-3 w-3" />{new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>{r.delivered_at && r.status === 'DELIVERED' && <p className="mt-1 text-xs font-semibold" style={{ color: statusColorTokens('DELIVERED').fg }}>Entregue às {new Date(r.delivered_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}{onMarkDelivered && !['DELIVERED', 'CANCELLED'].includes(r.status) && <button type="button" title={canDeliverRound(r.status) ? undefined : 'Aguardando balcão'} disabled={!!busy || !canDeliverRound(r.status)} onClick={() => onMarkDelivered(r.id)} className={`${btn} mt-3 w-full`} style={{ backgroundColor: statusColorTokens('DELIVERED').solid, color: '#fff' }}><Check className="h-4 w-4" aria-hidden="true" />Entregue</button>}{onMarkDelivered && !['DELIVERED', 'CANCELLED'].includes(r.status) && !canDeliverRound(r.status) && <p className="mt-1 text-xs text-slate-500">Aguardando balcão</p>}</div>; })}
+              {rounds.map(r => {
+                const status = waiterOrderStatus(r.status);
+                const needsCode = Boolean(requireDeliveryCode || r.delivery_code_required);
+                const codeVal = deliveryCodes[r.id] || '';
+                return (
+                  <div key={r.id} className="rounded-2xl border p-3" style={{ borderColor: statusColorTokens(r.status).border }}>
+                    <div className="flex justify-between gap-2 font-bold"><span>Rodada {r.round_no} · #{r.order_number}</span><span>{formatBRL(Number(r.subtotal))}</span></div>
+                    <p className="mt-1 rounded-lg border px-2 py-1 text-sm font-bold" style={statusColorStyle(r.status)}>{status.label}</p>
+                    <p className="mt-1 text-xs text-slate-500"><Clock className="mr-1 inline h-3 w-3" />{new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                    {r.delivered_at && r.status === 'DELIVERED' && <p className="mt-1 text-xs font-semibold" style={{ color: statusColorTokens('DELIVERED').fg }}>Entregue às {new Date(r.delivered_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}{r.delivery_confirmed_with_code ? ' · Confirmado com código' : ''}</p>}
+                    {onMarkDelivered && !['DELIVERED', 'CANCELLED'].includes(r.status) && (
+                      <>
+                        {needsCode && canDeliverRound(r.status) && (
+                          <div className="mt-2">
+                            <label className="block text-xs font-bold text-slate-700" htmlFor={`waiter-delivery-code-${r.id}`}>
+                              Código de entrega (4 dígitos do cliente)
+                            </label>
+                            <input
+                              id={`waiter-delivery-code-${r.id}`}
+                              data-testid={`waiter-delivery-code-${r.id}`}
+                              inputMode="numeric"
+                              maxLength={4}
+                              value={codeVal}
+                              onChange={e => setDeliveryCodes(prev => ({ ...prev, [r.id]: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                              placeholder="Ex.: 1234"
+                              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 font-mono text-base font-bold tracking-widest text-slate-900"
+                            />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          title={canDeliverRound(r.status) ? undefined : 'Aguardando balcão'}
+                          disabled={!!busy || !canDeliverRound(r.status) || (needsCode && codeVal.length !== 4)}
+                          onClick={() => needsCode ? onMarkDelivered(r.id, codeVal) : onMarkDelivered(r.id)}
+                          className={`${btn} mt-3 w-full`}
+                          style={{ backgroundColor: statusColorTokens('DELIVERED').solid, color: '#fff' }}
+                        >
+                          <Check className="h-4 w-4" aria-hidden="true" />Entregue
+                        </button>
+                      </>
+                    )}
+                    {onMarkDelivered && !['DELIVERED', 'CANCELLED'].includes(r.status) && !canDeliverRound(r.status) && <p className="mt-1 text-xs text-slate-500">Aguardando balcão</p>}
+                  </div>
+                );
+              })}
             </div>
+
+            {joinedTables.length > 1 && (
+              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3" data-testid="waiter-joined-tables">
+                <h3 className="text-sm font-black text-slate-800">Mesas juntas nesta conta ({joinedTables.map(t => t.label).join(' + ')})</h3>
+                <div className="flex flex-wrap gap-2">
+                  {joinedTables.map(jt => (
+                    <div key={jt.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-800">
+                      <span>{jt.label}</span>
+                      {onSeparateTable && (
+                        <button
+                          type="button"
+                          disabled={!!busy}
+                          data-testid={`waiter-separate-table-${jt.id}`}
+                          onClick={() => onSeparateTable(jt.id)}
+                          className="rounded-lg bg-rose-50 px-2 py-0.5 text-[11px] font-black text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                        >
+                          Separar
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {tableMoves.length > 0 && (
+              <div className="space-y-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700" data-testid="waiter-table-moves">
+                <h3 className="font-black text-slate-800">Histórico de mesas</h3>
+                <ul className="space-y-1">
+                  {tableMoves.map(m => (
+                    <li key={m.id}>
+                      <b>{m.from_label} → {m.to_label}</b> ({m.action === 'JOIN' ? 'Juntou' : m.action === 'SEPARATE' ? 'Separou' : 'Mudou'})
+                      {m.actor_name ? ` · ${m.actor_name}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2 pb-2">
               <button type="button" disabled={!!busy || tab.status !== 'OPEN'} onClick={onOrder} className={`${btn} bg-slate-900 text-white`}><Plus className="h-4 w-4" />Lançar pedido</button>

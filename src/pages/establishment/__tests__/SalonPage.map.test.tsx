@@ -291,5 +291,59 @@ describe('SalonPage — mapa de mesas', () => {
       fireEvent.click(screen.getByTestId('salon-order-product-p-burger'));
       expect(submitBtn.hasAttribute('disabled')).toBe(false);
     });
+
+    it('exibe mesas juntas com a mesma cor/comanda, histórico de trocas ("Mesa 01 → Mesa 02"), Juntar/Separar e toggle de código de entrega', async () => {
+      caps();
+      h.db.dining_tab_tables = [
+        { tab_id: 'tab2', table_id: 't1', joined_at: ago(5) },
+      ];
+      h.db.tab_table_moves = [
+        {
+          id: 'mv-1',
+          tab_id: 'tab2',
+          action: 'MOVE',
+          from_label: 'Mesa 01',
+          to_label: 'Mesa 02',
+          actor_kind: 'CUSTOMER',
+          actor_name: 'Ana',
+          created_at: ago(4),
+        },
+      ];
+      h.rpc.mockImplementation(async (name: string) => {
+        if (name === 'mesas_qr_capabilities') return { data: { version: 1, qr_pause: true, tab_pix: true }, error: null };
+        if (name === 'set_salon_delivery_code_required') return { data: { require_delivery_code: true }, error: null };
+        if (name === 'staff_join_tables') return { data: { tabId: 'tab2', primaryTableId: 't2', joinedTableIds: ['t2', 't5'] }, error: null };
+        if (name === 'staff_separate_table') return { data: { tabId: 'tab2', separatedTableId: 't1' }, error: null };
+        return { data: null, error: null };
+      });
+
+      render(<SalonPage />);
+      await waitFor(() => expect(screen.getByTestId('salon-table-t1')).toBeTruthy());
+
+      // t1 está ligada à tab2, portanto compartilha o status PREPARING e o selo de mesas juntas
+      expect(status('t1')).toBe('PREPARING');
+      expect(screen.getByTestId('salon-joined-t1').textContent).toContain('Mesa 02 + Mesa 01');
+      expect(screen.getByTestId('salon-table-move-banner').textContent).toContain('Mesa 01 → Mesa 02');
+
+      // Abrir detalhes da mesa mostra mesas juntas, botão Separar e histórico
+      fireEvent.click(screen.getByTestId('salon-table-t2'));
+      expect(await screen.findByTestId('salon-joined-tables')).toBeTruthy();
+      expect(screen.getByTestId('salon-table-moves').textContent).toContain('Mesa 01 → Mesa 02');
+
+      fireEvent.click(screen.getByTestId('salon-separate-table-t1'));
+      await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('staff_separate_table', { p_tab_id: 'tab2', p_table_id: 't1' }));
+
+      // Toggle "Exigir código de entrega na mesa"
+      fireEvent.click(screen.getByTestId('salon-toggle-delivery-code'));
+      await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('set_salon_delivery_code_required', { p_tenant: 'tenant-1', p_enabled: true }));
+
+      // Modal "Juntar mesas"
+      fireEvent.click(screen.getByTestId('salon-join-tables-btn'));
+      expect(await screen.findByTestId('salon-join-tables-modal')).toBeTruthy();
+      fireEvent.click(screen.getByTestId('salon-join-option-t2'));
+      fireEvent.click(screen.getByTestId('salon-join-option-t5'));
+      fireEvent.click(screen.getByTestId('salon-confirm-join-tables'));
+      await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('staff_join_tables', { p_table_ids: ['t2', 't5'] }));
+    });
   });
 });

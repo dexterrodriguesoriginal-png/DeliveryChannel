@@ -30,4 +30,13 @@ describe('contestação da entrega pelo cliente', () => {
   it.each(['PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'CANCELLED'])('nunca oferece contestação em %s', status => {
     expect(canDisputeDelivery({ ...delivered, status }, start)).toBe(false);
   });
+
+  it('bloqueia "Não recebi" e exibe "Entrega confirmada com código" quando entregue com código de 4 dígitos', () => {
+    const confirmedWithCode: DeliveryState = {
+      ...delivered,
+      deliveryConfirmedWithCode: true,
+    };
+    expect(canDisputeDelivery(confirmedWithCode, start)).toBe(false);
+    expect(deliveryNoticeLabel(confirmedWithCode, start)).toBe('Entrega confirmada com código');
+  });
 });

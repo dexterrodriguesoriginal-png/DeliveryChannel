@@ -21,6 +21,7 @@ export interface DineInModuleConfig {
   round_limit: number;
   salon_open: boolean;
   close_roles: string[];
+  require_delivery_code?: boolean;
 }
 
 function isMissingModuleSchema(error: { code?: string; message?: string } | null | undefined): boolean {

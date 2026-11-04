@@ -34,8 +34,50 @@ export interface WaiterCallRow {
   dispatched_at?: string | null;
   escalated_at?: string | null;
 }
-export interface WaiterRound { id: string; tab_id: string; order_number: number; customer_name: string; status: string; subtotal: number; created_at: string; round_no: number; waiter_id?: string | null; delivered_at?: string | null; delivered_by?: string | null; delivery_dispute?: { id: string; status: string; created_at: string; resolved_at: string | null } | null }
-export interface SalonSnapshot { tables: WaiterTable[]; tabs: WaiterTab[]; sessions: WaiterSession[]; calls: WaiterCallRow[]; rounds: WaiterRound[]; releaseRequired: boolean | null }
+export interface WaiterRound {
+  id: string;
+  tab_id: string;
+  order_number: number;
+  customer_name: string;
+  status: string;
+  subtotal: number;
+  created_at: string;
+  round_no: number;
+  waiter_id?: string | null;
+  delivered_at?: string | null;
+  delivered_by?: string | null;
+  delivery_code_required?: boolean;
+  delivery_confirmed_with_code?: boolean;
+  delivery_dispute?: { id: string; status: string; created_at: string; resolved_at: string | null } | null;
+}
+export interface JoinedTableLink {
+  tab_id: string;
+  table_id: string;
+  joined_at?: string;
+}
+export interface TabTableMoveRow {
+  id: string;
+  tab_id: string;
+  action: 'MOVE' | 'JOIN' | 'SEPARATE';
+  from_table_id?: string | null;
+  to_table_id?: string | null;
+  from_label: string;
+  to_label: string;
+  actor_kind: 'CUSTOMER' | 'STAFF';
+  actor_name?: string | null;
+  created_at: string;
+}
+export interface SalonSnapshot {
+  tables: WaiterTable[];
+  tabs: WaiterTab[];
+  sessions: WaiterSession[];
+  calls: WaiterCallRow[];
+  rounds: WaiterRound[];
+  releaseRequired: boolean | null;
+  requireDeliveryCode?: boolean;
+  joinedTables?: JoinedTableLink[];
+  tableMoves?: TabTableMoveRow[];
+}
 
 export interface SalonAccessExtras {
   /** tab id → responsible customer's session id (null when the tab has no responsible). */
@@ -110,21 +152,44 @@ export const salonStaffRepository = {
     ]);
     const tables = must(tablesR) as WaiterTable[];
     const tabs = must(tabsR) as WaiterTab[];
-    const cfg = (cfgR.data as { config?: { release_required?: boolean } } | null)?.config;
+    const cfg = (cfgR.data as { config?: { release_required?: boolean; require_delivery_code?: boolean } } | null)?.config;
     const releaseRequired = typeof cfg?.release_required === 'boolean' ? cfg.release_required : null;
-    if (!tabs.length) return { tables, tabs, sessions: [], calls: [], rounds: [], releaseRequired };
+    const requireDeliveryCode = Boolean(cfg?.require_delivery_code);
+    if (!tabs.length) return { tables, tabs, sessions: [], calls: [], rounds: [], releaseRequired, requireDeliveryCode, joinedTables: [], tableMoves: [] };
     const tabIds = tabs.map(t => t.id);
     const loadCalls = async () => {
       const resV2 = await supabase.from('waiter_calls').select('id,tab_id,type,status,created_at,route,assigned_to,accepted_by,accepted_at,dispatched_by,dispatched_at,escalated_at').eq('tenant_id', tenantId).in('tab_id', tabIds).eq('status', 'OPEN').order('created_at');
       if (!resV2.error) return resV2;
       return supabase.from('waiter_calls').select('id,tab_id,type,status,created_at').eq('tenant_id', tenantId).in('tab_id', tabIds).eq('status', 'OPEN').order('created_at');
     };
-    const [sessR, callR, rounds] = await Promise.all([
+    const [sessR, callR, rounds, joinedTables, tableMoves] = await Promise.all([
       supabase.from('tab_sessions').select('id,tab_id,display_name,approved_at,expires_at').eq('tenant_id', tenantId).in('tab_id', tabIds).gt('expires_at', new Date().toISOString()),
       loadCalls(),
       salonStaffRepository.fetchRoundsForTabs(tenantId, tabIds),
+      salonStaffRepository.loadJoinedTables(tenantId, tabIds),
+      salonStaffRepository.loadTableMoves(tenantId, tabIds),
     ]);
-    return { tables, tabs, sessions: must(sessR) as WaiterSession[], calls: must(callR) as WaiterCallRow[], rounds, releaseRequired };
+    return { tables, tabs, sessions: must(sessR) as WaiterSession[], calls: must(callR) as WaiterCallRow[], rounds, releaseRequired, requireDeliveryCode, joinedTables, tableMoves };
+  },
+
+  async loadJoinedTables(tenantId: string, tabIds: string[]): Promise<JoinedTableLink[]> {
+    if (!tabIds.length) return [];
+    try {
+      const res = await supabase.from('dining_tab_tables').select('tab_id,table_id,joined_at').eq('tenant_id', tenantId).in('tab_id', tabIds);
+      return Array.isArray(res?.data) ? (res.data as JoinedTableLink[]) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  async loadTableMoves(tenantId: string, tabIds: string[]): Promise<TabTableMoveRow[]> {
+    if (!tabIds.length) return [];
+    try {
+      const res = await supabase.from('tab_table_moves').select('id,tab_id,action,from_table_id,to_table_id,from_label,to_label,actor_kind,actor_name,created_at').eq('tenant_id', tenantId).in('tab_id', tabIds).order('created_at', { ascending: false }).limit(50);
+      return Array.isArray(res?.data) ? (res.data as TabTableMoveRow[]) : [];
+    } catch {
+      return [];
+    }
   },
 
   /**
@@ -235,5 +300,20 @@ export const salonStaffRepository = {
   },
   async submitRound(tabId: string, items: unknown[], idempotencyKey: string): Promise<void> {
     const { error } = await supabase.rpc('submit_round', { p_items: items, p_idempotency_key: idempotencyKey, p_tab_id: tabId }); if (error) throw error;
+  },
+  async joinTables(tableIds: string[]): Promise<{ tabId: string; primaryTableId: string; joinedTableIds: string[] }> {
+    const { data, error } = await supabase.rpc('staff_join_tables', { p_table_ids: tableIds });
+    if (error) throw error;
+    return data as { tabId: string; primaryTableId: string; joinedTableIds: string[] };
+  },
+  async separateTable(tabId: string, tableId: string): Promise<{ tabId: string; separatedTableId: string }> {
+    const { data, error } = await supabase.rpc('staff_separate_table', { p_tab_id: tabId, p_table_id: tableId });
+    if (error) throw error;
+    return data as { tabId: string; separatedTableId: string };
+  },
+  async setDeliveryCodeRequired(tenantId: string, enabled: boolean): Promise<boolean> {
+    const { data, error } = await supabase.rpc('set_salon_delivery_code_required', { p_tenant: tenantId, p_enabled: enabled });
+    if (error) throw error;
+    return Boolean((data as { require_delivery_code?: boolean } | null)?.require_delivery_code);
   },
 };
