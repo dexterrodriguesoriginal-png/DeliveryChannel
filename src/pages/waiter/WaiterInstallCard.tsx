@@ -1,31 +1,76 @@
 import React, { useEffect, useState } from 'react';
 import { Download, Share, Smartphone, X } from 'lucide-react';
-import { clearDeferredPrompt, detectPlatform, getDeferredPrompt, isStandalone, subscribeInstall } from '../../lib/pwa/installState';
+import { InstallProgress } from '../../components/pwa/InstallProgress';
+import { persistInstallStart, readPersistedInstallStart } from '../../lib/pwa/installProgress';
+import { clearDeferredPrompt, detectPlatform, getDeferredPrompt, isStandalone, subscribeInstall, wasAppInstalledEvent } from '../../lib/pwa/installState';
+import { WAITER_APP_NAME, WAITER_START_PATH } from '../../lib/pwa/waiterManifest';
 
 const DISMISS_KEY = 'dc_waiter_install_dismissed';
 
-/** Convite para instalar o App do Garçom na tela inicial (sem service worker: só manifesto + atalho). */
-export const WaiterInstallCard: React.FC<{ alwaysShow?: boolean }> = ({ alwaysShow }) => {
+export interface WaiterInstallCardProps {
+  alwaysShow?: boolean;
+  appId?: string;
+  appName?: string;
+  startPath?: string;
+}
+
+/** Convite para instalar o App do Garçom (ou Cozinha/equipe) na tela inicial, com barra de 60 s após aceite. */
+export const WaiterInstallCard: React.FC<WaiterInstallCardProps> = ({
+  alwaysShow,
+  appId = 'waiter-app',
+  appName = WAITER_APP_NAME,
+  startPath = WAITER_START_PATH,
+}) => {
   const [, tick] = useState(0);
   const [dismissed, setDismissed] = useState(() => { try { return localStorage.getItem(DISMISS_KEY) === '1'; } catch { return false; } });
-  useEffect(() => subscribeInstall(() => tick(n => n + 1)), []);
+  const [installStart, setInstallStart] = useState<number | null>(() =>
+    typeof sessionStorage !== 'undefined' ? readPersistedInstallStart(sessionStorage, appId) : null,
+  );
+  useEffect(() => subscribeInstall(() => {
+    if (wasAppInstalledEvent() && typeof sessionStorage !== 'undefined') {
+      setInstallStart(s => s ?? persistInstallStart(sessionStorage, appId, Date.now()));
+    }
+    tick(n => n + 1);
+  }), [appId]);
   if (typeof window === 'undefined' || isStandalone(window)) return null;
-  if (dismissed && !alwaysShow) return null;
+  if (dismissed && !alwaysShow && installStart == null) return null;
   const platform = detectPlatform(navigator.userAgent);
   const prompt = getDeferredPrompt();
   const install = async () => {
     if (!prompt) return;
-    try { await prompt.prompt(); await prompt.userChoice; } catch { /* cancelled */ }
-    clearDeferredPrompt();
+    let choice: { outcome: 'accepted' | 'dismissed' } | undefined;
+    try {
+      const res = prompt.prompt();
+      clearDeferredPrompt();
+      await res;
+      choice = await prompt.userChoice;
+    } catch {
+      clearDeferredPrompt();
+      return;
+    }
+    if (choice?.outcome === 'accepted') {
+      const start = persistInstallStart(typeof sessionStorage !== 'undefined' ? sessionStorage : null, appId, Date.now());
+      setInstallStart(start);
+    }
   };
   const dismiss = () => { setDismissed(true); try { localStorage.setItem(DISMISS_KEY, '1'); } catch { /* ignore */ } };
+  const activeStart = installStart ?? (wasAppInstalledEvent() && typeof sessionStorage !== 'undefined' ? persistInstallStart(sessionStorage, appId, Date.now()) : null);
   return (
     <section data-testid="waiter-install" className="relative rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-50">
-      {!alwaysShow && <button type="button" onClick={dismiss} aria-label="Dispensar" className="absolute right-2 top-2 rounded-full p-1.5 text-emerald-200 hover:bg-white/10"><X className="h-4 w-4" /></button>}
-      <p className="flex items-center gap-2 font-black"><Smartphone className="h-4 w-4" />Instale o Garçom no seu celular</p>
+      {!alwaysShow && activeStart == null && <button type="button" onClick={dismiss} aria-label="Dispensar" className="absolute right-2 top-2 rounded-full p-1.5 text-emerald-200 hover:bg-white/10"><X className="h-4 w-4" /></button>}
+      <p className="flex items-center gap-2 font-black"><Smartphone className="h-4 w-4" />Instale o {appName} no seu celular</p>
       <p className="mt-1 text-xs text-emerald-100/80">Abre em tela cheia, com ícone próprio, e fica a um toque.</p>
-      {prompt
-        ? <button type="button" onClick={() => void install()} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-black text-slate-950"><Download className="h-4 w-4" />Instalar agora</button>
+      {activeStart != null ? (
+        <InstallProgress
+          appId={appId}
+          appName={appName}
+          startPath={startPath}
+          startedAt={activeStart}
+          variant="inline"
+          className="mt-3"
+        />
+      ) : prompt
+        ? <button type="button" onClick={() => void install()} data-testid="waiter-install-btn" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-black text-slate-950"><Download className="h-4 w-4" />Instalar agora</button>
         : platform === 'ios-safari'
           ? <p className="mt-2 flex items-start gap-1.5 text-xs"><Share className="mt-0.5 h-3.5 w-3.5 shrink-0" />Toque em <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</p>
           : platform === 'ios-other'

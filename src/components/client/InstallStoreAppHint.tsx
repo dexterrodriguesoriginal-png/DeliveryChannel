@@ -1,6 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Share, X, MoreVertical, Download, CheckCircle2 } from 'lucide-react';
+import { Share, X, MoreVertical, Download } from 'lucide-react';
 import { StoreLogo } from './StoreLogo';
+import { InstallProgress } from '../pwa/InstallProgress';
+import {
+  OPEN_APP_BUTTON_LABEL,
+  clearPersistedInstallStart,
+  persistInstallStart,
+  progressAt,
+  readPersistedInstallStart,
+} from '../../lib/pwa/installProgress';
 import { consumeOpenAttempt, rememberOpenAttempt, openInstalledApp, detectInstalledApp } from '../../lib/pwa/openInstalledApp';
 import { storeStartUrl } from '../../lib/pwa/storeManifest';
 import {
@@ -8,14 +16,14 @@ import {
   isMarkedInstalled, markInstalled, getDeferredPrompt, clearDeferredPrompt, subscribeInstall, wasAppInstalledEvent,
   decideInvite, readInvite, recordInvite, recordAccepted, isEditableFocused, onInviteTrigger, activeKey,
   InviteKind, InviteTrigger, INVITE_ACTIVE_MS, inviteSurface,
-  InstallPhase, INSTALL_MIN_MS, INSTALL_SLOW_MS, installPhaseCopy, nextInstallPhase, estimatedInstallPercent,
+  InstallPhase, INSTALL_MIN_MS, installPhaseCopy, nextInstallPhase,
 } from '../../lib/pwa/installState';
 
 interface Props {
   tenantId: string; storeName: string; color: string; logoUrl?: string; hidden?: boolean; busy?: boolean;
   /** Distância (px) da borda inferior: mantém o convite acima da navegação inferior/barra da sacola. */
   bottomOffset?: number;
-  audience?: 'customer' | 'driver';
+  audience?: 'customer' | 'driver' | 'waiter' | 'kitchen';
   startPath?: string;
 }
 
@@ -77,15 +85,19 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     return () => window.clearTimeout(id);
   }, [waitingPrompt]);
   const barDismissed = false; // barra não é mais dispensável: fica até instalar
-  const [acceptedAt] = useState(() => {
+  const [installStart, setInstallStart] = useState<number | null>(() => {
+    const persisted = readPersistedInstallStart(sessionStorage, tenantId);
+    if (persisted != null) return persisted;
     const at = readInvite(localStorage, tenantId).acceptedAt;
-    return at != null && Date.now() - at < INSTALL_MIN_MS ? at : null;
+    return at != null && Date.now() - at < INSTALL_MIN_MS ? persistInstallStart(sessionStorage, tenantId, at) : null;
   });
-  const [phase, setPhase] = useState<InstallPhase>(() => testPhase() || (acceptedAt != null ? 'installing' : 'idle'));
+  const [phase, setPhase] = useState<InstallPhase>(() => {
+    const tp = testPhase();
+    if (tp) return tp;
+    if (installStart != null) return progressAt(Date.now() - installStart) >= 100 ? 'done' : 'installing';
+    return 'idle';
+  });
   const [doneClosed, setDoneClosed] = useState(false);
-  const [installStart, setInstallStart] = useState<number | null>(acceptedAt);
-  const [installedAt, setInstalledAt] = useState<number | null>(() => acceptedAt != null && isMarkedInstalled(localStorage, tenantId) ? Date.now() : null);
-  const [, setTick] = useState(0);
   const [appDetected, setAppDetected] = useState(() => testOpenBar());
   const [openBarClosed, setOpenBarClosed] = useState(false);
   const [openHelp, setOpenHelp] = useState(false);
@@ -98,51 +110,27 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   // Instalado só por appinstalled ou execução em modo standalone (nunca por clique/fechamento).
   useEffect(() => {
     if (standalone || appInstalledEvt) { markInstalled(localStorage, tenantId); setInstalled(true); }
-    // appinstalled chega antes do ícone ficar pronto: só registra o momento; a barra segue gradual.
     if (appInstalledEvt && !standalone) {
-      const now = Date.now();
-      setInstalledAt(a => a ?? now);
-      setInstallStart(s => s ?? now);
-      setPhase(p => (p === 'idle' || p === 'slow' ? 'installing' : p));
+      const start = persistInstallStart(sessionStorage, tenantId, Date.now());
+      setInstallStart(s => s ?? start);
+      setPhase(p => (p === 'done' ? 'done' : 'installing'));
     }
   }, [standalone, appInstalledEvt, tenantId]);
-  // Sem appinstalled em ~3 min: só orienta conferir a tela inicial.
-  useEffect(() => {
-    if (phase !== 'installing' || testPhase()) return;
-    const id = window.setTimeout(() => setPhase(p => nextInstallPhase(p, 'slow-timeout')), INSTALL_SLOW_MS);
-    return () => window.clearTimeout(id);
-  }, [phase]);
-  // Atualiza a porcentagem estimada enquanto instala (ou aguarda) — sem nunca chegar a 100% sozinha.
-  useEffect(() => {
-    if (phase !== 'installing' && phase !== 'slow') return;
-    setInstallStart(s => s ?? Date.now());
-    const id = window.setInterval(() => setTick(t => t + 1), 500);
-    return () => window.clearInterval(id);
-  }, [phase]);
-  // 100% (só com appinstalled e após o tempo mínimo) → "Pronto!" com o botão "Abrir app" já liberado.
-  useEffect(() => {
-    if ((phase !== 'installing' && phase !== 'slow') || installStart == null || installedAt == null || testPhase()) return;
-    const id = window.setInterval(() => {
-      if (estimatedInstallPercent(Date.now() - installStart, installedAt - installStart) >= 100) setPhase('done');
-    }, 250);
-    return () => window.clearInterval(id);
-  }, [phase, installStart, installedAt]);
   // Durante a instalação: app detectado (getInstalledRelatedApps) ou modo standalone também confirmam.
   useEffect(() => {
-    if ((phase !== 'installing' && phase !== 'slow') || installedAt != null || testPhase()) return;
+    if (phase !== 'installing' && phase !== 'slow' || testPhase()) return;
     let alive = true;
     const check = () => {
-      if (isStandalone(window)) { markInstalled(localStorage, tenantId); setInstalled(true); setInstalledAt(a => a ?? Date.now()); return; }
-      detectInstalledApp().then(v => { if (alive && v) { markInstalled(localStorage, tenantId); setInstalled(true); setInstalledAt(a => a ?? Date.now()); } }).catch(() => {});
+      if (isStandalone(window)) { markInstalled(localStorage, tenantId); setInstalled(true); return; }
+      detectInstalledApp().then(v => { if (alive && v) { markInstalled(localStorage, tenantId); setInstalled(true); } }).catch(() => {});
     };
     const id = window.setInterval(check, 2000);
-    // Ao voltar do diálogo/instalação do Chrome a aba pode ter ficado em segundo plano: confere já.
     const onVis = () => { if (document.visibilityState === 'visible') check(); };
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('focus', check);
     check();
     return () => { alive = false; window.clearInterval(id); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('focus', check); };
-  }, [phase, installedAt, tenantId]);
+  }, [phase, tenantId]);
   // Visitas posteriores no navegador: detecta o app já instalado (Chrome Android, via related_applications).
   useEffect(() => {
     if (standalone) return;
@@ -161,7 +149,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
   const openHint = openHelp && <p data-testid="open-app-hint" role="status" className="mt-1.5 text-xs text-neutral-400 leading-snug">Abra pelo ícone {storeName} na tela inicial do celular</p>;
   const openButton = (
     <button type="button" onClick={openApp} data-testid="open-installed-app"
-      className="shrink-0 rounded-full bg-[#a8c7fa] px-4 py-1.5 text-sm font-semibold text-[#062e6f] transition active:scale-95 active:brightness-90 hover:brightness-105">Abrir app</button>
+      className="shrink-0 rounded-full bg-[#a8c7fa] px-4 py-1.5 text-sm font-semibold text-[#062e6f] transition active:scale-95 active:brightness-90 hover:brightness-105">{OPEN_APP_BUTTON_LABEL}</button>
   );
 
   // Diagnóstico: avisa no console quando o manifesto da loja não carrega (sem ele o Chrome não oferece instalação).
@@ -182,7 +170,7 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
 
   const tryInvite = useCallback((trigger: InviteTrigger) => {
     const kind = decideInvite({
-      now: Date.now(), trigger, record: readInvite(localStorage, tenantId), audience,
+      now: Date.now(), trigger, record: readInvite(localStorage, tenantId), audience: audience === 'driver' ? 'driver' : 'customer',
       installed: isMarkedInstalled(localStorage, tenantId) || wasAppInstalledEvent(), standalone: isStandalone(window),
       busy: blockedRef.current || isEditableFocused(document),
     });
@@ -217,44 +205,34 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     return () => { window.clearInterval(id); evs.forEach(e => window.removeEventListener(e, act)); };
   }, [installed, standalone, tenantId, tryInvite]);
 
-  const copy = installPhaseCopy(phase, storeName, audience);
-  if (copy && !hidden && (phase !== 'done' || !doneClosed)) {
-    const isDone = phase === 'done' || phase === 'finishing';
-    const openReady = phase === 'done';
+  const effectivePhase: InstallPhase = phase === 'idle' && appInstalledEvt && !standalone ? 'installing' : phase;
+  const copy = installPhaseCopy(effectivePhase, storeName, audience);
+  if (copy && !hidden && (effectivePhase !== 'done' || !doneClosed)) {
+    const tp = testPhase();
+    const forceElapsedMs = tp ? (tp === 'done' || tp === 'finishing' ? INSTALL_MIN_MS : 25_000) : null;
     return (
-      <div data-testid="install-progress" data-phase={phase} role="status" aria-live="polite" className={`fixed inset-x-0 z-[120] px-3 flex justify-center pointer-events-none ${offsetStyle ? '' : 'bottom-2'}`} style={offsetStyle}>
-        <div className="pointer-events-auto w-full max-w-sm rounded-2xl bg-[#2b2b2e] text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/5 px-3 py-2.5">
-          <div className="flex items-center gap-3">
-            {isDone ? <CheckCircle2 className="h-10 w-10 p-1.5 text-emerald-400 shrink-0" />
-              : <StoreLogo logoUrl={logoUrl} name={storeName} color={color} className="w-10 h-10 shrink-0 rounded-xl" />}
-            <div className="min-w-0 flex-1">
-              <p className="text-[15px] font-semibold leading-tight break-words">{copy.title}</p>
-              {copy.subtitle && <p className="text-xs text-neutral-400 leading-tight mt-0.5">{copy.subtitle}</p>}
-            </div>
-            {openReady && openButton}
-            {phase !== 'installing' && <button type="button" aria-label="Fechar" onClick={() => { setDoneClosed(true); if (!isDone) setPhase('idle'); }} className="shrink-0 -mr-1 p-1 text-neutral-400 hover:text-white"><X className="h-4 w-4" /></button>}
-          </div>
-          {openHint}
-          {(phase === 'installing' || phase === 'slow' || isDone) && (() => {
-            const tp = testPhase();
-            const elapsed = tp ? (tp === 'installing' ? 25000 : 200000) : Date.now() - (installStart ?? Date.now());
-            const pct = isDone ? 100 : estimatedInstallPercent(elapsed, installedAt != null && installStart != null ? installedAt - installStart : null);
-            return (
-              <div className="mt-2.5 flex items-center gap-2" data-testid="install-percent" data-percent={pct}>
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
-                  <div className={`h-full rounded-full transition-[width] duration-500 ease-out ${isDone ? 'bg-emerald-400' : 'bg-[#a8c7fa]'}`} style={{ width: `${pct}%` }} />
-                </div>
-                <span className="w-9 text-right text-xs font-semibold tabular-nums text-neutral-300">{pct}%</span>
-              </div>
-            );
-          })()}
-        </div>
-      </div>
+      <InstallProgress
+        appId={tenantId}
+        appName={storeName}
+        startPath={startPath || currentStartPath()}
+        startedAt={installStart}
+        forceElapsedMs={forceElapsedMs}
+        logo={<StoreLogo logoUrl={logoUrl} name={storeName} color={color} className="w-10 h-10 shrink-0 rounded-xl" />}
+        subtitle={copy.subtitle}
+        onComplete={() => setPhase('done')}
+        onClose={() => {
+          setDoneClosed(true);
+          setPhase('idle');
+          clearPersistedInstallStart(sessionStorage, tenantId);
+        }}
+        className={offsetStyle ? '' : 'bottom-2'}
+        style={offsetStyle}
+      />
     );
   }
 
-  // App já instalado (marca local ou detectado) e aberto no navegador: barra "Abrir app" no lugar de "Instalar".
-  if (!standalone && !hidden && !openBarClosed && (appDetected || (installed && phase === 'idle'))) {
+  // App já instalado (marca local ou detectado) e aberto no navegador: barra "Abrir o app" no lugar de "Instalar".
+  if (!standalone && !hidden && !openBarClosed && (appDetected || (installed && effectivePhase === 'idle'))) {
     return (
       <div data-testid="open-app-bar" role="region" aria-label={`Abrir app ${storeName}`} className={`fixed inset-x-0 z-[120] px-3 flex justify-center pointer-events-none ${offsetStyle ? '' : 'bottom-2'}`} style={offsetStyle}>
         <div className="pointer-events-auto w-full max-w-sm rounded-2xl bg-[#2b2b2e] text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/5 px-3 py-2.5">
@@ -309,9 +287,9 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     if (choice?.outcome === 'accepted') {
       const now = Date.now();
       recordAccepted(localStorage, tenantId, now);
+      const start = persistInstallStart(sessionStorage, tenantId, now);
       setDoneClosed(false);
-      setInstallStart(now);
-      setInstalledAt(wasAppInstalledEvent() || isStandalone(window) ? now : null);
+      setInstallStart(start);
       setPhase(p => nextInstallPhase(p, 'accepted'));
       closeModal();
       return;

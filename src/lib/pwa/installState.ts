@@ -148,19 +148,21 @@ export function inviteSurface(o: { installed: boolean; standalone: boolean; hidd
   return 'fallback-bar';
 }
 
-// --- Acompanhamento após aceitar a instalação nativa (sem porcentagem e sem conclusão simulada) ---
+import { INSTALL_DURATION_MS, INSTALL_PROGRESS_TITLE, progressAt } from './installProgress';
+
+// --- Acompanhamento após aceitar a instalação nativa (barra de 60 s) ---
 export type InstallPhase = 'idle' | 'installing' | 'slow' | 'finishing' | 'done';
 /** Sem appinstalled após este tempo: só orienta conferir a tela inicial (não marca instalado). */
 export const INSTALL_SLOW_MS = 3 * 60 * 1000;
 export const INSTALL_DONE_HIDE_MS = 8000;
-export function installPhaseCopy(phase: InstallPhase, storeName: string, audience: 'customer' | 'driver' = 'customer'): { title: string; subtitle: string } | null {
-  if (phase === 'installing') return { title: `Instalando o app ${storeName}…`, subtitle: audience === 'driver' ? 'Isso pode levar até 2 minutos. Pode continuar pela web.' : 'Isso pode levar até 2 minutos. Pode continuar comprando.' };
+export function installPhaseCopy(phase: InstallPhase, storeName: string, audience: 'customer' | 'driver' | 'waiter' | 'kitchen' = 'customer'): { title: string; subtitle: string } | null {
+  if (phase === 'installing') return { title: INSTALL_PROGRESS_TITLE, subtitle: audience === 'driver' ? 'Pode continuar pela web.' : 'Pode continuar comprando.' };
   if (phase === 'slow') return { title: storeName, subtitle: 'Confira sua tela inicial — o ícone deve aparecer em instantes' };
   if (phase === 'done') return { title: `Pronto! O app ${storeName} está na sua tela inicial`, subtitle: '' };
   if (phase === 'finishing') return { title: `Pronto! O app ${storeName} está na sua tela inicial`, subtitle: 'Finalizando no seu celular…' };
   return null;
 }
-/** appinstalled confirma instalação, mas o tempo mínimo ainda é conferido pela porcentagem. */
+/** appinstalled confirma instalação, mas o tempo de 60 s é conferido pela barra. */
 export function nextInstallPhase(cur: InstallPhase, signal: 'accepted' | 'dismissed' | 'appinstalled' | 'slow-timeout'): InstallPhase {
   if (signal === 'appinstalled') return cur === 'done' ? 'done' : 'installing';
   if (signal === 'accepted') return 'installing';
@@ -168,48 +170,14 @@ export function nextInstallPhase(cur: InstallPhase, signal: 'accepted' | 'dismis
   return cur === 'installing' ? 'slow' : cur;
 }
 
-/**
- * Porcentagem exibida enquanto o Chrome instala, em estilo "player": arranque rápido (~40% em 8 s),
- * desacelera, acelera de novo, desacelera e se aproxima de 90% perto dos 75 s. Sem confirmação real
- * (appinstalled / app detectado) nunca passa de 90%.
- * Com confirmação real: acelera nos últimos 3 s, respeitando 75 s desde o aceite.
- * `installedAtMs` = tempo decorrido (desde o aceite) em que a confirmação chegou, ou null.
- */
-export const INSTALL_MIN_MS = 75 * 1000;
-/** Duração da aceleração final após a confirmação. */
+export const INSTALL_MIN_MS = INSTALL_DURATION_MS;
 export const INSTALL_FINISH_MIN_MS = 3 * 1000;
-/** Mínimo absoluto, desde o aceite, para chegar a 100%. */
 export const INSTALL_DONE_MIN_MS = INSTALL_MIN_MS;
 export const INSTALL_EST_MS = INSTALL_MIN_MS;
-const INSTALL_CAP = 90;
-// [tempo ms, %, easing do trecho]: 'out' = rápido→lento, 'in' = lento→rápido.
-const KEYS: [number, number, 'out' | 'in'][] = [
-  [0, 0, 'out'], [8_000, 40, 'out'], [28_000, 55, 'in'], [45_000, 76, 'out'], [INSTALL_MIN_MS, 89, 'out'],
-];
+
 export function baseCurve(elapsedMs: number): number {
-  const e = Math.max(0, elapsedMs);
-  for (let i = 1; i < KEYS.length; i++) {
-    const [t1, p1, ease] = KEYS[i]; const [t0, p0] = KEYS[i - 1];
-    if (e <= t1) {
-      const u = (e - t0) / (t1 - t0);
-      const k = ease === 'out' ? 1 - (1 - u) * (1 - u) : u * u;
-      return p0 + (p1 - p0) * k;
-    }
-  }
-  // Depois de 75 s: aproxima lentamente de 90% sem ultrapassar.
-  const last = KEYS[KEYS.length - 1][1];
-  return last + (INSTALL_CAP - last) * Math.min(1, (e - INSTALL_MIN_MS) / 60_000);
+  return progressAt(elapsedMs);
 }
-export function estimatedInstallPercent(elapsedMs: number, installedAtMs: number | null): number {
-  const e = Math.max(0, elapsedMs);
-  if (installedAtMs == null) return Math.min(INSTALL_CAP, Math.floor(baseCurve(e)));
-  const tI = Math.max(0, Math.min(installedAtMs, e));
-  const rampStart = Math.max(tI, INSTALL_DONE_MIN_MS - INSTALL_FINISH_MIN_MS);
-  const end = rampStart + INSTALL_FINISH_MIN_MS;
-  if (e >= end) return 100;
-  const capped = (t: number) => Math.min(INSTALL_CAP, baseCurve(t));
-  if (e <= rampStart) return Math.floor(capped(e));
-  const p0 = capped(rampStart);
-  const u = (e - rampStart) / INSTALL_FINISH_MIN_MS;
-  return Math.min(99, Math.floor(p0 + (100 - p0) * u));
+export function estimatedInstallPercent(elapsedMs: number, _installedAtMs?: number | null): number {
+  return progressAt(elapsedMs);
 }
