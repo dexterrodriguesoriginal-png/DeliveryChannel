@@ -7,8 +7,10 @@ Os cards de mesa no **Salão do Dono** (`SalonPage.tsx`) e no **App do Garçom**
 | Cor | Hex | Texto (`fg`) | Borda (`border`) | Contraste WCAG | Estados mapeados (`TableStatusKind`) |
 |---|---|---|---|---|---|
 | **Verde** | `#2DBE4E` | `#0F172A` (escuro) | `#1E8E38` | **7.27 : 1** (AAA / AA) | `FREE` — Livre |
-| **Amarelo** | `#FFDD00` | `#0F172A` (escuro) | `#CA8A04` | **13.23 : 1** (AAA / AA) | `OCCUPIED` — Ocupada<br>`PREPARING` — Em preparo |
-| **Azul** | `#1AB0F5` | `#0F172A` (escuro) | `#0284C7` | **7.26 : 1** (AAA / AA) | `NEW_ORDER` — Pedido novo<br>`READY` — Pronto no balcão |
+| **Amarelo** | `#FFDD00` | `#0F172A` (escuro) | `#CA8A04` | **13.23 : 1** (AAA / AA) | `OCCUPIED` — Ocupada |
+| **Vermelho Pedidos** | `#ef4444` | `#0F172A` (escuro) | `#b91c1c` | AA | `NEW_ORDER` — Pedido novo (PENDING/CONFIRMED) |
+| **Laranja Pedidos** | `#f97316` | `#0F172A` (escuro) | `#c2410c` | AA | `PREPARING` — Em preparo / produção |
+| **Roxo Pedidos** | `#a855f7` | `#0F172A` (escuro) | `#7e22ce` | AA | `READY` — Pronto no balcão |
 | **Vermelho** | `#FF5050` | `#0F172A` (escuro) | `#B91C1C` | **5.52 : 1** (AA) | `LONG_STAY` — Ocupada há muito tempo |
 | **Marrom sólido** | `#8B5A2B` | `#FFFFFF` (branco) | `#5C3A1B` | **5.85 : 1** (AA) | `BILL` — Conta solicitada; `AUTHORIZED` — conta autorizada (**ambas piscando**) |
 | **Marrom + Borda Vermelha** | `#8B5A2B` | `#FFFFFF` (branco) | `#FF5050` (alerta) | **5.85 : 1** (AA) | `AWAITING_PAYMENT` — Aguardando PIX (**piscando + borda vermelha `#FF5050`**) |
@@ -21,3 +23,7 @@ Os cards de mesa no **Salão do Dono** (`SalonPage.tsx`) e no **App do Garçom**
 3. **Garçom autorizado (`AUTHORIZED`)**: mantém o fundo marrom sólido da conta solicitada. Somente o selo interno “Garçom autorizado a fechar esta conta” usa roxo `#9B4DE0` com texto branco `#FFFFFF`; exibe o botão **"Fechar conta"** tanto no Salão quanto no App do Garçom naquela mesa.
 4. **Botão "Reabrir conta" / "Pedir mais"**: fundo verde `#2DBE4E` com texto escuro `#0F172A` no app do cliente, no Salão e no App do Garçom.
 5. **Legenda visível**: exibida tanto no Salão (`SalonPage.tsx`) quanto na aba Mesas do App do Garçom (`WaiterApp.tsx`).
+
+## Fonte única (Entrega 1.5)
+
+As cores de Pedido novo / Em preparo / Pronto no balcão das mesas são derivadas de `STATUS_COLORS` em `src/lib/orders/statusColors.ts` (mesma paleta do Kanban de Pedidos e das linhas de "Alertas de pedidos" do Dashboard), via `SALON_TABLE_COLORS` em `src/lib/salon/tableStatus.ts`. Não use hex soltos: altere só `statusColors.ts`.

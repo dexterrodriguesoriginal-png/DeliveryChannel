@@ -1,3 +1,4 @@
+import { useIsDashboardOpen } from '../../lib/dashboardPresence';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BellOff, Bike, Check, CheckCheck, CreditCard, GripVertical, LocateFixed, MessageSquare, ShoppingBag, UtensilsCrossed, Volume2, VolumeX, X, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -94,6 +95,7 @@ const readViewport = (): Viewport => {
 };
 
 export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) => void }) {
+  const onDashboard = useIsDashboardOpen();
   const { activeTenant, supabaseUser, activeRole, securityContext } = useAuth();
   const tenant = activeTenant?.id, user = supabaseUser?.id;
   const allowed = activeRole === 'OWNER' || activeRole === 'MANAGER';
@@ -299,6 +301,8 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
   const bellLabel = `Notificações, ${unreadCount} não ${unreadCount === 1 ? 'lida' : 'lidas'}`;
 
   // Container não captura cliques (só o próprio botão); sobe acima da barra fixa de ações no modo padrão.
+  // Entrega 1.5: no Dashboard o pedido novo já aparece no painel laranja; o popup verde seria duplicado.
+  const visibleBalloons = onDashboard ? balloons.filter(b => b.kind !== 'ORDER_NEW') : balloons;
   return <>
     <aside data-testid="owner-notifications" data-custom-position={custom ? 'true' : undefined} className="pointer-events-none fixed z-[60] [&>*]:pointer-events-auto" style={asideStyle}>
       <div ref={pillRef} data-testid="notifications-pill" data-dragging={!!live}
@@ -320,8 +324,8 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
       <NotificationList rows={rows} briefs={briefs} now={now} error={open ? error : ''} onRead={n => { void read(n); }} onOpen={view} onReadAll={readAll}
         sound={prefs.sound} onToggleSound={toggleSound} onClose={() => { setOpen(false); bellRef.current?.focus(); }} onRestore={pos ? restore : undefined} />
     </div>}
-    {balloons.length > 0 && <div aria-label="Avisos de novas notificações" className="pointer-events-auto z-[62] flex flex-col gap-2 overflow-y-auto" style={placeStyle(toastPlace)}>
-      {balloons.slice(0, 3).map(balloon => {
+    {visibleBalloons.length > 0 && <div aria-label="Avisos de novas notificações" className="pointer-events-auto z-[62] flex flex-col gap-2 overflow-y-auto" style={placeStyle(toastPlace)}>
+      {visibleBalloons.slice(0, 3).map(balloon => {
         const meta = TYPE_META[notificationType(balloon)];
         const detail = balloon.kind !== 'DRIVER_JOIN_REQUEST' && balloon.kind !== 'TAB_REOPENED' ? briefs[balloon.ref_id] : undefined;
         const orderToast = balloon.kind === 'ORDER_NEW';
@@ -346,7 +350,7 @@ export function OwnerNotifications({ onOpen }: { onOpen: (n: OwnerNotification) 
           </div>
         </div>;
       })}
-      {balloons.length > 3 && <button type="button" data-testid="notification-toasts-more" onClick={() => setOpen(true)} className="rounded-lg bg-white p-2 text-sm font-semibold text-emerald-900 shadow">+{balloons.length - 3} {balloons.length - 3 === 1 ? 'aviso' : 'avisos'}</button>}
+      {visibleBalloons.length > 3 && <button type="button" data-testid="notification-toasts-more" onClick={() => setOpen(true)} className="rounded-lg bg-white p-2 text-sm font-semibold text-emerald-900 shadow">+{visibleBalloons.length - 3} {visibleBalloons.length - 3 === 1 ? 'aviso' : 'avisos'}</button>}
       {error && <p role="alert" className="rounded-lg bg-red-50 p-2 text-xs text-red-700">{error}</p>}
     </div>}
 

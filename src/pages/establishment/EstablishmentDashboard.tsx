@@ -40,7 +40,7 @@ import { useToast } from '../../context/ToastContext';
 import { ownerStatusToastMessage } from '../../lib/orders/labels';
 import { formatBRL } from '../../lib/pricing/money';
 import { StoreHeaderCard } from '../../components/establishment/dashboard/StoreHeaderCard';
-import { NewOrderCards } from '../../components/establishment/dashboard/NewOrderCards';
+import { useMarkDashboardOpen } from '../../lib/dashboardPresence';
 import { OrderAlertsCard } from '../../components/establishment/dashboard/OrderAlertsCard';
 import { buildOrderAlerts, newOrderIds, updateNewOrderQueue, nextStepFor, orderDetailsHash, FOCUS_ORDER_KEY, NextStep } from '../../lib/orders/orderAlerts';
 import { validateStatusChange } from '../../repositories/orderMappers';
@@ -65,6 +65,7 @@ interface EstablishmentDashboardProps {
 }
 
 export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = props => {
+  useMarkDashboardOpen();
   const { activeTenant } = useAuth();
   if (!activeTenant) return null;
   return <EstablishmentDashboardContent key={activeTenant.id} {...props} />;
@@ -85,7 +86,7 @@ const EstablishmentDashboardContent: React.FC<EstablishmentDashboardProps> = ({ 
   useEffect(() => { if (activeTenant?.id) arrivalRepository.listOpen(activeTenant.id).catch(() => {}); }, [activeTenant?.id]);
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const prevOrderIdsRef = useRef<Set<string> | null>(null);
-  const [newOrderQueue, setNewOrderQueue] = useState<Order[]>([]);
+  const [, setNewOrderQueue] = useState<Order[]>([]);
   const currentTenantRef = useRef(activeTenant?.id);
   currentTenantRef.current = activeTenant?.id;
   useEffect(() => {
@@ -587,13 +588,7 @@ const EstablishmentDashboardContent: React.FC<EstablishmentDashboardProps> = ({ 
         onViewOrder={handleAlertView}
         onDismiss={(id) => setReadyAlertIds(prev => prev.filter(x => x !== id))}
       />}
-      <NewOrderCards orders={newOrderQueue} role={activeRole} busyOrderId={busyOrderId}
-        onAccept={order => { const step = nextStepFor(order, activeRole); if (step) void handleAlertStep(order, step); }}
-        onView={order => {
-          setNewOrderQueue(prev => prev.filter(o => o.id !== order.id));
-          handleAlertView(order);
-        }}
-        onDismiss={id => setNewOrderQueue(prev => prev.filter(o => o.id !== id))} />
+      {/* Entrega 1.5: card verde "Novo pedido" removido — o painel laranja "Alertas de pedidos" já tem a ação. */}
       <OrderAlertsCard
         alerts={orderAlerts}
         role={activeRole}

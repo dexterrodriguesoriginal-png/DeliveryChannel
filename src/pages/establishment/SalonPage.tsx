@@ -1,3 +1,4 @@
+import { TABLE_STATUS_COLOR } from '../../lib/salon/tableStatus';
 import { TableMoveRequestsPanel } from '../../components/establishment/salon/TableMoveRequestsPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Check, Clock, PanelRightOpen, PauseCircle, PlayCircle, Plus, QrCode, Receipt, RefreshCw, Search, ShoppingBag, Users, Utensils, X } from 'lucide-react';
@@ -839,8 +840,10 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
       </div>
       <ul className="salon-legend" aria-label="Legenda das cores">
         <li><i style={{ background: '#2DBE4E' }} />Livre</li>
-        <li><i style={{ background: '#FFDD00' }} />Ocupada / Em preparo</li>
-        <li><i style={{ background: '#1AB0F5' }} />Pedido novo / Pronto no balcão</li>
+        <li><i style={{ background: TABLE_STATUS_COLOR.OCCUPIED }} />Ocupada</li>
+            <li><i style={{ background: TABLE_STATUS_COLOR.NEW_ORDER }} />Pedido novo</li>
+            <li><i style={{ background: TABLE_STATUS_COLOR.PREPARING }} />Em preparo</li>
+        <li><i style={{ background: TABLE_STATUS_COLOR.READY }} />Pronto no balcão</li>
         <li><i style={{ background: '#FF5050' }} />Ocupada há mais de {longStay} min</li>
         <li><i style={{ background: '#8B5A2B' }} />Conta solicitada (piscando)</li>
         <li><i style={{ background: '#8B5A2B', border: '2px solid #FF5050' }} />Aguardando PIX (alerta)</li>

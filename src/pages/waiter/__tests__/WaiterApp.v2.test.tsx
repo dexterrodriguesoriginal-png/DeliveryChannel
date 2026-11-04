@@ -232,7 +232,7 @@ describe('Garçom v2 — Login simples e Modos de atendimento', () => {
       h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [first, second] } as never);
       h.realtimeOrders?.();
       await waitFor(() => expect(table.getAttribute('data-status')).toBe('READY'));
-      expect(table.style.getPropertyValue('--sc-bg')).toBe('#1AB0F5');
+      expect(table.style.getPropertyValue('--sc-bg')).toBe('#a855f7');
       expect(screen.getByTestId('waiter-counter-alert').textContent).toContain('1 pedido pronto');
       expect(h.readySound).toHaveBeenCalledTimes(1);
       h.realtimeOrders?.();

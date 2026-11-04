@@ -85,9 +85,15 @@ describe('tokens compartilhados de status', () => {
   it('mesas consomem a paleta sólida com contraste AA e aliases funcionam', () => {
     expect(TABLE_STATUS_COLOR.FREE).toBe('#2DBE4E');
     expect(TABLE_STATUS_COLOR.OCCUPIED).toBe('#FFDD00');
-    expect(TABLE_STATUS_COLOR.PREPARING).toBe('#FFDD00');
-    expect(TABLE_STATUS_COLOR.NEW_ORDER).toBe('#1AB0F5');
-    expect(TABLE_STATUS_COLOR.READY).toBe('#1AB0F5');
+    // Entrega 1.5: mesas seguem as cores de Pedidos (fonte única STATUS_COLORS).
+    expect(TABLE_STATUS_COLOR.NEW_ORDER).toBe(STATUS_COLORS.CONFIRMED.solid);
+    expect(TABLE_STATUS_COLOR.NEW_ORDER).toBe('#ef4444');
+    expect(TABLE_STATUS_COLOR.PREPARING).toBe(STATUS_COLORS.PREPARING.solid);
+    expect(TABLE_STATUS_COLOR.PREPARING).toBe('#f97316');
+    expect(TABLE_STATUS_COLOR.READY).toBe(STATUS_COLORS.READY.solid);
+    expect(TABLE_STATUS_COLOR.READY).toBe('#a855f7');
+    expect(TABLE_STATUS_COLOR.BILL).toBe('#8B5A2B');
+    expect(TABLE_STATUS_COLOR.AUTHORIZED).toBe('#8B5A2B');
     expect(TABLE_STATUS_COLOR.LONG_STAY).toBe('#FF5050');
     expect(TABLE_STATUS_COLOR.BILL).toBe('#8B5A2B');
     expect(TABLE_STATUS_COLOR.AUTHORIZED).toBe('#8B5A2B');

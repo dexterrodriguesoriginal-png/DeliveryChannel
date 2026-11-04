@@ -89,18 +89,25 @@ export const STATUS_LABEL: Record<TableStatusKind, string> = {
 /**
  * Paleta sólida do Salão e do App do Garçom com contraste WCAG AA:
  * - Verde (#2DBE4E, texto #0F172A, 7.27:1): Livre
- * - Amarelo (#FFDD00, texto #0F172A, 13.23:1): Ocupada / Em preparo
- * - Azul (#1AB0F5, texto #0F172A, 7.26:1): Pedido novo / Pronto no balcão
+ * - Amarelo (#FFDD00, texto #0F172A): Ocupada
+ * - Pedido novo / Em preparo / Pronto no balcão: MESMAS cores de Pedidos (STATUS_COLORS.solid):
+ *   vermelho #ef4444, laranja #f97316, roxo #a855f7 — texto #0F172A (AA).
  * - Vermelho (#FF5050, texto #0F172A, 5.52:1): Ocupada há muito tempo
  * - Marrom sólido (#8B5A2B, texto #FFFFFF, 5.85:1): Conta solicitada (piscando) e Aguardando PIX (piscando + borda vermelha #FF5050)
  * - Autorização mantém a mesa marrom; roxo é exclusivo do selo dentro do cartão.
  */
+function solidTile(key: 'NEW_ORDER' | 'PREPARING' | 'READY'): StatusColorTokens {
+  const c = STATUS_COLORS[key];
+  return { bg: c.solid, fg: '#0F172A', border: c.fg, solid: c.solid };
+}
+
 export const SALON_TABLE_COLORS: Readonly<Record<TableStatusKind, Readonly<StatusColorTokens>>> = {
   FREE: STATUS_COLORS.FREE,
   OCCUPIED: STATUS_COLORS.OCCUPIED,
-  PREPARING: { bg: '#FFDD00', fg: '#0F172A', border: '#CA8A04', solid: '#FFDD00' },
-  NEW_ORDER: { bg: '#1AB0F5', fg: '#0F172A', border: '#0284C7', solid: '#1AB0F5' },
-  READY: { bg: '#1AB0F5', fg: '#0F172A', border: '#0284C7', solid: '#1AB0F5' },
+  // Mesmas cores de Pedidos (fonte única: STATUS_COLORS), em versão sólida para o card.
+  NEW_ORDER: solidTile('NEW_ORDER'),
+  PREPARING: solidTile('PREPARING'),
+  READY: solidTile('READY'),
   LONG_STAY: STATUS_COLORS.LONG_STAY,
   BILL: STATUS_COLORS.BILL,
   AUTHORIZED: STATUS_COLORS.BILL,
