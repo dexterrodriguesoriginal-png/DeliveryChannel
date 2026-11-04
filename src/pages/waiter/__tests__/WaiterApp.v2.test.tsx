@@ -195,7 +195,12 @@ describe('Garçom v2 — Login simples e Modos de atendimento', () => {
       expect(screen.queryByTestId('waiter-counter-alert')).toBeNull();
       h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [{ ...own, status: 'READY' }, other] } as never);
       h.realtimeOrders?.();
-      expect(await screen.findByTestId('waiter-counter-alert')).toBeTruthy();
+      const counterAlert = await screen.findByTestId('waiter-counter-alert');
+      expect(counterAlert.style.backgroundColor).toBe('#DCFCE7');
+      expect(counterAlert.style.color).toBe('#0F172A');
+      const pickupToast = await screen.findByText('Balcão chamando: pedido pronto para levar à mesa.');
+      expect(pickupToast.style.backgroundColor).toBe('#DCFCE7');
+      expect(pickupToast.style.color).toBe('#0F172A');
       expect(screen.getByText('Pronto no balcão · balcão chamando')).toBeTruthy();
       expect(h.readySound).toHaveBeenCalledTimes(1);
       h.realtimeOrders?.();
@@ -222,6 +227,7 @@ describe('Garçom v2 — Login simples e Modos de atendimento', () => {
       h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [first, second] } as never);
       h.realtimeOrders?.();
       await waitFor(() => expect(table.getAttribute('data-status')).toBe('READY'));
+      expect(table.style.getPropertyValue('--sc-bg')).toBe('#1AB0F5');
       expect(screen.getByTestId('waiter-counter-alert').textContent).toContain('1 pedido pronto');
       expect(h.readySound).toHaveBeenCalledTimes(1);
       h.realtimeOrders?.();

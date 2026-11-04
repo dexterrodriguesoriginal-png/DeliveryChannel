@@ -31,6 +31,8 @@ import { WaiterTableSheet } from './WaiterTableSheet';
 import { PassShiftModal } from '../../components/establishment/waiter/PassShiftModal';
 
 const shell = 'min-h-[100dvh] bg-slate-950 text-white';
+const positiveNoticeStyle = { backgroundColor: '#DCFCE7', color: '#0F172A' };
+type ToastTone = 'default' | 'positive';
 
 const Center: React.FC<{ children: React.ReactNode; testId?: string }> = ({ children, testId }) => (
   <main className={`${shell} grid place-items-center px-6 py-10`} data-testid={testId}><div className="w-full max-w-sm">{children}</div></main>
@@ -463,7 +465,10 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [holderCode, setHolderCode] = useState<StaffHolderCode | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  const [toast, setToast] = useState('');
+  const [toast, setToastState] = useState<{ message: string; tone: ToastTone } | null>(null);
+  const setToast = useCallback((message: string, tone: ToastTone = 'default') => {
+    setToastState(message ? { message, tone } : null);
+  }, []);
   const [orderTarget, setOrderTarget] = useState<{ tabId: string; tableId?: string; label: string } | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -564,7 +569,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       if (ready.length && notificationRef.current) {
         (playShortBeep ?? playNewOrderSound)?.();
         try { navigator.vibrate?.([120, 60, 120]); } catch { /* optional browser feature */ }
-        setToast('Balcão chamando: pedido pronto para levar à mesa.');
+        setToast('Balcão chamando: pedido pronto para levar à mesa.', 'positive');
       }
       roundStatuses.current = new Map(next.rounds.map(r => [r.id, r.status]));
       setSnap(next); setOffline(false); setLoadError('');
@@ -763,7 +768,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-32 pt-4">
         <DeliveryDisputesPanel tenantId={tenantId} onResolved={() => { void load(); }} />
-        {readyRounds.length > 0 && <button type="button" aria-live="polite" onClick={() => { unlockAudio(); setTab('PEDIDOS'); }} data-testid="waiter-counter-alert" className="mb-3 flex w-full items-center gap-3 rounded-2xl border p-4 text-left shadow-lg" style={statusColorStyle('READY')}><BellRing className="h-7 w-7 shrink-0" /><span><strong className="block">Balcão chamando</strong><span className="text-sm">{readyRounds.length === 1 ? '1 pedido pronto no balcão' : `${readyRounds.length} pedidos prontos no balcão`} · toque para ver suas mesas</span></span></button>}
+        {readyRounds.length > 0 && <button type="button" aria-live="polite" onClick={() => { unlockAudio(); setTab('PEDIDOS'); }} data-testid="waiter-counter-alert" className="mb-3 flex w-full items-center gap-3 rounded-2xl border p-4 text-left shadow-lg" style={{ ...statusColorStyle('READY'), ...positiveNoticeStyle }}><BellRing className="h-7 w-7 shrink-0" /><span><strong className="block">Balcão chamando</strong><span className="text-sm">{readyRounds.length === 1 ? '1 pedido pronto no balcão' : `${readyRounds.length} pedidos prontos no balcão`} · toque para ver suas mesas</span></span></button>}
         {orderAlert && (
           <div role="alert" data-testid="waiter-order-alert" className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-emerald-400/50 bg-emerald-500/15 p-3.5 text-white shadow-lg">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -1006,7 +1011,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         )}
       </main>
 
-      {toast && <div role="status" className="fixed inset-x-4 bottom-28 z-[95] mx-auto max-w-sm rounded-2xl bg-emerald-500 px-4 py-3 text-center text-sm font-black text-slate-950 shadow-xl">{toast}</div>}
+      {toast && <div role="status" className="fixed inset-x-4 bottom-28 z-[95] mx-auto max-w-sm rounded-2xl bg-emerald-500 px-4 py-3 text-center text-sm font-black text-slate-950 shadow-xl" style={toast.tone === 'positive' ? positiveNoticeStyle : undefined}>{toast.message}</div>}
 
       <nav aria-label="Navegação do Garçom" className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/95 px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur">
         <div className="mx-auto flex max-w-2xl gap-1">
