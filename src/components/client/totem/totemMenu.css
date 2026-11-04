@@ -1,0 +1,75 @@
+/* Totem Menu Styling */
+.totem-menu-container {
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom smooth scrolling */
+.totem-scroll-area {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Modern thin scrollbar */
+.totem-scroll-area::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.totem-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.totem-scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+
+.totem-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Hide scrollbar for categories column for a cleaner app-like feel */
+.totem-hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.totem-hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Outdoor slide animations */
+.totem-slide-fade {
+  transition: opacity 0.4s ease-in-out, transform 0.4s ease-out;
+}
+
+/* Product card hover & active feedback */
+.totem-product-card {
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease;
+}
+
+.totem-product-card:active {
+  transform: scale(0.985);
+}
+
+/* Image loading placeholder shimmer */
+.totem-placeholder-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: totemShimmer 2.2s infinite;
+}
+
+@keyframes totemShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
