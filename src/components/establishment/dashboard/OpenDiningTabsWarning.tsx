@@ -30,7 +30,7 @@ export interface OpenDiningTabWarningItem {
   label: string;
   billRequested: boolean;
   strictBillRequested: boolean;
-  totalCents: number;
+  totalCents: number | null;
   viewHref: string;
   checkoutHref: string;
 }
@@ -65,10 +65,10 @@ export function openDiningTabWarnings(
     const rounds = roundsByTab?.get(tab.id) || [];
     const computedTotal = typeof tab.total_cents === 'number'
       ? tab.total_cents
-      : tabTotals(
+      : roundsByTab ? tabTotals(
           { service_fee_percent: Number(tab.service_fee_percent ?? 0), service_fee_removed: Boolean(tab.service_fee_removed) },
           rounds,
-        ).totalCents;
+        ).totalCents : null;
     return {
       id: tab.id,
       tableId: tab.table_id,
@@ -96,17 +96,22 @@ export function openDiningTabLabels(
   });
 }
 
-function useOpenDiningTabs(includeTotals = false) {
-  const { activeTenant } = useAuth();
+function useOpenDiningTabs(includeTotals = false, allowed = true) {
+  const { activeTenant, activeRole, supabaseUser, currentUser } = useAuth();
   const { available, isModuleEnabled } = useModules();
-  const [warnings, setWarnings] = useState<OpenDiningTabWarningItem[]>([]);
-  const [warningsTenant, setWarningsTenant] = useState<string | null>(null);
-  const currentTenant = useRef(activeTenant?.id);
-  currentTenant.current = activeTenant?.id;
-  const enabled = available && isModuleEnabled('dine_in');
+  const enabled = allowed && available && isModuleEnabled('dine_in');
+  // Financial rows belong to this authenticated viewer as well as this store.
+  const scope = JSON.stringify([activeTenant?.id, supabaseUser?.id ?? currentUser?.id, activeRole, enabled]);
+  const [snapshot, setSnapshot] = useState<{ scope: string; warnings: OpenDiningTabWarningItem[] } | null>(null);
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
+  const latestRequest = useRef(0);
 
   const load = useCallback(async () => {
-    if (!activeTenant?.id || !enabled) { setWarnings([]); return; }
+    if (currentScope.current !== scope) return;
+    const request = ++latestRequest.current;
+    const isCurrent = () => currentScope.current === scope && latestRequest.current === request;
+    if (!activeTenant?.id || !enabled) { setSnapshot({ scope, warnings: [] }); return; }
     const tenantId = activeTenant.id;
     try {
       const { data: tabs, error: tabsError } = await supabase.from('dining_tabs')
@@ -114,58 +119,67 @@ function useOpenDiningTabs(includeTotals = false) {
         .eq('tenant_id', tenantId)
         .in('status', ACTIVE_DINING_TAB_STATUSES)
         .order('opened_at');
-      if (currentTenant.current !== tenantId) return;
+      if (!isCurrent()) return;
       if (tabsError) throw tabsError;
-      if (!tabs?.length) { setWarnings([]); setWarningsTenant(tenantId); return; }
+      if (!tabs?.length) { setSnapshot({ scope, warnings: [] }); return; }
       const { data: tables, error: tablesError } = await supabase.from('dining_tables')
         .select('id,label').eq('tenant_id', tenantId);
-      if (currentTenant.current !== tenantId) return;
+      if (!isCurrent()) return;
       if (tablesError) throw tablesError;
 
-      const roundsByTab = new Map<string, RoundLike[]>();
+      let roundsByTab: Map<string, RoundLike[]> | undefined;
       const billTabIds = (tabs as DiningTabRow[]).filter(t => t.status === 'BILL_REQUESTED').map(t => t.id);
       if (includeTotals && billTabIds.length > 0) {
         try {
-          const { data: orders } = await supabase.from('orders')
+          const { data: orders, error: ordersError } = await supabase.from('orders')
             .select('id,tab_id,subtotal,status,created_at')
             .eq('tenant_id', tenantId)
             .in('tab_id', billTabIds)
             .neq('status', 'CANCELLED');
-          if (currentTenant.current !== tenantId) return;
+          if (!isCurrent()) return;
+          if (ordersError) throw ordersError;
+          roundsByTab = new Map();
           for (const row of (orders || []) as Array<{ id: string; tab_id: string; subtotal: number; status: string; created_at?: string }>) {
             if (!row?.tab_id || row.status === 'CANCELLED') continue;
+            const subtotal = Number(row.subtotal);
+            if (!Number.isFinite(subtotal)) throw new Error('INVALID_TOTAL');
             const list = roundsByTab.get(row.tab_id) || [];
-            list.push({ id: row.id, tab_id: row.tab_id, subtotal: Number(row.subtotal || 0), status: row.status, created_at: row.created_at || '' });
+            list.push({ id: row.id, tab_id: row.tab_id, subtotal, status: row.status, created_at: row.created_at || '' });
             roundsByTab.set(row.tab_id, list);
           }
         } catch {
-          /* totals fall back to 0 if orders query is unavailable */
+          // Keep the bill alert, but never invent a zero balance on a failed read.
+          roundsByTab = undefined;
         }
       }
 
-      if (currentTenant.current !== tenantId) return;
-      setWarnings(openDiningTabWarnings(tabs as DiningTabRow[], (tables || []) as DiningTableRow[], Date.now(), roundsByTab));
-      setWarningsTenant(tenantId);
+      if (!isCurrent()) return;
+      setSnapshot({ scope, warnings: openDiningTabWarnings(tabs as DiningTabRow[], (tables || []) as DiningTableRow[], Date.now(), roundsByTab) });
     } catch (error) {
-      if (currentTenant.current !== activeTenant?.id) return;
-      const err = error as { code?: string; message?: string };
+      if (!isCurrent()) return;
+      const err = error as { code?: string };
       if (!['PGRST202', 'PGRST205', '42P01', '42883'].includes(err.code || '')) {
-        console.error('[OpenDiningTabsWarning] Falha ao carregar comandas abertas:', error);
+        console.error('[OpenDiningTabsWarning] Falha ao carregar comandas abertas.');
       }
-      setWarnings([]);
+      setSnapshot({ scope, warnings: [] });
     }
-  }, [activeTenant?.id, enabled, includeTotals]);
+  }, [activeTenant?.id, enabled, includeTotals, scope]);
 
   useEffect(() => {
     void load();
+    if (!enabled || !activeTenant?.id) return () => { latestRequest.current += 1; };
     const timer = window.setInterval(() => void load(), 5_000);
-    const channel = activeTenant?.id && supabase.channel?.(`open-tabs:${activeTenant.id}`)
+    const channel = supabase.channel?.(`open-tabs:${activeTenant.id}`)
       ?.on('postgres_changes', { event: '*', schema: 'public', table: 'dining_tabs', filter: `tenant_id=eq.${activeTenant.id}` }, () => void load())
       ?.subscribe();
-    return () => { window.clearInterval(timer); if (channel && supabase.removeChannel) void supabase.removeChannel(channel); };
-  }, [load, activeTenant?.id]);
+    return () => {
+      latestRequest.current += 1;
+      window.clearInterval(timer);
+      if (channel && supabase.removeChannel) void supabase.removeChannel(channel);
+    };
+  }, [load, enabled, activeTenant?.id]);
 
-  return { enabled, warnings: warningsTenant === activeTenant?.id ? warnings : [], activeTenantId: activeTenant?.id ?? null };
+  return { enabled, warnings: snapshot?.scope === scope ? snapshot.warnings : [], activeTenantId: activeTenant?.id ?? null, scope };
 }
 
 export const OpenDiningTabsWarning: React.FC = () => {
@@ -189,21 +203,29 @@ export const PanelBillRequestedAlert: React.FC<{
   onViewBill: (tableId: string) => void;
   onCheckoutBill: (tableId: string) => void;
 }> = ({ onViewBill, onCheckoutBill }) => {
-  const { activeTenant, activeRole, supabaseUser } = useAuth() as ReturnType<typeof useAuth> & { supabaseUser?: { id?: string } | null };
-  const { enabled, warnings, activeTenantId } = useOpenDiningTabs(true);
+  const { activeTenant, activeRole, supabaseUser } = useAuth();
+  const roleAllowed = BILL_ALERT_ROLES.includes(activeRole || '');
+  const { enabled, warnings, scope } = useOpenDiningTabs(true, roleAllowed);
+  const [, refreshPreferences] = useState(0);
+  useEffect(() => {
+    const refresh = () => refreshPreferences(value => value + 1);
+    window.addEventListener('dc:notification-preferences', refresh);
+    window.addEventListener('storage', refresh);
+    return () => { window.removeEventListener('dc:notification-preferences', refresh); window.removeEventListener('storage', refresh); };
+  }, []);
+  let balloonAllowed = true;
+  try { if (activeTenant?.id && supabaseUser?.id) balloonAllowed = readPreferences(window.localStorage, activeTenant.id, supabaseUser.id).balloon; } catch { /* storage unavailable */ }
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const seenBillIdsRef = useRef<Set<string>>(new Set());
-  const tenantRef = useRef<string | null>(activeTenantId);
+  const viewerRef = useRef(scope);
 
   useEffect(() => {
-    if (tenantRef.current !== activeTenantId) {
-      tenantRef.current = activeTenantId;
+    if (viewerRef.current !== scope) {
+      viewerRef.current = scope;
       seenBillIdsRef.current = new Set();
       setDismissedIds(new Set());
     }
-  }, [activeTenantId]);
-
-  const roleAllowed = !activeRole || BILL_ALERT_ROLES.includes(activeRole);
+  }, [scope]);
   const billWarnings = warnings.filter(w => w.strictBillRequested);
 
   useEffect(() => {
@@ -232,7 +254,7 @@ export const PanelBillRequestedAlert: React.FC<{
   }, [enabled, roleAllowed, billWarnings, activeTenant?.id, supabaseUser?.id]);
 
   const visible = billWarnings.filter(w => !dismissedIds.has(w.id));
-  if (!enabled || !roleAllowed || !visible.length) return null;
+  if (!enabled || !roleAllowed || !balloonAllowed || !visible.length) return null;
 
   const dismiss = (tabId: string) => {
     setDismissedIds(prev => {
@@ -262,7 +284,7 @@ export const PanelBillRequestedAlert: React.FC<{
             <div className="flex items-center gap-2">
               <Receipt className="h-5 w-5 shrink-0" aria-hidden="true" />
               <p className="text-sm font-black">
-                {item.tableLabel} pediu a conta — {formatBRL(item.totalCents / 100)}
+                {item.tableLabel} pediu a conta — {item.totalCents === null ? 'Total indisponível' : formatBRL(item.totalCents / 100)}
               </p>
             </div>
             <button

@@ -3,11 +3,8 @@ import { CheckCircle2, Mail } from 'lucide-react';
 import { formatBRL } from '../../../lib/pricing/money';
 import { tabReceiptRepository, type TabReceiptTarget } from '../../../repositories/tabReceiptRepository';
 
-const VALID_RECEIPT_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@.]+$/;
-export function isValidReceiptEmail(email: string): boolean {
-  const trimmed = email.trim();
-  return trimmed.length > 0 && trimmed.length <= 254 && VALID_RECEIPT_EMAIL.test(trimmed);
-}
+import { isValidReceiptEmail } from '../../../lib/receiptEmail';
+export { isValidReceiptEmail } from '../../../lib/receiptEmail';
 
 const METHOD_LABEL: Record<string, string> = {
   PIX: 'PIX',
@@ -28,6 +25,8 @@ export const TabPaymentConfirmation: React.FC<{
   const [targetResult, setTarget] = useState<{ tabId: string; value: TabReceiptTarget } | null>(null);
   const target = targetResult?.tabId === tabId ? targetResult.value : null;
   const [sending, setSending] = useState(false);
+  const [lookupFailed, setLookupFailed] = useState(false);
+  const [lookupRetry, setLookupRetry] = useState(0);
   const [message, setMessage] = useState('');
   const [useOtherEmail, setUseOtherEmail] = useState(false);
   const [otherEmail, setOtherEmail] = useState('');
@@ -36,12 +35,12 @@ export const TabPaymentConfirmation: React.FC<{
   useEffect(() => {
     let active = true;
     activeTab.current = tabId;
-    setMessage(''); setSending(false); setUseOtherEmail(false); setOtherEmail('');
-    void tabReceiptRepository.target(tabId).then(value => { if (active) setTarget({ tabId, value }); }).catch(() => { /* sending still reports the safe server result */ });
+    setTarget(null); setLookupFailed(false); setMessage(''); setSending(false); setUseOtherEmail(false); setOtherEmail('');
+    void tabReceiptRepository.target(tabId).then(value => { if (active) setTarget({ tabId, value }); }).catch(() => { if (active) setLookupFailed(true); });
     return () => { active = false; activeTab.current = null; };
-  }, [tabId]);
+  }, [tabId, lookupRetry]);
   const otherEmailValid = isValidReceiptEmail(otherEmail);
-  const canSend = useOtherEmail ? otherEmailValid : target?.exists !== false;
+  const canSend = !!target && (useOtherEmail ? otherEmailValid : target.exists);
   const send = async () => {
     if (useOtherEmail && !otherEmailValid) {
       setMessage('Informe um e-mail válido.');
@@ -63,15 +62,17 @@ export const TabPaymentConfirmation: React.FC<{
       <div><dt className="text-emerald-800">Valor recebido</dt><dd className="text-xl font-black">{formatBRL(amountCents / 100)}</dd></div>
       <div><dt className="text-emerald-800">Mesa</dt><dd className="font-bold">{tableLabel || 'Mesa da comanda'}</dd></div>
       <div><dt className="text-emerald-800">Forma</dt><dd className="font-bold">{METHOD_LABEL[method] || method}</dd></div>
-      <div><dt className="text-emerald-800">Data e horário</dt><dd className="font-bold">{date && Number.isFinite(date.getTime()) ? date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Confirmado pelo provedor'}</dd></div>
+      <div><dt className="text-emerald-800">Data e horário</dt><dd className="font-bold">{date && Number.isFinite(date.getTime()) ? date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : method === 'PIX' ? 'Confirmado pelo provedor' : 'Confirmado no caixa'}</dd></div>
     </dl>
     <div className="space-y-2 rounded-xl border border-emerald-200 bg-white/80 p-3 text-xs">
+      {lookupFailed && <p role="alert">Não foi possível consultar o destinatário. <button type="button" onClick={() => setLookupRetry(value => value + 1)} className="font-bold underline">Consultar email novamente</button></p>}
       {target?.maskedEmail && <p data-testid="receipt-masked-email">Destinatário: {target.maskedEmail}</p>}
       {target && !target.exists && <p>O cliente não informou e-mail para o comprovante.</p>}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button
           type="button"
           data-testid="receipt-other-email-toggle"
+          disabled={sending}
           onClick={() => { setUseOtherEmail(prev => !prev); setMessage(''); }}
           className="font-bold text-emerald-800 underline"
         >
@@ -83,6 +84,7 @@ export const TabPaymentConfirmation: React.FC<{
           <span className="font-semibold text-emerald-950">Outro e-mail para o recibo</span>
           <input
             type="email"
+            maxLength={254}
             aria-label="Outro e-mail para recibo"
             data-testid="receipt-other-email-input"
             value={otherEmail}

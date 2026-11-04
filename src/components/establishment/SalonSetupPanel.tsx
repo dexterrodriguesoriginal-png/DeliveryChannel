@@ -22,6 +22,7 @@ interface Props {
   tenantSlug?: string;
   canManageTables: boolean;
   canConfigure: boolean;
+  canConfigureDeliveryCode?: boolean;
   canManageServiceFeeModule: boolean;
   canRegenerateQr: boolean;
   onConfigSaved: () => Promise<void>;
@@ -33,6 +34,7 @@ export const SalonSetupPanel: React.FC<Props> = ({
   tenantSlug,
   canManageTables,
   canConfigure,
+  canConfigureDeliveryCode = false,
   canManageServiceFeeModule,
   canRegenerateQr,
   onConfigSaved,
@@ -232,7 +234,7 @@ export const SalonSetupPanel: React.FC<Props> = ({
               className="mt-0.5"
               data-testid="salon-setup-require-delivery-code"
               checked={requireDeliveryCode}
-              disabled={!canConfigure || savingConfig}
+              disabled={!canConfigureDeliveryCode || savingConfig}
               onChange={e => setRequireDeliveryCode(e.target.checked)}
             />
             <span>

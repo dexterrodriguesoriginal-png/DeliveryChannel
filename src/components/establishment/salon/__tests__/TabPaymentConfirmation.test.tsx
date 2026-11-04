@@ -65,4 +65,14 @@ describe('Comprovante de pagamento da comanda', () => {
     await act(async () => { resolve({ sent: true }); });
     expect(screen.queryByText('Comprovante enviado por e-mail.')).toBeNull();
   });
+  it('não habilita envio antes da consulta autorizada e permite tentar novamente após falha', async () => {
+    receipts.target.mockRejectedValueOnce(new Error('failed')).mockResolvedValueOnce({ exists: true, maskedEmail: 'jo***@gm***.com' });
+    render(<TabPaymentConfirmation tabId="tab1" amountCents={2200} onDone={vi.fn()} />);
+    expect((screen.getByRole('button', { name: 'Enviar comprovante por e-mail' }) as HTMLButtonElement).disabled).toBe(true);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Consultar email novamente' })); await flush();
+    expect(screen.getByTestId('receipt-masked-email').textContent).toContain('jo***@gm***.com');
+    expect((screen.getByRole('button', { name: 'Enviar comprovante por e-mail' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
 });

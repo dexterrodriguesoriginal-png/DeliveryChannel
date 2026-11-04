@@ -9,10 +9,10 @@ cd "$HERE/../../.."
 P() { psql -X -q -v ON_ERROR_STOP=1 "$@"; }
 P -d postgres -c 'SELECT 1' >/dev/null
 PREFIX="entrega1_3_$$"
-REF="${PREFIX}_ref"; RUN="${PREFIX}_run"; RB="${PREFIX}_rb"
+REF="${PREFIX}_ref"; RUN="${PREFIX}_run"; RB="${PREFIX}_rb"; PART="${PREFIX}_part"
 TMP="$(mktemp -d)"
 cleanup() {
- for db in "$RUN" "$RB" "$REF"; do dropdb --if-exists "$db" >/dev/null 2>&1 || true; done
+ for db in "$PART" "$RUN" "$RB" "$REF"; do dropdb --if-exists "$db" >/dev/null 2>&1 || true; done
  rm -rf "$TMP"
 }
 trap cleanup EXIT HUP INT TERM
@@ -54,14 +54,51 @@ for pass in 1 2; do
  diff -u "$TMP/before" "$TMP/after"
 done
 echo 'PASS: Entrega 1.3 apply → rollback exato → apply → rollback exato'
+# Cada down deve restaurar seu predecessor imediato, não apenas o estado final
+# depois de reverter A+B+C: uma reversão posterior não pode mascarar outra.
+for migration in supabase/migrations/20261104000[4-9]00_entrega1_3_*.sql; do
+ [ -f "$migration" ] || continue
+ part=$(basename "$migration" | cut -c12)
+ [ "$part" -le "$MAX" ] || continue
+ createdb -T "$REF" "$PART"
+ for predecessor in supabase/migrations/20261104000[4-9]00_entrega1_3_*.sql; do
+  [ -f "$predecessor" ] || continue
+  previous=$(basename "$predecessor" | cut -c12)
+  [ "$previous" -lt "$part" ] || continue
+  P -d "$PART" -1 -f "$predecessor" >/dev/null
+ done
+ P -At -d "$PART" -f "$TMP/fingerprint.sql" >"$TMP/part-before"
+ down="supabase/rollback/$(basename "$migration" .sql)_down.sql"
+ for pass in 1 2; do
+  P -d "$PART" -1 -f "$migration" >/dev/null
+  P -d "$PART" -1 -f "$down" >/dev/null
+  P -At -d "$PART" -f "$TMP/fingerprint.sql" >"$TMP/part-after"
+  diff -u "$TMP/part-before" "$TMP/part-after"
+ done
+ echo "PASS: $(basename "$migration") rollback exato isolado em dois ciclos"
+ if [ "$part" -eq 6 ]; then sh "$HERE/test_config_rollback_guard.sh" "$PART"; fi
+ dropdb "$PART"
+done
 createdb -T "$REF" "$RUN"
 apply_parts "$RUN"
-for file in "$HERE"/[abc].sql; do
+for file in "$HERE"/[abc].sql "$HERE"/review_*.sql; do
  [ -f "$file" ] || continue
- case "$(basename "$file")" in a.sql) part=4 ;; b.sql) part=5 ;; c.sql) part=6 ;; esac
+ case "$(basename "$file")" in a.sql) part=4 ;; b.sql) part=5 ;; c.sql|review_*.sql) part=6 ;; esac
  [ "$part" -le "$MAX" ] || continue
  P -d "$RUN" -c "SET t.suite='entrega1_3'" -f "$file" >"$TMP/suite.log" 2>&1 || { tail -60 "$TMP/suite.log"; exit 1; }
 done
+if [ "$MAX" -ge 6 ]; then
+ for check in test_table_concurrency.sh review_codes_concurrency.sh; do
+  [ -f "$HERE/$check" ] || continue
+  sh "$HERE/$check" "$RUN"
+ done
+fi
+if [ "$MAX" -ge 6 ] && [ -f "$HERE/test_tables_codes_rollback_guard.sh" ]; then
+ sh "$HERE/test_tables_codes_rollback_guard.sh" "$RUN"
+fi
+if [ "$MAX" -ge 5 ] && [ -f "$HERE/test_receipt_rollback_guard.sh" ]; then
+ sh "$HERE/test_receipt_rollback_guard.sh" "$RUN"
+fi
 P -At -d "$RUN" -c "SELECT 'FALHOU: '||name||' — '||coalesce(detail,'') FROM t.results WHERE NOT ok ORDER BY id"
 P -At -d "$RUN" -c "SELECT 'entrega1_3: '||count(*) FILTER(WHERE ok)||' passou, '||count(*) FILTER(WHERE NOT ok)||' falhou' FROM t.results"
 [ "$(P -At -d "$RUN" -c 'SELECT count(*) FROM t.results WHERE NOT ok')" = 0 ]

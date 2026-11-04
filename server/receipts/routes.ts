@@ -5,11 +5,12 @@ import { ReceiptService } from './service';
 import { createReceiptStore } from './store';
 import { ReceiptError } from './types';
 
+import { isValidReceiptEmail } from '../../src/lib/receiptEmail';
+
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@.]+$/;
 
 export function isValidReceiptOverrideEmail(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 254 && VALID_EMAIL.test(value.trim());
+  return isValidReceiptEmail(value);
 }
 
 export function createReceiptsRouter(env = process.env, suppliedService?: ReceiptService) {

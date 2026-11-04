@@ -122,7 +122,22 @@ export const salonStaffRepository = {
       .select('id,tab_id,order_number,customer_name,status,subtotal,created_at,round_no,waiter_id,delivered_at,delivered_by')
       .eq('tenant_id', tenantId).eq('fulfillment_type', 'DINE_IN').in('tab_id', tabIds).neq('status', 'CANCELLED').order('round_no');
     const direct = must(roundR) as WaiterRound[];
-    if (direct.length > 0) return direct;
+    if (direct.length > 0) {
+      // Fetch only staff-safe flags; the delivery code itself is customer-only.
+      const states: Array<{ order_id: string; delivery_code_required: boolean; delivery_confirmed_with_code: boolean }> = [];
+      for (let offset = 0; offset < direct.length; offset += 1000) {
+        const stateResult = await supabase.rpc('salon_delivery_states', { p_tenant: tenantId, p_order_ids: direct.slice(offset, offset + 1000).map(round => round.id) });
+        // Older databases do not have delivery codes. All other failures remain visible.
+        if (stateResult.error && ['PGRST202', '42883'].includes(stateResult.error.code)) continue;
+        const batch = must(stateResult);
+        if (Array.isArray(batch)) states.push(...batch);
+      }
+      const byOrder = new Map(states.map(state => [state.order_id, state]));
+      return direct.map(round => ({ ...round,
+        delivery_code_required: byOrder.get(round.id)?.delivery_code_required === true,
+        delivery_confirmed_with_code: byOrder.get(round.id)?.delivery_confirmed_with_code === true,
+      }));
+    }
     try {
       if (typeof fetch !== 'function' || typeof supabase?.auth?.getSession !== 'function') return [];
       const { data } = await supabase.auth.getSession();
@@ -301,8 +316,11 @@ export const salonStaffRepository = {
   async submitRound(tabId: string, items: unknown[], idempotencyKey: string): Promise<void> {
     const { error } = await supabase.rpc('submit_round', { p_items: items, p_idempotency_key: idempotencyKey, p_tab_id: tabId }); if (error) throw error;
   },
-  async joinTables(tableIds: string[]): Promise<{ tabId: string; primaryTableId: string; joinedTableIds: string[] }> {
-    const { data, error } = await supabase.rpc('staff_join_tables', { p_table_ids: tableIds });
+  async submitTableRound(tableId: string, items: unknown[], idempotencyKey: string): Promise<void> {
+    const { error } = await supabase.rpc('staff_submit_table_round', { p_table_id: tableId, p_items: items, p_idempotency_key: idempotencyKey }); if (error) throw error;
+  },
+  async joinTables(tableIds: string[], acceptOccupied = false): Promise<{ tabId: string; primaryTableId: string; joinedTableIds: string[] }> {
+    const { data, error } = await supabase.rpc('staff_join_tables', { p_table_ids: tableIds, p_accept_occupied: acceptOccupied });
     if (error) throw error;
     return data as { tabId: string; primaryTableId: string; joinedTableIds: string[] };
   },

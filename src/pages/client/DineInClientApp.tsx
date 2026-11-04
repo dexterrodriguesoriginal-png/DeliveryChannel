@@ -206,6 +206,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     previousUserRef.current = supabaseUser?.id;
   }, [supabaseUser?.id, token]);
 
+  useEffect(() => {
+    setMoveTableOpen(false); setFreeTables([]); setMoveQrTokenInput('');
+    setMoveTableError(''); setMoveTableBusy(false);
+  }, [token, supabaseUser?.id, sessionId]);
+
   const subtotalCents = Math.round((tab?.subtotal || 0) * 100);
   const serviceFeeCents = tab && !tab.serviceFeeRemoved
     ? Math.round(subtotalCents * tab.serviceFeePercent / 100)
@@ -377,7 +382,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   const openOrJoin = useCallback(async (overrideName?: string) => {
     if (!supabaseUser || resolvedToken !== token || !accessReady || !resolution?.available || !deviceIdRef.current) return;
-    if (supabaseUser.is_anonymous) return;
+    if (supabaseUser.is_anonymous || sessionId) return;
+    // A saved session remains the account identity after moving tables. Never
+    // reopen the original QR's now-free table while restoring that session.
     const source = activeIdentityRef.current;
     if (!contextMatches(source, false)) return;
     if (openedUserRef.current === supabaseUser.id) return;
@@ -453,7 +460,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setNotice('');
     setBusy(false);
     setJoinBusy(false);
-  }, [access, accessReady, applyEntry, contextMatches, displayNameForEntry, firstName, inviteCode, resolution?.available, resolvedToken, supabaseUser, token]);
+  }, [access, accessReady, applyEntry, contextMatches, displayNameForEntry, firstName, inviteCode, resolution?.available, resolvedToken, sessionId, supabaseUser, token]);
 
   // Parte E: Com conta já logada no aparelho, exige confirmação ("Entrar como <Nome>?") antes de entrar na mesa.
   useEffect(() => {
@@ -878,31 +885,36 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   const openMoveTableModal = async () => {
     if (!sessionId || tabClosed || billRequested) return;
+    const source = activeIdentityRef.current;
     setMoveTableError('');
+    setFreeTables([]);
     setMoveQrTokenInput('');
     setMoveTableOpen(true);
     setMoveTableBusy(true);
     try {
-      const list = await tableAccessRepository.listFreeTables(sessionId);
-      setFreeTables(list);
+      const list = await tableAccessRepository.listFreeTables(source.sessionId);
+      if (contextMatches(source)) setFreeTables(list);
     } catch (err) {
-      setMoveTableError(errorText(err) || 'Não foi possível carregar as mesas livres.');
+      if (contextMatches(source)) setMoveTableError(errorText(err) || 'Não foi possível carregar as mesas livres.');
     } finally {
-      setMoveTableBusy(false);
+      if (contextMatches(source)) setMoveTableBusy(false);
     }
   };
 
   const submitMoveTable = async (target: { tableId?: string; qrToken?: string }) => {
-    if (!sessionId || moveTableBusy) return;
+    if (!sessionId || moveTableBusy || tabClosed || billRequested) return;
+    const source = activeIdentityRef.current;
     setMoveTableBusy(true);
     setMoveTableError('');
     try {
-      const res = await tableAccessRepository.moveTable(sessionId, target);
+      const res = await tableAccessRepository.moveTable(source.sessionId, target);
+      if (!contextMatches(source)) return;
       setMoveTableOpen(false);
       setMoveQrTokenInput('');
       setNotice(`Mesa trocada (${res.notice}). Sua comanda, pedidos e valores foram junto para a nova mesa.`);
       await loadAccount(true);
     } catch (err) {
+      if (!contextMatches(source)) return;
       const msg = errorText(err);
       setMoveTableError(
         /TABLE_OCCUPIED/i.test(msg)
@@ -914,7 +926,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
               : msg || 'Não foi possível mudar de mesa.',
       );
     } finally {
-      setMoveTableBusy(false);
+      if (contextMatches(source)) setMoveTableBusy(false);
     }
   };
 

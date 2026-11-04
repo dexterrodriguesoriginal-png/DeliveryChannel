@@ -1,7 +1,14 @@
 -- Rollback exato de B: restaura definições, ACL e restrição de coluna.
 BEGIN;
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM public.tab_receipt_sends WHERE charge_id IS NULL) THEN
+  RAISE EXCEPTION 'ROLLBACK_BLOCKED: preserve/arquive a auditoria dos recibos manuais antes do rollback.';
+ END IF;
+END $$;
 DROP FUNCTION public.reserve_tab_receipt(uuid,uuid,text);
-DELETE FROM public.tab_receipt_sends WHERE charge_id IS NULL;
+DROP FUNCTION public.authorize_tab_receipt(uuid,uuid);
+DROP FUNCTION public._receipt_is_valid_email(text);
+DROP FUNCTION public._receipt_staff_account_access(uuid,uuid);
 ALTER TABLE public.tab_receipt_sends ALTER COLUMN charge_id SET NOT NULL;
 DO $$
 DECLARE r record; a jsonb;

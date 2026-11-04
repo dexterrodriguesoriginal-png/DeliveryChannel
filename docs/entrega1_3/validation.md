@@ -25,7 +25,7 @@ Validação A: `npx tsc --noEmit` sem erros; Vitest completo **239 arquivos / 1.
 - **Item 8**: Fechamento de conta no App do Garçom é bloqueado quando a comanda está apenas em `BILL_REQUESTED`, exigindo status `WAITER_AUTHORIZED` (ou `AWAITING_PAYMENT` com PIX ativo) concedido pelo dono/caixa.
 - **Item 9**: O garçom autorizado pode fechar a conta diretamente pelo `WaiterTableSheet` (PIX na mesa, dinheiro com cálculo de troco ou cartão com confirmação de recebimento).
 - **Item 10**: Na confirmação de pagamento (`TabPaymentConfirmation` e `WaiterBillPanel`), o botão `"Enviar comprovante por e-mail"` exibe feedback claro de envio, sucesso (`"Comprovante enviado para ..."`), aviso quando o cliente não tem e-mail cadastrado ou erro com botão `"Tentar novamente"`, e `sendTabReceipt` envia o comprovante por Resend quando `RESEND_API_KEY` está configurada.
-- **Item 11**: Quando o cliente pede a conta (`request_bill`), além do chamado `BILL` para o garçom, o servidor registra notificação `BILL_REQUESTED` em `owner_notifications` e `SalonRealtimeNotifier` exibe balão persistente para dono/gerente/caixa com botões `"Ver mesa"` e `"Ir para fechar conta"`, fechando automaticamente quando a comanda muda de status.
+- **Item 11**: Quando o cliente pede a conta (`request_bill`), o chamado `BILL` atende o garçom e `PanelBillRequestedAlert` acompanha `dining_tabs` por Realtime e atualização periódica. O balão para dono/gerente/caixa oferece “Ver conta” e “Fechar conta”, saindo quando a comanda muda de status; não depende de um tipo inexistente `BILL_REQUESTED` em `owner_notifications`.
 - **Item 12**: Quando o cliente contesta a entrega (`"Não recebi"`), a rodada no App do Garçom fica amarela (`PREPARING`) com selo `"Entrega contestada · verificar"` até a resolução.
 - **Item 13**: No modal `"Lançar pedido na mesa"` do Salão e do App do Garçom, o seletor foi substituído por lista visual com foto/ícone, preço, busca e filtro por categoria, e o botão foi renomeado para `"Fazer pedido"`.
 
@@ -46,3 +46,7 @@ SQL de testes: `supabase/tests/entrega1_3/b.sql`.
 
 Migration: `supabase/migrations/20261104000600_entrega1_3_c.sql`. Rollback correspondente: `supabase/rollback/20261104000600_entrega1_3_c_down.sql`.
 SQL de testes: `supabase/tests/entrega1_3/c.sql`.
+
+## Revisão de B/C
+
+Os commits `769be0b` e `110e8ed` foram revisados, preservando A. Achados, correções e reprodução em `docs/entrega1_3/revisao-b-c.md`. Validação final: tsc verde, **2.031 testes Vitest**, **12 suítes SQL em strict/legacy**, Entrega1.3 com **166/166 por modo**, rollback005/006 exato isolado e acumulado em dois ciclos, concorrência e preservação do histórico após uso. Sem merge/deploy.

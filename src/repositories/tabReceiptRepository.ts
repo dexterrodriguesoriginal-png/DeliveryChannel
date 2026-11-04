@@ -3,11 +3,8 @@ import { supabase } from '../lib/supabase';
 export interface TabReceiptTarget { exists: boolean; maskedEmail: string | null }
 export type TabReceiptResult = { sent: true } | { sent: false; reason: 'EMAIL_PROVIDER_NOT_CONFIGURED' };
 
-const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@.]+$/;
-export function isValidReceiptEmail(email: string): boolean {
-  const trimmed = email.trim();
-  return trimmed.length > 0 && trimmed.length <= 254 && VALID_EMAIL.test(trimmed);
-}
+import { isValidReceiptEmail } from '../lib/receiptEmail';
+export { isValidReceiptEmail } from '../lib/receiptEmail';
 
 export const tabReceiptRepository = {
   async target(tabId: string): Promise<TabReceiptTarget> {
@@ -18,7 +15,7 @@ export const tabReceiptRepository = {
   },
   async send(tabId: string, overrideEmail?: string): Promise<TabReceiptResult> {
     const trimmedOverride = overrideEmail?.trim();
-    if (trimmedOverride !== undefined && trimmedOverride !== '' && !isValidReceiptEmail(trimmedOverride)) {
+    if (overrideEmail !== undefined && !isValidReceiptEmail(overrideEmail)) {
       throw new Error('Informe um e-mail válido.');
     }
     const { data } = await supabase.auth.getSession();

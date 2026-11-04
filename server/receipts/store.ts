@@ -26,6 +26,10 @@ export class SupabaseReceiptStore implements ReceiptStore {
     if (error || !data.user) throw new ReceiptError('AUTH_REQUIRED', 401, 'Entre na sua conta para continuar.');
     return { id: data.user.id };
   }
+  async authorize(tabId: string, userId: string) {
+    const { error } = await this.db.rpc('authorize_tab_receipt', { p_tab: tabId, p_user: userId });
+    if (error) throw receiptStorageError(error);
+  }
   async reserve(tabId: string, userId: string, overrideEmail?: string) {
     const args = overrideEmail ? { p_tab: tabId, p_user: userId, p_override_email: overrideEmail } : { p_tab: tabId, p_user: userId };
     const { data, error } = await this.db.rpc('reserve_tab_receipt', args);

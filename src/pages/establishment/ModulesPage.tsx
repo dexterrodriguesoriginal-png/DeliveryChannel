@@ -272,6 +272,7 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
           tenantSlug={activeTenant.slug}
           canManageTables={salonAccess.canManageSalon}
           canConfigure={salonAccess.canManageSalon}
+          canConfigureDeliveryCode={activeRole === 'OWNER'}
           canManageServiceFeeModule={salonAccess.canManageServiceFeeModule}
           canRegenerateQr={salonAccess.canRegenerateQr}
           onConfigSaved={refresh}

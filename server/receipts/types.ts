@@ -7,7 +7,7 @@ export interface TabReceipt {
   items: Array<{ name: string; quantity: number; unit_price: number; total_price: number }>;
   service_fee_cents: number;
   total_cents: number;
-  method: 'PIX' | 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'CAIXA';
+  method: string;
   paid_at: string;
   charge_id: string;
 }
@@ -25,6 +25,7 @@ export interface ReceiptProvider {
 
 export interface ReceiptStore {
   user(token: string): Promise<{ id: string }>;
+  authorize(tabId: string, userId: string): Promise<void>;
   reserve(tabId: string, userId: string, overrideEmail?: string): Promise<TabReceipt>;
   finish(attemptId: string, sent: boolean, reason?: ReceiptFailure): Promise<void>;
 }

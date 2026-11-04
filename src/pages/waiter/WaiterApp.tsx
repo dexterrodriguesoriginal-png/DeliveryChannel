@@ -464,7 +464,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [toast, setToast] = useState('');
-  const [orderTarget, setOrderTarget] = useState<{ tabId: string; label: string } | null>(null);
+  const [orderTarget, setOrderTarget] = useState<{ tabId: string; tableId?: string; label: string } | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
@@ -476,6 +476,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [passShiftOpen, setPassShiftOpen] = useState(false);
   const [joinTablesOpen, setJoinTablesOpen] = useState(false);
   const [joinSelectedIds, setJoinSelectedIds] = useState<string[]>([]);
+  const [joinConsent, setJoinConsent] = useState(false);
   const [orderDeliveryCodes, setOrderDeliveryCodes] = useState<Record<string, string>>({});
   const [helpSuccess, setHelpSuccess] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -682,6 +683,9 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     return matchesSearch(t, search) && (filter === 'ATTN' ? matchesFilter(info, 'CALL') : matchesFilter(info, filter));
   }).sort(compareTables), [tables, infoByTable, search, filter]);
 
+  const joinPrimaryTabId = tabByTable.get(joinSelectedIds[0])?.id;
+  const joinNeedsConsent = joinSelectedIds.slice(1).some(id => { const account = tabByTable.get(id); return !!account && account.id !== joinPrimaryTabId; });
+
   const selected = tables.find(t => t.id === selectedId) || null;
   const selectedTab = selected ? tabByTable.get(selected.id) : undefined;
   const labelByTab = useMemo(() => { const m = new Map<string, string>(); for (const t of tabs) m.set(t.id, formatTableLabel(tables.find(x => x.id === t.table_id)?.label, 'Mesa')); return m; }, [tabs, tables]);
@@ -702,8 +706,8 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     await load();
   };
 
-  const openOrder = async (tabId: string, label: string) => {
-    setOrderTarget({ tabId, label }); setProductsError('');
+  const openOrder = async (tabId: string, label: string, tableId?: string) => {
+    setOrderTarget({ tabId, label, tableId }); setProductsError('');
     if (products.length || productsLoading) return;
     setProductsLoading(true);
     try {
@@ -718,7 +722,10 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     if (!orderTarget || !cart.length) return;
     setSending(true); setProductsError('');
     try {
-      await salonStaffRepository.submitRound(orderTarget.tabId, dineInRoundItems(cart), newIdempotencyKey());
+      const parent = tabs.find(account => account.id === orderTarget.tabId);
+      if (orderTarget.tableId && parent && orderTarget.tableId !== parent.table_id) {
+        await salonStaffRepository.submitTableRound(orderTarget.tableId, dineInRoundItems(cart), newIdempotencyKey());
+      } else await salonStaffRepository.submitRound(orderTarget.tabId, dineInRoundItems(cart), newIdempotencyKey());
       setOrderTarget(null); setToast('Pedido feito!'); await load();
     } catch (error) { setProductsError(error instanceof Error ? error.message : 'Não foi possível enviar o pedido.'); }
     finally { setSending(false); }
@@ -821,7 +828,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               <button
                 type="button"
                 data-testid="waiter-join-tables-btn"
-                onClick={() => { setJoinSelectedIds([]); setJoinTablesOpen(true); }}
+                onClick={() => { setJoinSelectedIds([]); setJoinConsent(false); setJoinTablesOpen(true); }}
                 className="shrink-0 rounded-full bg-emerald-500 px-3.5 py-2 text-xs font-black text-slate-950"
               >
                 Juntar mesas
@@ -866,7 +873,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           {!myRounds.length ? <p className="rounded-2xl bg-white/5 p-5 text-sm text-slate-300">Nenhum pedido nas suas mesas. Ao assumir um chamado ou receber uma mesa, os pedidos aparecem aqui.</p> : <div className="space-y-3">{myRounds.map(r => {
             const status = waiterOrderStatus(r.status);
             const table = tabs.find(t => t.id === r.tab_id);
-            const needsCode = Boolean(requireDeliveryCode || r.delivery_code_required);
+            const needsCode = r.delivery_code_required === true;
             const codeVal = orderDeliveryCodes[r.id] || '';
             return <article key={r.id} className="w-full space-y-2 rounded-2xl border-l-4 bg-white/5 p-4 ring-1 ring-white/10" style={{ borderLeftColor: statusColorTokens(r.status).solid }}>
               <button type="button" onClick={() => table && setSelectedId(table.table_id)} className="block w-full space-y-2 text-left"><span className="flex items-start justify-between gap-2"><strong>{labelByTab.get(r.tab_id) || 'Mesa'}</strong><span className="text-xs text-slate-400">#{r.order_number} · rodada {r.round_no}</span></span>
@@ -1013,6 +1020,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
       {selected && !orderTarget && (
         <WaiterTableSheet
+          key={`${tenantId}:${selected.id}`}
           table={selected} tab={selectedTab} info={infoByTable.get(selected.id)!}
           sessions={selectedTab ? sessions.filter(s => s.tab_id === selectedTab.id) : []}
           calls={selectedTab ? (calls.filter(c => c.tab_id === selectedTab.id) as WaiterCallRow[]) : []}
@@ -1041,20 +1049,24 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           }, 'Registrado como ajudante nesta mesa.')}
           helpSuccess={helpSuccess}
           onOpenTable={openTable}
-          onOrder={() => selectedTab && void openOrder(selectedTab.id, selected.label)}
+          onOrder={() => selectedTab && void openOrder(selectedTab.id, selected.label, selected.id)}
           requireDeliveryCode={requireDeliveryCode}
           joinedTables={selectedTab ? (joinedTablesByTab.get(selectedTab.id) || []) : []}
           onSeparateTable={tableId => selectedTab && void run(`separate-${tableId}`, () => salonStaffRepository.separateTable(selectedTab.id, tableId), 'Mesa separada.')}
           tableMoves={selectedTab ? tableMoves.filter(m => m.tab_id === selectedTab.id) : []}
           onMarkDelivered={(orderId, code) => void run(`delivered-${orderId}`, () => code === undefined ? deliveryRepository.markDelivered(orderId) : deliveryRepository.markDelivered(orderId, code), 'Entrega registrada.')}
           canCollect={canCollectTab(selectedTab?.status, activeRole, !!selectedTab && (myTabIds.has(selectedTab.id) || !assignments.some(a => a.table_id === selected.id)))}
-          onConfirmPayment={method => {
-            if (!selectedTab || selectedTab.status === 'AWAITING_PAYMENT' || !canCollectTab(selectedTab.status, activeRole, myTabIds.has(selectedTab.id) || !assignments.some(a => a.table_id === selected.id))) return;
-            return run('close-tab', async () => {
+          onConfirmPayment={async method => {
+            if (!selectedTab || selectedTab.status === 'AWAITING_PAYMENT' || !canCollectTab(selectedTab.status, activeRole, myTabIds.has(selectedTab.id) || !assignments.some(a => a.table_id === selected.id))) return false;
+            setBusy('close-tab'); setMessage('');
+            try {
               await salonStaffRepository.closeTab(selectedTab.id, method, infoByTable.get(selected.id)!.totalCents);
-            }, 'Pagamento confirmado. Mesa liberada.');
+              await Promise.all([load(), approvals.refresh()]);
+              setToast('Pagamento confirmado. Mesa liberada.');
+              return true;
+            } finally { setBusy(null); }
           }}
-          onPaymentSettled={() => { setSelectedId(null); void load(); setToast('Pix confirmado. Mesa liberada.'); }}
+          onPaymentSettled={() => { setSelectedId(null); void load(); setToast('Pagamento confirmado. Mesa liberada.'); }}
           onReopenBill={() => selectedTab && void run('reopen-tab', async () => {
             const { error } = await supabase.rpc('staff_reopen_tab', { p_tab: selectedTab.id });
             if (error) throw new Error('Não foi possível reabrir. Confira se há um PIX pendente ou pago nesta conta.');
@@ -1093,7 +1105,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     type="button"
                     aria-pressed={checked}
                     data-testid={`waiter-join-option-${t.id}`}
-                    onClick={() => setJoinSelectedIds(prev => checked ? prev.filter(x => x !== t.id) : [...prev, t.id])}
+                    onClick={() => { setJoinConsent(false); setJoinSelectedIds(prev => checked ? prev.filter(x => x !== t.id) : [...prev, t.id]); }}
                     className={`rounded-xl border p-3 text-left text-sm font-bold ${checked ? 'border-emerald-600 bg-emerald-50 text-emerald-950' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
                   >
                     <span className="block">{t.label}</span>
@@ -1102,14 +1114,15 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 );
               })}
             </div>
+            {joinNeedsConsent && <label className="mt-4 flex items-start gap-2 text-sm font-semibold"><input type="checkbox" checked={joinConsent} disabled={!!busy} onChange={event => setJoinConsent(event.target.checked)} />Os responsáveis aceitaram juntar os pedidos e valores das contas ocupadas.</label>}
             <button
               type="button"
-              disabled={!!busy || joinSelectedIds.length < 2}
+              disabled={!!busy || joinSelectedIds.length < 2 || (joinNeedsConsent && !joinConsent)}
               data-testid="waiter-join-confirm-btn"
               onClick={() => void run('join-tables', async () => {
-                await salonStaffRepository.joinTables(joinSelectedIds);
+                await salonStaffRepository.joinTables(joinSelectedIds, joinConsent);
                 setJoinTablesOpen(false);
-                setJoinSelectedIds([]);
+                setJoinSelectedIds([]); setJoinConsent(false);
               }, 'Mesas juntadas na mesma conta.')}
               className="mt-4 w-full rounded-2xl bg-emerald-600 py-3 text-sm font-black text-white disabled:opacity-50"
             >

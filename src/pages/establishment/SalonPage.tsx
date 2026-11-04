@@ -147,6 +147,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const [requireDeliveryCode, setRequireDeliveryCode] = useState(false);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [selectedJoinTables, setSelectedJoinTables] = useState<string[]>([]);
+  const [joinConsent, setJoinConsent] = useState(false);
 
   const centralCallsWaiting = useMemo(() => {
     return calls.filter(call => call.status === 'OPEN' && call.route === 'CENTRAL' && !call.assigned_to && !call.accepted_by);
@@ -167,6 +168,12 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     }
     return map;
   }, [tabs, joinedTables]);
+
+  const joinPrimaryTabId = tabByTable.get(selectedJoinTables[0])?.id;
+  const joinNeedsConsent = selectedJoinTables.slice(1).some(id => {
+    const account = tabByTable.get(id);
+    return !!account && account.id !== joinPrimaryTabId;
+  });
 
   const resolvedTableId = useMemo(() => {
     if (!selectedTableId) return null;
@@ -520,12 +527,16 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
       return;
     }
     void run('submit-round', async () => {
-      const { error } = await supabase.rpc('submit_round', {
-        p_items: [dineInRoundItem({ productId, quantity, notes: notes.trim(), options: optionChoices })],
-        p_idempotency_key: newIdempotencyKey(),
-        p_tab_id: selectedTab.id,
-      });
-      if (error) throw error;
+      const items = [dineInRoundItem({ productId, quantity, notes: notes.trim(), options: optionChoices })];
+      const idempotencyKey = newIdempotencyKey();
+      if (selectedTable && selectedTable.id !== selectedTab.table_id) {
+        await salonStaffRepository.submitTableRound(selectedTable.id, items, idempotencyKey);
+      } else {
+        const { error } = await supabase.rpc('submit_round', {
+          p_items: items, p_idempotency_key: idempotencyKey, p_tab_id: selectedTab.id,
+        });
+        if (error) throw error;
+      }
       setOrderOpen(false);
       setProductId('');
       setOptionChoices([]);
@@ -690,7 +701,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     finally { setPauseBusy(false); }
   };
   const toggleDeliveryCode = () => {
-    if (!activeTenant) return;
+    if (!activeTenant || activeRole !== 'OWNER') return;
     const next = !requireDeliveryCode;
     void run('toggle-delivery-code', async () => {
       await salonStaffRepository.setDeliveryCodeRequired(activeTenant.id, next);
@@ -698,14 +709,15 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     });
   };
   const confirmJoinTables = () => {
-    if (selectedJoinTables.length < 2) {
+    if (selectedJoinTables.length < 2 || (joinNeedsConsent && !joinConsent)) {
       setMessage('Selecione pelo menos 2 mesas para juntar.');
       return;
     }
     void run('join-tables', async () => {
-      await salonStaffRepository.joinTables(selectedJoinTables);
+      await salonStaffRepository.joinTables(selectedJoinTables, joinConsent);
       setJoinModalOpen(false);
       setSelectedJoinTables([]);
+      setJoinConsent(false);
     });
   };
   const separateJoinedTable = (tableId: string) => {
@@ -727,14 +739,14 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => { setSelectedJoinTables([]); setJoinModalOpen(true); }}
+            onClick={() => { setSelectedJoinTables([]); setJoinConsent(false); setJoinModalOpen(true); }}
             className="salon-btn"
             data-testid="salon-join-tables-btn"
           >
             <Users className="h-4 w-4" aria-hidden="true" />
             Juntar mesas
           </button>
-          {canPause && (
+          {activeRole === 'OWNER' && (
             <button
               type="button"
               onClick={toggleDeliveryCode}
@@ -1225,7 +1237,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
                   type="button"
                   aria-pressed={checked}
                   data-testid={`salon-join-option-${table.id}`}
-                  onClick={() => setSelectedJoinTables(prev => prev.includes(table.id) ? prev.filter(id => id !== table.id) : [...prev, table.id])}
+                  onClick={() => { setJoinConsent(false); setSelectedJoinTables(prev => prev.includes(table.id) ? prev.filter(id => id !== table.id) : [...prev, table.id]); }}
                   className={`rounded-xl border p-2.5 text-left text-xs font-bold transition ${checked ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300'}`}
                 >
                   <div>{table.label}</div>
@@ -1234,6 +1246,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
               );
             })}
           </div>
+          {joinNeedsConsent && <label className="flex items-start gap-2 text-sm font-semibold"><input type="checkbox" checked={joinConsent} disabled={!!busy} onChange={event => setJoinConsent(event.target.checked)} />Os responsáveis aceitaram juntar os pedidos e valores das contas ocupadas.</label>}
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
@@ -1245,7 +1258,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
             <button
               type="button"
               data-testid="salon-confirm-join-tables"
-              disabled={selectedJoinTables.length < 2 || busy === 'join-tables'}
+              disabled={selectedJoinTables.length < 2 || !!busy || (joinNeedsConsent && !joinConsent)}
               onClick={confirmJoinTables}
               className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
             >

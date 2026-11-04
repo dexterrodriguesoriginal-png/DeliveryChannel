@@ -44,6 +44,8 @@ INSERT INTO public.order_items(order_id,product_id,product_name,quantity,unit_pr
  ('e1350000-0000-0000-0000-000000000023','d0000000-0000-0000-0000-0000000000a1','Prato C',1,50,50),
  ('e1350000-0000-0000-0000-000000000028','d0000000-0000-0000-0000-0000000000a1','Prato C8',1,30,30);
 
+INSERT INTO public.waiter_profiles(user_id,tenant_id,username,phone) VALUES(:'WAITER',:'A','review_waiter','11900000000'),(:'WAITER_OTHER',:'A','review_other','11900000001') ON CONFLICT(user_id) DO NOTHING;
+
 -- Item 1: listagem de mesas livres, antifraude e troca de mesa pelo cliente.
 SET ROLE authenticated;
 SELECT t.login(:'CLIENT'::uuid);
@@ -91,7 +93,7 @@ SELECT t.throws($q$SELECT public.staff_join_tables(ARRAY['e1320000-0000-0000-000
 SELECT t.login(:'OWNER_B'::uuid);
 SELECT t.throws($q$SELECT public.staff_join_tables(ARRAY['e1320000-0000-0000-0000-000000000027'::uuid,'e1320000-0000-0000-0000-000000000028'::uuid])$q$,'FORBIDDEN','C1 outra loja não junta mesas');
 SELECT t.login(:'WAITER'::uuid);
-SELECT public.staff_join_tables(ARRAY[:'TBL7'::uuid,:'TBL8'::uuid,:'TBL9'::uuid]) AS join_res \gset
+SELECT public.staff_join_tables(ARRAY[:'TBL7'::uuid,:'TBL8'::uuid,:'TBL9'::uuid],true) AS join_res \gset
 SELECT t.is((:'join_res'::jsonb->>'tabId')::uuid,:'TAB_C'::uuid,'C1 juntar mesas unifica na comanda principal');
 SELECT t.is(jsonb_array_length(:'join_res'::jsonb->'joinedTableIds'),2,'C1 duas mesas secundárias vinculadas à comanda');
 

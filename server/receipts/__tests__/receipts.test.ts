@@ -22,6 +22,7 @@ const store: ReceiptStore = {
     if (token !== 'valid-session') throw new ReceiptError('AUTH_REQUIRED', 401, 'Entre na sua conta.');
     return { id: 'verified-actor' };
   }),
+  authorize: vi.fn(async () => {}),
   reserve: vi.fn(async () => receipt), finish: vi.fn(async () => {}),
 };
 const provider = { send: vi.fn(async (_receipt: TabReceipt) => {}) };
@@ -53,12 +54,13 @@ describe('tab receipt HTTP security', () => {
     expect(store.finish).toHaveBeenLastCalledWith(receipt.attempt_id, true);
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
-  it('returns a clear missing-provider state only after SQL has authorized staff and reserved an attempt', async () => {
+  it('returns missing configuration after staff authorization without consuming an email attempt', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const before = vi.mocked(store.reserve).mock.calls.length;
     const response = await request(`/missing/tabs/${tabId}`);
     expect(await response.json()).toEqual({ sent: false, reason: 'EMAIL_PROVIDER_NOT_CONFIGURED' });
-    expect(store.reserve).toHaveBeenLastCalledWith(tabId, 'verified-actor');
-    expect(store.finish).toHaveBeenLastCalledWith(receipt.attempt_id, false, 'EMAIL_PROVIDER_NOT_CONFIGURED');
+    expect(store.authorize).toHaveBeenLastCalledWith(tabId, 'verified-actor');
+    expect(vi.mocked(store.reserve).mock.calls).toHaveLength(before);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('EMAIL_PROVIDER_NOT_CONFIGURED'));
     warn.mockRestore();
   });
@@ -66,12 +68,15 @@ describe('tab receipt HTTP security', () => {
     const bad = await request(undefined, { overrideEmail: 'not-an-email' });
     expect(bad.status).toBe(400);
     expect((await bad.json()).code).toBe('INVALID_EMAIL');
+    for (const invalid of ['nome<destino@example.com>', 'destino,lista@example.com', 'destino@example.com\r\n', '.destino@example.com', 'destino@example..com', 'a@-example.com']) {
+      expect((await request(undefined, { overrideEmail: invalid })).status).toBe(400);
+    }
     const ok = await request(undefined, { overrideEmail: '  Outro@Dominio.com.br ' });
     expect(ok.status).toBe(200);
     expect(store.reserve).toHaveBeenLastCalledWith(tabId, 'verified-actor', 'outro@dominio.com.br');
   });
   it('refuses staff from another store even when email is unconfigured', async () => {
-    vi.mocked(store.reserve).mockRejectedValueOnce(receiptStorageError({ code: '42501', message: 'secret customer email' }));
+    vi.mocked(store.authorize).mockRejectedValueOnce(receiptStorageError({ code: '42501', message: 'secret customer email' }));
     const response = await request(`/missing/tabs/${tabId}`);
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: 'Você não tem permissão para enviar este comprovante.', code: 'FORBIDDEN' });
@@ -130,6 +135,8 @@ describe('receipt provider boundary', () => {
   it('passes only the authenticated actor and tab to the service-role gateway', async () => {
     const rpc = vi.fn(async () => ({ data: receipt, error: null }));
     const gateway = new SupabaseReceiptStore({ rpc } as any);
+    await gateway.authorize(tabId, 'verified-actor');
+    expect(rpc).toHaveBeenCalledWith('authorize_tab_receipt', { p_tab: tabId, p_user: 'verified-actor' });
     expect(await gateway.reserve(tabId, 'verified-actor')).toEqual(receipt);
     expect(rpc).toHaveBeenCalledWith('reserve_tab_receipt', { p_tab: tabId, p_user: 'verified-actor' });
     await gateway.finish(receipt.attempt_id, false, 'EMAIL_PROVIDER_NOT_CONFIGURED');

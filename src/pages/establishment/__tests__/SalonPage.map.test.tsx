@@ -65,6 +65,12 @@ beforeEach(() => { seed(); h.rpc.mockReset(); Object.values(h.pix).forEach(m => 
 afterEach(cleanup);
 
 describe('SalonPage — mapa de mesas', () => {
+  it('reserva a configuração do código de entrega ao dono', async () => {
+    caps(); h.role.value = 'MANAGER';
+    render(<SalonPage />);
+    await screen.findByTestId('salon-table-t2');
+    expect(screen.queryByTestId('salon-toggle-delivery-code')).toBeNull();
+  });
   it('colore cada mesa pelo status e conta nos filtros', async () => {
     noMigration();
     render(<SalonPage />);
@@ -342,8 +348,11 @@ describe('SalonPage — mapa de mesas', () => {
       expect(await screen.findByTestId('salon-join-tables-modal')).toBeTruthy();
       fireEvent.click(screen.getByTestId('salon-join-option-t2'));
       fireEvent.click(screen.getByTestId('salon-join-option-t5'));
+      expect((screen.getByTestId('salon-confirm-join-tables') as HTMLButtonElement).disabled).toBe(true);
+      expect(h.rpc.mock.calls.some(call => call[0] === 'staff_join_tables')).toBe(false);
+      fireEvent.click(screen.getByRole('checkbox', { name: /Os responsáveis aceitaram/ }));
       fireEvent.click(screen.getByTestId('salon-confirm-join-tables'));
-      await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('staff_join_tables', { p_table_ids: ['t2', 't5'] }));
+      await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('staff_join_tables', { p_table_ids: ['t2', 't5'], p_accept_occupied: true }));
     });
   });
 });

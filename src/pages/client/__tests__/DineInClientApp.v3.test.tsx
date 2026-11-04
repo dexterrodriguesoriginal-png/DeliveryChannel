@@ -306,8 +306,42 @@ describe('Garçom v3 — cliente QR', () => {
     expect(screen.queryByRole('button', { name: 'Não recebi' })).toBeNull();
   });
 
+  it.each([
+    ['token', 'list'], ['user', 'list'], ['token', 'move'], ['user', 'move'],
+  ] as const)('ignora resposta antiga de mudar mesa após troca de %s (%s)', async (change, operation) => {
+    let finishOld!: (value: any) => void;
+    h.user = { id: 'u1' }; sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
+    if (operation === 'list') h.listFreeTables.mockReturnValueOnce(new Promise(resolve => { finishOld = resolve; }));
+    else {
+      h.listFreeTables.mockResolvedValueOnce([{ id: 'old-table', label: 'Mesa antiga', seats: 4, area: null }]);
+      h.moveTable.mockReturnValueOnce(new Promise(resolve => { finishOld = resolve; }));
+    }
+    const view = render(<DineInClientApp token={TOKEN} />);
+    fireEvent.click(await screen.findByTestId('dinein-move-table-btn'));
+    if (operation === 'move') fireEvent.click(await screen.findByTestId('move-to-table-old-table'));
+    await waitFor(() => expect(finishOld).toBeTypeOf('function'));
+    const nextToken = change === 'token' ? 'n'.repeat(48) : TOKEN;
+    if (change === 'user') h.user = { id: 'u2' };
+    h.enterTable.mockResolvedValue({ state: 'GUEST', sessionId: 'new-session', approved: true });
+    h.listFreeTables.mockResolvedValue([{ id: 'new-table', label: 'Mesa atual', seats: 4, area: null }]);
+    view.rerender(<DineInClientApp token={nextToken} />);
+    expect(screen.queryByTestId('dinein-move-table-modal')).toBeNull();
+    fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
+    await waitFor(() => expect(sessionStorage.getItem(SESSION_KEY_PREFIX + nextToken)).toBe('new-session'));
+    fireEvent.click(await screen.findByTestId('dinein-move-table-btn'));
+    await screen.findByTestId('move-to-table-new-table');
+    await act(async () => finishOld(operation === 'list'
+      ? [{ id: 'old-table', label: 'Mesa antiga', seats: 4, area: null }]
+      : { notice: 'Mesa antiga → Mesa privada', tabId: 'old-tab' }));
+    expect(screen.getByTestId('dinein-move-table-modal')).toBeTruthy();
+    expect(screen.getByTestId('move-to-table-new-table')).toBeTruthy();
+    expect(screen.queryByTestId('move-to-table-old-table')).toBeNull();
+    expect(screen.queryByText(/Mesa trocada/)).toBeNull();
+  });
+
   it('cliente muda de mesa escolhendo mesa livre ou QR, move a comanda e bloqueia troca com conta pedida', async () => {
     h.user = { id: 'u1' };
+    account = myTab([round('PENDING', 'first'), round('DELIVERED', 'second')]);
     sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
     h.listFreeTables.mockResolvedValue([
       { id: 't7', label: 'Mesa 07', area: 'Varanda', seats: 4 },
@@ -323,7 +357,7 @@ describe('Garçom v3 — cliente QR', () => {
       return { tabId: 'tb', fromTableId: 't3', toTableId: 't7', fromLabel: 'Mesa 03', toLabel: 'Mesa 07', notice: 'Mesa 03 → Mesa 07', qrToken: TOKEN };
     });
 
-    render(<DineInClientApp token={TOKEN} />);
+    const view = render(<DineInClientApp token={TOKEN} />);
     const moveBtn = await screen.findByTestId('dinein-move-table-btn');
     expect(moveBtn.hasAttribute('disabled')).toBe(false);
     fireEvent.click(moveBtn);
@@ -338,6 +372,21 @@ describe('Garçom v3 — cliente QR', () => {
     // Em Minha conta, exibe o histórico de mesas
     fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
     expect((await screen.findByTestId('account-table-moves')).textContent).toContain('Mesa 03 → Mesa 07');
+    expect(sessionStorage.getItem(SESSION_KEY_PREFIX + TOKEN)).toBe('s1');
+    // Reload still uses the original URL, whose physical table is now free.
+    // Re-entering that QR would replace the debt with a newly opened account.
+    view.unmount(); h.enterTable.mockClear(); h.rpc.mockClear();
+    render(<DineInClientApp token={TOKEN} />);
+    await screen.findByRole('button', { name: 'Minha conta' });
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('get_my_tab', { p_session_id: 's1' }));
+    expect(h.enterTable).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(SESSION_KEY_PREFIX + TOKEN)).toBe('s1');
+    fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
+    expect(await screen.findByTestId('account-round-first')).toBeTruthy();
+    expect(screen.getByTestId('account-round-second')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Minha conta' }).textContent).toContain('Mesa 07');
+    expect(screen.getByRole('dialog', { name: 'Minha conta' }).textContent).toContain('24,00');
+
   });
 
   it('exibe código de entrega de 4 dígitos por rodada e bloqueia "Não recebi" quando confirmado com código', async () => {

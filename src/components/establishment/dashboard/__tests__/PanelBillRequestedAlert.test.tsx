@@ -6,7 +6,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 const h = vi.hoisted(() => ({
   tenantId: 'tenant-1',
   userId: 'owner-1',
-  role: 'OWNER',
+  role: 'OWNER' as string | null,
+  fromCalls: 0,
+  deferNextTabs: false,
+  finishTabs: null as null | ((value: unknown) => void),
+  ordersError: null as null | { code: string },
   tabs: [] as Array<Record<string, unknown>>,
   tables: [] as Array<Record<string, unknown>>,
   orders: [] as Array<Record<string, unknown>>,
@@ -33,11 +37,16 @@ vi.mock('../../../../utils/audio', () => ({
 vi.mock('../../../../lib/supabase', () => ({
   supabase: {
     from: (table: string) => {
+      h.fromCalls += 1;
       const b: Record<string, unknown> = {};
       for (const m of ['select', 'eq', 'in', 'neq', 'order']) b[m] = () => b;
       b.then = (resolve: (v: unknown) => unknown) => {
         const data = table === 'dining_tabs' ? h.tabs : table === 'dining_tables' ? h.tables : h.orders;
-        return Promise.resolve({ data, error: null }).then(resolve);
+        if (table === 'dining_tabs' && h.deferNextTabs) {
+          h.deferNextTabs = false;
+          return new Promise(done => { h.finishTabs = done; }).then(resolve);
+        }
+        return Promise.resolve({ data, error: table === 'orders' ? h.ordersError : null }).then(resolve);
       };
       return b;
     },
@@ -63,6 +72,7 @@ beforeEach(() => {
   h.tenantId = 'tenant-1';
   h.userId = 'owner-1';
   h.role = 'OWNER';
+  h.fromCalls = 0; h.deferNextTabs = false; h.finishTabs = null; h.ordersError = null;
   h.beep.mockReset();
   h.realtimeCb = null;
   h.tables = [
@@ -127,5 +137,101 @@ describe('PanelBillRequestedAlert — Item 13', () => {
     // Dispensar no botão X remove o balão
     fireEvent.click(screen.getByLabelText('Dispensar aviso da Mesa 03'));
     expect(screen.queryByTestId('bill-requested-toast-tab-3')).toBeNull();
+  });
+});
+
+
+describe('isolamento e atualização do alerta de conta pedida', () => {
+  it.each([null, 'WAITER', 'DRIVER'])('não consulta nem exibe dados financeiros para papel %s', async role => {
+    h.role = role;
+    render(<PanelBillRequestedAlert onViewBill={vi.fn()} onCheckoutBill={vi.fn()} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull();
+    expect(h.fromCalls).toBe(0); expect(h.beep).not.toHaveBeenCalled();
+  });
+
+  it('retira dados imediatamente quando o papel do painel é revogado e ignora callback antigo', async () => {
+    const view = render(<PanelBillRequestedAlert onViewBill={vi.fn()} onCheckoutBill={vi.fn()} />);
+    await screen.findByTestId('bill-requested-toast-tab-3');
+    const oldCallback = h.realtimeCb; const calls = h.fromCalls;
+    h.role = null;
+    view.rerender(<PanelBillRequestedAlert onViewBill={vi.fn()} onCheckoutBill={vi.fn()} />);
+    expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull();
+    await act(async () => { oldCallback?.(); });
+    expect(h.fromCalls).toBe(calls);
+    expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull();
+  });
+
+  it('oculta imediatamente o aviso do usuário anterior na mesma loja', async () => {
+    const view = render(<PanelBillRequestedAlert onViewBill={vi.fn()} onCheckoutBill={vi.fn()} />);
+    await screen.findByTestId('bill-requested-toast-tab-3');
+    h.userId = 'outro-caixa'; h.deferNextTabs = true;
+    view.rerender(<PanelBillRequestedAlert onViewBill={vi.fn()} onCheckoutBill={vi.fn()} />);
+    expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull();
+    await waitFor(() => expect(h.finishTabs).not.toBeNull());
+    await act(async () => { h.finishTabs!({ data: [], error: null }); });
+    expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull();
+  });
+
+  it('ignora a resposta pendente do usuário anterior na mesma loja', async () => {
+    h.deferNextTabs = true;
+    const view = render(<PanelBillRequestedAlert onViewBill={vi.fn()} onCheckoutBill={vi.fn()} />);
+    await waitFor(() => expect(h.finishTabs).not.toBeNull());
+    const oldResult = h.tabs;
+    h.userId = 'outro-caixa'; h.tabs = [];
+    view.rerender(<PanelBillRequestedAlert onViewBill={vi.fn()} onCheckoutBill={vi.fn()} />);
+    await act(async () => { h.finishTabs!({ data: oldResult, error: null }); });
+    expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull();
+    expect(h.beep).not.toHaveBeenCalled();
+  });
+
+  it('não restaura conta pedida a partir de polling antigo depois de uma atualização mais nova', async () => {
+    render(<PanelBillRequestedAlert onViewBill={vi.fn()} onCheckoutBill={vi.fn()} />);
+    await screen.findByTestId('bill-requested-toast-tab-3');
+    const requested = h.tabs;
+    h.deferNextTabs = true;
+    await act(async () => { h.realtimeCb?.(); });
+    expect(h.finishTabs).not.toBeNull();
+    h.tabs = [];
+    await act(async () => { h.realtimeCb?.(); });
+    await waitFor(() => expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull());
+    await act(async () => { h.finishTabs!({ data: requested, error: null }); });
+    expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull();
+    expect(h.beep).toHaveBeenCalledTimes(1);
+  });
+
+  it('não inventa saldo zero se a consulta de pedidos falhar', async () => {
+    h.ordersError = { code: '42501' };
+    render(<PanelBillRequestedAlert onViewBill={vi.fn()} onCheckoutBill={vi.fn()} />);
+    const toast = await screen.findByTestId('bill-requested-toast-tab-3');
+    expect(toast.textContent).toContain('Total indisponível');
+    expect(toast.textContent).not.toContain('R$ 0,00');
+    expect(toast.textContent).toContain('Fechar conta');
+  });
+
+  it('respeita Balão desligado e sincroniza alterações de preferência', async () => {
+    savePreferences(localStorage, 'tenant-1', 'owner-1', { balloon: false, sound: false });
+    render(<PanelBillRequestedAlert onViewBill={vi.fn()} onCheckoutBill={vi.fn()} />);
+    await waitFor(() => expect(h.fromCalls).toBeGreaterThanOrEqual(3));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull();
+    expect(h.beep).not.toHaveBeenCalled();
+    act(() => savePreferences(localStorage, 'tenant-1', 'owner-1', { balloon: true, sound: false }));
+    expect(await screen.findByTestId('bill-requested-toast-tab-3')).toBeTruthy();
+    act(() => savePreferences(localStorage, 'tenant-1', 'owner-1', { balloon: false, sound: false }));
+    expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull();
+  });
+
+  it('avisa novamente se a conta é reaberta e pedida outra vez', async () => {
+    render(<PanelBillRequestedAlert onViewBill={vi.fn()} onCheckoutBill={vi.fn()} />);
+    await screen.findByTestId('bill-requested-toast-tab-3');
+    fireEvent.click(screen.getByLabelText('Dispensar aviso da Mesa 03'));
+    const requested = h.tabs;
+    h.tabs = [];
+    await act(async () => { h.realtimeCb?.(); });
+    h.tabs = requested;
+    await act(async () => { h.realtimeCb?.(); });
+    expect(await screen.findByTestId('bill-requested-toast-tab-3')).toBeTruthy();
+    expect(h.beep).toHaveBeenCalledTimes(2);
   });
 });

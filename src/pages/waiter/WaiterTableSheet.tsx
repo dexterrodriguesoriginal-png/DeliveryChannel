@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BellRing, Check, Clock, Crown, Plus, Receipt, UserCheck, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { formatBRL } from '../../lib/pricing/money';
@@ -33,7 +33,7 @@ export const WaiterTableSheet: React.FC<{
   onOpenTable: () => void;
   onOrder: () => void;
   canCollect?: boolean;
-  onConfirmPayment?: (method: 'CASH' | 'CREDIT_CARD') => void;
+  onConfirmPayment?: (method: 'CASH' | 'CREDIT_CARD') => Promise<boolean> | void;
   onPaymentSettled?: () => void;
   onReopenBill?: () => void;
   onMarkDelivered?: (orderId: string, code?: string) => void;
@@ -56,6 +56,7 @@ export const WaiterTableSheet: React.FC<{
   const [releaseEmptyOpen, setReleaseEmptyOpen] = useState(false);
   const [releaseEmptyReason, setReleaseEmptyReason] = useState('Cliente desistiu');
   const [releaseEmptyCustomReason, setReleaseEmptyCustomReason] = useState('');
+  const [paymentError, setPaymentError] = useState('');
   const [deliveryCodes, setDeliveryCodes] = useState<Record<string, string>>({});
   // Active snapshots remove the tab after the webhook closes it. Keep this bill's
   // payment panel mounted until the waiter finishes reading/sending the receipt.
@@ -67,12 +68,16 @@ export const WaiterTableSheet: React.FC<{
   useEffect(() => {
     setBillContext(previous => {
       if (previous && previous.tableId !== table.id) previous = null;
-      if (tab && previous?.tab.id === tab.id && !canCollect) return null;
-      if (tab && canCollect && (!previous || previous.tab.id === tab.id)) return { tableId: table.id, tab, totalCents: info.totalCents };
+      if (tab) return canCollect ? { tableId: table.id, tab, totalCents: info.totalCents } : null;
       return previous;
     });
   }, [table.id, tab, canCollect, info.totalCents]);
-  const bill = billContext?.tableId === table.id ? billContext : (tab && canCollect ? { tableId: table.id, tab, totalCents: info.totalCents } : null);
+  const bill = tab
+    ? (canCollect ? { tableId: table.id, tab, totalCents: info.totalCents } : null)
+    : (billContext?.tableId === table.id ? billContext : null);
+  const paymentContext = useRef({ tableId: table.id, tabId: bill?.tab.id });
+  paymentContext.current = { tableId: table.id, tabId: bill?.tab.id };
+  useEffect(() => { setPaymentError(''); setDeliveryCodes({}); }, [table.id, tab?.id]);
   const focusBillClosing = () => {
     const el = document.getElementById('waiter-bill-select') || document.getElementById('waiter-bill-panel');
     el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
@@ -89,8 +94,9 @@ export const WaiterTableSheet: React.FC<{
           <button type="button" onClick={onClose} aria-label="Fechar" className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-700"><X className="h-5 w-5" /></button>
         </div>
         <div className="space-y-5 px-5">
+          {paymentError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{paymentError}</p>}
           {message && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{message}</p>}
-          {manualSettled ? (
+          {manualSettled && manualSettled.tabId === bill?.tab.id ? (
             <TabPaymentConfirmation
               tabId={manualSettled.tabId}
               amountCents={manualSettled.totalCents}
@@ -110,10 +116,15 @@ export const WaiterTableSheet: React.FC<{
                 busy={!!busy}
                 onManualConfirm={method => {
                   const targetTabId = bill.tab.id;
+                  const targetTableId = table.id;
+                  const isCurrent = () => paymentContext.current.tableId === targetTableId && paymentContext.current.tabId === targetTabId;
                   const targetTotal = bill.totalCents;
-                  Promise.resolve(onConfirmPayment(method)).then(() => {
-                    setManualSettled({ tabId: targetTabId, totalCents: targetTotal, method, paidAt: new Date().toISOString() });
-                  }).catch(() => {});
+                  setPaymentError('');
+                  Promise.resolve().then<boolean | void>(() => onConfirmPayment(method)).then(confirmed => {
+                    if (!isCurrent()) return;
+                    if (confirmed === true) setManualSettled({ tabId: targetTabId, totalCents: targetTotal, method, paidAt: new Date().toISOString() });
+                    else setPaymentError('O pagamento não foi confirmado. Confira a conta antes de tentar novamente.');
+                  }).catch(() => { if (isCurrent()) setPaymentError('Não foi possível confirmar o pagamento. Confira a conta e tente novamente.'); });
                 }}
                 onSettled={onPaymentSettled ?? onClose}
               />
@@ -240,7 +251,7 @@ export const WaiterTableSheet: React.FC<{
               {rounds.length === 0 && <p className="text-sm text-slate-500">Nenhuma rodada enviada.</p>}
               {rounds.map(r => {
                 const status = waiterOrderStatus(r.status);
-                const needsCode = Boolean(requireDeliveryCode || r.delivery_code_required);
+                const needsCode = r.delivery_code_required === true;
                 const codeVal = deliveryCodes[r.id] || '';
                 return (
                   <div key={r.id} className="rounded-2xl border p-3" style={{ borderColor: statusColorTokens(r.status).border }}>
