@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import express from 'express';
 import type { AddressInfo } from 'node:net';
-import { createPwaRouter, serverManifest, identityVersion } from '../routes';
+import { createPwaRouter, serverManifest, identityVersion, iconVersion } from '../routes';
 import { identityFromPayload } from '../storeSource';
 import { injectStoreHead } from '../storeHtml';
 
@@ -53,10 +53,22 @@ describe('barras do sistema no servidor (manifesto + HTML de /app/<slug>)', () =
     const b = identityFromPayload(payload({ statusBarColor: '#ffffff' }), 'adegashow')!;
     expect(identityVersion(a)).not.toBe(identityVersion(b));
   });
-  it('manifesto e ícone sem versão nunca ficam em cache longo; ícone com ?v= é immutable', async () => {
+  it('manifesto, ícone sem versão e fallback nunca ficam em cache longo; ícone real com ?v= atual é immutable', async () => {
     const app = express();
-    const s = identityFromPayload(payload(), 'adegashow')!;
-    app.use(createPwaRouter({ resolveStore: async () => ({ status: 'ok', store: s }), publicDir: '/nonexistent', fetchLogo: async () => { throw new Error('x'); } }));
+    const s = identityFromPayload({
+      ...payload(),
+      theme: { ...payload().theme, logo_url: 'https://cdn.example/logo.svg' },
+    }, 'adegashow')!;
+    const validSvg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#15803d"/></svg>');
+    let shouldFail = true;
+    app.use(createPwaRouter({
+      resolveStore: async () => ({ status: 'ok', store: s }),
+      publicDir: '/nonexistent',
+      fetchLogo: async () => {
+        if (shouldFail) throw new Error('x');
+        return { bytes: validSvg, contentType: 'image/svg+xml' };
+      },
+    }));
     const server = await new Promise<import('node:http').Server>((r) => { const sv = app.listen(0, '127.0.0.1', () => r(sv)); });
     try {
       const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -64,8 +76,13 @@ describe('barras do sistema no servidor (manifesto + HTML de /app/<slug>)', () =
       expect(m.headers.get('cache-control')).toBe('no-cache');
       const i = await fetch(`${base}/app/adegashow/icons/icon-192.png`);
       expect(i.headers.get('cache-control')).toBe('no-cache');
-      const iv = await fetch(`${base}/app/adegashow/icons/icon-192.png?v=abc`);
-      expect(iv.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+      const ivFallback = await fetch(`${base}/app/adegashow/icons/icon-192.png?v=${iconVersion(s)}`);
+      expect(ivFallback.headers.get('cache-control')).toBe('no-cache');
+      shouldFail = false;
+      const ivWrongV = await fetch(`${base}/app/adegashow/icons/icon-192.png?v=errado`);
+      expect(ivWrongV.headers.get('cache-control')).toBe('no-cache');
+      const ivCurrent = await fetch(`${base}/app/adegashow/icons/icon-192.png?v=${iconVersion(s)}`);
+      expect(ivCurrent.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
     } finally { server.close(); }
   });
 });

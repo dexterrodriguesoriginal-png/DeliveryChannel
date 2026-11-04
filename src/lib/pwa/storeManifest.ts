@@ -101,6 +101,37 @@ export function storeAppId(tenantId: string): string {
   return `/app-id/${encodeURIComponent(tenantId)}`;
 }
 
+/**
+ * Versão determinística única da identidade/ícone da loja (compartilhada entre
+ * serverManifest, storeHtml.ts iconVersion e applyStoreIdentity identityHash).
+ * Calculada apenas com metadados da identidade (logoUrl, updatedAt, cores e nomes),
+ * sem baixar a imagem remota.
+ */
+export function storeIconVersion(store: StoreIdentityInput): string {
+  const t = store.theme || {};
+  const src = [
+    store.id,
+    storeDisplayName(store),
+    t.shortName || '',
+    t.logoUrl || '',
+    t.primaryColor || '',
+    t.backgroundColor || '',
+    t.headerColor || '',
+    t.statusBarColor || '',
+    t.navBarColor || '',
+    t.tagline || '',
+    t.updatedAt || store.updatedAt || '',
+  ].join('|');
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < src.length; i++) {
+    const c = src.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ (c + i), 0x85ebca6b) >>> 0;
+  }
+  return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).slice(0, 10);
+}
+
 /** Ícone de fallback (SVG) com iniciais da loja e cor do tema — sem marca da plataforma. */
 export function fallbackIconSvg(name: string, color: string, size = 512, maskable = false): string {
   const initials = storeInitials(name).replace(/[<>&"']/g, '');

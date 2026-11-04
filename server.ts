@@ -14,7 +14,7 @@ import { startPaymentRetention } from './server/payments/retention';
 import { createPaymentsRouter } from './server/payments/routes';
 import { createReceiptsRouter } from './server/receipts/routes';
 import path from 'node:path';
-import { createPwaRouter } from './server/pwa/routes';
+import { createPwaRouter, staticAssetCacheControl } from './server/pwa/routes';
 import fs from 'node:fs/promises';
 import { injectStoreHead, storeSlugFromPath, withTimeout } from './server/pwa/storeHtml';
 import { demoResolver, StoreResolver, supabaseEnvFrom, supabaseResolver } from './server/pwa/storeSource';
@@ -93,11 +93,8 @@ async function start() {
     // Nunca servir o bundle do servidor como arquivo estático.
     app.use((req, res, next) => (isRuntimeArtifactPath(req.path) ? res.status(404).end() : next()));
     app.use(express.static(distDir, { index: false, maxAge: '1h', setHeaders: (res, file) => {
-      if (file.endsWith('.html') || file.endsWith('manifest.json') || file.endsWith('.webmanifest') || file.endsWith('sw.js')) {
-        res.setHeader('Cache-Control', 'no-cache');
-      } else if (file.includes(`${path.sep}assets${path.sep}`)) {
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      }
+      const cc = staticAssetCacheControl(file);
+      if (cc) res.setHeader('Cache-Control', cc);
     } }));
     app.get('*', (req, res, next) => {
       if (req.method !== 'GET' || path.extname(req.path)) return next();
@@ -105,17 +102,17 @@ async function start() {
       const slug = storeSlugFromPath(req.path);
       if (isDriverRoute(req.path)) {
         indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
-        indexHtml.then(raw => res.type('html').send(injectDriverHead(raw)), next);
+        indexHtml.then(raw => res.set('Cache-Control', 'no-cache').type('html').send(injectDriverHead(raw)), next);
         return;
       }
       if (isWaiterRoute(req.path)) {
         indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
-        indexHtml.then(raw => res.type('html').send(injectWaiterHead(raw)), next);
+        indexHtml.then(raw => res.set('Cache-Control', 'no-cache').type('html').send(injectWaiterHead(raw)), next);
         return;
       }
       if (!slug) { res.sendFile(path.join(distDir, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } }); return; }
       indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
-      indexHtml.then((raw) => storeHtml(req, raw, slug)).then((h) => res.type('html').send(h), next);
+      indexHtml.then((raw) => storeHtml(req, raw, slug)).then((h) => res.set('Cache-Control', 'no-cache').type('html').send(h), next);
     });
   }
 

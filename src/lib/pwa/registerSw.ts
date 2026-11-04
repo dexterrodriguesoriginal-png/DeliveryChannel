@@ -1,7 +1,15 @@
 import { isDriverRoute } from './driverManifest';
 import { isWaiterRoute } from './waiterManifest';
 
+declare const __PWA_BUILD_VERSION__: string | undefined;
+
 export const PWA_UPDATE_TOAST_TEXT = 'Nova versão disponível — atualizar';
+
+export function getClientBuildVersion(): string {
+  return typeof __PWA_BUILD_VERSION__ === 'string' && __PWA_BUILD_VERSION__.trim()
+    ? __PWA_BUILD_VERSION__.trim()
+    : '';
+}
 
 export interface SwWorkerLike {
   state?: string;
