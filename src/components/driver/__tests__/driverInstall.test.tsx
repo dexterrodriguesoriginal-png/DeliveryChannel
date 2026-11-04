@@ -88,54 +88,56 @@ describe('instalação compartilhada do entregador e do cliente', () => {
     expect(query('install-progress')).toBeNull();
     await act(async () => { choose({ outcome: 'accepted' }); });
     expect(query('install-progress')?.dataset.phase).toBe('installing');
+    expect(container.textContent).toContain('Tempo estimado de instalação');
+    expect(container.textContent).not.toMatch(/Instalando/i);
     expect(percent()).toBe(0);
     expect(query('open-installed-app')).toBeNull();
-    expect(container.textContent).not.toContain('Abrir app');
+    expect(container.textContent).not.toContain('Abrir o app');
     expect(state.isMarkedInstalled(localStorage, audience === 'driver' ? 'driver-app' : 'loja')).toBe(false);
   });
 
-  it('appinstalled precoce respeita 75 s e só então libera Abrir app para /entregador', async () => {
+  it('barra de 60 s mostra contagem regressiva (0:42), atinge 100% em 60 000 ms e libera Abrir o app para /entregador', async () => {
     await render(); await accept();
     await advance(2000);
     await act(() => { window.dispatchEvent(new Event('appinstalled')); });
-    await advance(6000); expect(percent()).toBe(40);
-    await advance(20_000); expect(percent()).toBe(55);
-    await advance(17_000); expect(percent()).toBe(76);
-    await advance(29_999);
+    await advance(10_000); expect(percent()).toBe(40);
+    await advance(6_000); expect(query('install-countdown')?.textContent).toBe('0:42');
+    await advance(10_000); expect(percent()).toBe(52);
+    await advance(14_000); expect(percent()).toBe(86);
+    await advance(17_999);
     expect(percent()).toBeLessThan(100);
     expect(query('open-installed-app')).toBeNull();
     await advance(1);
     expect(percent()).toBe(100);
     expect(query('install-progress')?.dataset.phase).toBe('done');
-    expect(query('open-installed-app')?.textContent).toBe('Abrir app');
+    expect(query('open-installed-app')?.textContent).toBe('Abrir o app');
     const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
     await act(() => { query('open-installed-app')!.click(); });
     expect(assign).toHaveBeenCalledWith(`${window.location.origin}/entregador`);
     expect(document.querySelector('link[rel="manifest"]')?.getAttribute('href')).toBe('/driver.webmanifest');
   });
 
-  it('aceite e passagem do tempo não confirmam instalação; confirmação tardia finaliza em 3 s', async () => {
-    await render(); await accept();
-    await advance(200_000);
-    expect(percent()).toBe(90);
-    expect(query('open-installed-app')).toBeNull();
-    expect(state.isMarkedInstalled(localStorage, 'driver-app')).toBe(false);
+  it('evento appinstalled direto também inicia a barra de 60 s e libera Abrir o app ao fim', async () => {
+    await render();
     await act(() => { window.dispatchEvent(new Event('appinstalled')); });
-    await advance(2999);
+    expect(query('install-progress')?.dataset.phase).toBe('installing');
+    expect(container.textContent).toContain('Tempo estimado de instalação');
+    expect(container.textContent).not.toMatch(/Instalando/i);
+    await advance(59_999);
     expect(percent()).toBeLessThan(100);
     expect(query('open-installed-app')).toBeNull();
     await advance(1);
     expect(percent()).toBe(100);
-    expect(query('open-installed-app')).not.toBeNull();
+    expect(query('open-installed-app')?.textContent).toBe('Abrir o app');
   });
 
-  it('standalone também confirma, mantendo o mesmo tempo mínimo', async () => {
+  it('standalone também confirma, mantendo os 60 s da barra', async () => {
     await render(); await accept();
     await advance(10_000);
     standalone = true;
     await act(() => { window.dispatchEvent(new Event('focus')); });
     expect(state.isMarkedInstalled(localStorage, 'driver-app')).toBe(true);
-    await advance(64_999);
+    await advance(49_999);
     expect(query('open-installed-app')).toBeNull();
     await advance(1);
     expect(percent()).toBe(100);
