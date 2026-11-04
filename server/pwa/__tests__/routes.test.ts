@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import express from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { createPwaRouter } from '../routes';
+import { createPwaRouter, iconVersion, IMMUTABLE_ICON_CACHE_CONTROL } from '../routes';
 import { pngSize } from '../icons';
 import { assertPublicUrl, isPrivateIp } from '../safeFetch';
 import { identityFromPayload, isValidSlug, StoreResolver } from '../storeSource';
@@ -47,13 +47,49 @@ describe('rotas PWA por loja', () => {
     expect(a.icons[0].src).not.toBe(b.icons[0].src);
   });
 
-  it('ícones PNG válidos com dimensões corretas (fallback de iniciais)', async () => {
+  it('ícones PNG válidos com dimensões corretas (fallback de iniciais) e Cache-Control immutable quando com ?v=', async () => {
     for (const [variant, size] of [['icon-192', 192], ['icon-512', 512], ['maskable-512', 512]] as const) {
-      const r = await fetch(`${base}/app/adega-premium/icons/${variant}.png`);
-      expect(r.status).toBe(200);
-      expect(r.headers.get('content-type')).toBe('image/png');
-      expect(pngSize(Buffer.from(await r.arrayBuffer()))).toEqual({ width: size, height: size });
+      const rNoV = await fetch(`${base}/app/adega-premium/icons/${variant}.png`);
+      expect(rNoV.status).toBe(200);
+      expect(rNoV.headers.get('content-type')).toBe('image/png');
+      expect(rNoV.headers.get('cache-control')).toBe('no-cache');
+      expect(pngSize(Buffer.from(await rNoV.arrayBuffer()))).toEqual({ width: size, height: size });
+
+      const rWithV = await fetch(`${base}/app/adega-premium/icons/${variant}.png?v=abc123`);
+      expect(rWithV.status).toBe(200);
+      expect(rWithV.headers.get('cache-control')).toBe(IMMUTABLE_ICON_CACHE_CONTROL);
     }
+  });
+
+  it('manifesto tem Cache-Control: no-cache, URL estável em related_applications e hash do ícone muda com logo/updated_at/cores', async () => {
+    const r = await fetch(`${base}/app/padaria-do-joao/manifest.webmanifest`);
+    expect(r.headers.get('cache-control')).toBe('no-cache');
+    const m = await r.json();
+    expect(m.related_applications).toEqual([{ platform: 'webapp', url: '/app/padaria-do-joao/manifest.webmanifest' }]);
+
+    const baseStore = {
+      id: 'tenant-1',
+      slug: 'minha-loja',
+      name: 'Minha Loja',
+      theme: { storeName: 'Minha Loja', primaryColor: '#15803d', logoUrl: 'https://cdn.example/logo-v1.png', updatedAt: '2026-11-01T00:00:00Z' },
+    };
+    const v1 = iconVersion(baseStore);
+    const vLogoChanged = iconVersion({ ...baseStore, theme: { ...baseStore.theme, logoUrl: 'https://cdn.example/logo-v2.png' } });
+    const vUpdatedChanged = iconVersion({ ...baseStore, theme: { ...baseStore.theme, updatedAt: '2026-11-03T12:00:00Z' } });
+    const vBytesChanged = iconVersion(baseStore, Buffer.from('new-image-bytes'));
+    expect(vLogoChanged).not.toBe(v1);
+    expect(vUpdatedChanged).not.toBe(v1);
+    expect(vBytesChanged).not.toBe(v1);
+  });
+
+  it('endpoint /api/pwa/version responde com Cache-Control no-store e versão da loja', async () => {
+    const r = await fetch(`${base}/api/pwa/version?slug=padaria-do-joao`);
+    expect(r.status).toBe(200);
+    expect(r.headers.get('cache-control')).toContain('no-cache');
+    const body = await r.json();
+    expect(typeof body.version).toBe('string');
+    expect(body.slug).toBe('padaria-do-joao');
+    expect(typeof body.identityVersion).toBe('string');
   });
 
   it('loja desconhecida, slug inválido e variante inválida => 404', async () => {

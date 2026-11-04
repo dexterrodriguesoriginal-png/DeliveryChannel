@@ -37,6 +37,15 @@ async function start() {
 
   const pwa = createPwaRouter({ resolveStore: resolver, publicDir: isProd ? distDir : path.resolve(process.cwd(), 'public') });
   app.use(pwa);
+  app.use((req, res, next) => {
+    if (req.path === '/sw.js') {
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Service-Worker-Allowed', '/');
+    } else if (req.path === '/manifest.json' || req.path.endsWith('.webmanifest')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+    next();
+  });
 
   /** HTML das vitrines (/app/<slug>...) já sai com o manifesto da loja no <head> (nunca o global). */
   async function storeHtml(req: express.Request, rawHtml: string, slug: string): Promise<string> {
@@ -82,7 +91,11 @@ async function start() {
     // Nunca servir o bundle do servidor como arquivo estático.
     app.use((req, res, next) => (isRuntimeArtifactPath(req.path) ? res.status(404).end() : next()));
     app.use(express.static(distDir, { index: false, maxAge: '1h', setHeaders: (res, file) => {
-      if (file.endsWith('.html') || file.endsWith('manifest.json') || file.endsWith('.webmanifest')) res.setHeader('Cache-Control', 'no-cache');
+      if (file.endsWith('.html') || file.endsWith('manifest.json') || file.endsWith('.webmanifest') || file.endsWith('sw.js')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      } else if (file.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
     } }));
     app.get('*', (req, res, next) => {
       if (req.method !== 'GET' || path.extname(req.path)) return next();
@@ -98,7 +111,7 @@ async function start() {
         indexHtml.then(raw => res.type('html').send(injectWaiterHead(raw)), next);
         return;
       }
-      if (!slug) { res.sendFile(path.join(distDir, 'index.html')); return; }
+      if (!slug) { res.sendFile(path.join(distDir, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } }); return; }
       indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
       indexHtml.then((raw) => storeHtml(req, raw, slug)).then((h) => res.type('html').send(h), next);
     });

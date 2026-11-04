@@ -9,6 +9,7 @@ export interface StoreIdentityInput {
   id: string;
   slug: string;
   name: string;
+  updatedAt?: string;
   theme?: {
     storeName?: string;
     shortName?: string;
@@ -20,6 +21,7 @@ export interface StoreIdentityInput {
     headerColor?: string;
     statusBarColor?: string;
     navBarColor?: string;
+    updatedAt?: string;
   };
 }
 

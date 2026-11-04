@@ -38,20 +38,22 @@ describe('barras do sistema no servidor (manifesto + HTML de /app/<slug>)', () =
     expect(m.theme_color).toBe('#111827');
     expect(m.background_color).toBe('#111827');
   });
-  it('HTML renderizado no servidor já sai com theme-color, color-scheme e manifesto versionado', () => {
+  it('HTML renderizado no servidor já sai com theme-color, color-scheme, manifesto estável e ícone versionado', () => {
     const s = identityFromPayload(payload({ statusBarColor: '#d4a017', navBarColor: '#0b0b0f' }), 'adegashow')!;
     const out = injectStoreHead(html, 'adegashow', s);
     expect(out).toContain('<meta name="theme-color" content="#d4a017" />');
     expect(out).toContain('<meta name="color-scheme" content="dark" />');
-    expect(out).toMatch(/manifest\.webmanifest\?v=[0-9a-f]{10}"/);
+    expect(out).toContain('href="/app/adegashow/manifest.webmanifest"');
+    expect(out).not.toContain('manifest.webmanifest?v=');
+    expect(out).toMatch(/icon-192\.png\?v=[0-9a-f]{10}"/);
     expect((out.match(/name="theme-color"/g) || []).length).toBe(1);
   });
-  it('a versão do manifesto muda quando a loja troca a cor da barra', () => {
+  it('a versão da identidade muda quando a loja troca a cor da barra', () => {
     const a = identityFromPayload(payload({ statusBarColor: '#d4a017' }), 'adegashow')!;
     const b = identityFromPayload(payload({ statusBarColor: '#ffffff' }), 'adegashow')!;
     expect(identityVersion(a)).not.toBe(identityVersion(b));
   });
-  it('manifesto e ícone sem versão nunca ficam em cache longo', async () => {
+  it('manifesto e ícone sem versão nunca ficam em cache longo; ícone com ?v= é immutable', async () => {
     const app = express();
     const s = identityFromPayload(payload(), 'adegashow')!;
     app.use(createPwaRouter({ resolveStore: async () => ({ status: 'ok', store: s }), publicDir: '/nonexistent', fetchLogo: async () => { throw new Error('x'); } }));
@@ -63,7 +65,7 @@ describe('barras do sistema no servidor (manifesto + HTML de /app/<slug>)', () =
       const i = await fetch(`${base}/app/adegashow/icons/icon-192.png`);
       expect(i.headers.get('cache-control')).toBe('no-cache');
       const iv = await fetch(`${base}/app/adegashow/icons/icon-192.png?v=abc`);
-      expect(iv.headers.get('cache-control')).toContain('max-age=86400');
+      expect(iv.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
     } finally { server.close(); }
   });
 });

@@ -42,6 +42,9 @@ export function IdentityTab() {
               value={draftTheme.logoUrl || ''}
               onChange={(url) => setDraftTheme({ ...draftTheme, logoUrl: url })}
             />
+            <p data-testid="pwa-logo-update-hint" className="mt-2 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] leading-relaxed text-slate-600">
+              <b>Como atualiza no celular do cliente:</b> o conteúdo do app atualiza já no próximo abrir. No <b>Android (Chrome)</b>, o ícone na tela inicial atualiza em ~1–3 dias após o app ser aberto (checagem do WebAPK). No <b>iPhone (iOS)</b>, o sistema só troca o ícone ou o nome reinstalando o atalho.
+            </p>
           </div>
 
           <div>
