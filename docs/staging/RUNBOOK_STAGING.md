@@ -20,7 +20,7 @@ Produção (`qjmhlbipmwobnuctzpft`) nunca é tocada: todos os scripts recusam qu
 | `supabase/rollback/n*_rollback.sql` | rollbacks (ensaiados localmente; exigem `SET LOCAL n1n6.rollback_confirm`) |
 | `supabase/staging/*` | F6 opcional: import de catálogo/ofertas exportado pelo fundador (sem PII) |
 | `.env.staging.example` | modelo do build de staging (sem valores) |
-| `src/lib/deployGuard.ts` | guarda no `vite.config.ts`: o build falha se a configuração apontar staging/n1n6 para produção |
+| `src/lib/deployGuard.ts` | guarda no `vite.config.mts`: o build falha se a configuração apontar staging/n1n6 para produção |
 | `tests/staging/test_staging_guards.sh` | testes das guardas e bloqueios de estado (PostgreSQL local) |
 | `tests/staging/staging.e2e.ts` | E2E **real** contra o staging (login real por papel) |
 | `docs/staging/PLANO_TESTES_E2E_STAGING.md` | plano completo (API + navegador) |
@@ -100,7 +100,7 @@ npx vite build --mode staging          # falha se URL/ref/chave forem de produç
 npx vite preview --mode staging --port 4173
 ```
 
-A guarda (`src/lib/deployGuard.ts`, chamada no `vite.config.ts`) recusa: `n1n6` + URL de produção (sem
+A guarda (`src/lib/deployGuard.ts`, chamada no `vite.config.mts`) recusa: `n1n6` + URL de produção (sem
 `VITE_N1N6_PRODUCTION_APPROVED=yes`), staging com URL ≠ `https://<ref>.supabase.co`, ref de produção, chave JWT
 de outro projeto, `service_role`/`sb_secret_`. O build padrão do AI Studio (sem `VITE_DEPLOY_TARGET`, `legacy-020`)
 não muda. Em *Authentication → URL Configuration* do staging, o fundador adiciona `http://localhost:4173` como Site URL/Redirect.

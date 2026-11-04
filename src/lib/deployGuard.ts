@@ -1,5 +1,5 @@
 /**
- * Guarda de build (staging × produção). Usada por vite.config.ts: o build FALHA se algum erro for retornado.
+ * Guarda de build (staging × produção). Usada por vite.config.mts: o build FALHA se algum erro for retornado.
  *
  * Regras:
  *  R1. VITE_BACKEND_SCHEMA=n1n6 com VITE_SUPABASE_URL de PRODUÇÃO é recusado,
