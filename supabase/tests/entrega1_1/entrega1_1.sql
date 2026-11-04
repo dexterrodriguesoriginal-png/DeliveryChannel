@@ -289,3 +289,302 @@ SELECT t.ok(NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pr
  AND p.proname IN('_can_manage_delivery_dispute','waiter_mark_delivered','customer_dispute_delivery','resolve_delivery_dispute','list_open_delivery_disputes','_delivery_dispute_tracking_signal')
  AND (NOT p.prosecdef OR p.proconfig IS DISTINCT FROM ARRAY['search_path=""']::text[])),'B segurança: SECURITY DEFINER com search_path vazio');
 SELECT t.ok(EXISTS(SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='order_delivery_disputes'),'B4 contestações participam do realtime com RLS');
+
+-- C1: o caminho de aceite já suporta todos os papéis. O diretório autorizado
+-- deve retornar também colaboradores sem waiter_profiles, após o aceite real.
+RESET ROLE;
+SELECT t.login(NULL);
+INSERT INTO auth.users(id,email)
+SELECT ('e1310000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'c1-role-'||n||'@test.example' FROM generate_series(1,7) n;
+INSERT INTO public.store_tools(tenant_id,tool,enabled) VALUES(:'A','kitchen',true)
+ON CONFLICT(tenant_id,tool) DO UPDATE SET enabled=true;
+INSERT INTO public.team_invites(id,tenant_id,email,role_id,invited_by,status,expires_at)
+SELECT ('e1320000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,:'A','c1-role-'||n||'@test.example',
+ (ARRAY['MANAGER','CASHIER','KITCHEN','WAITER','OPERATOR','DELIVERY_MANAGER','DRIVER'])[n],:'OWNER','PENDING',now()+interval '1 day'
+FROM generate_series(1,7) n;
+SELECT t.ok(has_function_privilege('authenticated','public.resend_team_invite(uuid)','EXECUTE')
+ AND NOT has_function_privilege('anon','public.resend_team_invite(uuid)','EXECUTE')
+ AND NOT has_function_privilege('service_role','public.resend_team_invite(uuid)','EXECUTE'),'C1 renovação concedida somente a authenticated');
+SET ROLE authenticated;
+SELECT t.login(:'OWNER'::uuid);
+SELECT t.is((SELECT email FROM public.list_team_invites(:'A') WHERE id='e1320000-0000-0000-0000-000000000001'),'c1***@te***.example','C1 listagem retorna somente máscara');
+SELECT t.ok((SELECT jsonb_agg(to_jsonb(i))::text NOT LIKE '%c1-role-%' FROM public.list_team_invites(:'A') i),'C1 endereço completo ausente dos retornos de listagem');
+SELECT t.throws($q$SELECT * FROM public.team_invites$q$,'permission denied','C1 equipe não lê endereços por tabela direta');
+SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000001') AS c1_renewed \gset
+SELECT t.ok(:'c1_renewed'::jsonb->>'status'='PENDING' AND (:'c1_renewed'::jsonb->>'expires_at')::timestamptz>now()+interval '6 days'
+ AND :'c1_renewed' NOT LIKE '%@%' AND :'c1_renewed' NOT LIKE '%email%','C1 renovação estende validade sem devolver endereço');
+SELECT t.throws($q$SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000001')$q$,'RATE_LIMITED','C1 repetição imediata tem cooldown');
+RESET ROLE;
+DELETE FROM public.security_rate_limits WHERE scope='team_invite_resend_cooldown';
+SET ROLE authenticated;
+SELECT t.login(:'OWNER'::uuid);
+SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000001');
+RESET ROLE;
+DELETE FROM public.security_rate_limits WHERE scope='team_invite_resend_cooldown';
+SET ROLE authenticated;
+SELECT t.login(:'OWNER'::uuid);
+SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000001');
+RESET ROLE;
+DELETE FROM public.security_rate_limits WHERE scope='team_invite_resend_cooldown';
+SET ROLE authenticated;
+SELECT t.login(:'OWNER'::uuid);
+SELECT t.throws($q$SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000001')$q$,'RATE_LIMITED','C1 quarta renovação na janela recusada');
+SELECT t.login(:'OWNER_B'::uuid);
+SELECT t.throws($q$SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000002')$q$,'INVITE_UNAVAILABLE','C1 outra loja não renova convite');
+SELECT t.throws($q$SELECT * FROM public.list_team_invites('10000000-0000-0000-0000-00000000000a')$q$,'Sem permissão','C1 outra loja não lê máscaras de convites');
+SELECT t.throws($q$SELECT * FROM public.list_team_directory('10000000-0000-0000-0000-00000000000a')$q$,'FORBIDDEN','C1 outra loja não lê diretório');
+SELECT t.login(:'CLIENT'::uuid);
+SELECT t.throws($q$SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000002')$q$,'INVITE_UNAVAILABLE','C1 cliente não renova convite');
+SELECT t.throws($q$SELECT public.accept_team_invite('e1320000-0000-0000-0000-000000000002')$q$,'outra conta','C1 máscara não concede aceite a outra identidade');
+SELECT t.login(NULL);
+SELECT t.throws($q$SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000002')$q$,'AUTH_REQUIRED','C1 renovação exige identidade');
+SET ROLE anon;
+SELECT t.throws($q$SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000002')$q$,'permission denied','C1 anon sem EXECUTE para renovação');
+RESET ROLE;
+SELECT t.ok((SELECT count(*)=3 AND bool_and(details NOT LIKE '%@%' AND COALESCE(new_value,'') NOT LIKE '%@%') FROM public.audit_logs
+ WHERE action='TEAM_INVITE_RENEWED' AND resource_id='e1320000-0000-0000-0000-000000000001'),'C1 auditoria registra três renovações sem endereço');
+
+-- Exercita a mesma RPC usada pelo link de primeiro acesso, para os sete papéis.
+SET ROLE authenticated;
+DO $$
+DECLARE n integer; v_roles text[]:=ARRAY['MANAGER','CASHIER','KITCHEN','WAITER','OPERATOR','DELIVERY_MANAGER','DRIVER']; v_slug text;
+BEGIN
+ v_slug:=t.sq($q$SELECT slug FROM public.tenants WHERE id='10000000-0000-0000-0000-00000000000a'$q$);
+ FOR n IN 1..7 LOOP
+  PERFORM t.login(('e1310000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid);
+  PERFORM public.team_accept_invite(v_slug,v_roles[n]);
+ END LOOP;
+END $$;
+SELECT t.login(:'OWNER'::uuid);
+SELECT t.is((SELECT count(*) FROM public.list_team_directory(:'A') WHERE user_id::text LIKE 'e1310000-%' AND status='ACTIVE'),7::bigint,'C1 diretório inclui todos os sete convidados aceitos');
+SELECT t.ok((SELECT array_agg(role_id ORDER BY role_id)=ARRAY['CASHIER','DELIVERY_MANAGER','DRIVER','KITCHEN','MANAGER','OPERATOR','WAITER']::text[]
+ FROM public.list_team_directory(:'A') WHERE user_id::text LIKE 'e1310000-%'),'C1 diretório conserva o papel real sem exigir waiter_profiles');
+SELECT t.is((SELECT count(*) FROM public.list_team_invites(:'A') WHERE id::text LIKE 'e1320000-%'),0::bigint,'C1 aceitos deixam de aparecer entre pendências');
+SELECT t.throws($q$SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000002')$q$,'INVITE_UNAVAILABLE','C1 convite aceito não pode ser renovado');
+RESET ROLE;
+SELECT t.ok((SELECT count(*)=7 AND bool_and(status='ACCEPTED' AND accepted_by IS NOT NULL AND accepted_at IS NOT NULL)
+ FROM public.team_invites WHERE id::text LIKE 'e1320000-%'),'C1 aceite marca os sete convites ACCEPTED com identidade e horário');
+SELECT t.ok((SELECT count(*)=7 AND bool_and(status='ACTIVE') FROM public.tenant_users
+ WHERE tenant_id=:'A' AND user_id::text LIKE 'e1310000-%'),'C1 aceite cria os sete vínculos ACTIVE na loja certa');
+
+-- Ferramenta desligada, convite expirado, permissão personalizada e cancelamento.
+INSERT INTO public.team_invites(id,tenant_id,email,role_id,invited_by,status,expires_at) VALUES
+ ('e1320000-0000-0000-0000-000000000008',:'A','c1-waiter-disabled@test.example','WAITER',:'OWNER','PENDING',now()+interval '1 day'),
+ ('e1320000-0000-0000-0000-000000000009',:'A','c1-expired@test.example','CASHIER',:'OWNER','PENDING',now()-interval '1 day'),
+ ('e1320000-0000-0000-0000-000000000010',:'A','c1-cancel@test.example','CASHIER',:'OWNER','PENDING',now()+interval '1 day');
+UPDATE public.store_tools SET enabled=false WHERE tenant_id=:'A' AND tool='waiter';
+SET ROLE authenticated;
+SELECT t.login(:'OWNER'::uuid);
+SELECT t.throws($q$SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000008')$q$,'TOOL_DISABLED','C1 Garçom desligado não renova convite');
+SELECT t.throws($q$SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000009')$q$,'INVITE_UNAVAILABLE','C1 convite expirado não pode ser renovado');
+SELECT public.set_store_role_permission(:'A','MANAGER','manage_team',false);
+SELECT t.login('e1310000-0000-0000-0000-000000000001');
+SELECT t.throws($q$SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000010')$q$,'INVITE_UNAVAILABLE','C1 gerente sem permissão de equipe não renova');
+SELECT t.login(:'OWNER'::uuid);
+SELECT public.set_store_role_permission(:'A','MANAGER','manage_team',true);
+SELECT public.revoke_team_invite('e1320000-0000-0000-0000-000000000010');
+SELECT t.throws($q$SELECT public.resend_team_invite('e1320000-0000-0000-0000-000000000010')$q$,'INVITE_UNAVAILABLE','C1 convite cancelado não pode ser renovado');
+SELECT t.is((SELECT count(*) FROM public.list_team_invites(:'A') WHERE id='e1320000-0000-0000-0000-000000000010'),0::bigint,'C1 cancelamento remove convite da listagem');
+RESET ROLE;
+UPDATE public.store_tools SET enabled=true WHERE tenant_id=:'A' AND tool='waiter';
+SELECT t.ok((SELECT prosecdef AND proconfig=ARRAY['search_path=""']::text[] FROM pg_proc WHERE oid='public.resend_team_invite(uuid)'::regprocedure),'C1 renovação usa SECURITY DEFINER com search_path vazio');
+
+-- C2: estatísticas agregadas. Fixtures próprias não dependem das comandas de A/B.
+\set C2_T 'e1390000-0000-0000-0000-000000000001'
+\set C2_X 'e1390000-0000-0000-0000-000000000002'
+\set C2_E 'e1390000-0000-0000-0000-000000000003'
+RESET ROLE;
+SELECT t.login(NULL);
+SELECT t.ok((SELECT salon_opened_at IS NULL FROM public.tenant_settings WHERE tenant_id=:'A'),
+ 'C2 implantação não inventa abertura para configuração preexistente');
+INSERT INTO public.tenants(id,slug,name,document,phone,email,status) VALUES
+ (:'C2_T','c2-salon-fixture','Salão sintético C2','11222333000181','11987654321','c2-private@example.test','ACTIVE'),
+ (:'C2_X','c2-other-fixture','Outra loja C2','11444777000161','11987654322','c2-other@example.test','ACTIVE'),
+ (:'C2_E','c2-empty-fixture','Salão vazio C2','11222333000181','11987654323','c2-empty@example.test','ACTIVE');
+INSERT INTO public.tenant_users(tenant_id,user_id,role_id,status) VALUES
+ (:'C2_T',:'OWNER','OWNER','ACTIVE'),(:'C2_T',:'WAITER','WAITER','ACTIVE'),
+ (:'C2_X',:'OWNER_B','OWNER','ACTIVE'),(:'C2_E',:'OWNER','OWNER','ACTIVE');
+INSERT INTO public.store_tools(tenant_id,tool,enabled) VALUES(:'C2_T','waiter',true);
+INSERT INTO public.tenant_modules(tenant_id,module_key,enabled,config) VALUES
+ (:'C2_T','dine_in',true,'{"mode":"TABLE","salon_open":true}'),
+ (:'C2_T','delivery',true,'{}'),(:'C2_T','pickup',true,'{}'),
+ (:'C2_X','dine_in',true,'{"mode":"TABLE","salon_open":true}'),
+ (:'C2_E','dine_in',true,'{"mode":"TABLE","salon_open":true}');
+INSERT INTO public.tenant_settings(tenant_id,is_open,address,phone_whatsapp,salon_opened_at) VALUES
+ (:'C2_T',false,'Endereço sintético C2','11987654321',now()-interval '1 day'),
+ (:'C2_E',true,'Endereço vazio C2','11987654323',now()-interval '1 day');
+SELECT t.ok((SELECT salon_opened_at IS NULL FROM public.tenant_settings WHERE tenant_id=:'C2_T'),
+ 'C2 insert fechado descarta abertura enviada pelo cliente');
+SELECT t.ok((SELECT salon_opened_at BETWEEN now()-interval '1 minute' AND now() FROM public.tenant_settings WHERE tenant_id=:'C2_E'),
+ 'C2 primeira configuração aberta registra horário do banco');
+
+INSERT INTO public.dining_tables(id,tenant_id,label,qr_token)
+SELECT ('e1391000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,:'C2_T','Mesa sintética C2 '||n,'c2-fixture-qr-'||n
+FROM generate_series(1,6) n;
+INSERT INTO public.dining_tables(id,tenant_id,label,qr_token)
+VALUES('e1391000-0000-0000-0000-000000000010',:'C2_X','Mesa outra loja','c2-other-qr');
+-- Duas visitas encerradas na mesma mesa, uma visita antiga com recebimento tardio,
+-- quatro estados ativos antigos e uma visita cancelada.
+INSERT INTO public.dining_tabs(id,tenant_id,mode,table_id,status,opened_at,closed_at) VALUES
+ ('e1392000-0000-0000-0000-000000000001',:'C2_T','TABLE','e1391000-0000-0000-0000-000000000001','CLOSED',now()-interval '100 minutes',now()-interval '40 minutes'),
+ ('e1392000-0000-0000-0000-000000000002',:'C2_T','TABLE','e1391000-0000-0000-0000-000000000001','CLOSED',now()-interval '70 minutes',now()-interval '10 minutes'),
+ ('e1392000-0000-0000-0000-000000000003',:'C2_T','TABLE','e1391000-0000-0000-0000-000000000002','CLOSED',now()-interval '2 days',now()-interval '1 day'),
+ ('e1392000-0000-0000-0000-000000000004',:'C2_T','TABLE','e1391000-0000-0000-0000-000000000002','CLOSED',now()-interval '15 hours',now()-interval '13 hours'),
+ ('e1392000-0000-0000-0000-000000000005',:'C2_T','TABLE','e1391000-0000-0000-0000-000000000002','OPEN',now()-interval '2 days',NULL),
+ ('e1392000-0000-0000-0000-000000000006',:'C2_T','TABLE','e1391000-0000-0000-0000-000000000003','BILL_REQUESTED',now()-interval '2 days',NULL),
+ ('e1392000-0000-0000-0000-000000000007',:'C2_T','TABLE','e1391000-0000-0000-0000-000000000004','WAITER_AUTHORIZED',now()-interval '2 days',NULL),
+ ('e1392000-0000-0000-0000-000000000008',:'C2_T','TABLE','e1391000-0000-0000-0000-000000000005','AWAITING_PAYMENT',now()-interval '2 days',NULL),
+ ('e1392000-0000-0000-0000-000000000009',:'C2_T','TABLE','e1391000-0000-0000-0000-000000000006','CANCELLED',now()-interval '40 minutes',now()-interval '10 minutes'),
+ ('e1392000-0000-0000-0000-000000000010',:'C2_X','TABLE','e1391000-0000-0000-0000-000000000010','OPEN',now()-interval '30 minutes',NULL),
+ ('e1392000-0000-0000-0000-000000000011',:'C2_X','TABLE','e1391000-0000-0000-0000-000000000010','CLOSED',now()-interval '90 minutes',now()-interval '30 minutes');
+INSERT INTO public.orders(id,tenant_id,tab_id,fulfillment_type,status,subtotal,total_amount,payment_method,payment_status,origin,order_number,customer_name,customer_phone,delivery_address,created_at)
+SELECT ('e1393000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,
+ CASE WHEN n=7 THEN :'C2_X'::uuid ELSE :'C2_T'::uuid END,
+ CASE WHEN n IN (5,8) THEN NULL WHEN n=7 THEN 'e1392000-0000-0000-0000-000000000010'::uuid ELSE 'e1392000-0000-0000-0000-000000000005'::uuid END,
+ CASE WHEN n=5 THEN 'DELIVERY' WHEN n=8 THEN 'PICKUP' ELSE 'DINE_IN' END,
+ CASE WHEN n=2 THEN 'DELIVERED' WHEN n=3 THEN 'CANCELLED' ELSE 'CONFIRMED' END,
+ 10,10,'CASH','PENDING','DINE_IN_QR',13900+n,'C2 cliente sintético','11987654321','Endereço sintético C2',
+ CASE WHEN n=4 THEN now()-interval '13 hours' WHEN n=6 THEN now()+interval '1 day' ELSE now()-interval '20 minutes' END
+FROM generate_series(1,8) n;
+INSERT INTO public.tab_payments(tenant_id,tab_id,method,amount_cents,change_given_cents,created_at) VALUES
+ (:'C2_T','e1392000-0000-0000-0000-000000000001','CASH',1000,500,now()-interval '40 minutes'),
+ (:'C2_T','e1392000-0000-0000-0000-000000000001','CREDIT_CARD',2000,0,now()-interval '40 minutes'),
+ (:'C2_T','e1392000-0000-0000-0000-000000000002','PIX',5000,0,now()-interval '10 minutes'),
+ (:'C2_T','e1392000-0000-0000-0000-000000000003','CASH',4000,0,now()-interval '10 minutes'),
+ (:'C2_T','e1392000-0000-0000-0000-000000000004','CASH',7777,0,now()-interval '13 hours'),
+ (:'C2_T','e1392000-0000-0000-0000-000000000005','CASH',8888,0,now()-interval '10 minutes'),
+ (:'C2_T','e1392000-0000-0000-0000-000000000001','CASH',9999,0,now()+interval '1 day'),
+ (:'C2_X','e1392000-0000-0000-0000-000000000011','CASH',90000,0,now()-interval '10 minutes');
+INSERT INTO public.tab_pix_charges(tenant_id,tab_id,amount_cents,status)
+VALUES(:'C2_T','e1392000-0000-0000-0000-000000000008',9900,'pending');
+INSERT INTO public.waiter_calls(id,tenant_id,tab_id,type,status,created_at,handled_at) VALUES
+ ('e1394000-0000-0000-0000-000000000001',:'C2_T','e1392000-0000-0000-0000-000000000005','CALL','HANDLED',now()-interval '10 minutes',now()-interval '5 minutes'),
+ ('e1394000-0000-0000-0000-000000000002',:'C2_T','e1392000-0000-0000-0000-000000000005','HELP','HANDLED',now()-interval '20 minutes',now()-interval '18 minutes'),
+ ('e1394000-0000-0000-0000-000000000003',:'C2_T','e1392000-0000-0000-0000-000000000005','CALL','HANDLED',now()-interval '14 hours',now()-interval '13 hours'),
+ ('e1394000-0000-0000-0000-000000000004',:'C2_T','e1392000-0000-0000-0000-000000000005','CALL','OPEN',now()-interval '10 minutes',NULL),
+ ('e1394000-0000-0000-0000-000000000005',:'C2_T','e1392000-0000-0000-0000-000000000005','CALL','CANCELLED',now()-interval '10 minutes',now()-interval '5 minutes'),
+ ('e1394000-0000-0000-0000-000000000006',:'C2_X','e1392000-0000-0000-0000-000000000010','CALL','HANDLED',now()-interval '10 minutes',now()-interval '5 minutes');
+-- O trigger de roteamento limpa accepted_at no INSERT; o aceite real é um UPDATE.
+UPDATE public.waiter_calls SET accepted_at=created_at+interval '1 minute',accepted_by=:'WAITER'
+WHERE id IN ('e1394000-0000-0000-0000-000000000001','e1394000-0000-0000-0000-000000000004');
+
+SET ROLE authenticated;
+SELECT t.login(:'OWNER'::uuid);
+SELECT public.salon_night_stats(:'C2_T') AS c2_stats \gset
+SELECT t.is(:'c2_stats'::jsonb->>'window_source','LAST_12_HOURS','C2 sem abertura conhecida usa últimas doze horas');
+SELECT t.is(:'c2_stats'::jsonb->>'timezone','America/Sao_Paulo','C2 período usa fuso explícito da operação');
+SELECT t.ok(abs(extract(epoch FROM ((:'c2_stats'::jsonb->>'window_end')::timestamptz-(:'c2_stats'::jsonb->>'window_start')::timestamptz))-43200)<0.001,
+ 'C2 fallback contém exatamente doze horas');
+SELECT t.is((:'c2_stats'::jsonb->>'orders_count')::int,2,'C2 pedidos excluem cancelados delivery pickup antigos futuros e outra loja');
+SELECT t.is((:'c2_stats'::jsonb->>'tables_served')::int,2,'C2 mesma mesa com dois grupos conta duas visitas encerradas');
+SELECT t.is((:'c2_stats'::jsonb->>'revenue_cents')::bigint,12000::bigint,'C2 receita soma recebimentos confirmados sem descontar troco e inclui recebimento tardio');
+SELECT t.is((:'c2_stats'::jsonb->>'paid_visits')::int,3,'C2 vários meios de pagamento contam uma visita paga');
+SELECT t.is((:'c2_stats'::jsonb->>'average_ticket_cents')::numeric,4000::numeric,'C2 ticket divide receita por visitas com recebimento na janela');
+SELECT t.ok(abs((:'c2_stats'::jsonb->>'average_stay_seconds')::numeric-3600)<1,'C2 permanência usa visitas encerradas na janela');
+SELECT t.is((:'c2_stats'::jsonb->>'calls_handled')::int,2,'C2 chamados atendidos excluem abertos cancelados antigos e outra loja');
+SELECT t.ok(abs((:'c2_stats'::jsonb->>'average_response_seconds')::numeric-90)<1,'C2 resposta usa aceite quando existe senão horário de atendimento');
+SELECT t.is((:'c2_stats'::jsonb->>'open_tabs')::int,4,'C2 todos estados ativos contam mesmo abertos antes da janela');
+SELECT t.ok(:'c2_stats'::jsonb ?& ARRAY['window_start','window_end','window_source','timezone','orders_count','tables_served','revenue_cents','paid_visits','average_ticket_cents','average_stay_seconds','calls_handled','average_response_seconds','open_tabs']
+ AND (SELECT count(*) FROM jsonb_object_keys(:'c2_stats'::jsonb))=13,
+ 'C2 resposta contém apenas contrato agregado sem campos pessoais');
+SELECT t.ok(:'c2_stats' NOT LIKE '%C2 cliente%' AND :'c2_stats' NOT LIKE '%11987654321%' AND :'c2_stats' NOT LIKE '%c2-private%' AND :'c2_stats' NOT LIKE '%Mesa sintética%',
+ 'C2 nomes telefones e-mails e identificação da mesa ausentes');
+SELECT public.salon_night_stats(:'C2_E') AS c2_empty \gset
+SELECT t.ok(:'c2_empty'::jsonb @> '{"orders_count":0,"tables_served":0,"revenue_cents":0,"paid_visits":0,"calls_handled":0,"open_tabs":0,"average_ticket_cents":null,"average_stay_seconds":null,"average_response_seconds":null}',
+ 'C2 salão sem amostras retorna contagens zero e médias NULL');
+SELECT t.login(:'WAITER'::uuid);
+SELECT t.is((public.salon_night_stats(:'C2_T')->>'open_tabs')::int,4,'C2 garçom ativo da loja recebe somente estatísticas agregadas');
+SELECT t.login(:'OWNER_B'::uuid);
+SELECT t.throws($q$SELECT public.salon_night_stats('e1390000-0000-0000-0000-000000000001')$q$,'FORBIDDEN','C2 proprietário de outra loja não lê estatísticas');
+SELECT t.is((public.salon_night_stats(:'C2_X')->>'revenue_cents')::bigint,90000::bigint,'C2 outra loja recebe somente sua própria receita');
+SELECT t.login(:'CLIENT'::uuid);
+SELECT t.throws($q$SELECT public.salon_night_stats('e1390000-0000-0000-0000-000000000001')$q$,'FORBIDDEN','C2 cliente não lê estatísticas financeiras');
+SELECT t.login(NULL);
+SELECT t.throws($q$SELECT public.salon_night_stats('e1390000-0000-0000-0000-000000000001')$q$,'FORBIDDEN','C2 JWT sem usuário não lê estatísticas');
+SELECT t.login(:'OWNER'::uuid);
+SELECT t.throws('SELECT public.salon_night_stats(NULL)','FORBIDDEN','C2 loja NULL não contorna autorização');
+SELECT t.throws($q$SELECT salon_opened_at FROM public.tenant_settings LIMIT 1$q$,'permission denied','C2 coluna de abertura não ganha leitura REST');
+SELECT t.throws($q$UPDATE public.tenant_settings SET salon_opened_at=now() WHERE tenant_id='e1390000-0000-0000-0000-000000000001'$q$,'permission denied','C2 equipe não falsifica horário por UPDATE REST');
+SET ROLE anon;
+SELECT t.throws($q$SELECT public.salon_night_stats('e1390000-0000-0000-0000-000000000001')$q$,'permission denied','C2 anon não executa RPC');
+SET ROLE service_role;
+SELECT t.throws($q$SELECT public.salon_night_stats('e1390000-0000-0000-0000-000000000001')$q$,'permission denied','C2 service_role não recebe EXECUTE por privilégio padrão');
+RESET ROLE;
+SELECT t.ok((SELECT prosecdef AND proconfig=ARRAY['search_path=""']::text[] FROM pg_proc WHERE oid='public.salon_night_stats(uuid)'::regprocedure),
+ 'C2 RPC usa SECURITY DEFINER e search_path vazio');
+SELECT t.ok(NOT has_function_privilege('anon','public.salon_night_stats(uuid)','EXECUTE')
+ AND NOT has_function_privilege('service_role','public.salon_night_stats(uuid)','EXECUTE')
+ AND has_function_privilege('authenticated','public.salon_night_stats(uuid)','EXECUTE')
+ AND NOT has_function_privilege('authenticated','public._salon_track_opening()','EXECUTE')
+ AND NOT has_function_privilege('anon','public._salon_track_opening()','EXECUTE')
+ AND NOT has_function_privilege('service_role','public._salon_track_opening()','EXECUTE'),
+ 'C2 ACL mínima vale também com privilégios padrão legados');
+SELECT t.ok(NOT has_column_privilege('authenticated','public.tenant_settings','salon_opened_at','UPDATE')
+ AND NOT has_column_privilege('authenticated','public.tenant_settings','salon_opened_at','SELECT'),
+ 'C2 coluna nova permanece fora das permissões de API');
+UPDATE public.tenant_users SET status='SUSPENDED' WHERE tenant_id=:'C2_T' AND user_id=:'WAITER';
+SET ROLE authenticated;
+SELECT t.login(:'WAITER'::uuid);
+SELECT t.throws($q$SELECT public.salon_night_stats('e1390000-0000-0000-0000-000000000001')$q$,'FORBIDDEN','C2 vínculo suspenso perde estatísticas');
+RESET ROLE;
+UPDATE public.tenant_users SET status='ACTIVE' WHERE tenant_id=:'C2_T' AND user_id=:'WAITER';
+UPDATE public.tenants SET status='SUSPENDED' WHERE id=:'C2_T';
+SET ROLE authenticated;
+SELECT t.login(:'OWNER'::uuid);
+SELECT t.throws($q$SELECT public.salon_night_stats('e1390000-0000-0000-0000-000000000001')$q$,'FORBIDDEN','C2 loja suspensa não expõe estatísticas');
+RESET ROLE;
+UPDATE public.tenants SET status='ACTIVE' WHERE id=:'C2_T';
+UPDATE public.tenant_modules SET enabled=false WHERE tenant_id=:'C2_E' AND module_key='dine_in';
+SET ROLE authenticated;
+SELECT t.throws($q$SELECT public.salon_night_stats('e1390000-0000-0000-0000-000000000003')$q$,'MODULE_DISABLED','C2 ferramenta desligada não carrega estatísticas');
+RESET ROLE;
+UPDATE public.tenant_modules SET enabled=true WHERE tenant_id=:'C2_E' AND module_key='dine_in';
+
+-- A abertura legítima funciona com os privilégios atuais de UPDATE(is_open).
+SET ROLE authenticated;
+SELECT t.login(:'OWNER'::uuid);
+UPDATE public.tenant_settings SET is_open=true WHERE tenant_id=:'C2_T';
+SELECT public.salon_night_stats(:'C2_T') AS c2_opened \gset
+SELECT t.is(:'c2_opened'::jsonb->>'window_source','OPENED_TODAY','C2 false para true inicia período de hoje');
+SELECT t.ok(:'c2_opened'::jsonb @> '{"orders_count":0,"tables_served":0,"revenue_cents":0,"paid_visits":0,"calls_handled":0,"open_tabs":4,"average_ticket_cents":null,"average_stay_seconds":null,"average_response_seconds":null}',
+ 'C2 abertura recente não reutiliza amostras anteriores mas conserva contas antigas');
+RESET ROLE;
+SELECT salon_opened_at::text AS c2_opening FROM public.tenant_settings WHERE tenant_id=:'C2_T' \gset
+SELECT t.is((:'c2_opened'::jsonb->>'window_start')::timestamptz,:'c2_opening'::timestamptz,'C2 janela começa no horário mantido pelo banco');
+UPDATE public.tenant_settings SET city='Cidade sintética',salon_opened_at=now()-interval '1 day' WHERE tenant_id=:'C2_T';
+SELECT t.is((SELECT salon_opened_at FROM public.tenant_settings WHERE tenant_id=:'C2_T'),:'c2_opening'::timestamptz,
+ 'C2 atualização de configuração ignora tentativa de forjar abertura');
+UPDATE public.tenant_settings SET is_open=false WHERE tenant_id=:'C2_T';
+SELECT t.is((SELECT salon_opened_at FROM public.tenant_settings WHERE tenant_id=:'C2_T'),:'c2_opening'::timestamptz,
+ 'C2 fechar a loja conserva última abertura para o resumo da noite');
+UPDATE public.tenant_settings SET is_open=true,salon_opened_at=now()-interval '1 day' WHERE tenant_id=:'C2_T';
+SELECT t.ok((SELECT salon_opened_at>=:'c2_opening'::timestamptz AND salon_opened_at<=now() FROM public.tenant_settings WHERE tenant_id=:'C2_T'),
+ 'C2 reabertura usa relógio do banco mesmo com timestamp forjado');
+
+-- Apenas fixtures locais podem desativar o trigger para simular estados históricos.
+ALTER TABLE public.tenant_settings DISABLE TRIGGER salon_track_opening;
+UPDATE public.tenant_settings SET salon_opened_at=date_trunc('day',now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+WHERE tenant_id=:'C2_T';
+ALTER TABLE public.tenant_settings ENABLE TRIGGER salon_track_opening;
+SET TIME ZONE 'Pacific/Auckland';
+SET ROLE authenticated;
+SELECT public.salon_night_stats(:'C2_T') AS c2_timezone \gset
+SELECT t.is(:'c2_timezone'::jsonb->>'window_source','OPENED_TODAY','C2 hoje usa data de São Paulo independente do fuso da sessão');
+SELECT t.is((:'c2_timezone'::jsonb->>'window_start')::timestamptz,
+ date_trunc('day',now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo','C2 abertura de hoje não é truncada pela janela de doze horas');
+RESET ROLE;
+SET TIME ZONE 'UTC';
+ALTER TABLE public.tenant_settings DISABLE TRIGGER salon_track_opening;
+UPDATE public.tenant_settings SET salon_opened_at=(date_trunc('day',now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo')-interval '1 second'
+WHERE tenant_id=:'C2_T';
+ALTER TABLE public.tenant_settings ENABLE TRIGGER salon_track_opening;
+SET ROLE authenticated;
+SELECT t.is(public.salon_night_stats(:'C2_T')->>'window_source','LAST_12_HOURS','C2 abertura de ontem usa fallback mesmo perto da meia-noite');
+RESET ROLE;
+ALTER TABLE public.tenant_settings DISABLE TRIGGER salon_track_opening;
+UPDATE public.tenant_settings SET salon_opened_at=now()+interval '1 day' WHERE tenant_id=:'C2_T';
+ALTER TABLE public.tenant_settings ENABLE TRIGGER salon_track_opening;
+SET ROLE authenticated;
+SELECT t.is(public.salon_night_stats(:'C2_T')->>'window_source','LAST_12_HOURS','C2 abertura futura inválida usa fallback');
+RESET ROLE;
+SELECT t.login(NULL);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canCustomizeRolePermission, roleFromTeamPath, teamRolePath, visibleTeamRoles } from '../teamAccess';
+import { canCustomizeRolePermission, maskTeamInviteEmail, roleFromTeamPath, teamRolePath, visibleTeamRoles } from '../teamAccess';
 describe('links e papéis da equipe', () => {
   it('scopes role links to the store and keeps waiter signup on its own app', () => {
     expect(teamRolePath('loja-a', 'WAITER')).toBe('/garcom/loja-a?signup=1');
@@ -25,5 +25,12 @@ describe('links e papéis da equipe', () => {
     expect(visibleTeamRoles({ waiter: false, kitchen: false })).toEqual(['OWNER', 'MANAGER', 'CASHIER', 'OPERATOR', 'DELIVERY_MANAGER', 'DRIVER']);
     expect(visibleTeamRoles({ waiter: true, kitchen: true })).toContain('KITCHEN');
     expect(visibleTeamRoles({ waiter: true, kitchen: true })).toContain('WAITER');
+  });
+  it('masks legacy and already masked invite addresses without exposing the original', () => {
+    expect(maskTeamInviteEmail('convidado@example.com')).toBe('co***@ex***.com');
+    expect(maskTeamInviteEmail('co***@ex***.com')).toBe('co***@ex***.com');
+    expect(maskTeamInviteEmail('a@b.com.br')).toBe('a***@b***.br');
+    expect(maskTeamInviteEmail('a***@b***.br')).toBe('a***@b***.br');
+    expect(maskTeamInviteEmail('inválido')).toBe('***');
   });
 });

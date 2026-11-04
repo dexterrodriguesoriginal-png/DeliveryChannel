@@ -144,6 +144,16 @@ export const teamRepository = {
     throw new Error('Supabase não configurado para criar convites.');
   },
 
+  /** Renova a validade por id. O endereço permanece no servidor; compartilhe o link. */
+  async resendInvite(context: SecurityContext, tenantId: string, inviteId: string): Promise<void> {
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.rpc('resend_team_invite', { p_invite: inviteId });
+      if (error) throw new RpcBusinessError(error);
+      return;
+    }
+    throw new Error('Supabase não configurado para renovar convites.');
+  },
+
   /**
    * Revoga um convite pendente via RPC revoke_team_invite
    */

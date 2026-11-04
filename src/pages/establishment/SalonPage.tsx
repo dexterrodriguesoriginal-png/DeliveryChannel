@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, Check, Clock, PanelRightOpen, PauseCircle, PlayCircle, Plus, QrCode, Receipt, RefreshCw, Search, ShoppingBag, Users, Utensils, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useModules } from '../../hooks/useModules';
+import { useSalonNightStats } from '../../hooks/useSalonNightStats';
 import { supabase } from '../../lib/supabase';
 import { newIdempotencyKey } from '../../lib/backend';
 import { Category, Product, SelectedProductOption } from '../../types';
@@ -85,6 +86,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   currentTenantId.current = activeTenant?.id;
   const { available, isModuleEnabled } = useModules();
   const enabled = available && isModuleEnabled('dine_in');
+  const nightStats = useSalonNightStats(activeTenant?.id, enabled && STAFF_ROLES.includes(activeRole ?? ''));
   const [tables, setTables] = useState<DiningTable[]>([]);
   const [tabs, setTabs] = useState<DiningTab[]>([]);
   const [sessions, setSessions] = useState<TabSession[]>([]);
@@ -706,13 +708,13 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
           )}
         </div>
         {sideOpen
-          ? <div className="salon-side-wrap hidden lg:block"><SalonSidebar variant="panel" tab={sideTab} onTabChange={setSideTab} openTabs={sideOpenTabs} closedToday={sideClosed} orders={sideOrders} calls={sideCalls} now={now}
+          ? <div className="salon-side-wrap hidden lg:block"><SalonSidebar variant="panel" tab={sideTab} onTabChange={setSideTab} openTabs={sideOpenTabs} closedToday={sideClosed} orders={sideOrders} calls={sideCalls} now={now} nightStats={{ ...nightStats, onRefresh: nightStats.refresh }}
               busyCallId={busy?.startsWith('call-') ? busy.slice(5) : null} onSelectTable={openTable} onHandleCall={id => void markCallHandled(id)} onClose={() => toggleSide(false)} /></div>
           : <button type="button" onClick={() => toggleSide(true)} className="salon-rail hidden lg:flex" aria-label="Abrir painel lateral"><PanelRightOpen className="h-5 w-5" aria-hidden="true" /><b>{sideOpenTabs.length}</b></button>}
       </div>
       <button type="button" onClick={() => setDrawerOpen(true)} className="salon-fab lg:hidden" data-testid="salon-drawer-open"><PanelRightOpen className="h-5 w-5" aria-hidden="true" />Comandas<b>{sideOpenTabs.length}</b>{sideCalls.length > 0 && <span className="salon-fab-dot" aria-label={`${sideCalls.length} chamados`} />}</button>
       {drawerOpen && <div className="salon-drawer-backdrop lg:hidden" role="presentation" onClick={event => { if (event.target === event.currentTarget) setDrawerOpen(false); }}>
-        <div className="salon-drawer" role="dialog" aria-modal="true" aria-label="Painel lateral do salão"><SalonSidebar variant="drawer" tab={sideTab} onTabChange={setSideTab} openTabs={sideOpenTabs} closedToday={sideClosed} orders={sideOrders} calls={sideCalls} now={now}
+        <div className="salon-drawer" role="dialog" aria-modal="true" aria-label="Painel lateral do salão"><SalonSidebar variant="drawer" tab={sideTab} onTabChange={setSideTab} openTabs={sideOpenTabs} closedToday={sideClosed} orders={sideOrders} calls={sideCalls} now={now} nightStats={{ ...nightStats, onRefresh: nightStats.refresh }}
           busyCallId={busy?.startsWith('call-') ? busy.slice(5) : null} onSelectTable={openTable} onHandleCall={id => void markCallHandled(id)} onClose={() => setDrawerOpen(false)} /></div></div>}
       {selectedTable && <div className="fixed inset-0 z-40 flex justify-end bg-black/40" role="presentation" onClick={event => { if (event.target === event.currentTarget) setSelectedTableId(null); }}>
         <section className="h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-xl" role="dialog" aria-label={`Comanda ${selectedTable.label}`}>
@@ -989,7 +991,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
         <div className="space-y-3">
           <p className="text-lg font-black">Total: {money((checkout?.totalCents ?? totalCents) / 100)}</p>
           <p className="text-sm text-slate-600">Escolha Dinheiro, Cartão ou Pix. Confirme dinheiro/cartão somente depois de receber o pagamento.</p>
-          {pixLive && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Aguardando pagamento do Pix. A conta permanece aberta; o QR continua disponível até a confirmação.</p>}
+          {pixLive && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Consulte o status e o comprovante do PIX abaixo.</p>}
           {payments.map((payment, index) => <div key={index} className="grid grid-cols-1 gap-2 rounded-xl border p-3 sm:grid-cols-3">
             <select aria-label={`Forma de pagamento ${index + 1}`} disabled={pixLive} value={payment.method} onChange={event => {
               const method = event.target.value as PaymentMethod;

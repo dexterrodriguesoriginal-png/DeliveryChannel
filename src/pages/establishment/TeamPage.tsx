@@ -12,14 +12,21 @@ import { useToast } from '../../context/ToastContext';
 import { TeamMemberStatusBadge } from '../../components/establishment/statusBadges';
 import { TeamRoleAccessBlock } from '../../components/establishment/TeamRoleAccessBlock';
 import { storeTeamRepository, type StoreRolePermission } from '../../repositories/storeTeamRepository';
-import { TEAM_ROLE_LABELS, STORE_PERMISSION_LABELS, visibleTeamRoles, canCustomizeRolePermission, type StoreTools } from '../../lib/teamAccess';
+import { TEAM_ROLE_LABELS, STORE_PERMISSION_LABELS, visibleTeamRoles, canCustomizeRolePermission, maskTeamInviteEmail, type StoreTools } from '../../lib/teamAccess';
 import { WaiterAccessBlock } from '../../components/establishment/WaiterAccessBlock';
 import { CreateWaiterModal, EditWaiterModal, ResetWaiterPasswordModal } from '../../components/establishment/waiter/WaiterTeamModals';
 import { waiterV2Repository, type DirectoryMember } from '../../repositories/waiterV2Repository';
 import { initials } from '../../lib/waiter/waiterRouting';
 import { isWaiterSyntheticEmail } from '../../lib/waiter/waiterIdentity';
 
+const TAB_LABELS: Partial<Record<RoleId, string>> = { ...TEAM_ROLE_LABELS, OPERATOR: 'Estoque', DELIVERY_MANAGER: 'Coordenador' };
+
 export const TeamPage: React.FC = () => {
+  const { activeTenant } = useAuth();
+  return activeTenant ? <TeamPageForTenant key={activeTenant.id} /> : null;
+};
+
+const TeamPageForTenant: React.FC = () => {
   const { activeTenant, securityContext, activeRole, refreshStoreAccess } = useAuth();
   const { showToast } = useToast();
 
@@ -33,11 +40,17 @@ export const TeamPage: React.FC = () => {
   const [waiterMode, setWaiterMode] = useState<'login' | 'invite'>('login');
   const currentTenant = useRef(activeTenant?.id);
   currentTenant.current = activeTenant?.id;
+  useEffect(() => {
+    currentTenant.current = activeTenant?.id;
+    return () => { currentTenant.current = undefined; };
+  }, [activeTenant?.id]);
   const [loadedTenant, setLoadedTenant] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [waiterShare, setWaiterShare] = useState<string | null>(null);
+  const [inviteShare, setInviteShare] = useState<{ role: RoleId; email: string } | null>(null);
+  const [resendingInvite, setResendingInvite] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState<RoleId | 'ALL'>('ALL');
   // Garçom v2 (login por usuário e senha): só aparece com a migration 20261027004900 aplicada.
   const [directory, setDirectory] = useState<Map<string, DirectoryMember> | null>(null);
   const [createWaiterOpen, setCreateWaiterOpen] = useState(false);
@@ -54,27 +67,32 @@ export const TeamPage: React.FC = () => {
     setIsLoading(true);
     try {
       const [members, invites, dir, toolResult, permissionResult] = await Promise.all([
-        teamRepository.listTeamMembers(securityContext, activeTenant.id),
+        teamRepository.listTeamMembers(securityContext, activeTenant.id).catch(() => []),
         teamRepository.listPendingInvites(securityContext, activeTenant.id),
-        waiterV2Repository.directory(activeTenant.id).catch(() => null),
+        waiterV2Repository.directory(activeTenant.id),
         storeTeamRepository.listTools(activeTenant.id).then(data => ({ data, failed: false })).catch(() => ({ data: { waiter: false, kitchen: false }, failed: true })),
         storeTeamRepository.listPermissions(activeTenant.id).catch(() => []),
       ]);
       if (currentTenant.current !== activeTenant.id) return;
-      // O diretório (RPC) traz nome/telefone reais: a tabela users só é legível pelo próprio usuário (cards "Colaborador / Sem e-mail").
-      const visibleMembers = members.filter(m => m.status !== 'INACTIVE'); // removidos/revogados não aparecem na lista
+      // O RPC autorizado é a fonte de vínculos e perfis. Enriquecer apenas as linhas
+      // da consulta direta descartava convidados aceitos presentes só no diretório.
       const byUser = dir ? new Map(dir.map(d => [d.userId, d])) : null;
       setDirectory(byUser);
       setTools(toolResult.data);
       setSettingsError(toolResult.failed ? 'Não foi possível carregar as ferramentas. Atualize os dados antes de adicionar Garçom ou Cozinha.' : '');
       setPermissions(permissionResult);
-      setTeam(byUser ? visibleMembers.map(m => {
-        const d = byUser.get(m.userId);
-        return d ? { ...m, name: d.name || m.name, email: isWaiterSyntheticEmail(d.email) ? '' : d.email, phone: d.phone || m.phone } : m;
-      }) : visibleMembers);
+      setTeam(dir !== null ? dir.map(d => ({
+        id: d.id, tenantId: activeTenant.id, userId: d.userId,
+        name: d.name || 'Colaborador', email: isWaiterSyntheticEmail(d.email) ? '' : d.email,
+        phone: d.phone || undefined, role: d.roleId as RoleId,
+        status: d.status as TeamMember['status'], createdAt: d.createdAt,
+      })) : members);
       setPendingInvites(invites);
       setLoadedTenant(activeTenant.id);
     } catch (err) {
+      if (currentTenant.current !== activeTenant.id) return;
+      setTeam([]); setPendingInvites([]); setDirectory(null); setLoadedTenant(null);
+      setSettingsError('Não foi possível carregar o diretório da equipe. Atualize os dados e tente novamente.');
       showToast({ type: 'error', title: 'Não foi possível carregar a equipe', message: 'Atualize os dados e tente novamente.' });
     } finally {
       if (currentTenant.current === activeTenant.id) setIsLoading(false);
@@ -87,14 +105,17 @@ export const TeamPage: React.FC = () => {
 
   useEffect(() => {
     setIsModalOpen(false); setCreateWaiterOpen(false); setEditWaiter(null); setResetWaiter(null);
-    setStoreAccess(null); setWaiterShare(null); setSavingPermission(null); setIsSubmitting(false); setSettingsError('');
+    setStoreAccess(null); setInviteShare(null); setResendingInvite(null); setRoleFilter('ALL'); setSavingPermission(null); setIsSubmitting(false); setSettingsError('');
     setFormData({ email: '', role: 'OPERATOR' });
   }, [activeTenant?.id]);
 
   if (!activeTenant) return null;
   const roleList = visibleTeamRoles(loadedTenant === activeTenant.id ? tools : { waiter: false, kitchen: false });
-  const visibleTeam = loadedTenant === activeTenant.id ? team.filter(member => roleList.includes(member.role)) : [];
-  const visibleInvites = loadedTenant === activeTenant.id ? pendingInvites.filter(invite => roleList.includes(invite.roleId)) : [];
+  const visibleTeam = loadedTenant === activeTenant.id ? team.filter(member => member.status === 'ACTIVE' && roleList.includes(member.role)) : [];
+  const visibleInvites = loadedTenant === activeTenant.id ? pendingInvites.filter(invite => invite.status === 'PENDING' && roleList.includes(invite.roleId)) : [];
+  const selectedRole = roleFilter === 'ALL' || roleList.includes(roleFilter) ? roleFilter : 'ALL';
+  const tabs = ['ALL' as const, ...roleList.filter(role => role !== 'OWNER')];
+  const displayedRoles = selectedRole === 'ALL' ? roleList : roleList.filter(role => role === selectedRole);
   const canManage = activeRole === 'OWNER' || activeRole === 'MANAGER';
   const canEditPermissions = activeRole === 'OWNER';
   const togglePermission = async (row: StoreRolePermission) => {
@@ -104,6 +125,7 @@ export const TeamPage: React.FC = () => {
     setSavingPermission(key);
     try {
       await storeTeamRepository.setPermission(tenantId, row.role, row.permission, !row.enabled);
+      if (currentTenant.current !== tenantId) return;
       window.dispatchEvent(new Event('dc:store-access-changed'));
       await refreshStoreAccess?.();
       if (currentTenant.current !== tenantId) return;
@@ -140,9 +162,9 @@ export const TeamPage: React.FC = () => {
       showToast({
         type: 'success',
         title: 'Convite criado',
-        message: `Convite criado para ${formData.email} com papel de ${TEAM_ROLE_LABELS[formData.role] || formData.role}. Avise o colaborador: ele entra com este e-mail.`,
+        message: `Convite criado para ${maskTeamInviteEmail(formData.email)}. Compartilhe o QR ou o link de acesso com o colaborador.`,
       });
-      if (formData.role === 'WAITER') setWaiterShare(formData.email.trim().toLowerCase());
+      setInviteShare({ role: formData.role, email: maskTeamInviteEmail(formData.email) });
 
       setIsModalOpen(false);
       setFormData({ email: '', role: 'OPERATOR' });
@@ -159,6 +181,23 @@ export const TeamPage: React.FC = () => {
     }
   };
 
+  const handleResendInvite = async (invite: TeamInvite) => {
+    if (!canManage || resendingInvite) return;
+    const tenantId = activeTenant.id;
+    setResendingInvite(invite.id);
+    try {
+      await teamRepository.resendInvite(securityContext, tenantId, invite.id);
+      if (currentTenant.current !== tenantId) return;
+      setInviteShare({ role: invite.roleId, email: maskTeamInviteEmail(invite.email) });
+      showToast({ type: 'success', title: 'Convite renovado', message: 'Validade renovada. Compartilhe o QR ou o link com o colaborador.' });
+      await fetchTeamData();
+    } catch (err) {
+      if (currentTenant.current === tenantId) showToast({ type: 'error', title: 'Não foi possível renovar o convite', message: err instanceof Error ? err.message : 'Tente novamente.' });
+    } finally {
+      if (currentTenant.current === tenantId) setResendingInvite(null);
+    }
+  };
+
   const handleRevokeInvite = async (invite: TeamInvite) => {
     if (!canManage) return;
     const tenantId = activeTenant.id;
@@ -168,7 +207,7 @@ export const TeamPage: React.FC = () => {
       showToast({
         type: 'success',
         title: 'Convite Revogado',
-        message: `O convite para ${invite.email} foi cancelado.`,
+        message: `O convite para ${maskTeamInviteEmail(invite.email)} foi cancelado.`,
       });
       await fetchTeamData();
     } catch (err: any) {
@@ -270,7 +309,29 @@ export const TeamPage: React.FC = () => {
 
       {settingsError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">{settingsError}</p>}
       <p className="text-xs text-gray-500">Garçom e Cozinha aparecem quando a ferramenta está ativa. O Dono pode ativá-las em Ferramentas.</p>
-      {roleList.map(role => {
+      <div role="tablist" aria-label="Funções da equipe" className="flex gap-2 overflow-x-auto pb-2">
+        {tabs.map(tab => {
+          const count = tab === 'ALL' ? visibleTeam.length + visibleInvites.length
+            : visibleTeam.filter(member => member.role === tab).length + visibleInvites.filter(invite => invite.roleId === tab).length;
+          return <button key={tab} id={`team-tab-${tab}`} type="button" role="tab" aria-selected={selectedRole === tab}
+            aria-controls="team-members-panel" tabIndex={selectedRole === tab ? 0 : -1}
+            onClick={() => setRoleFilter(tab)}
+            onKeyDown={event => {
+              const index = tabs.indexOf(tab);
+              const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+                : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+                  : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+              if (next === null) return;
+              event.preventDefault(); setRoleFilter(tabs[next]);
+              document.getElementById(`team-tab-${tabs[next]}`)?.focus();
+            }}
+            className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-semibold ${selectedRole === tab ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
+            {tab === 'ALL' ? 'Todos' : TAB_LABELS[tab]} ({count})
+          </button>;
+        })}
+      </div>
+      <div id="team-members-panel" role="tabpanel" aria-labelledby={`team-tab-${selectedRole}`} className="space-y-4">
+      {displayedRoles.map(role => {
         const roleMembers = visibleTeam.filter(member => member.role === role);
         const roleInvites = visibleInvites.filter(invite => invite.roleId === role);
         const rolePermissions = loadedTenant === activeTenant.id ? permissions.filter(permission => permission.role === role) : [];
@@ -292,7 +353,7 @@ export const TeamPage: React.FC = () => {
       <div className="space-y-3">
         <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
           <Users className="w-4 h-4 text-emerald-700" />
-          Membros ({roleMembers.length})
+          Membros ativos ({roleMembers.length})
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -399,21 +460,11 @@ export const TeamPage: React.FC = () => {
                   <div className="flex items-start justify-between">
                     <div>
                       <span className="text-[11px] font-mono text-gray-500">Convite para:</span>
-                      <h4 className="font-bold text-xs text-gray-900 truncate">{invite.email}</h4>
+                      <h4 className="font-bold text-xs text-gray-900 truncate">{maskTeamInviteEmail(invite.email)}</h4>
                       <Badge variant="warning" size="sm" className="mt-1">
-                        Papel: {TEAM_ROLE_LABELS[invite.roleId] || invite.roleId}
+                        Convite pendente
                       </Badge>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => canManage && handleRevokeInvite(invite)}
-                      disabled={!canManage}
-                      className="text-gray-400 hover:text-rose-600 p-1 rounded-lg cursor-pointer transition-colors"
-                      title="Cancelar Convite"
-                    >
-                      <XCircle className="w-4 h-4" />
-                    </button>
                   </div>
 
                   <div className="text-[11px] text-gray-500 pt-1 border-t border-amber-100">
@@ -424,6 +475,16 @@ export const TeamPage: React.FC = () => {
                 <div className="pt-2 border-t border-amber-100 text-[10px] text-gray-400">
                   Aguardando o usuário criar conta ou autenticar com este e-mail.
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => void handleResendInvite(invite)} disabled={!canManage || !!resendingInvite}
+                    title="Renovar convite e compartilhar o link" className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-2 py-1 text-xs font-semibold text-emerald-800 disabled:opacity-50">
+                    <Send className="w-3.5 h-3.5" />{resendingInvite === invite.id ? 'Renovando…' : 'Reenviar'}
+                  </button>
+                  <button type="button" onClick={() => void handleRevokeInvite(invite)} disabled={!canManage || !!resendingInvite}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold text-rose-700 disabled:opacity-50">
+                    <XCircle className="w-3.5 h-3.5" />Cancelar
+                  </button>
+                </div>
                 {activeTenant.slug && <details><summary className="cursor-pointer text-xs font-semibold text-emerald-800">QR e link do convite</summary><div className="mt-2"><TeamRoleAccessBlock slug={activeTenant.slug} role={invite.roleId} /></div></details>}
               </Card>
             ))}
@@ -433,6 +494,7 @@ export const TeamPage: React.FC = () => {
 
         </section>;
       })}
+      </div>
 
       {/* Modal Convidar */}
       <Modal
@@ -521,8 +583,9 @@ export const TeamPage: React.FC = () => {
         {storeAccess && <WaiterAccessBlock storeName={activeTenant?.name} slug={activeTenant.slug} username={storeAccess.username} />}
       </Modal>
 
-      <Modal isOpen={!!waiterShare && loadedTenant === activeTenant.id} onClose={() => setWaiterShare(null)} title="Convite do garçom criado" description="Nenhum e-mail é enviado automaticamente. Mostre o QR ou envie o link para o garçom." size="lg">
-        {waiterShare && activeTenant.slug && <TeamRoleAccessBlock slug={activeTenant.slug} role="WAITER" />}
+      <Modal isOpen={!!inviteShare && loadedTenant === activeTenant.id} onClose={() => setInviteShare(null)} title="Compartilhar convite" description="Nenhum e-mail é enviado automaticamente. Mostre o QR ou envie o link ao colaborador." size="lg">
+        {inviteShare && <p className="mb-3 text-xs text-gray-600">Convite para {inviteShare.email}</p>}
+        {inviteShare && activeTenant.slug && <TeamRoleAccessBlock slug={activeTenant.slug} role={inviteShare.role} />}
       </Modal>
     </div>
   );

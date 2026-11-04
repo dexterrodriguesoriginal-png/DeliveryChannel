@@ -50,4 +50,16 @@ describe('0900: convites de equipe por RPC', () => {
     rpc.mockResolvedValue({ data: null, error: { code: '42501' } });
     expect(await teamRepository.listMyReceivedInvites()).toEqual([]);
   });
+  it('renova o convite por id sem reenviar o endereço mascarado ao servidor', async () => {
+    rpc.mockResolvedValue({ data: { id: 'i1', status: 'PENDING' }, error: null });
+    await teamRepository.resendInvite({} as any, T, 'i1');
+    expect(rpc).toHaveBeenCalledWith('resend_team_invite', { p_invite: 'i1' });
+    expect(fromTables).toEqual([]);
+  });
+  it('propaga a recusa de renovação sem fallback para criação de convite', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'INVITE_UNAVAILABLE: convite indisponível.' } });
+    await expect(teamRepository.resendInvite({} as any, T, 'i1')).rejects.toThrow('Sem permissão para esta ação.');
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(fromTables).toEqual([]);
+  });
 });

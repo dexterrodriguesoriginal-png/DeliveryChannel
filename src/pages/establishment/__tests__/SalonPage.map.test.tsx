@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const h = vi.hoisted(() => ({
   db: {} as Record<string, unknown[]>,
@@ -191,6 +191,31 @@ describe('SalonPage — mapa de mesas', () => {
       expect(await screen.findByTestId('tab-pix-panel')).toBeTruthy();
       expect(screen.queryByRole('button', { name: /Confirmar recebimento/ })).toBeNull();
       fireEvent.click(await screen.findByRole('button', { name: /Gerar QR PIX de/ }));
+      expect(h.rpc.mock.calls.some(([name]) => name === 'close_tab')).toBe(false);
+    });
+    it('mantém confirmação e comprovante após refresh remover a comanda paga', async () => {
+      (h.db.dining_tabs[0] as any).status = 'AWAITING_PAYMENT';
+      caps();
+      let refreshPix: (() => void) | null = null;
+      h.pix.observeTabPix.mockImplementation((_tabId: string, refresh: () => void) => { refreshPix = refresh; return () => {}; });
+      const pix = { id: 'p', tabId: 'tab2', amountCents: 11000, status: 'pending', brcode: 'PIXCODE', expiresAt: new Date(Date.now() + 600000).toISOString(), needsReview: false, reviewReason: null, tabClosed: false };
+      h.pix.tabPixStatus.mockResolvedValue({ pix });
+      render(<SalonPage />);
+      fireEvent.click(await screen.findByTestId('salon-table-t2'));
+      fireEvent.click(await screen.findByRole('button', { name: 'Ver pagamento pendente' }));
+      await screen.findByTestId('tab-pix-qr');
+      h.db.dining_tabs = h.db.dining_tabs.filter(row => (row as { id: string }).id !== 'tab2');
+      h.db.orders = h.db.orders.filter(row => (row as { tab_id: string }).tab_id !== 'tab2');
+      h.pix.tabPixStatus.mockResolvedValue({ pix: { ...pix, status: 'paid', tabClosed: true, paidAt: new Date().toISOString() } });
+      fireEvent.click(screen.getByRole('button', { name: 'Atualizar' }));
+      await act(async () => { refreshPix!(); });
+      const confirmation = await screen.findByRole('region', { name: 'Pagamento confirmado' });
+      await waitFor(() => expect(status('t2')).toBe('FREE'));
+      expect(confirmation.textContent).toContain('Mesa 02');
+      expect(confirmation.textContent).toMatch(/110,00/);
+      expect(within(confirmation).getByRole('button', { name: 'Enviar comprovante por e-mail' })).toBeTruthy();
+      fireEvent.click(within(confirmation).getByRole('button', { name: 'Concluir' }));
+      await waitFor(() => expect(screen.queryByRole('region', { name: 'Pagamento confirmado' })).toBeNull());
       expect(h.rpc.mock.calls.some(([name]) => name === 'close_tab')).toBe(false);
     });
     it('PIX ativo bloqueia o fechamento manual (evita cobrança em duplicidade)', async () => {

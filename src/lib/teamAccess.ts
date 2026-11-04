@@ -13,6 +13,16 @@ export const STORE_PERMISSION_LABELS: Record<string, string> = {
   dispatch_orders: 'Despachar entregas', view_assigned_orders: 'Ver suas entregas', deliver_orders: 'Realizar suas entregas', waiter: 'Atendimento do garçom',
 };
 export interface StoreTools { waiter: boolean; kitchen: boolean }
+
+/** Também protege a tela quando ainda conectada a uma versão antiga do RPC. */
+export function maskTeamInviteEmail(email: string): string {
+  const match = /^([^\s@]+)@([^\s@]+)\.([^\s@.]+)$/.exec(email.trim());
+  if (!match) return '***';
+  const local = match[1].replace(/\*/g, '').slice(0, 2);
+  const domain = match[2].split('.')[0].replace(/\*/g, '').slice(0, 2);
+  return `${local}***@${domain}***.${match[3]}`;
+}
+
 export function visibleTeamRoles(tools: StoreTools): RoleId[] {
   return TEAM_ROLES.filter(role => role !== 'WAITER' || tools.waiter).filter(role => role !== 'KITCHEN' || tools.kitchen);
 }

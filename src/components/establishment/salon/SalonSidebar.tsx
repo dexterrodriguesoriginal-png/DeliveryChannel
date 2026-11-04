@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Bell, CheckCircle2, ChefHat, ChevronsRight, Clock, Receipt, Utensils, X } from 'lucide-react';
 import { formatBRL } from '../../../lib/pricing/money';
 import { callLabel, formatElapsed, STATUS_LABEL, TABLE_STATUS_COLOR, TableStatusKind } from '../../../lib/salon/tableStatus';
+import { SalonNightStatsCards, type SalonNightStatsCardsProps } from './SalonNightStatsCards';
 import './salon.css';
 
 export type SidebarTab = 'OPEN' | 'CLOSED' | 'ORDERS' | 'CALLS';
@@ -25,6 +26,7 @@ export interface SalonSidebarProps {
   /** desktop: collapse; mobile drawer: close */
   onClose: () => void;
   variant: 'panel' | 'drawer';
+  nightStats?: SalonNightStatsCardsProps;
 }
 
 const money = (cents: number) => formatBRL(cents / 100);
@@ -44,7 +46,7 @@ const Empty: React.FC<{ icon: React.ReactNode; text: string }> = ({ icon, text }
   </div>
 );
 
-export const SalonSidebar: React.FC<SalonSidebarProps> = ({ tab, onTabChange, openTabs, closedToday, orders, calls, now, busyCallId, onSelectTable, onHandleCall, onClose, variant }) => {
+export const SalonSidebar: React.FC<SalonSidebarProps> = ({ tab, onTabChange, openTabs, closedToday, orders, calls, now, busyCallId, onSelectTable, onHandleCall, onClose, variant, nightStats }) => {
   const counts: Record<SidebarTab, number> = { OPEN: openTabs.length, CLOSED: closedToday.length, ORDERS: orders.length, CALLS: calls.length };
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (variant === 'drawer') closeRef.current?.focus(); }, [variant]);
@@ -63,13 +65,15 @@ export const SalonSidebar: React.FC<SalonSidebarProps> = ({ tab, onTabChange, op
 
   return (
     <aside className="salon-side h-full" aria-label="Painel lateral do salão" data-testid="salon-sidebar">
-      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
         <h2 className="text-sm font-black text-slate-900">Movimento do salão</h2>
         <button ref={closeRef} type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-700"
           aria-label={variant === 'drawer' ? 'Fechar painel' : 'Recolher painel lateral'}>
           {variant === 'drawer' ? <X className="h-5 w-5" /> : <ChevronsRight className="h-5 w-5" />}
         </button>
       </div>
+      <div className="min-h-0 flex-1 overflow-y-auto" data-testid="salon-movement-scroll">
+      {nightStats && <SalonNightStatsCards {...nightStats} />}
       <div role="tablist" aria-label="Seções do painel" className="flex border-b border-slate-100" onKeyDown={onTabKey}>
         {TABS.map(item => (
           <button key={item.id} type="button" role="tab" id={`salon-tab-${item.id}`} aria-selected={tab === item.id} aria-controls="salon-side-panel" tabIndex={tab === item.id ? 0 : -1}
@@ -81,7 +85,7 @@ export const SalonSidebar: React.FC<SalonSidebarProps> = ({ tab, onTabChange, op
           </button>
         ))}
       </div>
-      <div id="salon-side-panel" role="tabpanel" aria-labelledby={`salon-tab-${tab}`} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+      <div id="salon-side-panel" role="tabpanel" aria-labelledby={`salon-tab-${tab}`} className="space-y-2 p-3">
         {tab === 'OPEN' && (openTabs.length === 0 ? <Empty icon={<Utensils className="h-6 w-6" />} text="Nenhuma comanda aberta agora." /> : openTabs.map(item => (
           <button key={item.tabId} type="button" className="salon-row" onClick={() => onSelectTable(item.tableId)} data-testid={`salon-open-${item.tabId}`}>
             <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ background: TABLE_STATUS_COLOR[item.kind] }} aria-hidden="true" />
@@ -126,6 +130,7 @@ export const SalonSidebar: React.FC<SalonSidebarProps> = ({ tab, onTabChange, op
             </button>
           </div>
         )))}
+      </div>
       </div>
     </aside>
   );
