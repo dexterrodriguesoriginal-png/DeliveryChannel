@@ -26,7 +26,7 @@ import { ConfirmLoggedUserGate, IdentityGate, InvitePanel, InviteWelcomeScreen, 
 import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import { DineInCartSheet } from '../../components/client/dinein/DineInCartSheet';
-import { DineInDeliveryNotice, DineInTracking } from '../../components/client/dinein/DineInTracking';
+import { DineInDeliveryCode, DineInDeliveryNotice, DineInTracking } from '../../components/client/dinein/DineInTracking';
 import { dineInStatus, type DineInTrackedRound } from '../../lib/customer/dineInTracking';
 import { canDisputeDelivery, deliveryNoticeLabel, type DeliveryState } from '../../lib/customer/deliveryDispute';
 import { statusColorStyle } from '../../lib/orders/statusColors';
@@ -1156,6 +1156,10 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       )}
       {qrPaused && <div role="status" className="mx-auto mt-3 max-w-2xl rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Pedidos pelo QR pausados no momento. Chame um atendente para pedir.</div>}
 
+      {tab?.me?.approved && tab.rounds.some(round => round.deliveryCode && !['DELIVERED', 'CANCELLED'].includes(round.status)) && <section aria-label="Seus códigos de entrega" aria-live="polite" className="mx-auto mt-3 max-w-2xl px-4">
+        {tab.rounds.map(round => <DineInDeliveryCode key={round.orderId} round={round} testId={`dinein-delivery-code-${round.orderId}`} />)}
+      </section>}
+
       {!!tab?.rounds?.length && resolution?.tenantSlug && <aside data-testid="dinein-app-banner" className="mx-auto mt-3 flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
         <p className="text-slate-600">Peça também de casa com nosso app</p>
         <a href={`/app/${encodeURIComponent(resolution.tenantSlug)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 font-bold text-emerald-800" onClick={event => {
@@ -1328,7 +1332,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       </section>
 
       {cartOpen && <DineInCartSheet cart={cart} busy={busy} disabled={orderingDisabled} onClose={() => setCartOpen(false)} onCheckout={handleRequestOrder} onQuantity={changeLineQuantity} onNotes={changeLineNotes} />}
-      <DineInTracking rounds={tab?.rounds?.filter(round => round.mine !== false) || []} />
+      <DineInTracking rounds={tab?.rounds
+        ?.filter(round => round.mine !== false || (tab.me?.approved && !!round.deliveryCode))
+        .map(round => tab.me?.approved ? round : { ...round, deliveryCode: null }) || []} />
 
       <nav aria-label="Ações da mesa" className="fixed inset-x-0 bottom-0 z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
         <div className="mx-auto grid max-w-2xl grid-cols-3 gap-2">
@@ -1365,12 +1371,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           <div className="my-4 space-y-3">{tab?.rounds?.length ? tab.rounds.map(round => <article key={round.orderId} data-testid={`account-round-${round.orderId}`} className="rounded-xl border p-3" style={statusColorStyle(round.status)}>
             <div className="mb-2 flex justify-between font-bold"><span>Rodada {round.roundNo}</span><span>{formatBRL(round.subtotal)}</span></div>
             <p className="mb-2 text-xs">{access ? `Pedido de ${round.mine ? 'você' : round.customerName}` : round.customerName} · {dineInStatus(round.status).label}</p>
-            {round.deliveryCode && !['DELIVERED', 'CANCELLED'].includes(round.status) && (
-              <div data-testid={`account-round-code-${round.orderId}`} className="mb-2 rounded-lg border border-emerald-300 bg-white/90 px-2.5 py-1.5 text-xs text-slate-900">
-                <span className="font-semibold">Código de entrega: </span>
-                <b className="font-mono text-sm tracking-widest">{round.deliveryCode}</b>
-              </div>
-            )}
+            {tab.me?.approved && <DineInDeliveryCode round={round} testId={`account-round-code-${round.orderId}`} />}
             {round.deliveryConfirmedWithCode && <p className="mb-2 text-xs font-bold">Entrega confirmada com código</p>}
             {round.deliveryDispute && <p className="mb-2 text-xs font-semibold">{deliveryNoticeLabel(round)}</p>}
             {round.items.map((item, index) => {

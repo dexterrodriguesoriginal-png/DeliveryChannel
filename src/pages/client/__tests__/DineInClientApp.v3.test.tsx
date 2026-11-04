@@ -423,7 +423,7 @@ describe('Garçom v3 — cliente QR', () => {
 
     render(<DineInClientApp token={TOKEN} />);
     const trackingBar = await screen.findByTestId('dinein-track-order');
-    expect(trackingBar.textContent).toContain('Código: 4821');
+    expect(trackingBar.textContent).toContain('Seu código de entrega: 4821 - informe ao garçom');
     expect(screen.getByTestId('delivery-notice-o-confirmed').textContent).toContain('Entrega confirmada com código');
     expect(screen.queryByRole('button', { name: 'Não recebi' })).toBeNull();
 
@@ -433,5 +433,68 @@ describe('Garçom v3 — cliente QR', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
     expect((await screen.findByTestId('account-round-code-o-ready')).textContent).toContain('4821');
+  });
+
+  it('mostra no cardápio e acompanhamento códigos de outras rodadas da conta aprovada, mesmo após rodada antiga sem código', async () => {
+    h.user = { id: 'u1' };
+    sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
+    account = myTab([
+      round('PREPARING', 'old-without-code'),
+      { ...round('READY', 'staff-round'), mine: false, roundNo: 2, deliveryCode: '4821' } as any,
+      { ...round('OUT_FOR_DELIVERY', 'guest-round'), mine: false, roundNo: 3, deliveryCode: '7193' } as any,
+      { ...round('DELIVERED', 'done'), deliveryCode: '1234' } as any,
+      { ...round('CANCELLED', 'cancelled'), deliveryCode: '5678' } as any,
+    ]);
+
+    render(<DineInClientApp token={TOKEN} />);
+    const visibleCodes = await screen.findByRole('region', { name: 'Seus códigos de entrega' });
+    expect(visibleCodes.textContent).toContain('Seu código de entrega: 4821 - informe ao garçom');
+    expect(visibleCodes.textContent).toContain('Seu código de entrega: 7193 - informe ao garçom');
+    expect(visibleCodes.textContent).not.toMatch(/1234|5678/);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const tracking = screen.getByTestId('dinein-track-order');
+    expect(tracking.textContent).toContain('4821');
+    expect(tracking.textContent).toContain('7193');
+    fireEvent.click(tracking);
+    expect((await screen.findByTestId('round-delivery-code-staff-round')).textContent).toContain('Seu código de entrega: 4821 - informe ao garçom');
+    expect(screen.getByTestId('round-delivery-code-guest-round').textContent).toContain('7193');
+  });
+
+  it('não mostra código de sessão sem aprovação em nenhum ponto, inclusive em resposta antiga com código', async () => {
+    h.user = { id: 'u1' };
+    sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
+    account = myTab([{ ...round('READY'), deliveryCode: '4821' } as any]);
+    render(<DineInClientApp token={TOKEN} />);
+    await screen.findByTestId('dinein-delivery-code-o1');
+    account = { ...account, me: { ...account.me, approved: false } };
+    await act(async () => h.subscriptions.find(item => item.table === 'tab_sessions')!.callback());
+    expect(screen.queryByRole('region', { name: 'Seus códigos de entrega' })).toBeNull();
+    expect(screen.getByTestId('dinein-track-order').textContent).not.toContain('4821');
+    fireEvent.click(screen.getByTestId('dinein-track-order'));
+    expect(screen.queryByTestId('round-delivery-code-o1')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar acompanhamento' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
+    expect(screen.queryByTestId('account-round-code-o1')).toBeNull();
+  });
+
+  it('remove código ao entregar a rodada e destaca o novo código no próximo pedido', async () => {
+    h.user = { id: 'u1' };
+    sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
+    account = myTab([{ ...round('READY'), deliveryCode: '4821' } as any]);
+    render(<DineInClientApp token={TOKEN} />);
+    await screen.findByTestId('dinein-delivery-code-o1');
+    const refresh = h.subscriptions.find(item => item.table === 'dining_tracking_revisions')!.callback;
+    account = myTab([{ ...round('DELIVERED'), deliveryCode: '4821' } as any]);
+    await act(async () => refresh());
+    expect(screen.queryByRole('region', { name: 'Seus códigos de entrega' })).toBeNull();
+    expect(screen.queryByTestId('dinein-track-order')).toBeNull();
+    account = myTab([
+      round('DELIVERED'),
+      { ...round('CONFIRMED', 'next'), roundNo: 2, deliveryCode: '7193' } as any,
+    ]);
+    await act(async () => refresh());
+    expect(screen.getByTestId('dinein-delivery-code-next').textContent).toContain('Seu código de entrega: 7193 - informe ao garçom');
+    expect(screen.getByTestId('dinein-track-order').textContent).toContain('7193');
+    expect(screen.queryByTestId('dinein-delivery-code-o1')).toBeNull();
   });
 });

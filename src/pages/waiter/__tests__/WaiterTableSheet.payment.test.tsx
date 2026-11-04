@@ -81,13 +81,26 @@ describe('Pagamento na mesa do garçom', () => {
   });
   it.each([true, false])('usa a exigência da rodada após alterar a configuração para %s', globalSetting => {
     const openTab = { ...tab, status: 'OPEN' as const };
-    const rounds = [true, false].map((required, i) => ({ id: `r${i}`, tab_id: tab.id, order_number: i + 1, customer_name: 'Ana', status: 'OUT_FOR_DELIVERY', subtotal: 20, created_at: '2026-11-04T01:00:00Z', round_no: i + 1, delivery_code_required: required }));
-    render(<WaiterTableSheet table={{ id: 'table1', label: 'Mesa 5', area: null, seats: 4 }} tab={openTab} info={deriveTableStatus({ tab: openTab, calls: [], sessions: [], rounds, now: Date.now() })} sessions={[]} calls={[]} rounds={rounds} holderSessionId={null} features={{ reject: false, openTable: false, requestBill: false, holder: false }} busy={null} message="" onClose={vi.fn()} onApprove={vi.fn()} onReject={vi.fn()} onHandleCall={vi.fn()} onOpenTable={vi.fn()} onOrder={vi.fn()} onResetHolder={vi.fn()} onTransferHolder={vi.fn()} onMarkDelivered={vi.fn()} requireDeliveryCode={globalSetting} />);
+    const deliver = vi.fn();
+    const rounds = [
+      { status: 'OUT_FOR_DELIVERY', required: true }, { status: 'OUT_FOR_DELIVERY', required: false },
+      { status: 'READY', required: true }, { status: 'PREPARING', required: true },
+    ].map(({ required, status }, i) => ({ id: `r${i}`, tab_id: tab.id, order_number: i + 1, customer_name: 'Ana', status, subtotal: 20, created_at: '2026-11-04T01:00:00Z', round_no: i + 1, delivery_code_required: required }));
+    render(<WaiterTableSheet table={{ id: 'table1', label: 'Mesa 5', area: null, seats: 4 }} tab={openTab} info={deriveTableStatus({ tab: openTab, calls: [], sessions: [], rounds, now: Date.now() })} sessions={[]} calls={[]} rounds={rounds} holderSessionId={null} features={{ reject: false, openTable: false, requestBill: false, holder: false }} busy={null} message="" onClose={vi.fn()} onApprove={vi.fn()} onReject={vi.fn()} onHandleCall={vi.fn()} onOpenTable={vi.fn()} onOrder={vi.fn()} onResetHolder={vi.fn()} onTransferHolder={vi.fn()} onMarkDelivered={deliver} requireDeliveryCode={globalSetting} />);
     expect(screen.getByTestId('waiter-delivery-code-r0')).toBeTruthy();
     expect(screen.queryByTestId('waiter-delivery-code-r1')).toBeNull();
+    expect(screen.queryByTestId('waiter-delivery-code-r2')).toBeNull();
+    expect(screen.queryByTestId('waiter-delivery-code-r3')).toBeNull();
     const buttons = screen.getAllByRole('button', { name: 'Entregue' });
     expect((buttons[0] as HTMLButtonElement).disabled).toBe(true);
     expect((buttons[1] as HTMLButtonElement).disabled).toBe(false);
+    expect((buttons[2] as HTMLButtonElement).disabled).toBe(true);
+    expect((buttons[3] as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('waiter-delivery-code-r0'), { target: { value: '12x3' } });
+    expect((buttons[0] as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('waiter-delivery-code-r0'), { target: { value: '4821' } });
+    fireEvent.click(buttons[0]);
+    expect(deliver).toHaveBeenCalledWith('r0', '4821');
   });
   it('exibe botão Fechar conta quando garçom está autorizado (estado roxo) e botão Reabrir conta verde', async () => {
     const authTab = { ...tab, status: 'WAITER_AUTHORIZED' as const };
