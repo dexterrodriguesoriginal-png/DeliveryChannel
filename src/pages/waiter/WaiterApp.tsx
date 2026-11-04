@@ -219,29 +219,41 @@ const LoginScreen: React.FC<{ slug: string | null }> = ({ slug }) => {
 };
 
 /** O QR de uma loja nunca lista ou aceita convites de outra loja. */
-const ScopedJoinInvite: React.FC<{ slug: string; signOutBtn: React.ReactNode }> = ({ slug, signOutBtn }) => {
+const ScopedJoinInvite: React.FC<{ slug: string; signOutBtn: React.ReactNode; onJoined?: (tenantId: string) => void; failedAfterJoin?: boolean }> = ({ slug, signOutBtn, onJoined, failedAfterJoin }) => {
   const { refreshSession } = useAuth();
   const refreshRef = useRef(refreshSession);
   refreshRef.current = refreshSession;
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState('');
+  const onJoinedRef = useRef(onJoined);
+  onJoinedRef.current = onJoined;
+  // Lido só na montagem: a tela volta a montar depois do refresh da sessão.
+  const failedOnMount = useRef(!!failedAfterJoin).current;
   useEffect(() => {
+    // Já entrou e mesmo assim o vínculo não apareceu: mostra o erro em vez de repetir em loop.
+    if (failedOnMount && attempt === 0) {
+      setError('Não foi possível abrir a loja deste link. Tente novamente.');
+      return;
+    }
     let alive = true;
     setError('');
     void (async () => {
       try {
-        const { error: inviteError } = await supabase.rpc('team_accept_invite', { p_slug: slug, p_role: 'WAITER' });
+        const { data, error: inviteError } = await supabase.rpc('team_accept_invite', { p_slug: slug, p_role: 'WAITER' });
         if (inviteError) {
           if (alive) setError(inviteError.code === '42501' ? 'Este e-mail não foi convidado. Fale com o estabelecimento.' : 'Não foi possível entrar na equipe. Tente novamente em instantes.');
           return;
         }
-        if (alive) await refreshRef.current();
+        const joinedTenantId = typeof (data as { tenant_id?: unknown } | null)?.tenant_id === 'string' ? (data as { tenant_id: string }).tenant_id : '';
+        if (!alive) return;
+        if (joinedTenantId) onJoinedRef.current?.(joinedTenantId);
+        await refreshRef.current();
       } catch {
         if (alive) setError('Não foi possível entrar na equipe. Tente novamente em instantes.');
       }
     })();
     return () => { alive = false; };
-  }, [slug, attempt]);
+  }, [slug, attempt, failedOnMount]);
   if (error) return <Notice testId="waiter-no-access" title="Sem acesso à loja" text={error}>
     <button type="button" onClick={() => setAttempt(value => value + 1)} className="h-12 rounded-2xl bg-emerald-500 font-bold text-slate-950">Tentar novamente</button>
     {signOutBtn}
@@ -304,8 +316,11 @@ export const WaiterApp: React.FC = () => {
   const routeSlug = useMemo(() => {
     return typeof window === 'undefined' ? null : parseWaiterLoginPath(window.location.pathname);
   }, []);
-  const scopedStoreMatches = !routeSlug || activeTenant?.slug?.trim().toLowerCase() === routeSlug;
-  const scopedMemberships = routeSlug ? availableTenants.filter(tenant => tenant.tenantSlug?.trim().toLowerCase() === routeSlug && tenant.status === 'ACTIVE') : [];
+  // Loja confirmada pelo servidor (team_accept_invite) para o slug do link; evita loop quando o slug não vem no vínculo.
+  const [joinedScope, setJoinedScope] = useState<{ slug: string; tenantId: string } | null>(null);
+  const joinedTenantId = routeSlug && joinedScope?.slug === routeSlug ? joinedScope.tenantId : null;
+  const scopedStoreMatches = !routeSlug || activeTenant?.slug?.trim().toLowerCase() === routeSlug || (!!joinedTenantId && activeTenant?.id === joinedTenantId);
+  const scopedMemberships = routeSlug ? availableTenants.filter(tenant => tenant.status === 'ACTIVE' && (tenant.tenantSlug?.trim().toLowerCase() === routeSlug || (!!joinedTenantId && tenant.tenantId === joinedTenantId))) : [];
   const scopedMembershipId = scopedMemberships.length === 1 ? scopedMemberships[0].tenantId : null;
   const scopedSwitchRef = useRef('');
   const [scopedSwitchError, setScopedSwitchError] = useState('');
@@ -382,7 +397,7 @@ export const WaiterApp: React.FC = () => {
   }
   if (routeSlug && !scopedStoreMatches) {
     if (scopedMemberships.length > 1) return <Notice testId="waiter-scope-ambiguous" title="Não foi possível identificar a loja" text="Peça um novo link de acesso ao estabelecimento.">{signOutBtn}</Notice>;
-    if (!scopedMembershipId) return <ScopedJoinInvite slug={routeSlug} signOutBtn={signOutBtn} />;
+    if (!scopedMembershipId) return <ScopedJoinInvite slug={routeSlug} signOutBtn={signOutBtn} failedAfterJoin={!!joinedTenantId} onJoined={tenantId => setJoinedScope({ slug: routeSlug, tenantId })} />;
     if (scopedSwitchError) return <Notice testId="waiter-scope-error" title="Não foi possível abrir a loja" text={scopedSwitchError}>
       <button type="button" onClick={() => setScopedSwitchAttempt(value => value + 1)} className="h-12 rounded-2xl bg-emerald-500 font-bold text-slate-950">Tentar novamente</button>
       {signOutBtn}

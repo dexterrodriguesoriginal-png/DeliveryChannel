@@ -21,7 +21,7 @@ import { WaiterApp } from '../WaiterApp';
 import { WaiterTableSheet } from '../WaiterTableSheet';
 
 const invite = (id: string, roleId = 'WAITER') => ({ id, roleId, status: 'PENDING', tenantName: 'Bar do Zé' });
-beforeEach(() => { h.rpc.mockReset(); h.auth.signUp.mockReset(); h.auth.signInWithPassword.mockReset(); Object.values(h.team).forEach(m => m.mockReset()); h.auth.refreshSession.mockReset(); h.auth.switchTenant.mockReset(); h.auth.switchTenant.mockResolvedValue(true); h.auth.supabaseUser = { email: 'ana@loja.com' }; h.auth.activeTenant = null; h.auth.activeRole = null; h.auth.availableTenants = []; h.modules.enabled = true; h.getPublicEnabled.mockReset(); h.getPublicEnabled.mockResolvedValue(new Set<string>()); window.history.replaceState(null, '', '/garcom'); });
+beforeEach(() => { h.rpc.mockReset(); h.auth.signUp.mockReset(); h.auth.signInWithPassword.mockReset(); Object.values(h.team).forEach(m => m.mockReset()); h.auth.refreshSession.mockReset(); h.auth.switchTenant.mockReset(); h.auth.switchTenant.mockResolvedValue(true); h.auth.supabaseUser = { email: 'ana@loja.com' }; h.auth.activeTenant = null; h.auth.activeRole = null; h.auth.availableTenants = []; h.auth.isMembershipLoading = false; h.modules.enabled = true; h.getPublicEnabled.mockReset(); h.getPublicEnabled.mockResolvedValue(new Set<string>()); window.history.replaceState(null, '', '/garcom'); });
 afterEach(cleanup);
 
 describe('/garcom — convite pendente', () => {
@@ -100,6 +100,33 @@ describe('/garcom — convite pendente', () => {
     expect(h.auth.switchTenant).not.toHaveBeenCalled();
     expect(h.rpc).toHaveBeenCalledWith('team_accept_invite', { p_slug: 'adega-a', p_role: 'WAITER' });
     expect(screen.queryByText(/SEGREDO_LOJA_B/)).toBeNull();
+  });
+  it('garçom já vinculado cujo vínculo vem sem slug: usa a loja confirmada pelo servidor e não entra em loop', async () => {
+    window.history.replaceState(null, '', '/garcom/adega-a');
+    h.auth.activeTenant = null;
+    h.auth.availableTenants = [];
+    h.rpc.mockResolvedValue({ data: { tenant_id: 'tenant-a', role: 'WAITER' }, error: null });
+    h.auth.refreshSession.mockImplementation(async () => {
+      h.auth.availableTenants = [{ tenantId: 'tenant-a', tenantName: 'Loja A', tenantSlug: '', roleId: 'WAITER', status: 'ACTIVE' }];
+    });
+    const view = render(<WaiterApp />);
+    await waitFor(() => expect(h.auth.refreshSession).toHaveBeenCalledTimes(1));
+    view.rerender(<WaiterApp />);
+    await waitFor(() => expect(h.auth.switchTenant).toHaveBeenCalledExactlyOnceWith('tenant-a'));
+    expect(h.rpc).toHaveBeenCalledTimes(1);
+  });
+  it('vínculo continua ausente depois de entrar: mostra erro com Tentar novamente em vez de piscar', async () => {
+    window.history.replaceState(null, '', '/garcom/adega-a');
+    h.rpc.mockResolvedValue({ data: { tenant_id: 'tenant-a', role: 'WAITER' }, error: null });
+    h.auth.refreshSession.mockImplementation(async () => { h.auth.isMembershipLoading = true; });
+    const view = render(<WaiterApp />);
+    await waitFor(() => expect(h.auth.refreshSession).toHaveBeenCalledTimes(1));
+    view.rerender(<WaiterApp />);
+    h.auth.isMembershipLoading = false;
+    view.rerender(<WaiterApp />);
+    expect((await screen.findByTestId('waiter-no-access')).textContent).toContain('Não foi possível abrir a loja deste link');
+    expect(h.rpc).toHaveBeenCalledTimes(1);
+    expect(h.auth.refreshSession).toHaveBeenCalledTimes(1);
   });
   it('slug ambíguo em vínculos falha fechado sem escolher outra loja', () => {
     window.history.replaceState(null, '', '/garcom/adega-a');
