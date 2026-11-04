@@ -1,9 +1,19 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import express from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { createPwaRouter, iconVersion, IMMUTABLE_ICON_CACHE_CONTROL } from '../routes';
+import {
+  createPwaRouter,
+  HASHED_ASSET_RE,
+  iconVersion,
+  IMMUTABLE_ICON_CACHE_CONTROL,
+  resolveBuildVersion,
+   serverManifest,
+  staticAssetCacheControl,
+} from '../routes';
+import { injectStoreHead } from '../storeHtml';
+import { identityHash } from '../../../src/lib/pwa/applyStoreIdentity';
 import { pngSize } from '../icons';
 import { assertPublicUrl, isPrivateIp } from '../safeFetch';
 import { identityFromPayload, isValidSlug, StoreResolver } from '../storeSource';
@@ -47,7 +57,9 @@ describe('rotas PWA por loja', () => {
     expect(a.icons[0].src).not.toBe(b.icons[0].src);
   });
 
-  it('ícones PNG válidos com dimensões corretas (fallback de iniciais) e Cache-Control immutable quando com ?v=', async () => {
+  it('ícones PNG válidos com dimensões corretas (fallback de iniciais nunca usa cache immutable)', async () => {
+    const adegaStore = (stores['adega-premium'] as { status: 'ok'; store: any }).store;
+    const currentVer = iconVersion(adegaStore);
     for (const [variant, size] of [['icon-192', 192], ['icon-512', 512], ['maskable-512', 512]] as const) {
       const rNoV = await fetch(`${base}/app/adega-premium/icons/${variant}.png`);
       expect(rNoV.status).toBe(200);
@@ -55,13 +67,14 @@ describe('rotas PWA por loja', () => {
       expect(rNoV.headers.get('cache-control')).toBe('no-cache');
       expect(pngSize(Buffer.from(await rNoV.arrayBuffer()))).toEqual({ width: size, height: size });
 
-      const rWithV = await fetch(`${base}/app/adega-premium/icons/${variant}.png?v=abc123`);
-      expect(rWithV.status).toBe(200);
-      expect(rWithV.headers.get('cache-control')).toBe(IMMUTABLE_ICON_CACHE_CONTROL);
+      // Mesmo com ?v= igual à versão atual, como o logo falhou (fallback de iniciais), deve ser no-cache
+      const rFallbackWithV = await fetch(`${base}/app/adega-premium/icons/${variant}.png?v=${currentVer}`);
+      expect(rFallbackWithV.status).toBe(200);
+      expect(rFallbackWithV.headers.get('cache-control')).toBe('no-cache');
     }
   });
 
-  it('manifesto tem Cache-Control: no-cache, URL estável em related_applications e hash do ícone muda com logo/updated_at/cores', async () => {
+  it('manifesto tem Cache-Control: no-cache, URL estável em related_applications e versão única entre storeHtml, applyStoreIdentity e manifest', async () => {
     const r = await fetch(`${base}/app/padaria-do-joao/manifest.webmanifest`);
     expect(r.headers.get('cache-control')).toBe('no-cache');
     const m = await r.json();
@@ -76,10 +89,110 @@ describe('rotas PWA por loja', () => {
     const v1 = iconVersion(baseStore);
     const vLogoChanged = iconVersion({ ...baseStore, theme: { ...baseStore.theme, logoUrl: 'https://cdn.example/logo-v2.png' } });
     const vUpdatedChanged = iconVersion({ ...baseStore, theme: { ...baseStore.theme, updatedAt: '2026-11-03T12:00:00Z' } });
-    const vBytesChanged = iconVersion(baseStore, Buffer.from('new-image-bytes'));
     expect(vLogoChanged).not.toBe(v1);
     expect(vUpdatedChanged).not.toBe(v1);
-    expect(vBytesChanged).not.toBe(v1);
+
+    // Item 3: único valor de versão em storeHtml, applyStoreIdentity (identityHash) e serverManifest
+    expect(identityHash(baseStore)).toBe(v1);
+    const manifest = serverManifest(baseStore);
+    expect(manifest.icons[0].src).toBe(`/app/minha-loja/icons/icon-192.png?v=${v1}`);
+    const htmlOut = injectStoreHead('<html><head><title>X</title></head></html>', 'minha-loja', baseStore);
+    expect(htmlOut).toContain(`/app/minha-loja/icons/icon-192.png?v=${v1}`);
+  });
+
+  it('item 1 e 2: /api/pwa/version e manifest nunca baixam logo; ícones fazem cache do logo por (store.id, logoUrl) e só usam immutable quando v===atual E logo real carregou', async () => {
+    const store = {
+      id: 'tenant-real-01',
+      slug: 'loja-real',
+      name: 'Loja Real',
+      theme: {
+        storeName: 'Loja Real',
+        primaryColor: '#15803d',
+        logoUrl: 'https://cdn.example/logo-real.svg',
+        updatedAt: '2026-11-04T00:00:00Z',
+      },
+    };
+    const validSvg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="#15803d"/><circle cx="64" cy="64" r="40" fill="#ffffff"/></svg>',
+    );
+    let failLogoDownload = false;
+    const fetchLogoSpy = vi.fn(async () => {
+      if (failLogoDownload) throw new Error('falha temporária de rede');
+      return { bytes: validSvg, contentType: 'image/svg+xml' };
+    });
+
+    const app2 = express();
+    app2.use(
+      createPwaRouter({
+        resolveStore: async (slug) => (slug === 'loja-real' ? { status: 'ok', store } : { status: 'not_found' }),
+        publicDir: '/nonexistent',
+        fetchLogo: fetchLogoSpy,
+      }),
+    );
+    const srv2 = await new Promise<Server>((r) => {
+      const s = app2.listen(0, '127.0.0.1', () => r(s));
+    });
+    try {
+      const b2 = `http://127.0.0.1:${(srv2.address() as AddressInfo).port}`;
+      const ver = iconVersion(store);
+
+      // 1) /api/pwa/version e /manifest.webmanifest NUNCA chamam fetchLogo
+      const verRes = await fetch(`${b2}/api/pwa/version?slug=loja-real`);
+      expect(verRes.status).toBe(200);
+      const manifestRes = await fetch(`${b2}/app/loja-real/manifest.webmanifest`);
+      expect(manifestRes.status).toBe(200);
+      expect(fetchLogoSpy).toHaveBeenCalledTimes(0);
+
+      // 2) Se o download do logo falhar, serve fallback com no-cache e NÃO guarda fallback no iconCache
+      failLogoDownload = true;
+      const fallbackRes = await fetch(`${b2}/app/loja-real/icons/icon-192.png?v=${ver}`);
+      expect(fallbackRes.status).toBe(200);
+      expect(fallbackRes.headers.get('cache-control')).toBe('no-cache');
+      const fallbackBytes = Buffer.from(await fallbackRes.arrayBuffer());
+      expect(fetchLogoSpy).toHaveBeenCalledTimes(1);
+
+      // 3) Quando o logo volta a responder, não fica preso no fallback: baixa 1 única vez e reutiliza em todas as variantes
+      failLogoDownload = false;
+      const wrongVRes = await fetch(`${b2}/app/loja-real/icons/icon-192.png?v=versao-antiga`);
+      expect(wrongVRes.status).toBe(200);
+      expect(wrongVRes.headers.get('cache-control')).toBe('no-cache');
+      const realBytes192 = Buffer.from(await wrongVRes.arrayBuffer());
+      expect(realBytes192.equals(fallbackBytes)).toBe(false);
+      expect(fetchLogoSpy).toHaveBeenCalledTimes(2);
+
+      // Com ?v= igual à versão atual e logo real carregado => immutable, sem novo download
+      const ok192 = await fetch(`${b2}/app/loja-real/icons/icon-192.png?v=${ver}`);
+      const ok512 = await fetch(`${b2}/app/loja-real/icons/icon-512.png?v=${ver}`);
+      const okMaskable = await fetch(`${b2}/app/loja-real/icons/maskable-512.png?v=${ver}`);
+      expect(ok192.headers.get('cache-control')).toBe(IMMUTABLE_ICON_CACHE_CONTROL);
+      expect(ok512.headers.get('cache-control')).toBe(IMMUTABLE_ICON_CACHE_CONTROL);
+      expect(okMaskable.headers.get('cache-control')).toBe(IMMUTABLE_ICON_CACHE_CONTROL);
+      // Mesmo renderizando 512 e maskable-512, o logo veio do logoCache em memória (sem chamadas extras ao fetchLogo)
+      expect(fetchLogoSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      await new Promise<void>((r) => srv2.close(() => r()));
+    }
+  });
+
+  it('item 4 e 6: staticAssetCacheControl aplica immutable só em arquivos com hash (excluindo /assets/aistudio) e resolveBuildVersion não usa dc-pwa-v1 fixo', () => {
+    expect(HASHED_ASSET_RE.test('index-AbCd1234.js')).toBe(true);
+    expect(HASHED_ASSET_RE.test('style-9f8e7d6c.css')).toBe(true);
+    expect(HASHED_ASSET_RE.test('logo.png')).toBe(false);
+
+    expect(staticAssetCacheControl('/workspace/dist/assets/index-AbCd1234.js')).toBe(IMMUTABLE_ICON_CACHE_CONTROL);
+    expect(staticAssetCacheControl('/workspace/dist/assets/font-12345678.woff2')).toBe(IMMUTABLE_ICON_CACHE_CONTROL);
+    expect(staticAssetCacheControl('/workspace/dist/assets/aistudio/preview.png')).toBeNull();
+    expect(staticAssetCacheControl('/workspace/dist/assets/aistudio/chunk-AbCd1234.js')).toBeNull();
+    expect(staticAssetCacheControl('/workspace/dist/assets/sem-hash.png')).toBeNull();
+    expect(staticAssetCacheControl('/workspace/dist/index.html')).toBe('no-cache');
+    expect(staticAssetCacheControl('/workspace/dist/manifest.json')).toBe('no-cache');
+    expect(staticAssetCacheControl('/workspace/dist/garcom.webmanifest')).toBe('no-cache');
+    expect(staticAssetCacheControl('/workspace/dist/sw.js')).toBe('no-cache');
+
+    const resolved = resolveBuildVersion('/nonexistent', {});
+    expect(resolved).toBeTruthy();
+    expect(resolved).not.toBe('dc-pwa-v1');
+    expect(resolveBuildVersion('/nonexistent', { COMMIT_SHA: 'abc1234def' })).toBe('abc1234def');
   });
 
   it('endpoint /api/pwa/version responde com Cache-Control no-store e versão da loja', async () => {

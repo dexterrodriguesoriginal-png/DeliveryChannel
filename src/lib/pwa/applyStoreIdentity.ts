@@ -6,7 +6,7 @@
  * Só é usado em rotas /app/<slug>. As demais rotas mantêm o manifesto global (/manifest.json).
  */
 import { resolveSystemBars } from './systemBars';
-import { buildStoreManifest, deriveShortName, storeAppId, fallbackIconSvg, manifestDataUrl, ManifestIcon, safeColor, FALLBACK_THEME_COLOR, StoreIdentityInput, storeDisplayName, svgDataUrl } from './storeManifest';
+import { buildStoreManifest, deriveShortName, storeAppId, storeIconVersion, fallbackIconSvg, manifestDataUrl, ManifestIcon, safeColor, FALLBACK_THEME_COLOR, StoreIdentityInput, storeDisplayName, svgDataUrl } from './storeManifest';
 
 const GLOBAL_MANIFEST_HREF = '/manifest.json';
 
@@ -55,24 +55,9 @@ export async function buildLogoIcons(logoUrl: string | undefined, bg: string): P
   }
 }
 
-/** Hash curto e estável da identidade visível (logo, cores, barras, nome e updatedAt): versão dos ícones. */
+/** Hash curto e estável da identidade visível (logo, cores, barras, nome e updatedAt): versão única dos ícones. */
 export function identityHash(store: StoreIdentityInput): string {
-  const t = store.theme || {};
-  const src = [
-    store.id,
-    storeDisplayName(store),
-    t.shortName,
-    t.logoUrl,
-    t.primaryColor,
-    t.headerColor,
-    t.statusBarColor,
-    t.navBarColor,
-    t.backgroundColor,
-    t.updatedAt || store.updatedAt,
-  ].join('|');
-  let h = 5381;
-  for (let i = 0; i < src.length; i++) h = ((h << 5) + h + src.charCodeAt(i)) >>> 0;
-  return h.toString(36);
+  return storeIconVersion(store);
 }
 
 /** <meta theme-color> + color-scheme: a barra de status/navegação segue a loja sem recarregar. */
