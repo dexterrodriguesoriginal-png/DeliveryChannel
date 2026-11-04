@@ -33,7 +33,7 @@ CREATE TABLE public.order_delivery_disputes(
  status text NOT NULL DEFAULT 'OPEN' CHECK(status IN ('OPEN','CONFIRMED_DELIVERED','RESENT')),
  resolved_by uuid REFERENCES public.users(id) ON DELETE SET NULL,resolved_at timestamptz,
  call_id uuid REFERENCES public.waiter_calls(id) ON DELETE SET NULL,
- FOREIGN KEY(tenant_id,order_id) REFERENCES public.orders(tenant_id,id) ON DELETE RESTRICT,
+ FOREIGN KEY(tenant_id,order_id) REFERENCES public.orders(tenant_id,id) ON DELETE CASCADE,
  CHECK((status='OPEN' AND resolved_at IS NULL) OR (status<>'OPEN' AND resolved_at IS NOT NULL))
 );
 CREATE INDEX order_delivery_disputes_tenant_open ON public.order_delivery_disputes(tenant_id,created_at) WHERE status='OPEN';

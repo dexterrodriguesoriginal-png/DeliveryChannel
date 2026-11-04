@@ -21,6 +21,8 @@ DROP FUNCTION public.reserve_tab_receipt(uuid,uuid);
 DROP FUNCTION public.tab_receipt_target(uuid);
 DROP FUNCTION public._tab_receipt_email(uuid);
 DROP FUNCTION public._receipt_mask_email(text);
+-- Remove também a FK actor_id ON DELETE SET NULL; não repõe NOT NULL em
+-- históricos cujo ator já foi excluído antes de remover a tabela da Parte A.
 DROP TABLE public.tab_receipt_sends;
 DROP FUNCTION public.staff_reopen_tab(uuid);
 DROP FUNCTION public.reopen_tab_from_bill(uuid);

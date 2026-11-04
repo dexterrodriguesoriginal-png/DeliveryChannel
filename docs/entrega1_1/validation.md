@@ -62,3 +62,11 @@ Regressão adicional final: Salão do dono conserva confirmação/valor/comprova
 Validação final C (todas as partes): TypeScript sem erros; Vitest completo **237 arquivos / 1.958 testes aprovados, zero falhas e zero pendentes**. Todas as **11/11** suítes SQL aprovadas; suíte `entrega1_1` **169/169** asserções e fingerprint exato de A+B+C em apply → rollback → apply → rollback. A execução completa final também confirmou as correções das duas falhas encontradas no primeiro passe da Parte B. Verificações afetadas C1: 5 arquivos / 61 testes; C2: 4 arquivos / 17 testes. PWA/instalação/totem/PDV/cobrança não alterados; `prompt_*.md` não versionados.
 
 Pendências operacionais: configurar `RESEND_API_KEY` e remetente verificado em `RECEIPT_FROM` antes do envio real de comprovantes. Convites continuam no mecanismo existente de QR/link, com renovação explícita e sem alegação de e-mail enviado. Histórico de abertura anterior à migração usa a janela de 12 horas. Nenhuma migração aplicada a staging remoto/produção, nenhum deploy e nenhum merge.
+
+## Ajustes médios da revisão do PR #19
+
+`tab_receipt_sends.actor_id` aceita NULL e usa `ON DELETE SET NULL`: excluir a identidade/perfil do ator conserva o histórico de envio, cobrança, horário e resultado. A FK composta `(tenant_id, order_id)` de `order_delivery_disputes` usa `ON DELETE CASCADE`, removendo a disputa na exclusão administrativa de seu pedido, sem alcançar pedidos/disputas de outras lojas.
+
+Os downs removem essas tabelas e suas FKs, sem tentar restaurar NOT NULL em históricos cujo ator já foi excluído nem recriar RESTRICT antes de remover a tabela. A proteção existente que bloqueia exclusão normal de pedidos continua intacta; somente a fixture local suspende temporariamente esse trigger para testar a cascata e o reativa em seguida.
+
+Validação da revisão: TypeScript sem erros; Vitest completo com 237 arquivos / 1.958 testes aprovados; regressão SQL de entrega1_1 com 180/180 asserções aprovadas (11 novas), além de apply → rollback exato → apply → rollback exato. Nenhum acesso a produção, deploy ou merge.

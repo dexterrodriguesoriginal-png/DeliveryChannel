@@ -588,3 +588,57 @@ SET ROLE authenticated;
 SELECT t.is(public.salon_night_stats(:'C2_T')->>'window_source','LAST_12_HOURS','C2 abertura futura inválida usa fallback');
 RESET ROLE;
 SELECT t.login(NULL);
+
+-- Revisão PR #19: exclusão do ator preserva a auditoria; manutenção de pedido
+-- remove sua contestação, sem alterar as proteções de exclusão do aplicativo.
+RESET ROLE;
+SELECT t.login(NULL);
+\set FK_ACTOR 'e1410000-0000-0000-0000-000000000001'
+\set FK_RECEIPT 'e1420000-0000-0000-0000-000000000001'
+\set FK_ORDER_A 'e1430000-0000-0000-0000-000000000001'
+\set FK_ORDER_B 'e1430000-0000-0000-0000-000000000002'
+\set FK_DISPUTE_A 'e1440000-0000-0000-0000-000000000001'
+\set FK_DISPUTE_B 'e1440000-0000-0000-0000-000000000002'
+INSERT INTO auth.users(id,email) VALUES(:'FK_ACTOR','receipt-actor-fk@test.example');
+INSERT INTO public.tab_receipt_sends(id,tenant_id,tab_id,actor_id,charge_id,status,completed_at)
+SELECT :'FK_RECEIPT',tenant_id,tab_id,:'FK_ACTOR',charge_id,'SENT',now()
+FROM public.tab_receipt_sends WHERE id=(:'receipt2'::jsonb->>'attempt_id')::uuid;
+SELECT t.ok(EXISTS(SELECT 1 FROM public.tab_receipt_sends WHERE id=:'FK_RECEIPT' AND actor_id=:'FK_ACTOR'),
+ 'Revisão A2 auditoria referencia ator descartável antes da exclusão');
+DELETE FROM auth.users WHERE id=:'FK_ACTOR';
+SELECT t.ok(NOT EXISTS(SELECT 1 FROM auth.users WHERE id=:'FK_ACTOR') AND NOT EXISTS(SELECT 1 FROM public.users WHERE id=:'FK_ACTOR'),
+ 'Revisão A2 exclusão da identidade também remove o perfil sem bloquear em comprovantes');
+SELECT t.ok(EXISTS(SELECT 1 FROM public.tab_receipt_sends WHERE id=:'FK_RECEIPT' AND actor_id IS NULL AND status='SENT' AND completed_at IS NOT NULL AND charge_id IS NOT NULL),
+ 'Revisão A2 ON DELETE SET NULL preserva histórico e cobrança após excluir ator');
+SELECT t.ok(EXISTS(SELECT 1 FROM public.tab_receipt_sends WHERE id=(:'receipt2'::jsonb->>'attempt_id')::uuid AND actor_id=:'OWNER'),
+ 'Revisão A2 exclusão de um ator não altera a autoria dos outros comprovantes');
+
+INSERT INTO public.orders(id,tenant_id,tab_id,fulfillment_type,status,subtotal,total_amount,payment_method,payment_status,origin,order_number,customer_name,customer_phone,delivery_address)
+SELECT CASE WHEN o.tenant_id=:'A' THEN :'FK_ORDER_A'::uuid ELSE :'FK_ORDER_B'::uuid END,
+ o.tenant_id,o.tab_id,'DINE_IN','READY',o.subtotal,o.total_amount,o.payment_method,o.payment_status,o.origin,
+ CASE WHEN o.tenant_id=:'A' THEN 1401 ELSE 1402 END,'Fixture FK','11900000000','Mesa de teste'
+FROM public.orders o WHERE o.id IN('e1250000-0000-0000-0000-000000000007','e1250000-0000-0000-0000-000000000013');
+SELECT t.throws($q$INSERT INTO public.order_delivery_disputes(tenant_id,order_id)
+ VALUES('10000000-0000-0000-0000-00000000000a','e1430000-0000-0000-0000-000000000002')$q$,
+ 'foreign key constraint','Revisão B4 FK composta continua recusando pedido de outra loja');
+INSERT INTO public.order_delivery_disputes(id,tenant_id,order_id) VALUES
+ (:'FK_DISPUTE_A',:'A',:'FK_ORDER_A'),(:'FK_DISPUTE_B',:'B',:'FK_ORDER_B');
+SELECT t.throws($q$DELETE FROM public.orders WHERE id='e1430000-0000-0000-0000-000000000001'$q$,
+ 'ORDER_DELETE_FORBIDDEN','Revisão B4 exclusão normal de pedido continua bloqueada antes da cascata');
+SELECT t.ok(EXISTS(SELECT 1 FROM public.order_delivery_disputes WHERE id=:'FK_DISPUTE_A'),
+ 'Revisão B4 tentativa de exclusão bloqueada preserva a contestação');
+-- Somente o superusuário deste banco local descartável suspende o guard para
+-- exercitar a FK de uma operação de manutenção; nenhum bypass é criado na aplicação.
+ALTER TABLE public.orders DISABLE TRIGGER trg_orders_before_delete_guard;
+DELETE FROM public.orders WHERE tenant_id=:'A' AND id=:'FK_ORDER_A';
+ALTER TABLE public.orders ENABLE TRIGGER trg_orders_before_delete_guard;
+SELECT t.ok(NOT EXISTS(SELECT 1 FROM public.orders WHERE id=:'FK_ORDER_A'),
+ 'Revisão B4 manutenção autorizada consegue excluir pedido com contestação');
+SELECT t.ok(NOT EXISTS(SELECT 1 FROM public.order_delivery_disputes WHERE id=:'FK_DISPUTE_A'),
+ 'Revisão B4 ON DELETE CASCADE remove a contestação do pedido excluído');
+SELECT t.ok(EXISTS(SELECT 1 FROM public.orders WHERE id=:'FK_ORDER_B' AND tenant_id=:'B')
+ AND EXISTS(SELECT 1 FROM public.order_delivery_disputes WHERE id=:'FK_DISPUTE_B' AND order_id=:'FK_ORDER_B' AND tenant_id=:'B'),
+ 'Revisão B4 cascata preserva pedido e contestação de outra loja');
+SELECT t.ok(EXISTS(SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid='public.orders'::regclass
+ AND tgname='trg_orders_before_delete_guard' AND tgenabled='O'),
+ 'Revisão B4 guard de exclusão reativado ao terminar a manutenção local');

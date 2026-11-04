@@ -12,6 +12,8 @@ DROP FUNCTION public.list_open_delivery_disputes(uuid);
 DROP FUNCTION public.resolve_delivery_dispute(uuid,text);
 DROP FUNCTION public.customer_dispute_delivery(uuid,uuid);
 DROP FUNCTION public.waiter_mark_delivered(uuid);
+-- Remove também a FK composta ON DELETE CASCADE. Não recria RESTRICT em
+-- uma tabela da Parte B que deixa de existir; a proteção de pedidos é preservada.
 DROP TABLE public.order_delivery_disputes;
 DROP FUNCTION public._can_manage_delivery_dispute(uuid);
 DO $$

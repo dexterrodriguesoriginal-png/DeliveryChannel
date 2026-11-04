@@ -131,7 +131,7 @@ GRANT EXECUTE ON FUNCTION public.tab_receipt_target(uuid) TO authenticated;
 
 CREATE TABLE public.tab_receipt_sends(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
- tab_id uuid NOT NULL,actor_id uuid NOT NULL REFERENCES public.users(id),charge_id uuid NOT NULL REFERENCES public.tab_pix_charges(id),
+ tab_id uuid NOT NULL,actor_id uuid REFERENCES public.users(id) ON DELETE SET NULL,charge_id uuid NOT NULL REFERENCES public.tab_pix_charges(id),
  created_at timestamptz NOT NULL DEFAULT now(),completed_at timestamptz,
  status text NOT NULL DEFAULT 'RESERVED' CHECK(status IN ('RESERVED','SENT','FAILED')),
  reason text CHECK(reason IS NULL OR reason IN ('EMAIL_PROVIDER_NOT_CONFIGURED','PROVIDER_ERROR')),
