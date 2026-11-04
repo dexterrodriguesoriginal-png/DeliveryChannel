@@ -3,6 +3,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { OrderAlertsCard } from '../dashboard/OrderAlertsCard';
 import { buildOrderAlerts } from '../../../lib/orders/orderAlerts';
+import { statusColorTokens } from '../../../lib/orders/statusColors';
 
 const NOW = Date.now();
 const o = (id: string, status: string, agoMin: number, extra: Record<string, unknown> = {}) => ({
@@ -14,6 +15,24 @@ const render = (orders: any[], role: any, extra: Record<string, unknown> = {}) =
   <OrderAlertsCard alerts={buildOrderAlerts(orders, { prepMinutes: 30 })} role={role} onStep={vi.fn()} onView={vi.fn()} {...extra} />);
 
 describe('OrderAlertsCard (Dashboard, faixa compacta)', () => {
+  it.each(['PENDING', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'])('linha %s usa a mesma paleta de Pedidos e garçom', status => {
+    const html = render([o('o1', status, 1, { fulfillmentType: 'DINE_IN' })], 'OWNER', { highlightIds: new Set(['o1']) });
+    const row = html.match(/<li[^>]*data-testid="alert-order"[^>]*>/)?.[0];
+    const colors = statusColorTokens(status);
+    expect(row).toContain(`background-color:${colors.bg}`);
+    expect(row).toContain(`color:${colors.fg}`);
+    expect(row).toContain(`border-color:${colors.border}`);
+    expect(row).not.toContain('ring-blue');
+    if (status === 'OUT_FOR_DELIVERY') expect(html).toContain('Servido · aguardando entrega na mesa');
+  });
+  it('atrasado usa vermelho canônico e entregue ou cancelado sai dos alertas', () => {
+    const html = render([o('o1', 'PREPARING', 45), o('o2', 'DELIVERED', 1), o('o3', 'CANCELLED', 1)], 'OWNER');
+    expect(html.match(/<li[^>]*data-testid="alert-order"[^>]*>/)?.[0]).toContain(`background-color:${statusColorTokens('LATE').bg}`);
+    expect(html).not.toContain('data-order-id="o2"');
+    expect(html).not.toContain('data-order-id="o3"');
+    const preparing = render([o('o1', 'PREPARING', 1)], 'OWNER');
+    expect(preparing.match(/<div[^>]*data-testid="order-alerts-card"[^>]*>/)?.[0]).toContain(`background-color:${statusColorTokens('PREPARING').bg}`);
+  });
   it('estado vazio: só a faixa com "Nenhum pedido pendente", chips zerados e sem lista', () => {
     const html = render([], 'OWNER', { onViewAll: vi.fn() });
     expect(html).toContain('data-testid="alerts-empty"');

@@ -50,7 +50,14 @@ export function attendedTabIds(userId: string | undefined, tabs: readonly TabRow
 
 export function newlyReadyRoundIds(previous: ReadonlyMap<string, string> | null, current: readonly { id: string; status: string }[]): string[] {
   if (!previous) return [];
-  return current.filter(r => r.status === 'READY' && previous.has(r.id) && previous.get(r.id) !== 'READY').map(r => r.id);
+  // A new round may already be ready by the next realtime/polling snapshot.
+  // Compare every order ID, including later rounds on a previously served tab.
+  return current.filter(r => r.status === 'READY' && previous.get(r.id) !== 'READY').map(r => r.id);
+}
+
+/** The counter releases an order with Servir before a waiter can deliver it. */
+export function canDeliverRound(status: string): boolean {
+  return status === 'OUT_FOR_DELIVERY';
 }
 
 export function waiterOrderStatus(status: string): { label: string; color: string; colors: Readonly<StatusColorTokens> } {

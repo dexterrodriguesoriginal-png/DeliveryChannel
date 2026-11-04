@@ -201,7 +201,52 @@ describe('Garçom v2 — Login simples e Modos de atendimento', () => {
       expect(h.readySound).toHaveBeenCalledTimes(1);
     } finally { h.salonStaff.snapshot.mockResolvedValue(base); }
   });
-  it('garçom registra Entregue para rodada pronta e atualiza a lista', async () => {
+  it('segunda e terceira rodadas mudam a cor e chamam o garçom novamente na mesma conta', async () => {
+    h.auth.supabaseUser = { id: 'u-waiter-1', email: 'joao@garcom.deliverychannel.local' };
+    h.auth.activeTenant = { id: 't-1', name: 'Pizzaria Bella', slug: 'pizzaria-bella' };
+    h.auth.activeRole = 'WAITER';
+    const base = await h.salonStaff.snapshot();
+    const first = { id: 'first-order', tab_id: 'tab-1', status: 'DELIVERED', subtotal: 20, created_at: new Date().toISOString(), round_no: 1, order_number: 51, customer_name: 'Cliente' };
+    const second = { ...first, id: 'second-order', round_no: 2, order_number: 52, status: 'READY' };
+    const third = { ...first, id: 'third-order', round_no: 3, order_number: 53, status: 'PENDING' };
+    h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [first] } as never);
+    try {
+      render(<WaiterApp />);
+      const table = await screen.findByTestId('salon-table-t-1');
+      expect(table.getAttribute('data-status')).toBe('OCCUPIED');
+      expect(screen.queryByTestId('waiter-counter-alert')).toBeNull();
+
+      // The second round can finish preparation before the next snapshot arrives.
+      h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [first, second] } as never);
+      h.realtimeOrders?.();
+      await waitFor(() => expect(table.getAttribute('data-status')).toBe('READY'));
+      expect(screen.getByTestId('waiter-counter-alert').textContent).toContain('1 pedido pronto');
+      expect(h.readySound).toHaveBeenCalledTimes(1);
+      h.realtimeOrders?.();
+      await waitFor(() => expect(h.salonStaff.snapshot).toHaveBeenCalled());
+      expect(h.readySound).toHaveBeenCalledTimes(1);
+
+      const history = [first, { ...second, status: 'DELIVERED' }];
+      h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: history } as never);
+      h.realtimeOrders?.();
+      await waitFor(() => expect(screen.queryByTestId('waiter-counter-alert')).toBeNull());
+      for (const [status, color] of [['PENDING', 'NEW_ORDER'], ['PREPARING', 'PREPARING'], ['READY', 'READY']]) {
+        h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [...history, { ...third, status }] } as never);
+        h.realtimeOrders?.();
+        await waitFor(() => expect(table.getAttribute('data-status')).toBe(color));
+      }
+      expect(screen.getByTestId('waiter-counter-alert').textContent).toContain('1 pedido pronto');
+      expect(h.readySound).toHaveBeenCalledTimes(2);
+      fireEvent.click(table);
+      const deliver = screen.getByRole('button', { name: 'Entregue' }) as HTMLButtonElement;
+      expect(deliver.disabled).toBe(true);
+      expect(deliver.title).toBe('Aguardando balcão');
+      fireEvent.click(deliver);
+      expect(h.delivery.markDelivered).not.toHaveBeenCalled();
+    } finally { h.salonStaff.snapshot.mockResolvedValue(base); }
+  });
+
+  it('garçom registra Entregue para rodada liberada pelo balcão e atualiza a lista', async () => {
     h.auth.supabaseUser = { id: 'u-waiter-1', email: 'joao@garcom.deliverychannel.local' };
     h.auth.activeTenant = { id: 't-1', name: 'Pizzaria Bella', slug: 'pizzaria-bella' };
     h.auth.activeRole = 'WAITER';

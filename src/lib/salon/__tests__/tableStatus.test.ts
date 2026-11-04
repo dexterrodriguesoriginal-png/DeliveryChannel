@@ -92,6 +92,14 @@ describe('deriveTableStatus', () => {
     expect(deriveTableStatus({ tab: tab(), calls: [calls[1], calls[2]], now: NOW })).toMatchObject({ hasActiveCall: false, callCount: 0 });
     expect(deriveTableStatus({ tab: tab({ status: 'BILL_REQUESTED' }), calls: [{ ...calls[0], type: 'BILL' }], now: NOW })).toMatchObject({ hasActiveCall: false, callCount: 1 });
   });
+  it('cada rodada da mesma conta muda novamente a cor após as anteriores serem entregues', () => {
+    const round = (id: string, status: string) => ({ id, tab_id: 'tab-1', status, subtotal: 10, created_at: minutesAgo(2) });
+    const history = [round('r1', 'DELIVERED'), round('r2', 'CANCELLED')];
+    for (const [status, kind] of [['PENDING', 'NEW_ORDER'], ['PREPARING', 'PREPARING'], ['READY', 'READY'], ['DELIVERED', 'OCCUPIED']]) {
+      expect(deriveTableStatus({ tab: tab(), rounds: [...history, round('r3', status)], now: NOW }).kind).toBe(kind);
+    }
+    expect(deriveTableStatus({ tab: tab(), rounds: [...history, round('r3', 'READY'), { ...round('other', 'PREPARING'), tab_id: 'other-tab' }], now: NOW }).totalCents).toBe(2200);
+  });
   it('only counts rounds and sessions of the tab; reports partial total and percent paid', () => {
     const info = deriveTableStatus({
       tab: tab(), now: NOW, paidCents: 1100,

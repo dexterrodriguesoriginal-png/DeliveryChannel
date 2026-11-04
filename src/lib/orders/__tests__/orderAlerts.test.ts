@@ -35,6 +35,12 @@ describe('orderAlerts: Novos / Atrasados / Prontos aguardando entregador', () =>
   it('lista vazia = tudo vazio', () => {
     expect(buildOrderAlerts([], { now: NOW })).toEqual({ novos: [], atrasados: [], emPreparo: [], prontosAguardando: [], prontosRetirada: [], total: 0 });
   });
+  it('mantém pedido de mesa servido até entrega, mesmo após rodadas anteriores concluídas', () => {
+    const delivered = o('DELIVERED', 20, { fulfillmentType: 'DINE_IN' });
+    const served = o('OUT_FOR_DELIVERY', 1, { fulfillmentType: 'DINE_IN' });
+    expect(alertList(buildOrderAlerts([delivered, served], { now: NOW })).map(row => row.id)).toEqual([served.id]);
+    expect(buildOrderAlerts([delivered, { ...served, status: 'DELIVERED' }], { now: NOW }).total).toBe(0);
+  });
   it('papéis: aceitar e chamar entregador espelham update_order_status', () => {
     for (const r of ['OWNER', 'MANAGER', 'OPERATOR', 'CASHIER']) { expect(canAcceptOrders(r)).toBe(true); expect(canCallDriverRole(r)).toBe(true); }
     for (const r of ['DELIVERY_MANAGER', 'DRIVER', 'CUSTOMER', null]) { expect(canAcceptOrders(r as any)).toBe(false); expect(canCallDriverRole(r as any)).toBe(false); }

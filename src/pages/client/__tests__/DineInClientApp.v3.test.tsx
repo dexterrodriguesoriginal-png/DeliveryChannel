@@ -168,9 +168,10 @@ describe('Garçom v3 — cliente QR', () => {
     account = myTab([{ ...round('PREPARING'), queuePosition: 2, confirmedAt: '2026-11-03T12:01:00Z', preparingAt: '2026-11-03T12:03:00Z' } as any]);
     await act(async () => subscription!.callback());
     await waitFor(() => expect(screen.getByTestId('dinein-track-order').textContent).toContain('Preparando seu pedido · Você é o 2º da fila'));
+    fireEvent.click(screen.getByTestId('dinein-track-order'));
     account = myTab([{ ...round('DELIVERED'), queuePosition: null, confirmedAt: '2026-11-03T12:01:00Z', preparingAt: '2026-11-03T12:03:00Z', readyAt: '2026-11-03T12:10:00Z', servedAt: '2026-11-03T12:11:00Z', deliveredAt: '2026-11-03T12:12:00Z' } as any]);
     await act(async () => subscription!.callback());
-    fireEvent.click(screen.getByTestId('dinein-track-order'));
+    await waitFor(() => expect(screen.queryByTestId('dinein-track-order')).toBeNull());
     const timeline = await screen.findByRole('dialog', { name: 'Acompanhar pedido' });
     expect(timeline.textContent).toContain('Pedido feito'); expect(timeline.textContent).toContain('Preparo iniciado'); expect(timeline.textContent).toContain('Entregue em 12 min');
     expect(timeline.querySelectorAll('time[dateTime]').length).toBe(6);

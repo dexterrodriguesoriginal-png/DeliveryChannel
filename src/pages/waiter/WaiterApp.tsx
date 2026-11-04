@@ -24,7 +24,7 @@ import { ApprovalRow } from '../../components/establishment/salon/ApprovalsAlert
 import { TableCard } from '../../components/establishment/salon/TableCard';
 import '../../components/establishment/salon/salon.css';
 import { playShortBeep, playNewOrderSound, unlockAudio } from '../../utils/audio';
-import { attendedTabIds, badgeText, callTitle, canCollectTab, canUseWaiterApp, greeting, newRoundIds, newlyReadyRoundIds, openCalls, waiterFeatures, waiterOrderStatus, type WaiterTab } from './waiterLogic';
+import { attendedTabIds, badgeText, callTitle, canCollectTab, canDeliverRound, canUseWaiterApp, greeting, newRoundIds, newlyReadyRoundIds, openCalls, waiterFeatures, waiterOrderStatus, type WaiterTab } from './waiterLogic';
 import { WaiterInstallCard } from './WaiterInstallCard';
 import { WaiterOrderSheet } from './WaiterOrderSheet';
 import { WaiterTableSheet } from './WaiterTableSheet';
@@ -806,7 +806,8 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               <button type="button" onClick={() => table && setSelectedId(table.table_id)} className="block w-full space-y-2 text-left"><span className="flex items-start justify-between gap-2"><strong>{labelByTab.get(r.tab_id) || 'Mesa'}</strong><span className="text-xs text-slate-400">#{r.order_number} · rodada {r.round_no}</span></span>
               <span className="block rounded-lg border px-2 py-1 font-bold" style={statusColorStyle(r.status)}>{status.label}</span><span className="block text-xs text-slate-400">Pedido feito às {new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></button>
               {r.status === 'DELIVERED' && r.delivered_at && <p className="text-xs text-slate-300">Entregue às {new Date(r.delivered_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
-              {['READY', 'OUT_FOR_DELIVERY'].includes(r.status) && <button type="button" disabled={!!busy} onClick={() => void run(`delivered-${r.id}`, () => deliveryRepository.markDelivered(r.id), 'Entrega registrada.')} className="min-h-11 w-full rounded-xl px-3 text-sm font-black disabled:opacity-50" style={{ backgroundColor: statusColorTokens('DELIVERED').solid, color: '#fff' }}>Entregue</button>}
+              {!['DELIVERED', 'CANCELLED'].includes(r.status) && <button type="button" title={canDeliverRound(r.status) ? undefined : 'Aguardando balcão'} disabled={!!busy || !canDeliverRound(r.status)} onClick={() => void run(`delivered-${r.id}`, () => deliveryRepository.markDelivered(r.id), 'Entrega registrada.')} className="min-h-11 w-full rounded-xl px-3 text-sm font-black disabled:opacity-50" style={{ backgroundColor: statusColorTokens('DELIVERED').solid, color: '#fff' }}>Entregue</button>}
+              {!['DELIVERED', 'CANCELLED'].includes(r.status) && !canDeliverRound(r.status) && <p className="text-xs text-slate-300">Aguardando balcão</p>}
             </article>;
           })}</div>}
         </section>}

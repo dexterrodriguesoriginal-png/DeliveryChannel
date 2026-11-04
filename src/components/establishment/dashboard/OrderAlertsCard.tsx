@@ -5,7 +5,7 @@ import { formatBRL } from '../../../lib/pricing/money';
 import { paymentMethodLabel } from '../../../lib/orders/labels';
 import { OrderAgeBadge } from '../OrderAgeBadge';
 import { FILTER_CHIP_CLASS, FILTER_CHIP_COLORS } from '../../../lib/orders/statusChip';
-import { statusColorStyle } from '../../../lib/orders/statusColors';
+import { statusColorStyle, statusColorTokens } from '../../../lib/orders/statusColors';
 import { OrderStatusChip } from '../StatusIcon';
 import { SlaTimerChip } from '../SlaTimerChip';
 import { prepLimitMinutes } from '../../../lib/orders/sla';
@@ -111,21 +111,22 @@ export const OrderAlertsCard: React.FC<Props> = ({
     return (
       <li key={o.id} data-testid="alert-order" data-order-id={o.id} data-status={o.status}
         title={itemsSummary(o) || undefined}
-        className={`flex flex-col sm:flex-row sm:items-center gap-x-2 gap-y-1 min-h-11 px-2.5 py-1.5 rounded-xl border bg-white ${
-          hl ? 'ring-2 ring-blue-300 border-blue-400 animate-pulse' : late ? 'border-red-300' : 'border-slate-200'}`}>
+        style={statusColorStyle(late ? 'LATE' : o.status)}
+        className={`flex flex-col sm:flex-row sm:items-center gap-x-2 gap-y-1 min-h-11 px-2.5 py-1.5 rounded-xl border ${
+          hl ? 'ring-2 ring-current animate-pulse' : ''}`}>
         <div className="flex items-center gap-2 min-w-0 sm:flex-1">
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="font-mono font-black text-slate-900 text-sm">#{o.orderNumber}</span>
-          <span className="text-[11px] text-slate-500">{new Date(o.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+          <span className="font-mono font-black text-sm">#{o.orderNumber}</span>
+          <span className="text-[11px] opacity-80">{new Date(o.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
           <SlaTimerChip status={o.status} createdAt={o.createdAt} prepMinutes={prepMinutes} />
           {orderAgeInfo(o).level === 'stale' && <OrderAgeBadge order={o} />}
           <OrderStatusChip status={o.status} late={late} fulfillmentType={o.fulfillmentType} />
         </div>
         <div className="flex items-center gap-1 min-w-0 flex-1">
-          <span className="text-[13px] font-bold text-slate-900 truncate">{o.customerName || 'Cliente'}</span>
+          <span className="text-[13px] font-bold truncate">{o.customerName || 'Cliente'}</span>
           {wa && (
             <a href={wa} target="_blank" rel="noopener noreferrer" data-testid="alert-whatsapp" aria-label={`WhatsApp de ${o.customerName || 'cliente'}`}
-              title="Conversar pelo WhatsApp" className="shrink-0 p-0.5 rounded text-emerald-700 hover:bg-emerald-50">
+              title="Conversar pelo WhatsApp" className="shrink-0 p-0.5 rounded bg-white text-emerald-700 hover:bg-emerald-50">
               <MessageCircle className="w-3.5 h-3.5" />
             </a>
           )}
@@ -139,8 +140,8 @@ export const OrderAlertsCard: React.FC<Props> = ({
             {placeIcon}{shortPlace(o)}
           </span>
           <div className="text-right leading-tight whitespace-nowrap shrink-0">
-            <div className="font-mono font-black text-slate-900 text-[13px]">{formatBRL(o.totalAmount)}</div>
-            <div className="text-[9px] text-slate-500">{paymentMethodLabel(o.paymentMethod)}</div>
+            <div className="font-mono font-black text-[13px]">{formatBRL(o.totalAmount)}</div>
+            <div className="text-[9px] opacity-80">{paymentMethodLabel(o.paymentMethod)}</div>
           </div>
           {step ? (
             <button type="button" disabled={busy} onClick={() => onStep(o, step)} data-testid="alert-next-step" data-step={step.kind}
@@ -153,7 +154,7 @@ export const OrderAlertsCard: React.FC<Props> = ({
             </span>
           ) : null}
           <button type="button" onClick={() => onView(o)} data-testid="alert-view" aria-label="Ver pedido" title="Ver pedido (detalhes, recusar ou cancelar)"
-            className="shrink-0 h-8 gap-1.5 px-3 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center text-xs font-bold cursor-pointer">
+            className="shrink-0 h-8 gap-1.5 px-3 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center text-xs font-bold cursor-pointer">
             <Eye className="w-4 h-4" />Ver pedido
           </button>
         </div>
@@ -163,16 +164,19 @@ export const OrderAlertsCard: React.FC<Props> = ({
 
   const hasOrders = alerts.total > 0;
   const tone = alertTone(counts, filter, onGoInventory ? lowStockCount : 0);
+  const toneStatus = { red: 'LATE', amber: 'PENDING', green: 'READY', blue: 'PREPARING' }[tone as 'red' | 'amber' | 'green' | 'blue'];
+  const toneColors = toneStatus ? statusColorTokens(toneStatus) : null;
   return (
     <div data-testid="order-alerts-card" data-tone={tone}
-      className={`rounded-xl border border-l-4 p-3 shadow-sm transition-colors duration-300 ${ALERT_TONE_CLASS[tone]}`}>
+      style={toneColors ? { ...statusColorStyle(toneColors), borderLeftColor: toneColors.solid } : undefined}
+      className={`rounded-xl border border-l-4 p-3 shadow-sm transition-colors duration-300 ${toneColors ? '' : ALERT_TONE_CLASS[tone]}`}>
       <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:gap-3">
         <div className="flex items-center gap-2 shrink-0">
           <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${alerts.novos.length ? 'bg-amber-200' : 'bg-white/70'}`}>
             <Bell className={`w-4 h-4 ${alerts.novos.length ? 'text-amber-700 animate-bounce' : 'text-slate-400'}`} />
           </span>
           <div className="leading-tight">
-            <h2 className="text-sm font-black text-slate-900">Alertas de pedidos</h2>
+            <h2 className={`text-sm font-black ${toneColors ? '' : 'text-slate-900'}`}>Alertas de pedidos</h2>
             {loading && !hasOrders ? (
               <p className="text-[11px] text-slate-500">Carregando pedidos…</p>
             ) : !hasOrders ? (

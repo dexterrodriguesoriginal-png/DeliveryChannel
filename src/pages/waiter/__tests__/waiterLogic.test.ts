@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: {} }));
-import { attendedTabIds, badgeText, callTitle, canCollectTab, canUseWaiterApp, greeting, newRoundIds, newlyReadyRoundIds, openCalls, waiterFeatures, waiterOrderStatus } from '../waiterLogic';
+import { attendedTabIds, badgeText, callTitle, canCollectTab, canDeliverRound, canUseWaiterApp, greeting, newRoundIds, newlyReadyRoundIds, openCalls, waiterFeatures, waiterOrderStatus } from '../waiterLogic';
 import { injectWaiterHead, isWaiterRoute, WAITER_MANIFEST_PATH } from '../../../lib/pwa/waiterManifest';
 import { newApprovalIds } from '../../../hooks/usePendingApprovals';
 
@@ -38,6 +38,11 @@ describe('App do Garçom — regras', () => {
     const previous = new Map([['a', 'PREPARING'], ['b', 'READY']]);
     expect(newlyReadyRoundIds(previous, [{ id: 'a', status: 'READY' }, { id: 'b', status: 'READY' }])).toEqual(['a']);
     expect(newlyReadyRoundIds(new Map([['a', 'READY']]), [{ id: 'a', status: 'READY' }])).toEqual([]);
+    expect(newlyReadyRoundIds(new Map([['a', 'DELIVERED']]), [{ id: 'a', status: 'DELIVERED' }, { id: 'b', status: 'READY' }])).toEqual(['b']);
+  });
+  it('exige liberação do balcão antes de registrar entrega', () => {
+    for (const status of ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'WAITING_FOR_DRIVER', 'DELIVERED', 'CANCELLED']) expect(canDeliverRound(status)).toBe(false);
+    expect(canDeliverRound('OUT_FOR_DELIVERY')).toBe(true);
   });
   it('Meus pedidos respeita atribuição atual e não inclui mesa de outro garçom', () => {
     const tab = (id: string, table_id: string, waiter_id?: string) => ({ id, table_id, waiter_id, status: 'OPEN' as const, opened_at: '', service_fee_percent: 10, service_fee_removed: false });

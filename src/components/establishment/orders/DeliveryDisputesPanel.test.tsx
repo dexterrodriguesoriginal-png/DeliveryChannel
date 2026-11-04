@@ -49,6 +49,11 @@ describe('Entregas contestadas', () => {
     api.openDisputes.mockResolvedValue([{ ...row, status: 'RESENT', order_status: 'READY' }]);
     await act(async () => { api.observe.mock.calls[0][1](); });
     expect(await screen.findByText('Pedido reenviado · Pronto para entregar')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Entregue' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Entregue' }).getAttribute('title')).toBe('Aguardando balcão');
+    api.openDisputes.mockResolvedValue([{ ...row, status: 'RESENT', order_status: 'OUT_FOR_DELIVERY' }]);
+    await act(async () => { api.observe.mock.calls[0][1](); });
+    expect((screen.getByRole('button', { name: 'Entregue' }) as HTMLButtonElement).disabled).toBe(false);
     api.openDisputes.mockResolvedValue([]);
     fireEvent.click(screen.getByRole('button', { name: 'Entregue' }));
     await waitFor(() => expect(api.markDelivered).toHaveBeenCalledWith('order1'));

@@ -32,10 +32,16 @@ describe('aviso de entrega no cardápio', () => {
     expect(screen.getByText('Pedido reenviado para produção')).toBeTruthy();
   });
 
-  it('balão e detalhes de pedidos cancelados usam o cinza canônico', () => {
-    render(<DineInTracking rounds={[{ ...round, status: 'CANCELLED' }]} />);
-    expect(screen.getByTestId('dinein-track-order').style.color).toBe('#374151');
-    expect(screen.getByTestId('dinein-track-order').style.backgroundColor).toBe('#f0f1f2');
+  it('balão some quando todas as rodadas terminam e reaparece em um novo pedido da mesma conta', () => {
+    const second = { ...round, orderId: 'o2', orderNumber: 13, roundNo: 2, status: 'PREPARING', deliveredAt: null };
+    const view = render(<DineInTracking rounds={[round, second]} />);
+    expect(screen.getByTestId('dinein-track-order').textContent).toContain('Preparando seu pedido');
+    view.rerender(<DineInTracking rounds={[round, { ...second, status: 'DELIVERED' }]} />);
+    expect(screen.queryByTestId('dinein-track-order')).toBeNull();
+    view.rerender(<DineInTracking rounds={[round, { ...second, status: 'CANCELLED' }]} />);
+    expect(screen.queryByTestId('dinein-track-order')).toBeNull();
+    view.rerender(<DineInTracking rounds={[round, { ...second, status: 'CANCELLED' }, { ...second, orderId: 'o3', roundNo: 3, status: 'PENDING' }]} />);
+    expect(screen.getByTestId('dinein-track-order').textContent).toContain('Aguardando');
     fireEvent.click(screen.getByTestId('dinein-track-order'));
     expect(screen.getByText('Cancelado', { selector: 'p' }).style.color).toBe('#374151');
   });

@@ -42,7 +42,8 @@ export function buildOrderAlerts(orders: readonly Order[], opts: { prepMinutes?:
   const lateIds = new Set(atrasados.map(o => o.id));
   const emPreparo = sorted.filter(o => (o.status === 'CONFIRMED' || o.status === 'PREPARING') && !lateIds.has(o.id));
   const prontosAguardando = sorted.filter(o =>
-    o.fulfillmentType !== 'PICKUP' && (o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER') && !o.driverId);
+    (o.fulfillmentType !== 'PICKUP' && (o.status === 'READY' || o.status === 'WAITING_FOR_DRIVER') && !o.driverId)
+    || (o.fulfillmentType === 'DINE_IN' && o.status === 'OUT_FOR_DELIVERY'));
   const prontosRetirada = sorted.filter(o => o.fulfillmentType === 'PICKUP' && o.status === 'READY');
   return {
     novos, atrasados, emPreparo, prontosAguardando, prontosRetirada,
@@ -160,6 +161,10 @@ export function cancelLabel(order: Pick<Order, 'status'>): string {
 
 /** Situação mostrada quando não há botão (ex.: aguardando entregador aceitar). */
 export function waitingLabel(order: Pick<Order, 'status' | 'fulfillmentType' | 'driverId' | 'awaitingOnlinePayment'>): string {
+  if (order.fulfillmentType === 'DINE_IN') {
+    if (order.status === 'READY') return 'Aguardando balcão servir';
+    if (order.status === 'OUT_FOR_DELIVERY') return 'Servido · aguardando entrega na mesa';
+  }
   if (order.status === 'WAITING_FOR_DRIVER') return order.driverId ? 'Entregador a caminho da loja' : 'Aguardando um entregador aceitar';
   if (order.status === 'READY' && order.driverId) return 'Entregador designado';
   if (order.status === 'OUT_FOR_DELIVERY') return 'Em rota de entrega';

@@ -31,14 +31,18 @@ describe('Pagamento na mesa do garçom', () => {
     expect(done).not.toHaveBeenCalled(); expect(manual).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Concluir' })); expect(done).toHaveBeenCalledOnce();
   });
-  it('marca cada rodada pronta ou indo à mesa como Entregue, sem oferecer para rodada em produção', () => {
+  it('habilita Entregue só depois de Servir e informa Aguardando balcão antes da liberação', () => {
     const deliver = vi.fn();
     const openTab = { ...tab, status: 'OPEN' as const };
     const rounds = ['READY', 'OUT_FOR_DELIVERY', 'PREPARING'].map((status, i) => ({ id: `order${i}`, tab_id: tab.id, order_number: i + 10, customer_name: 'Cliente', status, subtotal: 20, created_at: '2026-11-04T01:00:00Z', round_no: i + 1 }));
     render(<WaiterTableSheet table={{ id: 'table1', label: 'Mesa 5', area: null, seats: 4 }} tab={openTab} info={deriveTableStatus({ tab: openTab, calls: [], sessions: [], rounds, now: Date.now() })} sessions={[]} calls={[]} rounds={rounds} holderSessionId={null} features={{ reject: false, openTable: false, requestBill: false, holder: false }} busy={null} message="" onClose={vi.fn()} onApprove={vi.fn()} onReject={vi.fn()} onHandleCall={vi.fn()} onOpenTable={vi.fn()} onOrder={vi.fn()} onResetHolder={vi.fn()} onTransferHolder={vi.fn()} onMarkDelivered={deliver} />);
     const buttons = screen.getAllByRole('button', { name: 'Entregue' });
-    expect(buttons).toHaveLength(2);
-    fireEvent.click(buttons[0]); fireEvent.click(buttons[1]);
-    expect(deliver.mock.calls).toEqual([['order0'], ['order1']]);
+    expect(buttons).toHaveLength(3);
+    expect((buttons[0] as HTMLButtonElement).disabled).toBe(true);
+    expect(buttons[0].getAttribute('title')).toBe('Aguardando balcão');
+    expect((buttons[1] as HTMLButtonElement).disabled).toBe(false);
+    expect((buttons[2] as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(buttons[0]); fireEvent.click(buttons[1]); fireEvent.click(buttons[2]);
+    expect(deliver.mock.calls).toEqual([['order1']]);
   });
 });

@@ -37,14 +37,14 @@ export const DineInDeliveryNotice: React.FC<{
 export const DineInTracking: React.FC<{ rounds: Array<DineInTrackedRound & DeliveryState> }> = ({ rounds }) => {
   const [open, setOpen] = useState(false);
   if (!rounds.length) return null;
-  const current = rounds.find(round => !['DELIVERED', 'CANCELLED'].includes(round.status)) || rounds[rounds.length - 1];
-  const status = dineInStatus(current.status);
-  const currentColors = statusColorTokens(current.status);
+  const current = rounds.find(round => !['DELIVERED', 'CANCELLED'].includes(round.status));
+  const status = current ? dineInStatus(current.status) : null;
+  const currentColors = current ? statusColorTokens(current.status) : null;
   return <>
-    <button type="button" data-testid="dinein-track-order" onClick={() => setOpen(true)} className="fixed bottom-24 right-4 z-30 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-2xl border px-4 py-3 text-left shadow-lg" style={statusColorStyle(currentColors)}>
+    {current && status && currentColors && <button type="button" data-testid="dinein-track-order" onClick={() => setOpen(true)} className="fixed bottom-24 right-4 z-30 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-2xl border px-4 py-3 text-left shadow-lg" style={statusColorStyle(currentColors)}>
       <Clock3 className="h-5 w-5 shrink-0" />
       <span><b className="block text-sm">Acompanhar pedido</b><span aria-live="polite" className="block text-xs">{status.label}{queuePositionLabel(current.queuePosition) ? ` · ${queuePositionLabel(current.queuePosition)}` : ''}</span></span>
-    </button>
+    </button>}
     {open && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
       <section role="dialog" aria-modal="true" aria-label="Acompanhar pedido" className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5">
         <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-black">Acompanhar pedido</h2><button type="button" aria-label="Fechar acompanhamento" onClick={() => setOpen(false)}><X /></button></div>
