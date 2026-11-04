@@ -6,7 +6,7 @@
  * Só é usado em rotas /app/<slug>. As demais rotas mantêm o manifesto global (/manifest.json).
  */
 import { resolveSystemBars } from './systemBars';
-import { buildStoreManifest, storeAppId, fallbackIconSvg, manifestDataUrl, ManifestIcon, safeColor, FALLBACK_THEME_COLOR, StoreIdentityInput, storeDisplayName, svgDataUrl } from './storeManifest';
+import { buildStoreManifest, deriveShortName, storeAppId, fallbackIconSvg, manifestDataUrl, ManifestIcon, safeColor, FALLBACK_THEME_COLOR, StoreIdentityInput, storeDisplayName, svgDataUrl } from './storeManifest';
 
 const GLOBAL_MANIFEST_HREF = '/manifest.json';
 
@@ -55,10 +55,21 @@ export async function buildLogoIcons(logoUrl: string | undefined, bg: string): P
   }
 }
 
-/** Hash curto e estável da identidade visível (logo, cores, barras): cache-buster do manifesto. */
+/** Hash curto e estável da identidade visível (logo, cores, barras, nome e updatedAt): versão dos ícones. */
 export function identityHash(store: StoreIdentityInput): string {
   const t = store.theme || {};
-  const src = [store.id, t.logoUrl, t.primaryColor, t.headerColor, t.statusBarColor, t.navBarColor, t.backgroundColor, t.storeName].join('|');
+  const src = [
+    store.id,
+    storeDisplayName(store),
+    t.shortName,
+    t.logoUrl,
+    t.primaryColor,
+    t.headerColor,
+    t.statusBarColor,
+    t.navBarColor,
+    t.backgroundColor,
+    t.updatedAt || store.updatedAt,
+  ].join('|');
   let h = 5381;
   for (let i = 0; i < src.length; i++) h = ((h << 5) + h + src.charCodeAt(i)) >>> 0;
   return h.toString(36);
@@ -112,6 +123,7 @@ export async function fetchServedManifest(store: StoreIdentityInput, fetchImpl: 
 
 export async function applyStoreIdentity(store: StoreIdentityInput): Promise<AppliedIdentity> {
   const name = storeDisplayName(store);
+  const shortName = deriveShortName(name, store.theme?.shortName);
   const bars = resolveSystemBars({
     statusBarColor: store.theme?.statusBarColor, navBarColor: store.theme?.navBarColor,
     headerColor: store.theme?.headerColor, primaryColor: store.theme?.primaryColor, backgroundColor: store.theme?.backgroundColor,
@@ -119,23 +131,22 @@ export async function applyStoreIdentity(store: StoreIdentityInput): Promise<App
   const themeColor = bars.status;
   // Cores das barras do sistema ao vivo (não depende do manifesto, que o Android só relê de tempos em tempos).
   applySystemBarMeta(bars.status, bars.colorScheme);
-  // Manifesto já injetado pelo servidor no HTML desta loja: mantê-lo (o Chrome já o leu no carregamento).
+  // Manifesto já injetado pelo servidor no HTML desta loja: manter URL estável (sem ?v= que quebre o WebAPK).
   const injected = document.head.querySelector('link[rel="manifest"][data-server-injected]') as HTMLLinkElement | null;
   const ownHref = `/app/${encodeURIComponent(store.slug)}/manifest.webmanifest`;
   if (injected && (injected.getAttribute('href') || '').split('?')[0] === ownHref) {
     injected.setAttribute('data-store-id', store.id);
-    // Versão nova do manifesto (cores/logo mudaram): troca o ?v= para o Chrome reler o arquivo.
-    const wantV = store.theme ? identityHash(store) : '';
-    if (wantV && !(injected.getAttribute('href') || '').endsWith(`?v=${wantV}`)) injected.setAttribute('href', `${ownHref}?v=${wantV}`);
-    const touch = (document.head.querySelector('link[rel="apple-touch-icon"]') as HTMLLinkElement | null)?.getAttribute('href');
-    applyHeadMeta(name, name, themeColor, touch && touch.startsWith(`/app/`) ? touch : `/app/${encodeURIComponent(store.slug)}/icons/icon-192.png`);
+    if (injected.getAttribute('href') !== ownHref) injected.setAttribute('href', ownHref);
+    const v = identityHash(store);
+    const touch = `/app/${encodeURIComponent(store.slug)}/icons/icon-192.png?v=${v}`;
+    applyHeadMeta(name, shortName, themeColor, touch);
     return { manifestHref: ownHref, usedFallbackIcon: false, served: true };
   }
   // Uma nova tentativa evita trocar o manifesto servido por um data: numa falha momentânea.
   const served = (await fetchServedManifest(store)) || (await fetchServedManifest(store));
   if (served) {
     setManifestLink(served.href, store.id);
-    applyHeadMeta(name, served.shortName || name, themeColor, served.touchIcon);
+    applyHeadMeta(name, served.shortName || shortName, themeColor, served.touchIcon);
     return { manifestHref: served.href, usedFallbackIcon: false, served: true };
   }
   const logoIcons = await buildLogoIcons(store.theme?.logoUrl, '#ffffff');

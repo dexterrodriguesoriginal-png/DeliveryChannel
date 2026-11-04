@@ -142,7 +142,7 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
       showToast({
         type: 'success',
         title: 'Design salvo',
-        message: 'Sua loja já está com o novo visual.',
+        message: 'Sua loja já está com o novo visual. Conteúdo atualiza no próximo abrir; no Android/Chrome o ícone atualiza em ~1–3 dias após abrir o app, e no iOS só reinstalando.',
       });
     } catch (error) {
       showToast({

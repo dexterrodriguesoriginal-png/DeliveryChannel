@@ -9,6 +9,8 @@ import App from './App.tsx';
 import './index.css';
 import { detachGlobalManifestForStoreRoute } from './lib/pwa/applyStoreIdentity';
 import { captureInstallEvents } from './lib/pwa/installState';
+import { registerPwaServiceWorker } from './lib/pwa/registerSw';
+import { PwaUpdateToast } from './components/pwa/PwaUpdateToast';
 
 // O retorno do Google usa URL sem token; normaliza para dentro do escopo do entregador.
 if (window.location.pathname === '/convite-entregador') {
@@ -38,8 +40,12 @@ captureInstallEvents(window);
 // Rotas de loja (/app/<slug>) nunca herdam o manifesto global da plataforma.
 detachGlobalManifestForStoreRoute(window.location.pathname);
 
+// Registra o Service Worker mínimo com escopo isolado por app e checa versão ao abrir.
+void registerPwaServiceWorker();
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
+    <PwaUpdateToast />
   </StrictMode>,
 );

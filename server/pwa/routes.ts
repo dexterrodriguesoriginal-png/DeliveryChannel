@@ -20,25 +20,53 @@ export interface PwaRouteOptions {
   publicDir: string;
   fetchLogo?: (url: string) => Promise<{ bytes: Buffer; contentType: string }>;
   ttlMs?: number;
+  buildVersion?: string;
 }
 
 const MIME_BY_EXT: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml' };
 
-export function iconVersion(store: StoreIdentityInput): string {
-  const src = `${store.id}|${store.theme?.logoUrl || ''}|${store.theme?.primaryColor || ''}|${storeDisplayName(store)}`;
-  return crypto.createHash('sha256').update(src).digest('hex').slice(0, 10);
-}
+export const IMMUTABLE_ICON_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
-/** Versão da identidade completa (logo, nome, cores e barras do sistema): vai em ?v= do manifesto. */
-export function identityVersion(store: StoreIdentityInput): string {
+export function iconVersion(store: StoreIdentityInput, logoBytes?: Buffer | Uint8Array | null): string {
   const t = store.theme || {};
-  const src = [iconVersion(store), t.headerColor || '', t.statusBarColor || '', t.navBarColor || '', t.backgroundColor || '', t.shortName || '', t.tagline || ''].join('|');
+  const logoHash = logoBytes && logoBytes.length > 0
+    ? crypto.createHash('sha256').update(logoBytes).digest('hex').slice(0, 12)
+    : '';
+  const src = [
+    store.id,
+    storeDisplayName(store),
+    t.shortName || '',
+    t.logoUrl || '',
+    t.primaryColor || '',
+    t.backgroundColor || '',
+    t.headerColor || '',
+    t.statusBarColor || '',
+    t.navBarColor || '',
+    t.updatedAt || store.updatedAt || '',
+    logoHash,
+  ].join('|');
   return crypto.createHash('sha256').update(src).digest('hex').slice(0, 10);
 }
 
-export function serverManifest(store: StoreIdentityInput) {
+/** Versão da identidade completa (logo, nome, cores, barras do sistema e updated_at). */
+export function identityVersion(store: StoreIdentityInput, logoBytes?: Buffer | Uint8Array | null): string {
+  const t = store.theme || {};
+  const src = [
+    iconVersion(store, logoBytes),
+    t.headerColor || '',
+    t.statusBarColor || '',
+    t.navBarColor || '',
+    t.backgroundColor || '',
+    t.shortName || '',
+    t.tagline || '',
+    t.updatedAt || store.updatedAt || '',
+  ].join('|');
+  return crypto.createHash('sha256').update(src).digest('hex').slice(0, 10);
+}
+
+export function serverManifest(store: StoreIdentityInput, logoBytes?: Buffer | Uint8Array | null) {
   const base = `/app/${encodeURIComponent(store.slug)}/icons`;
-  const v = iconVersion(store);
+  const v = iconVersion(store, logoBytes);
   const icons: ManifestIcon[] = [
     { src: `${base}/icon-192.png?v=${v}`, sizes: '192x192', type: 'image/png', purpose: 'any' },
     { src: `${base}/icon-512.png?v=${v}`, sizes: '512x512', type: 'image/png', purpose: 'any' },
@@ -52,6 +80,7 @@ export type PwaRouter = Router & { lookupStore: (slug: string) => Promise<StoreI
 
 export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   const ttl = opts.ttlMs ?? 30 * 1000;
+  const buildVersion = opts.buildVersion || process.env.PWA_BUILD_VERSION || process.env.K_REVISION || process.env.COMMIT_SHA || 'dc-pwa-v1';
   const storeCache = new Map<string, { at: number; v: Awaited<ReturnType<StoreResolver>> }>();
   const iconCache = new Map<string, Buffer>();
   const fetchLogo = opts.fetchLogo ?? ((u: string) => fetchPublicImage(u));
@@ -97,14 +126,33 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
 
   const router = express.Router();
 
+  router.get('/api/pwa/version', async (req, res) => {
+    const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : '';
+    let storeVer: string | undefined;
+    if (slug && isValidSlug(slug)) {
+      const r = await lookup(slug);
+      if (r.status === 'ok' && r.store.slug === slug) {
+        const logo = await loadLogo(r.store.theme?.logoUrl);
+        storeVer = identityVersion(r.store, logo?.bytes);
+      }
+    }
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.json({
+      version: buildVersion,
+      ...(slug && storeVer ? { slug, identityVersion: storeVer } : {}),
+    });
+  });
+
   router.get('/app/:slug/manifest.webmanifest', async (req, res) => {
     const store = await guard(req, res);
     if (!store) return;
+    const logo = await loadLogo(store.theme?.logoUrl);
     res.set('Content-Type', 'application/manifest+json; charset=utf-8');
     // Sempre revalidado: tema/logo/barras novos chegam ao app logo após a loja salvar.
     res.set('Cache-Control', 'no-cache');
     res.set('X-Content-Type-Options', 'nosniff');
-    res.send(JSON.stringify(serverManifest(store)));
+    res.send(JSON.stringify(serverManifest(store, logo?.bytes)));
   });
 
   router.get('/app/:slug/icons/:variant.png', async (req, res) => {
@@ -112,10 +160,11 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     if (!(variant in ICON_VARIANTS)) { res.status(404).type('text/plain').send('Ícone não encontrado'); return; }
     const store = await guard(req, res);
     if (!store) return;
-    const key = `${store.id}|${iconVersion(store)}|${variant}`;
+    const logo = await loadLogo(store.theme?.logoUrl);
+    const ver = iconVersion(store, logo?.bytes);
+    const key = `${store.id}|${ver}|${variant}`;
     let png = iconCache.get(key);
     if (!png) {
-      const logo = await loadLogo(store.theme?.logoUrl);
       if (logo) {
         try { png = renderLogoPng(logo.bytes, logo.contentType, variant); } catch { png = undefined; }
       }
@@ -124,7 +173,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       if (iconCache.size > 600) iconCache.delete(iconCache.keys().next().value as string);
     }
     res.set('Content-Type', 'image/png');
-    res.set('Cache-Control', req.query.v ? 'public, max-age=86400' : 'no-cache');
+    res.set('Cache-Control', req.query.v ? IMMUTABLE_ICON_CACHE_CONTROL : 'no-cache');
     res.set('X-Content-Type-Options', 'nosniff');
     res.send(png);
   });

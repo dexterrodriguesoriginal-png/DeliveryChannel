@@ -25,8 +25,8 @@ function stripTag(html: string, re: RegExp) { return html.replace(re, ''); }
 export function injectStoreHead(html: string, slug: string, store: StoreIdentityInput | null): string {
   const enc = encodeURIComponent(slug);
   let out = stripTag(html, GLOBAL_MANIFEST_RE);
-  const ver = store ? `?v=${identityVersion(store)}` : '';
-   const tags: string[] = [`<link rel="manifest" href="/app/${enc}/manifest.webmanifest${ver}" data-server-injected="1" data-store-slug="${escapeHtml(slug)}" />`];
+  // URL do manifesto SEMPRE estável (sem query string variável) para o Chrome/WebAPK detectar atualizações de ícone/nome.
+  const tags: string[] = [`<link rel="manifest" href="/app/${enc}/manifest.webmanifest" data-server-injected="1" data-store-slug="${escapeHtml(slug)}" />`];
   if (store) {
     const name = escapeHtml(storeDisplayName(store));
     const bars = resolveSystemBars({
@@ -36,7 +36,7 @@ export function injectStoreHead(html: string, slug: string, store: StoreIdentity
     const color = escapeHtml(bars.status);
     const icon = `/app/${enc}/icons/icon-192.png?v=${iconVersion(store)}`;
     out = stripTag(out, /<meta\b[^>]*name=["'](theme-color|color-scheme|apple-mobile-web-app-title|application-name)["'][^>]*>\s*/gi);
-    out = stripTag(out, /<link\b[^>]*rel=["']apple-touch-icon["'][^>]*>\s*/gi);
+    out = stripTag(out, /<link\b[^>]*rel=["'](apple-touch-icon|icon)["'][^>]*>\s*/gi);
     out = out.replace(/<title>[\s\S]*?<\/title>/i, `<title>${name}</title>`);
     tags.push(
       `<meta name="theme-color" content="${color}" />`,
@@ -44,6 +44,7 @@ export function injectStoreHead(html: string, slug: string, store: StoreIdentity
       `<meta name="apple-mobile-web-app-title" content="${name}" />`,
       `<meta name="application-name" content="${name}" />`,
       `<link rel="apple-touch-icon" href="${icon}" />`,
+      `<link rel="icon" href="${icon}" />`,
     );
   }
   return out.replace(/<\/head>/i, `    ${tags.join('\n    ')}\n  </head>`);

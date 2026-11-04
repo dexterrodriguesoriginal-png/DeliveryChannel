@@ -32,16 +32,19 @@ export function identityFromPayload(payload: unknown, slug: string): StoreIdenti
   const tenant = p.tenant as Record<string, unknown> | undefined;
   const theme = (p.theme || undefined) as Record<string, unknown> | undefined;
   const tokens = (theme?.theme_tokens || theme?.tokens || undefined) as Record<string, unknown> | undefined;
-  const bars = ((tokens?.meta as Record<string, unknown> | undefined)?.systemBars || undefined) as Record<string, unknown> | undefined;
+  const meta = (tokens?.meta || undefined) as Record<string, unknown> | undefined;
+  const bars = (meta?.systemBars || undefined) as Record<string, unknown> | undefined;
   const palette = (tokens?.palette || undefined) as Record<string, unknown> | undefined;
   const id = str(tenant?.id);
   const tSlug = str(tenant?.slug);
   if (!id || tSlug !== slug) return null; // nunca misturar lojas
   const name = str(tenant?.name);
+  const updatedAt = pick(theme, 'updatedAt', 'updated_at') || pick(meta, 'updatedAt', 'updated_at') || pick(tenant, 'updatedAt', 'updated_at') || undefined;
   return {
     id,
     slug: tSlug,
     name,
+    updatedAt,
     theme: {
       storeName: pick(theme, 'storeName', 'store_name') || name,
       shortName: pick(theme, 'shortName', 'short_name') || undefined,
@@ -52,6 +55,7 @@ export function identityFromPayload(payload: unknown, slug: string): StoreIdenti
       headerColor: str(palette?.bgHeader) || undefined,
       statusBarColor: str(bars?.statusBarColor) || undefined,
       navBarColor: str(bars?.navBarColor) || undefined,
+      updatedAt,
     },
   };
 }

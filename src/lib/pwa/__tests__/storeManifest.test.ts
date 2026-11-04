@@ -55,6 +55,13 @@ describe('manifesto PWA por loja', () => {
     expect(deriveShortName('Padaria do João')).toBe('Padaria do João');
     expect(deriveShortName('X', 'Explicito Muito Longo')).toBe('Explicito Muito Longo');
   });
+
+  it('related_applications aponta para a URL estável do manifesto sem query string', () => {
+    const m = buildStoreManifest(adega, O, png);
+    expect(m.related_applications).toEqual([
+      { platform: 'webapp', url: 'https://exemplo.app/app/adega-premium/manifest.webmanifest' },
+    ]);
+  });
 });
 
 describe('isolamento do carrinho por loja', () => {
