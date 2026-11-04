@@ -21,6 +21,7 @@ vi.mock('../../../repositories/teamRepository', () => ({ teamRepository: h.team 
 vi.mock('../../../repositories/waiterV2Repository', () => ({ waiterV2Repository: h.waiter, WaiterAdminError: class extends Error {} }));
 vi.mock('../../../components/establishment/WaiterPhonePairingCard', () => ({ WaiterPhonePairingCard: () => null }));
 vi.mock('../../../components/establishment/WaiterAccessBlock', () => ({ WaiterAccessBlock: () => null }));
+vi.mock('../../../components/establishment/waiter/TableMoveApprovalSetting', () => ({ TableMoveApprovalSetting: () => null }));
 
 import { TeamPage } from '../TeamPage';
 

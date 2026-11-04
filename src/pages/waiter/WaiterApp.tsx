@@ -1,3 +1,4 @@
+import { TableMoveRequestsPanel } from '../../components/establishment/salon/TableMoveRequestsPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRightLeft, BellRing, ChevronRight, Eye, EyeOff, LayoutGrid, LogOut, Loader2, MoreHorizontal, Search, ShieldAlert, ShoppingBag, UserCheck, Volume2, WifiOff, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -767,6 +768,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       {!caps.tableAccess && snap && <p role="status" className="mx-auto mt-3 w-full max-w-2xl px-4 text-xs text-slate-400">Algumas funções (recusar e abrir mesa) chegam com a próxima atualização do sistema.</p>}
 
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-32 pt-4">
+        <TableMoveRequestsPanel tenantId={tenantId} viewerId={currentUser?.id} role={activeRole} onResolved={() => void load()} />
         <DeliveryDisputesPanel tenantId={tenantId} onResolved={() => { void load(); }} />
         {readyRounds.length > 0 && <button type="button" aria-live="polite" onClick={() => { unlockAudio(); setTab('PEDIDOS'); }} data-testid="waiter-counter-alert" className="mb-3 flex w-full items-center gap-3 rounded-2xl border p-4 text-left shadow-lg" style={{ ...statusColorStyle('READY'), ...positiveNoticeStyle }}><BellRing className="h-7 w-7 shrink-0" /><span><strong className="block">Balcão chamando</strong><span className="text-sm">{readyRounds.length === 1 ? '1 pedido pronto no balcão' : `${readyRounds.length} pedidos prontos no balcão`} · toque para ver suas mesas</span></span></button>}
         {orderAlert && (

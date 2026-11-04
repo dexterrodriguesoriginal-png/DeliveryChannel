@@ -1,3 +1,4 @@
+import { TableMoveRequestsPanel } from '../../components/establishment/salon/TableMoveRequestsPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Check, Clock, PanelRightOpen, PauseCircle, PlayCircle, Plus, QrCode, Receipt, RefreshCw, Search, ShoppingBag, Users, Utensils, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -82,7 +83,7 @@ const FILTERS: Array<{ id: TableFilter; label: string }> = [
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString(); };
 
 export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ onNavigate }) => {
-  const { activeTenant, activeRole, securityContext } = useAuth();
+  const { activeTenant, activeRole, securityContext, currentUser } = useAuth();
   const currentTenantId = useRef(activeTenant?.id);
   currentTenantId.current = activeTenant?.id;
   const { available, isModuleEnabled } = useModules();
@@ -774,6 +775,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
         </div>
       </header>
       {message && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{message}</div>}
+      <TableMoveRequestsPanel tenantId={activeTenant.id} viewerId={currentUser?.id} role={activeRole} onResolved={() => void load(true)} />
       {recentMoves.length > 0 && (
         <div role="status" data-testid="salon-table-move-banner" className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 p-3 text-sm font-bold text-sky-950">
           <span>Troca de mesa recente:</span>

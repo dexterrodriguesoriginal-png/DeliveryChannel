@@ -1,3 +1,4 @@
+import { tableMoveApprovalRepository, type TableMoveRequest } from '../../repositories/tableMoveApprovalRepository';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, CircleUserRound, Crown, Loader2, Minus, Plus, ReceiptText, ShoppingBag, UserRound, Users, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -168,6 +169,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [moveTableBusy, setMoveTableBusy] = useState(false);
   const [moveQrTokenInput, setMoveQrTokenInput] = useState('');
   const [moveTableError, setMoveTableError] = useState('');
+  const [moveRequest, setMoveRequest] = useState<TableMoveRequest | null>(null);
+  const moveRequestRefresh = useRef(0);
 
   useEffect(() => {
     if (!sessionId) { setTableWaiter(null); return; }
@@ -208,7 +211,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   useEffect(() => {
     setMoveTableOpen(false); setFreeTables([]); setMoveQrTokenInput('');
-    setMoveTableError(''); setMoveTableBusy(false);
+    setMoveTableError(''); setMoveTableBusy(false); setMoveRequest(null); moveRequestRefresh.current++;
   }, [token, supabaseUser?.id, sessionId]);
 
   const subtotalCents = Math.round((tab?.subtotal || 0) * 100);
@@ -510,6 +513,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     const source = activeIdentityRef.current;
     if (!contextMatches(source)) return;
     if (!silent) setBusy(true);
+    const moveRefresh = ++moveRequestRefresh.current;
     const { data, error: accountError } = await supabase.rpc('get_my_tab', { p_session_id: sessionId });
     if (!contextMatches(source)) return;
     if (accountError) {
@@ -537,7 +541,13 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         if (next.status === 'CLOSED' || next.status === 'CANCELLED') setTabClosed(true);
       }
     }
-    if (!silent) setBusy(false);
+    if (!accountError && data && (data as MyTab).me?.approved === true) {
+      try {
+        const requests = await tableMoveApprovalRepository.mine(sessionId);
+        if (contextMatches(source) && moveRefresh === moveRequestRefresh.current) setMoveRequest(requests[0] || null);
+      } catch { /* Keep a pending request visible when the status refresh is offline. */ }
+    }
+    if (!silent && contextMatches(source)) setBusy(false);
   }, [access, contextMatches, sessionId, token]);
 
   useEffect(() => {
@@ -884,7 +894,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const openMoveTableModal = async () => {
-    if (!sessionId || tabClosed || billRequested) return;
+    if (!sessionId || tabClosed || billRequested || moveRequest?.status === 'PENDING') return;
     const source = activeIdentityRef.current;
     setMoveTableError('');
     setFreeTables([]);
@@ -902,16 +912,18 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const submitMoveTable = async (target: { tableId?: string; qrToken?: string }) => {
-    if (!sessionId || moveTableBusy || tabClosed || billRequested) return;
+    if (!sessionId || moveTableBusy || tabClosed || billRequested || moveRequest?.status === 'PENDING') return;
     const source = activeIdentityRef.current;
     setMoveTableBusy(true);
     setMoveTableError('');
     try {
       const res = await tableAccessRepository.moveTable(source.sessionId, target);
       if (!contextMatches(source)) return;
+      if (res.status !== 'PENDING' || !res.requestId) throw new Error('Não foi possível confirmar a solicitação. Atualize a conta ou chame a equipe.');
       setMoveTableOpen(false);
       setMoveQrTokenInput('');
-      setNotice(`Mesa trocada (${res.notice}). Sua comanda, pedidos e valores foram junto para a nova mesa.`);
+      setMoveRequest({ id: res.requestId, status: 'PENDING', tabId: res.tabId, fromTableId: res.fromTableId, fromLabel: res.fromLabel, toTableId: res.toTableId, toLabel: res.toLabel, requestedAt: new Date().toISOString() });
+      setNotice('Solicitação de mudança de mesa enviada. Aguarde a autorização da equipe; sua conta continua na mesa atual.');
       await loadAccount(true);
     } catch (err) {
       if (!contextMatches(source)) return;
@@ -1101,7 +1113,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
               <button
                 type="button"
                 data-testid="dinein-move-table-btn"
-                disabled={busy || billRequested || awaitingRelease}
+                disabled={busy || billRequested || awaitingRelease || moveRequest?.status === 'PENDING'}
                 title={billRequested ? 'Mudança bloqueada com conta pedida ou aguardando PIX' : 'Mudar de mesa'}
                 onClick={() => void openMoveTableModal()}
                 className="rounded-full border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 disabled:opacity-40"
@@ -1308,6 +1320,10 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         </section>}
         {tab?.rounds?.filter(round => round.mine !== false && (round.status === 'DELIVERED' || round.deliveryDispute)).map(round => <DineInDeliveryNotice key={round.orderId} round={round} busy={disputeBusyId === round.orderId} onDispute={orderId => void disputeDelivery(orderId)} />)}
         {tabClosed && <div role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Conta encerrada. Para pedir de novo, chame o garçom.</div>}
+        {moveRequest && <section aria-label="Situação da mudança de mesa" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-slate-950">
+          <p className="font-bold">{moveRequest.fromLabel} → {moveRequest.toLabel}</p>
+          <p role="status" className="mt-1">{moveRequest.status === 'PENDING' ? 'Mudança de mesa aguardando autorização. Sua conta continua na mesa atual.' : moveRequest.status === 'APPROVED' ? 'Mudança de mesa autorizada. Sua conta, pedidos e valores acompanham a nova mesa.' : moveRequest.status === 'REJECTED' ? 'Solicitação de mudança de mesa recusada. Sua conta continua na mesa atual.' : 'Solicitação de mudança de mesa cancelada. Sua conta continua na mesa atual.'}</p>
+        </section>}
         {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       </section>
 
@@ -1333,7 +1349,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             {sessionId && !tabClosed && (
               <button
                 type="button"
-                disabled={busy || billRequested || awaitingRelease}
+                disabled={busy || billRequested || awaitingRelease || moveRequest?.status === 'PENDING'}
                 onClick={() => { setAccountOpen(false); void openMoveTableModal(); }}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 disabled:opacity-40"
               >
@@ -1423,7 +1439,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
               <button type="button" disabled={moveTableBusy} onClick={() => setMoveTableOpen(false)} aria-label="Fechar mudança de mesa"><X /></button>
             </div>
             <p className="text-sm text-slate-600">
-              Escolha uma mesa livre ou informe o QR Code da nova mesa. Seus pedidos, valores e pessoas vão junto para a nova mesa, e a mesa antiga fica livre.
+              Escolha uma mesa livre ou informe o QR Code da nova mesa. A mudança só acontece após autorização. Até lá, sua conta permanece na mesa atual.
             </p>
             {moveTableError && <p role="alert" className="mt-3 rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-800">{moveTableError}</p>}
             <div className="mt-4">

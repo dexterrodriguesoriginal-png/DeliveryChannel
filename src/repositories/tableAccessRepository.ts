@@ -26,6 +26,8 @@ export interface FreeSalonTable {
 }
 
 export interface MoveTableResult {
+  requestId: string;
+  status: 'PENDING';
   tabId: string;
   fromTableId: string;
   fromLabel: string;

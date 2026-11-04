@@ -18,6 +18,7 @@ import { CreateWaiterModal, EditWaiterModal, ResetWaiterPasswordModal } from '..
 import { waiterV2Repository, type DirectoryMember } from '../../repositories/waiterV2Repository';
 import { initials } from '../../lib/waiter/waiterRouting';
 import { isWaiterSyntheticEmail } from '../../lib/waiter/waiterIdentity';
+import { TableMoveApprovalSetting } from '../../components/establishment/waiter/TableMoveApprovalSetting';
 
 const TAB_LABELS: Partial<Record<RoleId, string>> = { ...TEAM_ROLE_LABELS, OPERATOR: 'Estoque', DELIVERY_MANAGER: 'Coordenador' };
 
@@ -347,6 +348,7 @@ const TeamPageForTenant: React.FC = () => {
               <input type="checkbox" role="switch" aria-label={`${STORE_PERMISSION_LABELS[permission.permission] || permission.permission}: ${TEAM_ROLE_LABELS[role]}`} checked={permission.enabled} disabled={!canEditPermissions || !canCustomizeRolePermission(role, permission.permission) || !!savingPermission} onChange={() => void togglePermission(permission)} />
             </label>)}</div>
           </details>}
+          {role === 'WAITER' && <TableMoveApprovalSetting tenantId={activeTenant.id} userId={securityContext.userId} isOwner={canEditPermissions} />}
 
 
       {/* Membros Ativos */}

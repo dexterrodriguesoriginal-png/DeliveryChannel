@@ -38,16 +38,18 @@ const TOKEN = 'k'.repeat(48);
 const round = (status = 'PENDING', id = 'o1') => ({ orderId: id, orderNumber: 12, roundNo: 1, status, customerName: 'Ana', mine: true, subtotal: 12, createdAt: '2026-11-03T12:00:00Z', queuePosition: 4, items: [{ name: 'Chopp', quantity: 1 }] });
 const myTab = (rounds: ReturnType<typeof round>[] = [], status = 'OPEN') => ({ tabId: 'tb', status, mode: 'TABLE', tableLabel: 'Mesa 03', serviceFeePercent: 0, serviceFeeRemoved: false, subtotal: rounds.length * 12, rounds, me: { sessionId: 's1', role: 'GUEST', approved: true, displayName: 'Ana' } });
 let account = myTab();
+let moveRequests: any[] = [];
 
 beforeEach(() => {
   h.rpc.mockReset(); h.enterTable.mockReset(); h.listFreeTables.mockReset(); h.moveTable.mockReset(); h.signUp.mockReset(); h.subscriptions.length = 0; h.removed.mockReset();
-  localStorage.clear(); sessionStorage.clear(); h.user = null; account = myTab();
+  localStorage.clear(); sessionStorage.clear(); h.user = null; account = myTab(); moveRequests = [];
   window.history.replaceState(null, '', '/app/loja-x?mesa=' + TOKEN);
   h.enterTable.mockResolvedValue({ state: 'GUEST', sessionId: 's1', approved: true });
   h.listFreeTables.mockResolvedValue([]);
   h.rpc.mockImplementation(async (name: string) => {
     if (name === 'resolve_table_qr') return { data: { available: true, tenantSlug: 'loja-x', storeName: 'Loja X', tableLabel: 'Mesa 03' }, error: null };
     if (name === 'get_my_tab') return { data: account, error: null };
+    if (name === 'list_my_table_move_requests') return { data: moveRequests, error: null };
     if (name === 'submit_round') return { data: { orderId: 'o1' }, error: null };
     return { data: null, error: null };
   });
@@ -339,7 +341,7 @@ describe('Garçom v3 — cliente QR', () => {
     expect(screen.queryByText(/Mesa trocada/)).toBeNull();
   });
 
-  it('cliente muda de mesa escolhendo mesa livre ou QR, move a comanda e bloqueia troca com conta pedida', async () => {
+  it('cliente solicita mudança e só acompanha a nova mesa depois de autorização, preservando sessão e dívida no reload', async () => {
     h.user = { id: 'u1' };
     account = myTab([round('PENDING', 'first'), round('DELIVERED', 'second')]);
     sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
@@ -347,14 +349,8 @@ describe('Garçom v3 — cliente QR', () => {
       { id: 't7', label: 'Mesa 07', area: 'Varanda', seats: 4 },
     ]);
     h.moveTable.mockImplementation(async () => {
-      account = {
-        ...account,
-        tableLabel: 'Mesa 07',
-        tableMoves: [
-          { id: 'mv1', action: 'MOVE', fromLabel: 'Mesa 03', toLabel: 'Mesa 07', actorKind: 'CUSTOMER', actorName: 'Ana', createdAt: '2026-11-04T12:10:00Z' },
-        ],
-      } as any;
-      return { tabId: 'tb', fromTableId: 't3', toTableId: 't7', fromLabel: 'Mesa 03', toLabel: 'Mesa 07', notice: 'Mesa 03 → Mesa 07', qrToken: TOKEN };
+      moveRequests = [{ id: 'req1', status: 'PENDING', tabId: 'tb', fromTableId: 't3', toTableId: 't7', fromLabel: 'Mesa 03', toLabel: 'Mesa 07', requestedAt: '2026-11-04T12:10:00Z' }];
+      return { ...moveRequests[0], requestId: 'req1', notice: 'Solicitação enviada' };
     });
 
     const view = render(<DineInClientApp token={TOKEN} />);
@@ -367,7 +363,17 @@ describe('Garçom v3 — cliente QR', () => {
     fireEvent.click(await screen.findByTestId('move-to-table-t7'));
 
     await waitFor(() => expect(h.moveTable).toHaveBeenCalledWith('s1', { tableId: 't7' }));
-    await screen.findByText(/Mesa trocada \(Mesa 03 → Mesa 07\)/);
+    expect(await screen.findByText('Mudança de mesa aguardando autorização. Sua conta continua na mesa atual.')).toBeTruthy();
+    expect(screen.getByText(/Você está na Mesa 03/)).toBeTruthy();
+    expect(screen.queryByText(/Você está na Mesa 07/)).toBeNull();
+    expect(screen.getByTestId('dinein-move-table-btn').hasAttribute('disabled')).toBe(true);
+    expect(sessionStorage.getItem(SESSION_KEY_PREFIX + TOKEN)).toBe('s1');
+    // A resposta da equipe muda a conta no servidor; só então o cliente muda de mesa.
+    account = { ...account, tableLabel: 'Mesa 07', tableMoves: [{ id: 'mv1', action: 'MOVE', fromLabel: 'Mesa 03', toLabel: 'Mesa 07', actorKind: 'STAFF', createdAt: '2026-11-04T12:11:00Z' }] } as any;
+    moveRequests = [{ ...moveRequests[0], status: 'APPROVED' }];
+    await act(async () => h.subscriptions.find(item => item.table === 'dining_tracking_revisions')!.callback());
+    expect(await screen.findByText('Mudança de mesa autorizada. Sua conta, pedidos e valores acompanham a nova mesa.')).toBeTruthy();
+    expect(screen.getByText(/Você está na Mesa 07/)).toBeTruthy();
 
     // Em Minha conta, exibe o histórico de mesas
     fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
@@ -387,6 +393,20 @@ describe('Garçom v3 — cliente QR', () => {
     expect(screen.getByRole('dialog', { name: 'Minha conta' }).textContent).toContain('Mesa 07');
     expect(screen.getByRole('dialog', { name: 'Minha conta' }).textContent).toContain('24,00');
 
+  });
+
+  it('recusa da mudança mantém a conta e libera uma nova solicitação', async () => {
+    h.user = { id: 'u1' }; sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
+    account = myTab([round('PREPARING')]);
+    moveRequests = [{ id: 'req1', status: 'PENDING', tabId: 'tb', fromTableId: 't3', toTableId: 't7', fromLabel: 'Mesa 03', toLabel: 'Mesa 07' }];
+    render(<DineInClientApp token={TOKEN} />);
+    await screen.findByText('Mudança de mesa aguardando autorização. Sua conta continua na mesa atual.');
+    moveRequests = [{ ...moveRequests[0], status: 'REJECTED' }];
+    await act(async () => h.subscriptions.find(item => item.table === 'dining_tracking_revisions')!.callback());
+    await screen.findByText('Solicitação de mudança de mesa recusada. Sua conta continua na mesa atual.');
+    expect(screen.getByText(/Você está na Mesa 03/)).toBeTruthy();
+    expect(screen.getByTestId('dinein-move-table-btn').hasAttribute('disabled')).toBe(false);
+    expect(sessionStorage.getItem(SESSION_KEY_PREFIX + TOKEN)).toBe('s1');
   });
 
   it('exibe código de entrega de 4 dígitos por rodada e bloqueia "Não recebi" quando confirmado com código', async () => {
