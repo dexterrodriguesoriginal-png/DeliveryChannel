@@ -52,27 +52,31 @@ describe('TableCard', () => {
     const info = deriveTableStatus({ tab: tab(5), rounds, needsReview: true, now: NOW });
     expect(tableAriaLabel('Mesa 1', info, 2)).toContain('PIX para conferir');
   });
-  it('conta autorizada marrom e Pix aguardando pagamento continuam com a comanda ocupada', () => {
+  it('conta autorizada roxa e Pix aguardando pagamento (marrom com borda vermelha) continuam com a comanda ocupada', () => {
     const authorized = deriveTableStatus({ tab: { ...tab(10), status: 'WAITER_AUTHORIZED' }, rounds, now: NOW });
     const awaiting = deriveTableStatus({ tab: { ...tab(10), status: 'AWAITING_PAYMENT' }, rounds, now: NOW });
     const { rerender } = render(<TableCard id="t1" label="Mesa 1" area={null} seats={2} info={authorized} onOpen={() => {}} />);
     expect(screen.getByTestId('salon-table-t1').className).toContain('salon-card--AUTHORIZED');
+    expect(screen.getByTestId('salon-table-t1').style.getPropertyValue('--sc-bg')).toBe('#9B4DE0');
     expect(screen.getByTestId('salon-table-t1').textContent).toContain('Garçom autorizado');
     rerender(<TableCard id="t1" label="Mesa 1" area={null} seats={2} info={awaiting} onOpen={() => {}} />);
     expect(screen.getByTestId('salon-table-t1').getAttribute('data-status')).toBe('AWAITING_PAYMENT');
+    expect(screen.getByTestId('salon-table-t1').style.getPropertyValue('--sc-bg')).toBe('#8B5A2B');
+    expect(screen.getByTestId('salon-table-t1').style.getPropertyValue('--sc-border')).toBe('#FF5050');
     expect(screen.getByRole('progressbar')).toBeTruthy();
     expect(screen.getByTestId('salon-table-t1').textContent).toContain('Aguardando PIX');
   });
 });
 
-it('cards consomem a paleta canônica em CSS variables, inclusive PIX sem cor de Livre', () => {
+it('cards consomem a paleta sólida em CSS variables, inclusive PIX sem cor de Livre', () => {
   const base = {id:'t1',label:'Mesa 1',area:null,seats:2,onOpen:() => {}};
   const {rerender} = render(<TableCard {...base} info={deriveTableStatus({tab:{...tab(5),status:'AWAITING_PAYMENT'},now:NOW})} />);
   const card = screen.getByTestId('salon-table-t1');
   expect(card.style.getPropertyValue('--sc-accent')).toBe(STATUS_COLORS.AWAITING_PAYMENT.solid);
   expect(card.style.getPropertyValue('--sc-bg')).toBe(STATUS_COLORS.AWAITING_PAYMENT.bg);
+  expect(card.style.getPropertyValue('--sc-border')).toBe('#FF5050');
   expect(card.style.getPropertyValue('--sc-accent')).not.toBe(STATUS_COLORS.FREE.solid);
   rerender(<TableCard {...base} info={deriveTableStatus({tab:tab(5,'BILL_REQUESTED'),now:NOW})} />);
   expect(card.style.getPropertyValue('--sc-accent')).toBe(STATUS_COLORS.BILL.solid);
-  expect(card.style.getPropertyValue('--sc-bg')).toBe(STATUS_COLORS.BILL.bg);
+  expect(card.style.getPropertyValue('--sc-bg')).toBe('#8B5A2B');
 });

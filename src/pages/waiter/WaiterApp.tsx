@@ -788,7 +788,16 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <button type="button" onClick={() => setFilter('ATTN')} className="rounded-2xl bg-rose-500/10 p-3 ring-1 ring-rose-400/30"><p className="text-2xl font-black text-rose-300">{counts.CALL}</p>Atenção</button>
           </div>
           <label className="relative mb-3 block"><Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><input aria-label="Buscar mesa" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar mesa" className="h-12 w-full rounded-2xl border-0 bg-white/10 pl-10 pr-3 text-base text-white placeholder:text-slate-400" /></label>
-          <div className="mb-4 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Filtrar mesas">{FILTERS.map(f => <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${filter === f.id ? 'bg-emerald-500 text-slate-950' : 'bg-white/10 text-slate-200'}`}>{f.label}</button>)}</div>
+          <div className="mb-3 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Filtrar mesas">{FILTERS.map(f => <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${filter === f.id ? 'bg-emerald-500 text-slate-950' : 'bg-white/10 text-slate-200'}`}>{f.label}</button>)}</div>
+          <ul className="salon-legend mb-3 text-slate-300" aria-label="Legenda das cores" data-testid="waiter-color-legend">
+            <li><i style={{ background: '#2DBE4E' }} />Livre</li>
+            <li><i style={{ background: '#FFDD00' }} />Ocupada / Em preparo</li>
+            <li><i style={{ background: '#1AB0F5' }} />Pedido novo / Pronto no balcão</li>
+            <li><i style={{ background: '#FF5050' }} />Ocupada há muito tempo</li>
+            <li><i style={{ background: '#8B5A2B' }} />Conta solicitada (piscando)</li>
+            <li><i style={{ background: '#8B5A2B', border: '2px solid #FF5050' }} />Aguardando PIX (alerta)</li>
+            <li><i style={{ background: '#9B4DE0' }} />Autorizado a fechar</li>
+          </ul>
           {!snap && <p className="flex items-center gap-2 py-10 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Carregando o salão…</p>}
           {snap && !tables.length && <p className="rounded-2xl bg-white/5 p-5 text-sm text-slate-300">Nenhuma mesa cadastrada. O dono cadastra em Mesas e QR Code, no painel.</p>}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="waiter-tables">
@@ -969,9 +978,8 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           canCollect={canCollectTab(selectedTab?.status, activeRole, !!selectedTab && (myTabIds.has(selectedTab.id) || !assignments.some(a => a.table_id === selected.id)))}
           onConfirmPayment={method => {
             if (!selectedTab || selectedTab.status === 'AWAITING_PAYMENT' || !canCollectTab(selectedTab.status, activeRole, myTabIds.has(selectedTab.id) || !assignments.some(a => a.table_id === selected.id))) return;
-            void run('close-tab', async () => {
+            return run('close-tab', async () => {
               await salonStaffRepository.closeTab(selectedTab.id, method, infoByTable.get(selected.id)!.totalCents);
-              setSelectedId(null);
             }, 'Pagamento confirmado. Mesa liberada.');
           }}
           onPaymentSettled={() => { setSelectedId(null); void load(); setToast('Pix confirmado. Mesa liberada.'); }}

@@ -13,6 +13,9 @@ export function receiptStorageError(error: { code?: string; message?: string }) 
   if (error.message === 'Cliente sem e-mail para comprovante.') {
     return new ReceiptError('RECEIPT_EMAIL_MISSING', 409, 'O cliente não tem e-mail cadastrado para receber o comprovante.');
   }
+  if (error.message?.includes('INVALID_EMAIL')) {
+    return new ReceiptError('INVALID_EMAIL', 400, 'Informe um e-mail válido.');
+  }
   return new ReceiptError('RECEIPT_UNAVAILABLE', 409, 'O comprovante não está disponível. Atualize a conta e tente novamente.');
 }
 
@@ -23,8 +26,9 @@ export class SupabaseReceiptStore implements ReceiptStore {
     if (error || !data.user) throw new ReceiptError('AUTH_REQUIRED', 401, 'Entre na sua conta para continuar.');
     return { id: data.user.id };
   }
-  async reserve(tabId: string, userId: string) {
-    const { data, error } = await this.db.rpc('reserve_tab_receipt', { p_tab: tabId, p_user: userId });
+  async reserve(tabId: string, userId: string, overrideEmail?: string) {
+    const args = overrideEmail ? { p_tab: tabId, p_user: userId, p_override_email: overrideEmail } : { p_tab: tabId, p_user: userId };
+    const { data, error } = await this.db.rpc('reserve_tab_receipt', args);
     if (error) throw receiptStorageError(error);
     return data as TabReceipt;
   }

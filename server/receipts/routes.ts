@@ -6,6 +6,12 @@ import { createReceiptStore } from './store';
 import { ReceiptError } from './types';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@.]+$/;
+
+export function isValidReceiptOverrideEmail(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 254 && VALID_EMAIL.test(value.trim());
+}
+
 export function createReceiptsRouter(env = process.env, suppliedService?: ReceiptService) {
   const router = express.Router();
   const store = suppliedService?.store || createReceiptStore(env);
@@ -30,7 +36,13 @@ export function createReceiptsRouter(env = process.env, suppliedService?: Receip
       if (!service || !store) throw new ReceiptError('RECEIPTS_UNAVAILABLE', 503, 'O serviço de comprovantes está indisponível.');
       const user = await store.user(token);
       if (!UUID.test(req.params.id)) throw new ReceiptError('INVALID_TAB', 400, 'Comanda inválida.');
-      // No address, tenant, amount or payment state supplied by the browser is ever trusted.
+      const rawOverride = req.body && typeof req.body === 'object' ? (req.body as { overrideEmail?: unknown }).overrideEmail : undefined;
+      if (rawOverride !== undefined && rawOverride !== null && rawOverride !== '') {
+        if (!isValidReceiptOverrideEmail(rawOverride)) throw new ReceiptError('INVALID_EMAIL', 400, 'Informe um e-mail válido.');
+        res.json(await service.send(user.id, req.params.id, rawOverride.trim().toLowerCase()));
+        return;
+      }
+      // No arbitrary tenant, amount or payment state supplied by the browser is ever trusted.
       res.json(await service.send(user.id, req.params.id));
     })().catch(next);
   });

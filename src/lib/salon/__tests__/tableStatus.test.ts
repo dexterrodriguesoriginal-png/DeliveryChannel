@@ -144,10 +144,11 @@ describe('filters, counts and search', () => {
   });
 });
 
- it('PIX pendente tem identidade própria e nunca fica Livre; conta pedida é marrom', () => {
+ it('PIX pendente tem identidade própria (marrom + borda vermelha) e nunca fica Livre; conta pedida é marrom sólido e autorizado é roxo', () => {
    expect(TABLE_STATUS_COLOR.AWAITING_PAYMENT).not.toBe(TABLE_STATUS_COLOR.FREE);
    expect(STATUS_LABEL.AWAITING_PAYMENT).toBe('Aguardando PIX');
-   expect(TABLE_STATUS_COLOR.BILL).toBe('#8B5E3C');
-   expect(TABLE_STATUS_COLOR.AUTHORIZED).toBe('#8B5E3C');
+   expect(TABLE_STATUS_COLOR.BILL).toBe('#8B5A2B');
+   expect(TABLE_STATUS_COLOR.AWAITING_PAYMENT).toBe('#8B5A2B');
+   expect(TABLE_STATUS_COLOR.AUTHORIZED).toBe('#9B4DE0');
    expect(deriveTableStatus({tab:tab({status:'AWAITING_PAYMENT'}),now:NOW}).kind).toBe('AWAITING_PAYMENT');
  });

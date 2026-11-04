@@ -3,26 +3,32 @@ import type { OrderStatus } from '../../../types';
 import { STATUS_COLORS, statusColorStyle, statusColorTokens } from '../statusColors';
 import { statusChip } from '../statusChip';
 import { orderStatusColors } from '../../../components/establishment/ordersKanban';
-import { TABLE_STATUS_COLOR } from '../../salon/tableStatus';
+import { SALON_TABLE_COLORS, TABLE_STATUS_COLOR, tableColorTokens } from '../../salon/tableStatus';
 import { waiterOrderStatus } from '../../../pages/waiter/waiterLogic';
 import { dineInStatus } from '../../customer/dineInTracking';
 
 describe('tokens compartilhados de status', () => {
-  it('preserva os hex reais do Kanban e distingue conta pedida, PIX e Livre', () => {
-    expect(Object.fromEntries(['PENDING', 'PREPARING', 'READY', 'DELIVERED', 'CANCELLED', 'BILL', 'AWAITING_PAYMENT', 'FREE']
+  it('preserva os hex reais do Kanban e distingue conta pedida, autorizado, PIX e Livre', () => {
+    expect(Object.fromEntries(['PENDING', 'PREPARING', 'READY', 'DELIVERED', 'CANCELLED', 'BILL', 'AUTHORIZED', 'AWAITING_PAYMENT', 'FREE']
       .map(status => [status, statusColorTokens(status)]))).toMatchInlineSnapshot(`
       {
+        "AUTHORIZED": {
+          "bg": "#9B4DE0",
+          "border": "#6B21A8",
+          "fg": "#FFFFFF",
+          "solid": "#9B4DE0",
+        },
         "AWAITING_PAYMENT": {
-          "bg": "#f0f9ff",
-          "border": "#7dd3fc",
-          "fg": "#0c4a6e",
-          "solid": "#0369a1",
+          "bg": "#8B5A2B",
+          "border": "#FF5050",
+          "fg": "#FFFFFF",
+          "solid": "#8B5A2B",
         },
         "BILL": {
-          "bg": "#F3E9DF",
-          "border": "#8B5E3C",
-          "fg": "#593820",
-          "solid": "#8B5E3C",
+          "bg": "#8B5A2B",
+          "border": "#5C3A1B",
+          "fg": "#FFFFFF",
+          "solid": "#8B5A2B",
         },
         "CANCELLED": {
           "bg": "#f0f1f2",
@@ -37,10 +43,10 @@ describe('tokens compartilhados de status', () => {
           "solid": "#16a34a",
         },
         "FREE": {
-          "bg": "#f0fdfa",
-          "border": "#99f6e4",
-          "fg": "#134e4a",
-          "solid": "#0f766e",
+          "bg": "#2DBE4E",
+          "border": "#1E8E38",
+          "fg": "#0F172A",
+          "solid": "#2DBE4E",
         },
         "PENDING": {
           "bg": "#fdecec",
@@ -62,7 +68,7 @@ describe('tokens compartilhados de status', () => {
         },
       }
     `);
-    expect(STATUS_COLORS.AUTHORIZED).toBe(STATUS_COLORS.BILL);
+    expect(STATUS_COLORS.AUTHORIZED.solid).toBe('#9B4DE0');
     expect(STATUS_COLORS.AWAITING_PAYMENT.solid).not.toBe(STATUS_COLORS.FREE.solid);
   });
 
@@ -76,12 +82,20 @@ describe('tokens compartilhados de status', () => {
     expect(statusColorStyle(status)).toEqual(statusColorStyle(tokens));
   });
 
-  it('mesas e aliases consomem os tokens canônicos sem uma paleta concorrente', () => {
-    expect(TABLE_STATUS_COLOR.NEW_ORDER).toBe(STATUS_COLORS.PENDING.solid);
-    expect(TABLE_STATUS_COLOR.PREPARING).toBe(STATUS_COLORS.PREPARING.solid);
-    expect(TABLE_STATUS_COLOR.READY).toBe(STATUS_COLORS.READY.solid);
-    expect(TABLE_STATUS_COLOR.BILL).toBe(STATUS_COLORS.BILL.solid);
-    expect(TABLE_STATUS_COLOR.AWAITING_PAYMENT).toBe(STATUS_COLORS.AWAITING_PAYMENT.solid);
+  it('mesas consomem a paleta sólida com contraste AA e aliases funcionam', () => {
+    expect(TABLE_STATUS_COLOR.FREE).toBe('#2DBE4E');
+    expect(TABLE_STATUS_COLOR.OCCUPIED).toBe('#FFDD00');
+    expect(TABLE_STATUS_COLOR.PREPARING).toBe('#FFDD00');
+    expect(TABLE_STATUS_COLOR.NEW_ORDER).toBe('#1AB0F5');
+    expect(TABLE_STATUS_COLOR.READY).toBe('#1AB0F5');
+    expect(TABLE_STATUS_COLOR.LONG_STAY).toBe('#FF5050');
+    expect(TABLE_STATUS_COLOR.BILL).toBe('#8B5A2B');
+    expect(TABLE_STATUS_COLOR.AUTHORIZED).toBe('#9B4DE0');
+    expect(TABLE_STATUS_COLOR.AWAITING_PAYMENT).toBe('#8B5A2B');
+    expect(tableColorTokens('AWAITING_PAYMENT').border).toBe('#FF5050');
+    expect(SALON_TABLE_COLORS.FREE.fg).toBe('#0F172A');
+    expect(SALON_TABLE_COLORS.BILL.fg).toBe('#FFFFFF');
+    expect(SALON_TABLE_COLORS.AUTHORIZED.fg).toBe('#FFFFFF');
     expect(statusColorTokens('ACCEPTED')).toBe(STATUS_COLORS.PREPARING);
     expect(statusColorTokens('COMPLETED')).toBe(STATUS_COLORS.DELIVERED);
     expect(statusColorTokens('REJECTED')).toBe(STATUS_COLORS.CANCELLED);

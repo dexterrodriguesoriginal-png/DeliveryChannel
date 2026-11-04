@@ -1230,7 +1230,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         {billRequested && !tabClosed && <section aria-label="Situação da conta" className={`mt-4 rounded-xl p-3 text-sm ${awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested'}`} style={billColors}>
           <p className="font-bold">{billStatusLabel}</p>
           <p className="mt-1">{awaitingPix ? 'Sua mesa continua ocupada até a confirmação do pagamento.' : billReopenAllowed ? 'Quer uma saideira? Reabra a comanda para fazer mais pedidos.' : 'O pagamento está em andamento. Aguarde a confirmação ou chame o garçom.'}</p>
-          {billReopenAllowed && <button type="button" onClick={() => void reopenBill()} disabled={busy} className="mt-3 rounded-lg border border-current bg-white px-4 py-2 font-bold disabled:opacity-50">{busy ? 'Reabrindo…' : 'Pedir mais'}</button>}
+          {billReopenAllowed && <button type="button" onClick={() => void reopenBill()} disabled={busy} data-testid="dinein-reopen-bill-btn" className="mt-3 rounded-lg border border-[#1E8E38] bg-[#2DBE4E] px-4 py-2 font-bold text-[#0F172A] disabled:opacity-50" style={{ backgroundColor: '#2DBE4E', borderColor: '#1E8E38', color: '#0F172A' }}>{busy ? 'Reabrindo…' : 'Pedir mais'}</button>}
         </section>}
         {tab?.rounds?.filter(round => round.mine !== false && (round.status === 'DELIVERED' || round.deliveryDispute)).map(round => <DineInDeliveryNotice key={round.orderId} round={round} busy={disputeBusyId === round.orderId} onDispute={orderId => void disputeDelivery(orderId)} />)}
         {tabClosed && <div role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Conta encerrada. Para pedir de novo, chame o garçom.</div>}

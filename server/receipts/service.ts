@@ -4,10 +4,13 @@ import { ReceiptError, type ReceiptProvider, type ReceiptResult, type ReceiptSto
 export class ReceiptService {
   constructor(readonly store: ReceiptStore, private readonly provider: ReceiptProvider | null) {}
   static configured(store: ReceiptStore, env: NodeJS.ProcessEnv) { return new ReceiptService(store, receiptProvider(env)); }
-  async send(userId: string, tabId: string): Promise<ReceiptResult> {
+  async send(userId: string, tabId: string, overrideEmail?: string): Promise<ReceiptResult> {
     // SQL locks the tab, validates this authenticated actor, and reserves one of three attempts per ten minutes.
-    const receipt = await this.store.reserve(tabId, userId);
+    const receipt = overrideEmail
+      ? await this.store.reserve(tabId, userId, overrideEmail)
+      : await this.store.reserve(tabId, userId);
     if (!this.provider) {
+      console.warn('[receipts] EMAIL_PROVIDER_NOT_CONFIGURED: RESEND_API_KEY or RECEIPT_FROM missing');
       await this.store.finish(receipt.attempt_id, false, 'EMAIL_PROVIDER_NOT_CONFIGURED');
       return { sent: false, reason: 'EMAIL_PROVIDER_NOT_CONFIGURED' };
     }

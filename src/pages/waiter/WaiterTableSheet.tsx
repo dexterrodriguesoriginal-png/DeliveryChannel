@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BellRing, Check, Clock, Crown, Plus, UserCheck, X } from 'lucide-react';
+import { BellRing, Check, Clock, Crown, Plus, Receipt, UserCheck, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { formatBRL } from '../../lib/pricing/money';
 import { statusColorStyle, statusColorTokens } from '../../lib/orders/statusColors';
@@ -8,6 +8,7 @@ import type { TableStatusInfo } from '../../lib/salon/tableStatus';
 import type { StaffHolderCode, WaiterCallRow, WaiterRound, WaiterSession, WaiterTab, WaiterTable } from '../../repositories/salonStaffRepository';
 import { callTitle, canDeliverRound, waiterOrderStatus, type WaiterFeatures } from './waiterLogic';
 import { WaiterBillPanel } from './WaiterBillPanel';
+import { TabPaymentConfirmation } from '../../components/establishment/salon/TabPaymentConfirmation';
 
 const btn = 'inline-flex h-12 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-black disabled:opacity-50';
 
@@ -54,6 +55,10 @@ export const WaiterTableSheet: React.FC<{
   // Active snapshots remove the tab after the webhook closes it. Keep this bill's
   // payment panel mounted until the waiter finishes reading/sending the receipt.
   const [billContext, setBillContext] = useState<{ tableId: string; tab: WaiterTab; totalCents: number } | null>(null);
+  const [manualSettled, setManualSettled] = useState<{ tabId: string; totalCents: number; method: 'CASH' | 'CREDIT_CARD'; paidAt: string } | null>(null);
+  useEffect(() => {
+    setManualSettled(prev => (prev && billContext && prev.tabId === billContext.tab.id ? prev : null));
+  }, [table.id, billContext]);
   useEffect(() => {
     setBillContext(previous => {
       if (previous && previous.tableId !== table.id) previous = null;
@@ -63,6 +68,11 @@ export const WaiterTableSheet: React.FC<{
     });
   }, [table.id, tab, canCollect, info.totalCents]);
   const bill = billContext?.tableId === table.id ? billContext : (tab && canCollect ? { tableId: table.id, tab, totalCents: info.totalCents } : null);
+  const focusBillClosing = () => {
+    const el = document.getElementById('waiter-bill-select') || document.getElementById('waiter-bill-panel');
+    el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    (el as HTMLElement | null)?.focus?.();
+  };
   const pending = sessions.filter(s => !s.approved_at);
   const approved = sessions.filter(s => s.approved_at);
   const isEmptyTab = info.totalCents === 0 && rounds.length === 0;
@@ -75,7 +85,35 @@ export const WaiterTableSheet: React.FC<{
         </div>
         <div className="space-y-5 px-5">
           {message && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{message}</p>}
-          {bill && onConfirmPayment && <WaiterBillPanel key={bill.tab.id} tabId={bill.tab.id} tableLabel={table.label} status={bill.tab.status} totalCents={bill.totalCents} busy={!!busy} onManualConfirm={onConfirmPayment} onSettled={onPaymentSettled ?? onClose} />}
+          {manualSettled ? (
+            <TabPaymentConfirmation
+              tabId={manualSettled.tabId}
+              amountCents={manualSettled.totalCents}
+              tableLabel={table.label}
+              method={manualSettled.method}
+              paidAt={manualSettled.paidAt}
+              onDone={() => { setManualSettled(null); (onPaymentSettled ?? onClose)(); }}
+            />
+          ) : (
+            bill && onConfirmPayment && (
+              <WaiterBillPanel
+                key={bill.tab.id}
+                tabId={bill.tab.id}
+                tableLabel={table.label}
+                status={bill.tab.status}
+                totalCents={bill.totalCents}
+                busy={!!busy}
+                onManualConfirm={method => {
+                  const targetTabId = bill.tab.id;
+                  const targetTotal = bill.totalCents;
+                  Promise.resolve(onConfirmPayment(method)).then(() => {
+                    setManualSettled({ tabId: targetTabId, totalCents: targetTotal, method, paidAt: new Date().toISOString() });
+                  }).catch(() => {});
+                }}
+                onSettled={onPaymentSettled ?? onClose}
+              />
+            )
+          )}
           {!tab ? (
             <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
               <p>{bill ? 'Acompanhe a confirmação da conta acima.' : 'Mesa livre, sem comanda aberta.'}</p>
@@ -91,9 +129,9 @@ export const WaiterTableSheet: React.FC<{
             </div>
 
             {tab.status === 'BILL_REQUESTED' && <p role="status" className="salon-bill-alert rounded-2xl border p-4 text-sm font-bold" style={statusColorStyle('BILL')}>Conta solicitada pelo cliente. Aguarde o caixa autorizar o fechamento.</p>}
-            {tab.status === 'WAITER_AUTHORIZED' && <p role="status" className="salon-bill-alert rounded-2xl border p-4 text-sm font-bold" style={statusColorStyle('AUTHORIZED')}>Garçom autorizado a fechar esta conta.</p>}
+            {tab.status === 'WAITER_AUTHORIZED' && <p role="status" className="rounded-2xl border p-4 text-sm font-bold" style={statusColorStyle('AUTHORIZED')}>Garçom autorizado a fechar esta conta.</p>}
             {tab.status === 'AWAITING_PAYMENT' && !canCollect && <p role="status" className="rounded-2xl border p-4 text-sm font-bold" style={statusColorStyle('AWAITING_PAYMENT')}>Aguardando PIX.</p>}
-            {onReopenBill && ['BILL_REQUESTED', 'WAITER_AUTHORIZED'].includes(tab.status) && <button type="button" disabled={!!busy} onClick={onReopenBill} className={`${btn} w-full border`} style={statusColorStyle('BILL')}>Reabrir conta · Pedir mais</button>}
+            {onReopenBill && ['BILL_REQUESTED', 'WAITER_AUTHORIZED'].includes(tab.status) && <button type="button" disabled={!!busy} onClick={onReopenBill} data-testid="waiter-reopen-tab" className={`${btn} w-full border border-[#1E8E38] bg-[#2DBE4E] text-[#0F172A]`} style={{ backgroundColor: '#2DBE4E', borderColor: '#1E8E38', color: '#0F172A' }}>Reabrir conta · Pedir mais</button>}
 
             {pending.length > 0 && (
               <div className="space-y-2" data-testid="waiter-sheet-pending">
@@ -209,6 +247,17 @@ export const WaiterTableSheet: React.FC<{
                   className={`${btn} border border-rose-200 bg-rose-50 text-rose-800`}
                 >
                   Liberar mesa (sem consumo)
+                </button>
+              ) : canCollect ? (
+                <button
+                  type="button"
+                  data-testid="waiter-close-tab-btn"
+                  disabled={!!busy}
+                  onClick={focusBillClosing}
+                  className={`${btn} bg-[#9B4DE0] text-white`}
+                  style={{ backgroundColor: '#9B4DE0', color: '#FFFFFF' }}
+                >
+                  <Receipt className="h-4 w-4" />{tab.status === 'AWAITING_PAYMENT' ? 'Ver pagamento pendente' : 'Fechar conta'}
                 </button>
               ) : <span />}
             </div>

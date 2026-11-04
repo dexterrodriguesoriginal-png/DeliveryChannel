@@ -23,6 +23,7 @@ import { mesasQrRepository, MesasQrCapabilities, NO_CAPABILITIES } from '../../r
 import { TableCard } from '../../components/establishment/salon/TableCard';
 import { SalonSidebar, SidebarTab } from '../../components/establishment/salon/SalonSidebar';
 import { TabPixPanel } from '../../components/establishment/salon/TabPixPanel';
+import { TabPaymentConfirmation } from '../../components/establishment/salon/TabPaymentConfirmation';
 import { FOCUS_TABLE_KEY } from '../../components/establishment/salon/ApprovalsAlert';
 import { salonStaffRepository, type SalonAccessExtras, type StaffHolderCode } from '../../repositories/salonStaffRepository';
 import { QRCodeSVG } from 'qrcode.react';
@@ -112,6 +113,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
   const [notes, setNotes] = useState('');
   const [closeOpen, setCloseOpen] = useState(false);
   const [checkout, setCheckout] = useState<{ tenantId: string; tabId: string; tableLabel: string; totalCents: number } | null>(null);
+  const [manualSettled, setManualSettled] = useState<{ tabId: string; tableLabel: string; totalCents: number; method: string; paidAt: string } | null>(null);
   const [receivedConfirmed, setReceivedConfirmed] = useState(false);
   const [requestedCheckoutTable, setRequestedCheckoutTable] = useState<string | null>(null);
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: '', amount: '', tendered: '' }]);
@@ -371,17 +373,18 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     setCloseOpen(false);
     setPixLive(false);
     setCheckout(null);
+    setManualSettled(null);
     setReceivedConfirmed(false);
   }, [selectedTableId]);
 
   useEffect(() => {
-    if (closeOpen && !checkout && !loading && !selectedTab) {
+    if (closeOpen && !checkout && !manualSettled && !loading && !selectedTab) {
       setCloseOpen(false); setPixLive(false); setSelectedTableId(null);
     }
-  }, [closeOpen, checkout, loading, selectedTab]);
+  }, [closeOpen, checkout, manualSettled, loading, selectedTab]);
 
   useEffect(() => {
-    setCheckout(null); setCloseOpen(false); setReceivedConfirmed(false);
+    setCheckout(null); setManualSettled(null); setCloseOpen(false); setReceivedConfirmed(false);
   }, [activeTenant?.id]);
 
   useEffect(() => {
@@ -390,8 +393,16 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
       const tableId = query.get('table');
       if (tableId) { setSelectedTableId(tableId); setRequestedCheckoutTable(query.get('checkout') === '1' ? tableId : null); }
     };
+    const onCheckout = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (id) { setSelectedTableId(id); setRequestedCheckoutTable(id); }
+    };
     readTarget(); window.addEventListener('hashchange', readTarget);
-    return () => window.removeEventListener('hashchange', readTarget);
+    window.addEventListener('dc:checkout-table', onCheckout);
+    return () => {
+      window.removeEventListener('hashchange', readTarget);
+      window.removeEventListener('dc:checkout-table', onCheckout);
+    };
   }, []);
 
   // Responsável pela mesa (só com o modelo de acesso novo; antes dele nada disso existe no banco).
@@ -501,12 +512,15 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     : 0;
   const totalCents = Math.round((subtotal + fee) * 100);
   const canManageBill = ['OWNER', 'MANAGER', 'CASHIER'].includes(activeRole || '');
-  const canClose = activeRole === 'OWNER' || (canManageBill && closeRoles.includes(activeRole || ''));
+  const canClose = activeRole === 'OWNER'
+    || (canManageBill && closeRoles.includes(activeRole || ''))
+    || (activeRole === 'WAITER' && selectedTab ? ['WAITER_AUTHORIZED', 'AWAITING_PAYMENT'].includes(selectedTab.status) : false);
   const pixSelected = payments.some(payment => payment.method === 'PIX');
   const openCheckout = () => {
     if (!selectedTab || !selectedTable || !activeTenant?.id) return;
     if (totalCents <= 0) { setMessage('Não há valor pendente para cobrar nesta comanda.'); return; }
     setCheckout({ tenantId: activeTenant.id, tabId: selectedTab.id, tableLabel: selectedTable.label, totalCents });
+    setManualSettled(null);
     setReceivedConfirmed(false);
     setPayments([{ method: selectedTab?.status === 'AWAITING_PAYMENT' ? 'PIX' : '', amount: (totalCents / 100).toFixed(2), tendered: '' }]);
     setPixLive(false);
@@ -548,11 +562,19 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
       setMessage('A soma dos pagamentos precisa ser igual ao total da conta.');
       return;
     }
+    const closedTabId = selectedTab.id;
+    const closedTableLabel = selectedTable?.label || 'Mesa';
+    const closedTotal = totalCents;
+    const closedMethod = lines[0]?.method || 'CASH';
     void run('close-tab', async () => {
-      const { error } = await supabase.rpc('close_tab', { p_tab_id: selectedTab.id, p_payments: lines });
+      const { error } = await supabase.rpc('close_tab', { p_tab_id: closedTabId, p_payments: lines });
       if (error) throw error;
-      setCloseOpen(false);
-      setSelectedTableId(null);
+      if (caps.tabPix) {
+        setManualSettled({ tabId: closedTabId, tableLabel: closedTableLabel, totalCents: closedTotal, method: closedMethod, paidAt: new Date().toISOString() });
+      } else {
+        setCloseOpen(false);
+        setSelectedTableId(null);
+      }
     });
   };
 
@@ -679,10 +701,14 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
         </div>
       </div>
       <ul className="salon-legend" aria-label="Legenda das cores">
-        <li><i style={{ background: '#14b8a6' }} />Livre</li><li><i style={{ background: '#eab308' }} />Ocupada</li>
-        <li><i style={{ background: '#dc2626' }} />Pedido novo</li><li><i style={{ background: '#ea580c' }} />Em preparo</li><li><i style={{ background: '#7c3aed' }} />Pronto no balcão</li>
-        <li><i style={{ background: '#dc2626' }} />Ocupada há mais de {longStay} min</li><li><i style={{ background: '#a78bfa' }} />Conta solicitada</li><li><i style={{ background: '#5b21b6' }} />Garçom autorizado a fechar</li>
-        <li><i style={{ background: '#e11d48' }} />Sino = chamado ou liberação pendente</li>
+        <li><i style={{ background: '#2DBE4E' }} />Livre</li>
+        <li><i style={{ background: '#FFDD00' }} />Ocupada / Em preparo</li>
+        <li><i style={{ background: '#1AB0F5' }} />Pedido novo / Pronto no balcão</li>
+        <li><i style={{ background: '#FF5050' }} />Ocupada há mais de {longStay} min</li>
+        <li><i style={{ background: '#8B5A2B' }} />Conta solicitada (piscando)</li>
+        <li><i style={{ background: '#8B5A2B', border: '2px solid #FF5050' }} />Aguardando PIX (alerta)</li>
+        <li><i style={{ background: '#9B4DE0' }} />Garçom autorizado a fechar</li>
+        <li><i style={{ background: '#dc2626' }} />Sino = chamado ou liberação pendente</li>
         <li className="ml-auto">
 <label className="salon-longstay"><span>Mesa longa após</span>
           <select aria-label="Tempo para marcar mesa como ocupada há muito tempo" value={longStay} onChange={event => setLongStay(writeLongStay(window.localStorage, activeTenant.id, Number(event.target.value)))}>
@@ -852,11 +878,11 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
                   <Receipt className="h-4 w-4" />{selectedTab.status === 'AWAITING_PAYMENT' ? 'Ver pagamento pendente' : 'Fechar conta'}
                 </button>
               ) : null}
-              {canManageBill && selectedTab.status === 'BILL_REQUESTED' && <button type="button" disabled={!!busy} onClick={authorizeWaiter} className="inline-flex items-center gap-2 rounded-xl bg-[#8B5E3C] px-4 py-3 font-bold text-white">Autorizar garçom a fechar</button>}
-              {['BILL_REQUESTED', 'WAITER_AUTHORIZED'].includes(selectedTab.status) && <button type="button" disabled={!!busy} onClick={() => void run('reopen-tab', async () => {
+              {canManageBill && selectedTab.status === 'BILL_REQUESTED' && <button type="button" disabled={!!busy} onClick={authorizeWaiter} className="inline-flex items-center gap-2 rounded-xl bg-[#9B4DE0] px-4 py-3 font-bold text-white">Autorizar garçom a fechar</button>}
+              {['BILL_REQUESTED', 'WAITER_AUTHORIZED'].includes(selectedTab.status) && <button type="button" disabled={!!busy} data-testid="salon-reopen-tab" onClick={() => void run('reopen-tab', async () => {
                 const { error } = await supabase.rpc('staff_reopen_tab', { p_tab: selectedTab.id });
                 if (error) throw error;
-              })} className="rounded-xl border border-[#8B5E3C] px-4 py-3 font-bold text-[#593820]">Pedir mais</button>}
+              })} className="rounded-xl border border-[#1E8E38] bg-[#2DBE4E] px-4 py-3 font-bold text-[#0F172A]" style={{ backgroundColor: '#2DBE4E', borderColor: '#1E8E38', color: '#0F172A' }}>Pedir mais</button>}
             </div>
             {releaseEmptyOpen && (
               <div role="alertdialog" aria-label="Liberar mesa sem consumo" data-testid="salon-release-empty-dialog" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-slate-900">
@@ -987,31 +1013,42 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
           <button type="button" data-testid="salon-order-submit" disabled={!productId || !!busy || optionsLoading || !!optionsError || !validateOptionSelection(selectedProduct?.optionGroups?.filter(group => group.active) || [], optionChoices).valid} onClick={submitStaffRound} className="w-full rounded-xl bg-slate-900 px-4 py-3 font-bold text-white disabled:opacity-50">Fazer pedido</button>
         </div>
       </Modal>
-      <Modal isOpen={closeOpen} onClose={() => setCloseOpen(false)} title="Revisar e fechar conta">
+      <Modal isOpen={closeOpen} onClose={() => { setManualSettled(null); setCloseOpen(false); }} title="Revisar e fechar conta">
         <div className="space-y-3">
-          <p className="text-lg font-black">Total: {money((checkout?.totalCents ?? totalCents) / 100)}</p>
-          <p className="text-sm text-slate-600">Escolha Dinheiro, Cartão ou Pix. Confirme dinheiro/cartão somente depois de receber o pagamento.</p>
-          {pixLive && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Consulte o status e o comprovante do PIX abaixo.</p>}
-          {payments.map((payment, index) => <div key={index} className="grid grid-cols-1 gap-2 rounded-xl border p-3 sm:grid-cols-3">
-            <select aria-label={`Forma de pagamento ${index + 1}`} disabled={pixLive} value={payment.method} onChange={event => {
-              const method = event.target.value as PaymentMethod;
-              if (method === 'PIX') setPayments([{ method, amount: (totalCents / 100).toFixed(2), tendered: '' }]);
-              else setPayments(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, method } : row));
-            }} className="rounded-lg border px-2 py-2">
-              <option value="">Escolha a forma de pagamento</option><option value="CASH">Dinheiro</option><option value="CREDIT_CARD">Cartão de crédito</option><option value="DEBIT_CARD">Cartão de débito</option><option value="PIX">Pix na mesa</option>
-            </select>
-            {payment.method !== 'PIX' && <input aria-label={`Valor do pagamento ${index + 1}`} value={payment.amount} onChange={event => setPayments(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} placeholder="Valor" inputMode="decimal" className="rounded-lg border px-2 py-2" />}
-            {payment.method === 'CASH' ? <input aria-label="Troco para" value={payment.tendered} onChange={event => setPayments(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, tendered: event.target.value } : row))} placeholder="Troco para R$" inputMode="decimal" className="rounded-lg border px-2 py-2" /> : <span />}
-          </div>)}
-          {pixSelected && checkout?.tenantId === activeTenant.id && caps.tabPix && canClose && <TabPixPanel key={checkout.tabId} tabId={checkout.tabId} tableLabel={checkout.tableLabel} totalCents={checkout.totalCents} onLiveChange={onPixLive} onSettled={onPixSettled} />}
-          {pixSelected && !caps.tabPix && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">O Pix da conta não está disponível. Configure o pagamento online ou escolha dinheiro/cartão.</p>}
-          {!pixSelected && <div className="flex gap-2">
-            <button type="button" onClick={() => setPayments(rows => [...rows, { method: 'CASH', amount: '', tendered: '' }])} className="rounded-lg border px-3 py-2 text-sm font-bold">Adicionar pagamento</button>
-            {payments.length > 1 && <button type="button" onClick={() => setPayments(rows => rows.slice(0, -1))} className="rounded-lg border px-3 py-2 text-sm font-bold">Remover último</button>}
-          </div>}
-          {payments.some(payment => payment.method === 'CASH' && payment.tendered && Number(payment.tendered.replace(',', '.')) * 100 < Number(payment.amount.replace(',', '.')) * 100) && <p role="alert" className="text-sm font-bold text-red-700">O valor precisa ser maior que a conta</p>}
-          {!pixSelected && <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={receivedConfirmed} onChange={event => setReceivedConfirmed(event.target.checked)} />Confirmei o recebimento</label>}
-          {!pixSelected && <button type="button" disabled={!!busy || pixLive || !receivedConfirmed || payments.some(payment => !payment.method)} onClick={closeTab} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar recebimento e fechar conta</button>}
+          {manualSettled ? (
+            <TabPaymentConfirmation
+              tabId={manualSettled.tabId}
+              amountCents={manualSettled.totalCents}
+              tableLabel={manualSettled.tableLabel}
+              method={manualSettled.method}
+              paidAt={manualSettled.paidAt}
+              onDone={() => { setManualSettled(null); setCloseOpen(false); setCheckout(null); setSelectedTableId(null); }}
+            />
+          ) : (<>
+            <p className="text-lg font-black">Total: {money((checkout?.totalCents ?? totalCents) / 100)}</p>
+            <p className="text-sm text-slate-600">Escolha Dinheiro, Cartão ou Pix. Confirme dinheiro/cartão somente depois de receber o pagamento.</p>
+            {pixLive && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Consulte o status e o comprovante do PIX abaixo.</p>}
+            {payments.map((payment, index) => <div key={index} className="grid grid-cols-1 gap-2 rounded-xl border p-3 sm:grid-cols-3">
+              <select aria-label={`Forma de pagamento ${index + 1}`} disabled={pixLive} value={payment.method} onChange={event => {
+                const method = event.target.value as PaymentMethod;
+                if (method === 'PIX') setPayments([{ method, amount: (totalCents / 100).toFixed(2), tendered: '' }]);
+                else setPayments(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, method } : row));
+              }} className="rounded-lg border px-2 py-2">
+                <option value="">Escolha a forma de pagamento</option><option value="CASH">Dinheiro</option><option value="CREDIT_CARD">Cartão de crédito</option><option value="DEBIT_CARD">Cartão de débito</option><option value="PIX">Pix na mesa</option>
+              </select>
+              {payment.method !== 'PIX' && <input aria-label={`Valor do pagamento ${index + 1}`} value={payment.amount} onChange={event => setPayments(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} placeholder="Valor" inputMode="decimal" className="rounded-lg border px-2 py-2" />}
+              {payment.method === 'CASH' ? <input aria-label="Troco para" value={payment.tendered} onChange={event => setPayments(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, tendered: event.target.value } : row))} placeholder="Troco para R$" inputMode="decimal" className="rounded-lg border px-2 py-2" /> : <span />}
+            </div>)}
+            {pixSelected && checkout?.tenantId === activeTenant.id && caps.tabPix && canClose && <TabPixPanel key={checkout.tabId} tabId={checkout.tabId} tableLabel={checkout.tableLabel} totalCents={checkout.totalCents} onLiveChange={onPixLive} onSettled={onPixSettled} />}
+            {pixSelected && !caps.tabPix && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">O Pix da conta não está disponível. Configure o pagamento online ou escolha dinheiro/cartão.</p>}
+            {!pixSelected && <div className="flex gap-2">
+              <button type="button" onClick={() => setPayments(rows => [...rows, { method: 'CASH', amount: '', tendered: '' }])} className="rounded-lg border px-3 py-2 text-sm font-bold">Adicionar pagamento</button>
+              {payments.length > 1 && <button type="button" onClick={() => setPayments(rows => rows.slice(0, -1))} className="rounded-lg border px-3 py-2 text-sm font-bold">Remover último</button>}
+            </div>}
+            {payments.some(payment => payment.method === 'CASH' && payment.tendered && Number(payment.tendered.replace(',', '.')) * 100 < Number(payment.amount.replace(',', '.')) * 100) && <p role="alert" className="text-sm font-bold text-red-700">O valor precisa ser maior que a conta</p>}
+            {!pixSelected && <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={receivedConfirmed} onChange={event => setReceivedConfirmed(event.target.checked)} />Confirmei o recebimento</label>}
+            {!pixSelected && <button type="button" disabled={!!busy || pixLive || !receivedConfirmed || payments.some(payment => !payment.method)} onClick={closeTab} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">Confirmar recebimento e fechar conta</button>}
+          </>)}
         </div>
       </Modal>
 

@@ -51,6 +51,7 @@ import { SettingsPage } from './pages/establishment/SettingsPage';
 import { ModulesPage } from './pages/establishment/ModulesPage';
 import { SalonPage } from './pages/establishment/SalonPage';
 import { MesasQrPage } from './pages/establishment/MesasQrPage';
+import { PanelBillRequestedAlert } from './components/establishment/dashboard/OpenDiningTabsWarning';
 import { readMesaParam } from './lib/salon/tableQr';
 import { useModules } from './hooks/useModules';
 import { tabRequiredModule } from './lib/modules';
@@ -777,6 +778,19 @@ function AppContent() {
         setActiveTab('est-salon');
         window.dispatchEvent(new CustomEvent('dc:focus-table', { detail: tableId }));
       }} />
+      <PanelBillRequestedAlert
+        onViewBill={tableId => {
+          try { sessionStorage.setItem(FOCUS_TABLE_KEY, tableId); } catch { /* ignore */ }
+          setActiveTab('est-salon');
+          window.dispatchEvent(new CustomEvent('dc:focus-table', { detail: tableId }));
+        }}
+        onCheckoutBill={tableId => {
+          try { sessionStorage.setItem(FOCUS_TABLE_KEY, tableId); } catch { /* ignore */ }
+          window.location.hash = `#/painel/est-salon?table=${encodeURIComponent(tableId)}&checkout=1`;
+          setActiveTab('est-salon');
+          window.dispatchEvent(new CustomEvent('dc:checkout-table', { detail: tableId }));
+        }}
+      />
 
       {/* AppShell Global: Header Fixo + Menu Fixo à Esquerda + Conteúdo Flexível (COMANDO 131: 100% da altura da janela) */}
       <div className="flex-1 min-h-0 flex w-full max-w-none overflow-hidden">

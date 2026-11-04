@@ -9,7 +9,9 @@ const production = { bg: '#fef1e7', fg: '#c2410c', border: '#fdcdab', solid: '#f
 const ready = { bg: '#f6eefe', fg: '#7e22ce', border: '#e0c2fc', solid: '#a855f7' } as const;
 const delivered = { bg: '#e8f6ed', fg: '#15803d', border: '#abdebe', solid: '#16a34a' } as const;
 const cancelled = { bg: '#f0f1f2', fg: '#374151', border: '#caccd1', solid: '#6b7280' } as const;
-const bill = { bg: '#F3E9DF', fg: '#593820', border: '#8B5E3C', solid: '#8B5E3C' } as const;
+const bill = { bg: '#8B5A2B', fg: '#FFFFFF', border: '#5C3A1B', solid: '#8B5A2B' } as const;
+const authorized = { bg: '#9B4DE0', fg: '#FFFFFF', border: '#6B21A8', solid: '#9B4DE0' } as const;
+const awaitingPayment = { bg: '#8B5A2B', fg: '#FFFFFF', border: '#FF5050', solid: '#8B5A2B' } as const;
 
 export type StatusColorKey = OrderStatus | 'NEW_ORDER' | 'FREE' | 'OCCUPIED' | 'LONG_STAY' | 'BILL' | 'AUTHORIZED' | 'AWAITING_PAYMENT' | 'LATE';
 export const STATUS_COLORS: Readonly<Record<StatusColorKey, Readonly<StatusColorTokens>>> = {
@@ -17,11 +19,11 @@ export const STATUS_COLORS: Readonly<Record<StatusColorKey, Readonly<StatusColor
   PREPARING: production,
   READY: ready, WAITING_FOR_DRIVER: ready, OUT_FOR_DELIVERY: ready,
   DELIVERED: delivered, CANCELLED: cancelled,
-  BILL: bill, AUTHORIZED: bill,
-  AWAITING_PAYMENT: { bg: '#f0f9ff', fg: '#0c4a6e', border: '#7dd3fc', solid: '#0369a1' },
-  FREE: { bg: '#f0fdfa', fg: '#134e4a', border: '#99f6e4', solid: '#0f766e' },
-  OCCUPIED: { bg: '#fefce8', fg: '#422006', border: '#fde047', solid: '#a16207' },
-  LONG_STAY: { bg: '#fef2f2', fg: '#7f1d1d', border: '#fca5a5', solid: '#b91c1c' },
+  BILL: bill, AUTHORIZED: authorized,
+  AWAITING_PAYMENT: awaitingPayment,
+  FREE: { bg: '#2DBE4E', fg: '#0F172A', border: '#1E8E38', solid: '#2DBE4E' },
+  OCCUPIED: { bg: '#FFDD00', fg: '#0F172A', border: '#CA8A04', solid: '#FFDD00' },
+  LONG_STAY: { bg: '#FF5050', fg: '#0F172A', border: '#B91C1C', solid: '#FF5050' },
   LATE: { bg: '#dc2626', fg: '#ffffff', border: '#b91c1c', solid: '#dc2626' },
 };
 

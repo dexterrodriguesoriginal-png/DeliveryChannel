@@ -18,11 +18,11 @@ export const WaiterBillPanel: React.FC<{
   const [pixLive, setPixLive] = useState(status === 'AWAITING_PAYMENT');
   useEffect(() => { if (status === 'AWAITING_PAYMENT') setMethod('PIX'); }, [status]);
   return (
-    <section className="space-y-3 rounded-2xl border border-[#8B5E3C] bg-[#F3E9DF] p-4" aria-label="Cobrar conta autorizada">
-      <h3 className="flex items-center gap-2 font-black text-[#8B5E3C]"><Receipt className="h-5 w-5" />{status === 'AWAITING_PAYMENT' ? 'Aguardando pagamento' : 'Fechamento autorizado pelo caixa'}</h3>
+    <section id="waiter-bill-panel" className="space-y-3 rounded-2xl border-2 border-[#6B21A8] bg-purple-50 p-4 text-slate-900" aria-label="Cobrar conta autorizada">
+      <h3 className="flex items-center gap-2 font-black text-[#6B21A8]"><Receipt className="h-5 w-5" />{status === 'AWAITING_PAYMENT' ? 'Aguardando pagamento' : 'Fechamento autorizado pelo caixa'}</h3>
       <p className="text-sm text-slate-700">Total da conta: <strong>{formatBRL(totalCents / 100)}</strong></p>
       <label className="block text-sm font-bold text-slate-800">Forma de pagamento
-        <select aria-label="Forma de pagamento da conta" value={method} disabled={busy || pixLive || status === 'AWAITING_PAYMENT'} onChange={e => { setMethod(e.target.value as typeof method); setReceived(false); }} className="mt-1 h-12 w-full rounded-xl border border-slate-300 bg-white px-3">
+        <select id="waiter-bill-select" aria-label="Forma de pagamento da conta" value={method} disabled={busy || pixLive || status === 'AWAITING_PAYMENT'} onChange={e => { setMethod(e.target.value as typeof method); setReceived(false); }} className="mt-1 h-12 w-full rounded-xl border border-slate-300 bg-white px-3">
           <option value="">Escolha a forma de pagamento</option><option value="CASH">Dinheiro</option><option value="CREDIT_CARD">Cartão</option><option value="PIX">Pix</option>
         </select>
       </label>

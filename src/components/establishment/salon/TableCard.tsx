@@ -1,8 +1,7 @@
 import React from 'react';
 import { BellRing, Clock, UserCheck, Users } from 'lucide-react';
 import { formatBRL } from '../../../lib/pricing/money';
-import { TableStatusInfo, tableDisplayNumber } from '../../../lib/salon/tableStatus';
-import { statusColorTokens } from '../../../lib/orders/statusColors';
+import { TableStatusInfo, tableColorTokens, tableDisplayNumber } from '../../../lib/salon/tableStatus';
 import './salon.css';
 
 export interface TableCardProps {
@@ -34,7 +33,7 @@ export function tableAriaLabel(label: string, info: TableStatusInfo, seats: numb
 export const TableCard: React.FC<TableCardProps> = React.memo(({ id, label, area, seats, info, index = 0, onOpen }) => {
   const attention = info.hasActiveCall || info.pendingRelease;
   const occupied = info.kind !== 'FREE';
-  const colors = statusColorTokens(info.kind);
+  const colors = tableColorTokens(info.kind);
   return (
     <button
       type="button"

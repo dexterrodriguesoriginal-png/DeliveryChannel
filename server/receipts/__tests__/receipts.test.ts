@@ -54,10 +54,21 @@ describe('tab receipt HTTP security', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
   it('returns a clear missing-provider state only after SQL has authorized staff and reserved an attempt', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const response = await request(`/missing/tabs/${tabId}`);
     expect(await response.json()).toEqual({ sent: false, reason: 'EMAIL_PROVIDER_NOT_CONFIGURED' });
     expect(store.reserve).toHaveBeenLastCalledWith(tabId, 'verified-actor');
     expect(store.finish).toHaveBeenLastCalledWith(receipt.attempt_id, false, 'EMAIL_PROVIDER_NOT_CONFIGURED');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('EMAIL_PROVIDER_NOT_CONFIGURED'));
+    warn.mockRestore();
+  });
+  it('validates and forwards overrideEmail when Enviar para outro email is used', async () => {
+    const bad = await request(undefined, { overrideEmail: 'not-an-email' });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).code).toBe('INVALID_EMAIL');
+    const ok = await request(undefined, { overrideEmail: '  Outro@Dominio.com.br ' });
+    expect(ok.status).toBe(200);
+    expect(store.reserve).toHaveBeenLastCalledWith(tabId, 'verified-actor', 'outro@dominio.com.br');
   });
   it('refuses staff from another store even when email is unconfigured', async () => {
     vi.mocked(store.reserve).mockRejectedValueOnce(receiptStorageError({ code: '42501', message: 'secret customer email' }));

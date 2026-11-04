@@ -1,28 +1,28 @@
-/* Salão — mapa de mesas. Tokens por status; contraste AA (texto escuro sobre fundos claros). */
+/* Salão — mapa de mesas. Paleta sólida com contraste WCAG AA. */
 .salon-root { --salon-ink:#0f172a; --salon-muted:#475569; --salon-line:#e2e8f0; }
 
 .salon-card {
-  --sc-bg:#f8fafc; --sc-border:#cbd5e1; --sc-text:#0f172a; --sc-accent:#475569; --sc-chip:#e2e8f0; --sc-shadow:rgba(71,85,105,.35);
+  --sc-bg:#2DBE4E; --sc-border:#1E8E38; --sc-text:#0F172A; --sc-accent:#2DBE4E; --sc-chip:#2DBE4E; --sc-shadow:rgba(15,23,42,.25);
   position:relative; display:flex; flex-direction:column; justify-content:space-between; gap:10px; min-height:152px; width:100%;
-  padding:14px 14px 12px; border-radius:22px; border:1.5px solid var(--sc-border); color:var(--sc-text); text-align:left; cursor:pointer;
-  background:linear-gradient(165deg, var(--sc-bg) 0%, #ffffff 160%);
-  box-shadow:0 1px 2px rgba(15,23,42,.05), 0 8px 20px -12px var(--sc-shadow);
+  padding:14px 14px 12px; border-radius:22px; border:2px solid var(--sc-border); color:var(--sc-text); text-align:left; cursor:pointer;
+  background:var(--sc-bg);
+  box-shadow:0 1px 2px rgba(15,23,42,.08), 0 8px 20px -12px var(--sc-shadow);
   transition:transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s ease, border-color .2s ease;
   animation:salon-rise .35s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i,0) * 14ms);
 }
-.salon-card:hover { transform:translateY(-3px); box-shadow:0 2px 4px rgba(15,23,42,.06), 0 16px 28px -14px var(--sc-shadow); border-color:var(--sc-accent); }
+.salon-card:hover { transform:translateY(-3px); box-shadow:0 2px 4px rgba(15,23,42,.1), 0 16px 28px -14px var(--sc-shadow); border-color:var(--sc-text); }
 .salon-card:active { transform:translateY(0) scale(.985); }
-.salon-card:focus-visible { outline:3px solid var(--sc-accent); outline-offset:3px; }
+.salon-card:focus-visible { outline:3px solid var(--sc-text); outline-offset:3px; }
 .salon-card--CALL { box-shadow:0 0 0 0 rgba(239,68,68,.5), 0 8px 20px -12px var(--sc-shadow); animation:salon-rise .35s cubic-bezier(.2,.8,.2,1) both, salon-halo 2s ease-out infinite; animation-delay:calc(var(--i,0) * 14ms), 0s; }
 
-.salon-chip { display:inline-flex; align-items:center; gap:6px; padding:3px 9px 3px 7px; border-radius:999px; background:var(--sc-chip); color:var(--sc-text); font-size:11px; font-weight:800; letter-spacing:.01em; line-height:1.4; }
-.salon-dot { width:7px; height:7px; border-radius:50%; background:var(--sc-accent); }
+.salon-chip { display:inline-flex; align-items:center; gap:6px; padding:3px 9px 3px 7px; border-radius:999px; background:color-mix(in srgb, var(--sc-text) 14%, var(--sc-bg)); color:var(--sc-text); font-size:11px; font-weight:800; letter-spacing:.01em; line-height:1.4; }
+.salon-dot { width:7px; height:7px; border-radius:50%; background:var(--sc-text); }
 .salon-num { font-size:44px; line-height:1; font-weight:900; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
-.salon-name { font-size:12px; font-weight:700; opacity:.8; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.salon-name { font-size:12px; font-weight:700; opacity:.9; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .salon-meta { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; font-weight:800; font-variant-numeric:tabular-nums; }
-.salon-time { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,.75); border:1px solid var(--sc-border); font-weight:800; }
-.salon-bar { position:relative; height:6px; border-radius:999px; background:rgba(15,23,42,.08); overflow:hidden; }
-.salon-bar > i { position:absolute; inset:0 auto 0 0; border-radius:999px; background:var(--sc-accent); transition:width .5s cubic-bezier(.2,.8,.2,1); }
+.salon-time { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; background:color-mix(in srgb, var(--sc-text) 12%, var(--sc-bg)); border:1px solid color-mix(in srgb, var(--sc-text) 25%, transparent); font-weight:800; color:var(--sc-text); }
+.salon-bar { position:relative; height:6px; border-radius:999px; background:color-mix(in srgb, var(--sc-text) 22%, transparent); overflow:hidden; }
+.salon-bar > i { position:absolute; inset:0 auto 0 0; border-radius:999px; background:var(--sc-text); transition:width .5s cubic-bezier(.2,.8,.2,1); }
 
 .salon-bell { position:absolute; top:10px; right:10px; display:grid; place-items:center; width:30px; height:30px; border-radius:50%; background:#dc2626; color:#fff; box-shadow:0 4px 10px -2px rgba(220,38,38,.6); animation:salon-ring 1.8s ease-in-out infinite; transform-origin:50% 12%; }
 .salon-bell::after { content:''; position:absolute; inset:-4px; border-radius:50%; border:2px solid rgba(220,38,38,.55); animation:salon-ping 1.8s ease-out infinite; }
@@ -103,10 +103,12 @@
 @keyframes salon-amber { 0% { box-shadow:0 0 0 0 rgba(245,158,11,.6), 0 8px 20px -12px var(--sc-shadow); } 70% { box-shadow:0 0 0 14px rgba(245,158,11,0), 0 8px 20px -12px var(--sc-shadow); } 100% { box-shadow:0 0 0 0 rgba(245,158,11,0), 0 8px 20px -12px var(--sc-shadow); } }
 @media (prefers-reduced-motion: reduce) { .salon-card--PENDING { animation:none; } }
 
-/* Conta pedida: shared by owner, waiter and dashboard, with a still accessible state. */
-.salon-bill-alert { color:#593820; background:#F3E9DF; border:2px solid #8B5E3C; }
-.salon-card--BILL, .salon-card--AUTHORIZED, .salon-bill-alert { animation:salon-bill-pulse 1.2s ease-in-out infinite; }
-@keyframes salon-bill-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(139,94,60,.15); } 50% { box-shadow:0 0 0 5px rgba(139,94,60,.4); } }
+/* Conta pedida e Aguardando PIX: marrom sólido (#8B5A2B), piscando. Aguardando PIX tem borda vermelha de alerta (#FF5050). */
+.salon-bill-alert { color:#FFFFFF; background:#8B5A2B; border:2px solid #5C3A1B; }
+.salon-card--BILL, .salon-card--AWAITING_PAYMENT, .salon-bill-alert { animation:salon-bill-pulse 1.2s ease-in-out infinite; }
+.salon-card--AWAITING_PAYMENT { border-color:#FF5050; border-width:3px; animation:salon-pix-pulse 1.2s ease-in-out infinite; }
+@keyframes salon-bill-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(139,90,43,.2); } 50% { box-shadow:0 0 0 6px rgba(139,90,43,.5); } }
+@keyframes salon-pix-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(255,80,80,.25); } 50% { box-shadow:0 0 0 6px rgba(255,80,80,.6); } }
 @media (prefers-reduced-motion: reduce) {
-  .salon-card--BILL, .salon-card--AUTHORIZED, .salon-bill-alert { animation:none !important; border-width:3px; }
+  .salon-card--BILL, .salon-card--AWAITING_PAYMENT, .salon-bill-alert { animation:none !important; border-width:3px; }
 }

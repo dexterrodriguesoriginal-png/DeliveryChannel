@@ -1,6 +1,6 @@
 // Pure logic for the Salão map (no React, no network): status, totals, filters, search.
 // The closing/payment rules live in SQL (close_tab); nothing here decides money, it only displays it.
-import { STATUS_COLORS } from '../orders/statusColors';
+import { STATUS_COLORS, type StatusColorTokens } from '../orders/statusColors';
 
 export type TableStatusKind = 'FREE' | 'OCCUPIED' | 'LONG_STAY' | 'NEW_ORDER' | 'PREPARING' | 'READY' | 'BILL' | 'AUTHORIZED' | 'AWAITING_PAYMENT';
 export type TableFilter = 'ALL' | TableStatusKind | 'CALL';
@@ -86,11 +86,42 @@ export const STATUS_LABEL: Record<TableStatusKind, string> = {
   AUTHORIZED: 'Garçom autorizado a fechar', AWAITING_PAYMENT: 'Aguardando PIX',
 };
 
+/**
+ * Paleta sólida do Salão e do App do Garçom com contraste WCAG AA:
+ * - Verde (#2DBE4E, texto #0F172A, 7.27:1): Livre
+ * - Amarelo (#FFDD00, texto #0F172A, 13.23:1): Ocupada / Em preparo
+ * - Azul (#1AB0F5, texto #0F172A, 7.26:1): Pedido novo / Pronto no balcão
+ * - Vermelho (#FF5050, texto #0F172A, 5.52:1): Ocupada há muito tempo
+ * - Marrom sólido (#8B5A2B, texto #FFFFFF, 5.85:1): Conta solicitada (piscando) e Aguardando PIX (piscando + borda vermelha #FF5050)
+ * - Roxo (#9B4DE0, texto #FFFFFF, 4.64:1): Garçom autorizado a fechar
+ */
+export const SALON_TABLE_COLORS: Readonly<Record<TableStatusKind, Readonly<StatusColorTokens>>> = {
+  FREE: STATUS_COLORS.FREE,
+  OCCUPIED: STATUS_COLORS.OCCUPIED,
+  PREPARING: { bg: '#FFDD00', fg: '#0F172A', border: '#CA8A04', solid: '#FFDD00' },
+  NEW_ORDER: { bg: '#1AB0F5', fg: '#0F172A', border: '#0284C7', solid: '#1AB0F5' },
+  READY: { bg: '#1AB0F5', fg: '#0F172A', border: '#0284C7', solid: '#1AB0F5' },
+  LONG_STAY: STATUS_COLORS.LONG_STAY,
+  BILL: STATUS_COLORS.BILL,
+  AUTHORIZED: STATUS_COLORS.AUTHORIZED,
+  AWAITING_PAYMENT: STATUS_COLORS.AWAITING_PAYMENT,
+};
+
+export function tableColorTokens(kind: TableStatusKind): Readonly<StatusColorTokens> {
+  return SALON_TABLE_COLORS[kind] ?? SALON_TABLE_COLORS.OCCUPIED;
+}
+
 /** A pending PIX is occupied and must remain visually distinct from a free table. */
 export const TABLE_STATUS_COLOR: Record<TableStatusKind, string> = {
-  FREE: STATUS_COLORS.FREE.solid, OCCUPIED: STATUS_COLORS.OCCUPIED.solid, LONG_STAY: STATUS_COLORS.LONG_STAY.solid,
-  NEW_ORDER: STATUS_COLORS.PENDING.solid, PREPARING: STATUS_COLORS.PREPARING.solid, READY: STATUS_COLORS.READY.solid,
-  BILL: STATUS_COLORS.BILL.solid, AUTHORIZED: STATUS_COLORS.AUTHORIZED.solid, AWAITING_PAYMENT: STATUS_COLORS.AWAITING_PAYMENT.solid,
+  FREE: SALON_TABLE_COLORS.FREE.solid,
+  OCCUPIED: SALON_TABLE_COLORS.OCCUPIED.solid,
+  LONG_STAY: SALON_TABLE_COLORS.LONG_STAY.solid,
+  NEW_ORDER: SALON_TABLE_COLORS.NEW_ORDER.solid,
+  PREPARING: SALON_TABLE_COLORS.PREPARING.solid,
+  READY: SALON_TABLE_COLORS.READY.solid,
+  BILL: SALON_TABLE_COLORS.BILL.solid,
+  AUTHORIZED: SALON_TABLE_COLORS.AUTHORIZED.solid,
+  AWAITING_PAYMENT: SALON_TABLE_COLORS.AWAITING_PAYMENT.solid,
 };
 
 export interface DeriveInput {

@@ -5,7 +5,10 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 const api = vi.hoisted(() => ({ createTabPix: vi.fn(), tabPixStatus: vi.fn(), cancelTabPix: vi.fn(), observeTabPix: vi.fn() }));
 const receipts = vi.hoisted(() => ({ target: vi.fn(), send: vi.fn() }));
 vi.mock('../../../repositories/paymentRepository', () => ({ paymentRepository: api }));
-vi.mock('../../../repositories/tabReceiptRepository', () => ({ tabReceiptRepository: receipts }));
+vi.mock('../../../repositories/tabReceiptRepository', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../repositories/tabReceiptRepository')>();
+  return { ...actual, tabReceiptRepository: receipts };
+});
 import { WaiterTableSheet } from '../WaiterTableSheet';
 import { deriveTableStatus } from '../../../lib/salon/tableStatus';
 const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
@@ -44,5 +47,45 @@ describe('Pagamento na mesa do garçom', () => {
     expect((buttons[2] as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(buttons[0]); fireEvent.click(buttons[1]); fireEvent.click(buttons[2]);
     expect(deliver.mock.calls).toEqual([['order1']]);
+  });
+  it('exibe botão Fechar conta quando garçom está autorizado (estado roxo) e botão Reabrir conta verde', async () => {
+    const authTab = { ...tab, status: 'WAITER_AUTHORIZED' as const };
+    const manual = vi.fn().mockResolvedValue(undefined);
+    const reopen = vi.fn();
+    render(
+      <WaiterTableSheet
+        table={{ id: 'table1', label: 'Mesa 5', area: null, seats: 4 }}
+        tab={authTab}
+        info={{ ...deriveTableStatus({ tab: authTab, calls: [], sessions: [], rounds: [], now: Date.now() }), totalCents: 5500 }}
+        sessions={[]}
+        calls={[]}
+        rounds={[{ id: 'r1', tab_id: authTab.id, order_number: 1, customer_name: 'Ana', status: 'DELIVERED', subtotal: 55, created_at: '2026-11-04T01:00:00Z', round_no: 1 }]}
+        holderSessionId={null}
+        features={{ reject: false, openTable: true, requestBill: false, holder: false }}
+        busy={null}
+        message=""
+        onClose={vi.fn()}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onHandleCall={vi.fn()}
+        onOpenTable={vi.fn()}
+        onOrder={vi.fn()}
+        onResetHolder={vi.fn()}
+        onTransferHolder={vi.fn()}
+        canCollect
+        onConfirmPayment={manual}
+        onReopenBill={reopen}
+      />,
+    );
+    const closeBtn = screen.getByTestId('waiter-close-tab-btn');
+    expect(closeBtn.textContent).toContain('Fechar conta');
+    const reopenBtn = screen.getByTestId('waiter-reopen-tab');
+    expect(reopenBtn.style.backgroundColor).toBe('#2DBE4E');
+    fireEvent.change(screen.getByLabelText('Forma de pagamento da conta'), { target: { value: 'CASH' } });
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar pagamento recebido' }));
+    await flush();
+    expect(manual).toHaveBeenCalledWith('CASH');
+    expect(screen.getByRole('heading', { name: 'Pagamento confirmado' })).toBeTruthy();
   });
 });
