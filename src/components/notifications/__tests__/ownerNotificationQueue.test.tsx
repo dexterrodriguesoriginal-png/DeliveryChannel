@@ -8,7 +8,7 @@ import type { OrderBrief } from '../../../lib/notifications/notificationView';
 const state = vi.hoisted(() => ({
   rows: [] as OwnerNotification[], details: {} as Record<string, OrderBrief>,
   event: null as null | ((payload: any) => void),
-  sound: vi.fn(), read: vi.fn(async () => {}), update: vi.fn(async () => ({})), briefCalls: vi.fn(),
+  sound: vi.fn(), read: vi.fn(async () => {}), update: vi.fn(async (_context: unknown, tenantId: string, id: string, status: string) => ({ tenantId, id, status })), briefCalls: vi.fn(),
 }));
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ activeTenant: { id: 'T1' }, supabaseUser: { id: 'U1' }, activeRole: 'OWNER', securityContext: { userId: 'U1' } }) }));
 vi.mock('../../../lib/supabase', () => {
@@ -31,6 +31,8 @@ let poll: () => void;
 beforeEach(() => {
   state.rows = []; state.details = {}; state.event = null; state.sound.mockClear(); state.read.mockClear(); state.update.mockClear(); state.briefCalls.mockClear();
   localStorage.setItem('dc:notifications:T1:U1', JSON.stringify({ balloon: true, sound: true }));
+  window.history.replaceState(null, '', '/');
+  state.update.mockImplementation(async (_context, tenantId, id, status) => ({ tenantId, id, status }));
   const original = window.setInterval.bind(window);
   vi.spyOn(window, 'setInterval').mockImplementation(((callback: TimerHandler, timeout: number, ...args: any[]) => {
     if (timeout === 15000) poll = callback as () => void;
@@ -91,18 +93,29 @@ describe('Cards de novas notificações: realtime e fallback', () => {
     await act(async () => { poll(); });
     await waitFor(() => expect(ui.queryAllByTestId('notification-toast')).toHaveLength(0));
   });
-  it('rodada CONFIRMED abre a mesa; PENDING aceita sem depender de abrir o pedido', async () => {
+  it('rodada CONFIRMED abre o pedido; PENDING aceita e entra em produção sem abrir o detalhe', async () => {
     const onOpen = vi.fn();
     const ui = await mount(onOpen);
     await insert(notification('1'), { status: 'CONFIRMED', fulfillmentType: 'DINE_IN', tabId: 'tab-1' });
     const tableToast = ui.getByTestId('notification-toast');
-    expect(within(tableToast).getByText('Enviado à cozinha')).toBeTruthy();
-    fireEvent.click(within(tableToast).getByRole('button', { name: 'Ver mesa' }));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ ref_id: 'order-1', tableTarget: 'tab-1' }));
+    expect(within(tableToast).getByText('Aguardando envio para produção')).toBeTruthy();
+    expect(within(tableToast).getByRole('button', { name: 'Enviar p/ produção' })).toBeTruthy();
+    fireEvent.click(within(tableToast).getByRole('button', { name: 'Ver pedido' }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ ref_id: 'order-1' }));
+    expect(onOpen.mock.calls[0][0].tableTarget).toBeUndefined();
+    expect(window.location.hash).toBe('#/painel/est-orders?order=order-1');
     await insert(notification('2'));
     fireEvent.click(within(ui.getByTestId('notification-toast')).getByRole('button', { name: 'Aceitar pedido' }));
     await waitFor(() => expect(state.update).toHaveBeenCalledWith({ userId: 'U1' }, 'T1', 'order-2', 'CONFIRMED', undefined, 'PENDING'));
+    await waitFor(() => expect(state.update).toHaveBeenCalledWith({ userId: 'U1' }, 'T1', 'order-2', 'PREPARING', undefined, 'CONFIRMED'));
     await waitFor(() => expect(ui.queryByTestId('notification-toast')).toBeNull());
+  });
+  it('rodada já CONFIRMED vai diretamente para PREPARING ao enviar para produção', async () => {
+    const ui = await mount();
+    await insert(notification('3'), { status: 'CONFIRMED', fulfillmentType: 'DINE_IN', tabId: 'tab-3' });
+    fireEvent.click(within(ui.getByTestId('notification-toast')).getByRole('button', { name: 'Enviar p/ produção' }));
+    await waitFor(() => expect(state.update).toHaveBeenCalledWith({ userId: 'U1' }, 'T1', 'order-3', 'PREPARING', undefined, 'CONFIRMED'));
+    expect(state.update).toHaveBeenCalledTimes(1);
   });
   it('evento de outra loja não gera card', async () => {
     const ui = await mount();

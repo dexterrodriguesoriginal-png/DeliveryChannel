@@ -1,18 +1,20 @@
 import type { Order, OrderStatus } from '../../types';
 import { inRange, type DateRange } from '../../lib/orders/periodRange';
+import { STATUS_COLORS, statusColorTokens } from '../../lib/orders/statusColors';
 
-/** Visual exclusivo de Pedidos; não altera temas globais nem transições de status. */
+/** Shared status tokens preserve the original Pedidos Kanban palette. */
 export const KANBAN_COLUMN_THEME = {
-  waiting: { label: 'AGUARDANDO', color: '#ef4444', tint: '#fdecec', dropStatus: 'PENDING' },
-  production: { label: 'EM PRODUÇÃO', color: '#f97316', tint: '#fef1e7', dropStatus: 'PREPARING' },
-  ready: { label: 'SAIU / PRONTO', color: '#a855f7', tint: '#f6eefe', dropStatus: 'READY' },
-  delivered: { label: 'ENTREGUE', color: '#16a34a', tint: '#e8f6ed', dropStatus: 'DELIVERED' },
-  cancelled: { label: 'CANCELADO', color: '#6b7280', tint: '#f0f1f2', dropStatus: 'CANCELLED' },
+  waiting: { label: 'AGUARDANDO', color: STATUS_COLORS.PENDING.solid, tint: STATUS_COLORS.PENDING.bg, dropStatus: 'PENDING' },
+  production: { label: 'EM PRODUÇÃO', color: STATUS_COLORS.PREPARING.solid, tint: STATUS_COLORS.PREPARING.bg, dropStatus: 'PREPARING' },
+  ready: { label: 'SAIU / PRONTO', color: STATUS_COLORS.READY.solid, tint: STATUS_COLORS.READY.bg, dropStatus: 'READY' },
+  delivered: { label: 'ENTREGUE', color: STATUS_COLORS.DELIVERED.solid, tint: STATUS_COLORS.DELIVERED.bg, dropStatus: 'DELIVERED' },
+  cancelled: { label: 'CANCELADO', color: STATUS_COLORS.CANCELLED.solid, tint: STATUS_COLORS.CANCELLED.bg, dropStatus: 'CANCELLED' },
 } as const satisfies Record<string, { label: string; color: string; tint: string; dropStatus: OrderStatus }>;
 export type KanbanColumn = keyof typeof KANBAN_COLUMN_THEME;
 /** Tom escuro de cada cor (texto/ícones sobre o fundo suave), com contraste AA sobre a tinta da coluna. */
 export const KANBAN_COLUMN_INK: Record<KanbanColumn, string> = {
-  waiting: '#b91c1c', production: '#c2410c', ready: '#7e22ce', delivered: '#15803d', cancelled: '#374151',
+  waiting: STATUS_COLORS.PENDING.fg, production: STATUS_COLORS.PREPARING.fg, ready: STATUS_COLORS.READY.fg,
+  delivered: STATUS_COLORS.DELIVERED.fg, cancelled: STATUS_COLORS.CANCELLED.fg,
 };
 export const KANBAN_COLUMNS = Object.keys(KANBAN_COLUMN_THEME) as KanbanColumn[];
 
@@ -42,7 +44,8 @@ export function kanbanColumnForStatus(status: string): KanbanColumn {
 export function orderStatusColors(status: string) {
   const column = kanbanColumnForStatus(status);
   const theme = KANBAN_COLUMN_THEME[column];
-  return { column, label: theme.label, color: theme.color, tint: theme.tint, ink: KANBAN_COLUMN_INK[column] };
+  const tokens = statusColorTokens(status);
+  return { column, label: theme.label, color: tokens.solid, tint: tokens.bg, ink: tokens.fg, border: tokens.border };
 }
 
 export function groupKanbanOrders(orders: readonly Order[]) {

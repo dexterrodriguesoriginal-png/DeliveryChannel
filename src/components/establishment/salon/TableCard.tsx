@@ -2,6 +2,7 @@ import React from 'react';
 import { BellRing, Clock, UserCheck, Users } from 'lucide-react';
 import { formatBRL } from '../../../lib/pricing/money';
 import { TableStatusInfo, tableDisplayNumber } from '../../../lib/salon/tableStatus';
+import { statusColorTokens } from '../../../lib/orders/statusColors';
 import './salon.css';
 
 export interface TableCardProps {
@@ -33,13 +34,16 @@ export function tableAriaLabel(label: string, info: TableStatusInfo, seats: numb
 export const TableCard: React.FC<TableCardProps> = React.memo(({ id, label, area, seats, info, index = 0, onOpen }) => {
   const attention = info.hasActiveCall || info.pendingRelease;
   const occupied = info.kind !== 'FREE';
+  const colors = statusColorTokens(info.kind);
   return (
     <button
       type="button"
       onClick={() => onOpen(id)}
       className={`salon-card salon-card--${info.kind}${info.hasActiveCall ? ' salon-card--CALL' : ''}${info.pendingRelease ? ' salon-card--PENDING' : ''}`}
       data-pending={info.pendingRelease ? 'true' : undefined}
-      style={{ ['--i' as string]: Math.min(index, 30) } as React.CSSProperties}
+      style={{ '--i': Math.min(index, 30), '--sc-bg': colors.bg, '--sc-border': colors.border,
+        '--sc-text': colors.fg, '--sc-accent': colors.solid, '--sc-chip': colors.bg,
+        '--sc-shadow': `color-mix(in srgb, ${colors.solid} 45%, transparent)` } as React.CSSProperties}
       data-testid={`salon-table-${id}`}
       data-status={info.kind}
       aria-label={tableAriaLabel(label, info, seats)}

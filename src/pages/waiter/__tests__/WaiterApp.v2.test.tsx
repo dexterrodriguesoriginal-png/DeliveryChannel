@@ -64,6 +64,7 @@ const h = vi.hoisted(() => ({
     loadMenu: vi.fn(async () => ({ products: [], categories: [] })),
   },
   modules: { enabled: true },
+  delivery: { markDelivered: vi.fn(async () => {}), openDisputes: vi.fn(async () => []), resolve: vi.fn(async () => {}), observe: vi.fn(() => vi.fn()) },
 }));
 
 const mockChannel: any = {
@@ -87,6 +88,7 @@ vi.mock('../../../repositories/waiterV2Repository', () => ({
   DEFAULT_SERVICE_SETTINGS: { mode: 'FREE', hybridHelp: false, acceptTimeoutSeconds: 60, dispatchTimeoutSeconds: 60 },
 }));
 vi.mock('../../../repositories/salonStaffRepository', () => ({ salonStaffRepository: h.salonStaff }));
+vi.mock('../../../repositories/deliveryRepository', () => ({ deliveryRepository: h.delivery }));
 vi.mock('../../../repositories/tenantModuleRepository', () => ({
   tenantModuleRepository: {
     getForTenant: vi.fn(async () => ({ available: true, modules: [{ key: 'dine_in', enabled: true }] })),
@@ -198,5 +200,30 @@ describe('Garçom v2 — Login simples e Modos de atendimento', () => {
       await waitFor(() => expect(h.salonStaff.snapshot).toHaveBeenCalled());
       expect(h.readySound).toHaveBeenCalledTimes(1);
     } finally { h.salonStaff.snapshot.mockResolvedValue(base); }
+  });
+  it('garçom registra Entregue para rodada pronta e atualiza a lista', async () => {
+    h.auth.supabaseUser = { id: 'u-waiter-1', email: 'joao@garcom.deliverychannel.local' };
+    h.auth.activeTenant = { id: 't-1', name: 'Pizzaria Bella', slug: 'pizzaria-bella' };
+    h.auth.activeRole = 'WAITER';
+    const base = await h.salonStaff.snapshot();
+    const own = { id: 'ready-order', tab_id: 'tab-1', status: 'OUT_FOR_DELIVERY', subtotal: 20, created_at: new Date().toISOString(), round_no: 1, order_number: 55, customer_name: 'Cliente' };
+    h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [own] } as never);
+    h.delivery.markDelivered.mockImplementationOnce(async () => { h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [{ ...own, status: 'DELIVERED', delivered_at: '2026-11-04T01:10:00Z' }] } as never); });
+    try {
+      render(<WaiterApp />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Meus pedidos' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Entregue' }));
+      await waitFor(() => expect(h.delivery.markDelivered).toHaveBeenCalledWith('ready-order'));
+      expect(await screen.findByText(/Entregue às/)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Entregue' })).toBeNull();
+    } finally { h.salonStaff.snapshot.mockResolvedValue(base); }
+  });
+  it('Mais não leva o garçom à rota do dono', async () => {
+    h.auth.supabaseUser = { id: 'u-waiter-1', email: 'joao@garcom.deliverychannel.local' };
+    h.auth.activeTenant = { id: 't-1', name: 'Pizzaria Bella', slug: 'pizzaria-bella' };
+    h.auth.activeRole = 'WAITER';
+    render(<WaiterApp />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Mais' }));
+    expect(screen.queryByRole('link', { name: 'Abrir o Salão' })).toBeNull();
   });
 });

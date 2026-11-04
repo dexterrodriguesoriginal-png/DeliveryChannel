@@ -188,8 +188,8 @@ describe('Garçom v3 — cliente QR', () => {
     account = { ...account, status: 'AWAITING_PAYMENT' };
     fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
     await screen.findByRole('dialog', { name: 'Minha conta' });
-    expect(screen.getByTestId('account-round-o1').className).toContain('text-green-800');
-    expect(screen.getByTestId('account-round-o2').className).toContain('text-red-800');
+    expect(screen.getByTestId('account-round-o1').style.color).toBe('#15803d');
+    expect(screen.getByTestId('account-round-o2').style.color).toBe('#374151');
     expect(screen.queryByRole('button', { name: 'Pedir a conta' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Adicionar Chopp' }).hasAttribute('disabled')).toBe(true);
   });
@@ -248,5 +248,54 @@ describe('Garçom v3 — cliente QR', () => {
     await screen.findByRole('button', { name: 'Aguardando PIX' });
     expect(screen.queryByRole('button', { name: 'Pedir mais' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Adicionar Chopp' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('cliente contesta pela própria sessão mesmo após fechar a conta, vê a disputa e horários por item', async () => {
+    h.user = { id: 'u1' }; sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
+    const deliveredAt = new Date().toISOString();
+    const mine = { ...round('DELIVERED'), deliveredAt, canDisputeDelivery: true, items: [{ name: 'Chopp', quantity: 1, deliveredAt }] };
+    const another = { ...mine, orderId: 'other-order', mine: false };
+    account = myTab([mine, another] as any, 'CLOSED');
+    const originalRpc = h.rpc.getMockImplementation()!;
+    h.rpc.mockImplementation(async (name: string, args: unknown) => {
+      if (name === 'customer_dispute_delivery') {
+        account = myTab([{ ...mine, canDisputeDelivery: false, deliveryDispute: { id: 'd1', status: 'OPEN', createdAt: deliveredAt } }, another] as any, 'CLOSED');
+        return { data: { id: 'd1', status: 'OPEN' }, error: null };
+      }
+      return originalRpc(name, args);
+    });
+    render(<DineInClientApp token={TOKEN} />);
+    expect(await screen.findByText('Seu pedido foi entregue')).toBeTruthy();
+    expect(screen.queryByTestId('delivery-notice-other-order')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Não recebi' }));
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('customer_dispute_delivery', { p_session_id: 's1', p_order: 'o1' }));
+    await screen.findByText('Entrega em verificação');
+    expect(screen.queryByRole('button', { name: 'Não recebi' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
+    const item = screen.getByTestId('account-round-o1');
+    expect(item.textContent).toContain('Entregue às');
+    expect(item.querySelector('time')?.getAttribute('dateTime')).toBe(deliveredAt);
+    account = myTab([{ ...mine, status: 'PREPARING', deliveredAt: null, canDisputeDelivery: false, deliveryDispute: { id: 'd1', status: 'RESENT', createdAt: deliveredAt, resolvedAt: deliveredAt } }] as any, 'CLOSED');
+    await act(async () => h.subscriptions.find(item => item.table === 'dining_tracking_revisions')!.callback());
+    await waitFor(() => expect(screen.getAllByText('Pedido reenviado para produção').length).toBeGreaterThan(0));
+    expect(screen.getByTestId('account-round-o1').querySelector('time')).toBeNull();
+  });
+
+  it('prazo recusado pelo servidor atualiza a entrega recebida e retira Não recebi', async () => {
+    h.user = { id: 'u1' }; sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
+    account = myTab([{ ...round('DELIVERED'), deliveredAt: new Date().toISOString(), canDisputeDelivery: true }] as any);
+    const originalRpc = h.rpc.getMockImplementation()!;
+    h.rpc.mockImplementation(async (name: string, args: unknown) => {
+      if (name === 'customer_dispute_delivery') {
+        account = myTab([{ ...round('DELIVERED'), deliveredAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(), canDisputeDelivery: false }] as any);
+        return { data: null, error: { message: 'DELIVERY_DISPUTE_WINDOW_EXPIRED' } };
+      }
+      return originalRpc(name, args);
+    });
+    render(<DineInClientApp token={TOKEN} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Não recebi' }));
+    await screen.findByText('O prazo de 5 minutos terminou. Chame o garçom para conferir sua entrega.');
+    await screen.findByText('Pedido recebido');
+    expect(screen.queryByRole('button', { name: 'Não recebi' })).toBeNull();
   });
 });

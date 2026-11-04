@@ -50,3 +50,10 @@ describe('avisos de reabertura de comanda', () => {
     expect((await dispatchChatRepository.visibleNotifications('A', rows)).map(row => row.id)).toEqual(['n1', 'n2', 'n4']);
   });
 });
+
+it('disputa referencia apenas pedido visível da loja e ignora destino de mesa forjado',async()=>{
+  state.tables.orders=[{id:'own',tenant_id:'A',awaiting_online_payment:false},{id:'other',tenant_id:'B',awaiting_online_payment:false}];
+  const rows=[{...event('n1','ORDER_DELIVERY_DISPUTE','own'),tableTarget:'forged'},event('n2','ORDER_DELIVERY_DISPUTE','other'),event('n3','ORDER_DELIVERY_DISPUTE','own','B')];
+  expect(await dispatchChatRepository.visibleNotifications('A',rows)).toEqual([expect.objectContaining({id:'n1',ref_id:'own'})]);
+  expect((await dispatchChatRepository.visibleNotifications('A',rows))[0].tableTarget).toBeUndefined();
+});

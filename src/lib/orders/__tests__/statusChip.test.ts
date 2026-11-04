@@ -1,32 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import { statusChip, FILTER_CHIP_CLASS } from '../statusChip';
+import { statusChip, FILTER_CHIP_CLASS, FILTER_CHIP_COLORS } from '../statusChip';
+import { STATUS_COLORS } from '../statusColors';
 
-describe('statusChip (padrão KDS)', () => {
-  it('Novo âmbar, Em preparo azul, Pronto verde, Em rota ciano, Cancelado vermelho suave, Atrasado vermelho forte', () => {
-    expect(statusChip('PENDING')).toMatchObject({ label: 'NOVO', icon: 'bell' });
-    expect(statusChip('PENDING').className).toContain('amber');
-    expect(statusChip('PREPARING')).toMatchObject({ icon: 'flame' });
-    expect(statusChip('PREPARING').className).toContain('blue');
-    expect(statusChip('READY').className).toContain('green');
+describe('statusChip (paleta única de Pedidos)', () => {
+  it('usa vermelho, laranja, roxo, verde e cinza do Kanban para todos os canais', () => {
+    expect(statusChip('PENDING')).toMatchObject({ label: 'NOVO', icon: 'bell', colors: STATUS_COLORS.PENDING });
+    expect(statusChip('PREPARING')).toMatchObject({ icon: 'flame', colors: STATUS_COLORS.PREPARING });
+    expect(statusChip('READY').colors).toBe(STATUS_COLORS.READY);
     expect(statusChip('WAITING_FOR_DRIVER').label).toBe('PRONTO');
-    expect(statusChip('OUT_FOR_DELIVERY')).toMatchObject({ icon: 'bike' });
-    expect(statusChip('OUT_FOR_DELIVERY').className).toContain('cyan');
-    expect(statusChip('CANCELLED')).toMatchObject({ icon: 'cancelled' });
-    expect(statusChip('PREPARING', true)).toMatchObject({ label: 'ATRASADO', icon: 'late' });
-    expect(statusChip('PREPARING', true).className).toContain('bg-red-600');
+    expect(statusChip('OUT_FOR_DELIVERY')).toMatchObject({ icon: 'bike', colors: STATUS_COLORS.READY });
+    expect(statusChip('CANCELLED')).toMatchObject({ icon: 'cancelled', colors: STATUS_COLORS.CANCELLED });
+    expect(statusChip('PREPARING', true)).toMatchObject({ label: 'ATRASADO', icon: 'late', colors: STATUS_COLORS.LATE });
   });
-  it('filtros usam as mesmas cores dos selos; estoque laranja', () => {
+  it('filtros usam os mesmos tokens dos selos', () => {
     expect(FILTER_CHIP_CLASS.novos).toBe(statusChip('PENDING').className);
-    expect(FILTER_CHIP_CLASS.atrasados).toBe(statusChip('CONFIRMED', true).className);
+    expect(FILTER_CHIP_COLORS.novos).toBe(statusChip('PENDING').colors);
+    expect(FILTER_CHIP_COLORS.emPreparo).toBe(statusChip('PREPARING').colors);
+    expect(FILTER_CHIP_COLORS.prontos).toBe(statusChip('READY').colors);
+    expect(FILTER_CHIP_COLORS.atrasados).toBe(statusChip('CONFIRMED', true).colors);
     expect(FILTER_CHIP_CLASS.estoque).toContain('orange');
   });
-  it('salão segue vermelho/laranja/roxo/verde do Kanban e identifica a ida até a mesa', () => {
-    expect(statusChip('PENDING', false, 'DINE_IN').className).toContain('red');
-    expect(statusChip('PREPARING', false, 'DINE_IN').className).toContain('orange');
+  it('salão mantém rótulos específicos e compartilha a paleta dos demais canais', () => {
+    expect(statusChip('PENDING', false, 'DINE_IN').colors).toBe(STATUS_COLORS.PENDING);
+    expect(statusChip('PREPARING', false, 'DINE_IN').colors).toBe(STATUS_COLORS.PREPARING);
     expect(statusChip('READY', false, 'DINE_IN')).toMatchObject({ label: 'AGUARDANDO GARÇOM' });
-    expect(statusChip('READY', false, 'DINE_IN').className).toContain('purple');
+    expect(statusChip('READY', false, 'DINE_IN').colors).toBe(STATUS_COLORS.READY);
     expect(statusChip('OUT_FOR_DELIVERY', false, 'DINE_IN')).toMatchObject({ label: 'INDO ATÉ A MESA', icon: 'ready' });
-    expect(statusChip('DELIVERED', false, 'DINE_IN').className).toContain('green');
+    expect(statusChip('DELIVERED', false, 'DINE_IN').colors).toBe(STATUS_COLORS.DELIVERED);
     expect(statusChip('PREPARING', false, 'DELIVERY')).toEqual(statusChip('PREPARING'));
     expect(statusChip('READY', false, 'PICKUP')).toEqual(statusChip('READY'));
   });

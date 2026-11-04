@@ -54,6 +54,16 @@ import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE
 import { supabase } from '../../lib/supabase';
 import { canArchiveOrder, matchesOrderStatusTab } from '../../lib/orders/archive';
 import { dineInNextAction } from '../../lib/orders/dineInFlow';
+import { statusColorTokens } from '../../lib/orders/statusColors';
+import { maskCustomerPhone } from '../../lib/privacy/customerContact';
+import { DeliveryDisputesPanel } from '../../components/establishment/orders/DeliveryDisputesPanel';
+
+function linkedOrderId(): string | null {
+  try {
+    const url = new URL(window.location.hash.slice(1), 'https://panel.invalid');
+    return url.pathname === '/painel/est-orders' ? url.searchParams.get('order') || null : null;
+  } catch { return null; }
+}
 
 function orderForCard(order: Order): Order {
   return order.fulfillmentType === 'DINE_IN'
@@ -78,8 +88,20 @@ const ORDER_STATUS_TABS = new Set([
   'ARCHIVED',
 ]);
 
-export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab, onTabChange }) => {
+export const OrdersPage: React.FC<OrdersPageProps> = props => {
+  const { activeTenant } = useAuth();
+  if (!activeTenant) return null;
+  return <OrdersPageContent key={activeTenant.id} {...props} />;
+};
+
+const OrdersPageContent: React.FC<OrdersPageProps> = ({ activeTab: requestedTab, onTabChange }) => {
   const { activeTenant, securityContext, availableTenants, switchTenant, supabaseUser, activeRole } = useAuth();
+  const currentTenantId = useRef(activeTenant?.id);
+  currentTenantId.current = activeTenant?.id;
+  useEffect(() => {
+    currentTenantId.current = activeTenant?.id;
+    return () => { currentTenantId.current = undefined; };
+  }, [activeTenant?.id]);
   const { isModuleEnabled } = useModules();
   const { showToast } = useToast();
 
@@ -127,7 +149,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   const activeTabRef = useRef(activeTab);
   activeTabRef.current = activeTab;
   const changeActiveTab = (tab: string) => {
-    setSelectedOrder(null);
+    closeOrderDetails();
     setInternalActiveTab(tab);
     onTabChange?.(tab);
   };
@@ -158,6 +180,34 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
 
   // Pedido selecionado para Drawer lateral acoplado (como no print)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [deepLinkOrderId, setDeepLinkOrderId] = useState(linkedOrderId);
+  function closeOrderDetails() {
+    setSelectedOrder(null);
+    setDeepLinkOrderId(null);
+    try {
+      const [path, query = ''] = window.location.hash.split('?');
+      const params = new URLSearchParams(query);
+      if (params.has('order')) {
+        params.delete('order');
+        const suffix = params.toString();
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${path}${suffix ? `?${suffix}` : ''}`);
+      }
+    } catch { /* The drawer still closes if browser history is unavailable. */ }
+  }
+  useEffect(() => {
+    const sync = () => {
+      const id = linkedOrderId(); setDeepLinkOrderId(id);
+      if (!id) setSelectedOrder(null);
+    };
+    sync(); window.addEventListener('hashchange', sync); window.addEventListener('popstate', sync);
+    return () => { window.removeEventListener('hashchange', sync); window.removeEventListener('popstate', sync); };
+  }, []);
+  useEffect(() => {
+    if (!deepLinkOrderId || !remoteOrders) return;
+    const found = remoteOrders.find(order => order.id === deepLinkOrderId && order.tenantId === activeTenant?.id);
+    setSelectedOrder(found || null);
+    if (found) setDrawerTab('detalhes');
+  }, [deepLinkOrderId, remoteOrders, activeTenant?.id]);
   // Com o painel de detalhes encaixado à direita, o botão de notificações (posição padrão) sai da frente dele.
   useEffect(() => {
     if (!selectedOrder) return;
@@ -172,7 +222,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       if (document.querySelector('[role="dialog"]')) return;
-      setSelectedOrder(null);
+      closeOrderDetails();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -239,7 +289,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
   }, [assigningOrder?.id, activeTenant?.id, activeRole]);
   useEffect(() => {
     const focus = (e: Event) => {
-      const found = remoteOrders?.find(o => o.id === (e as CustomEvent).detail);
+      const found = remoteOrders?.find(o => o.id === (e as CustomEvent).detail && o.tenantId === activeTenant?.id);
       if (!found) return;
       if (found.archivedAt) changeActiveTab('ARCHIVED');
       else if (found.status === 'CANCELLED') changeActiveTab('CANCELLED');
@@ -249,7 +299,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
     };
     window.addEventListener('dc:focus-order', focus);
     return () => window.removeEventListener('dc:focus-order', focus);
-  }, [remoteOrders]);
+  }, [remoteOrders, activeTenant?.id]);
 
   // Modal de cancelamento de pedido com justificativa
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
@@ -279,8 +329,9 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           : Promise.resolve([] as Driver[]),
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);
-      let ordersWithTableLabels = visibleStaffOrders(orderData);
-      const missingTableLabelOrderIds = [...new Set(orderData
+      if (currentTenantId.current !== activeTenant.id) return;
+      let ordersWithTableLabels = visibleStaffOrders(orderData).filter(order => order.tenantId === activeTenant.id);
+      const missingTableLabelOrderIds = [...new Set(ordersWithTableLabels
         .filter(order => order.fulfillmentType === 'DINE_IN' && !order.tableLabel)
         .map(order => order.id))];
       if (missingTableLabelOrderIds.length && typeof supabase?.rpc === 'function') {
@@ -297,6 +348,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           ordersWithTableLabels = resolveDineInTableLabels(ordersWithTableLabels, labelsByOrderId);
         }
       }
+      if (currentTenantId.current !== activeTenant.id) return;
       setRemoteOrders(ordersWithTableLabels);
       // Atribuição só para entregadores APPROVED confirmados (sem fallback).
       setDrivers(assignableDrivers(driverData));
@@ -319,7 +371,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
         // O quadro abre completo; detalhes aparecem ao selecionar um pedido ou aviso.
         if (!prev) return null;
         const updated = ordersWithTableLabels.find(o => o.id === prev.id);
-        if (updated && !matchesOrderStatusTab(updated, activeTabRef.current)) return null;
+        if (updated && !matchesOrderStatusTab(updated, activeTabRef.current) && linkedOrderId() !== updated.id) return null;
         return updated || null;
       });
 
@@ -330,11 +382,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
       }
       prevPendingCountRef.current = currentPendingCount;
     } catch (err: any) {
-      console.warn('[OrdersPage] Erro ao sincronizar pedidos:', err);
-      setSyncError(err.message || 'Falha ao sincronizar');
+      if (currentTenantId.current !== activeTenant.id) return;
+      setSyncError('Não foi possível sincronizar os pedidos. Tente novamente.');
     } finally {
-      setLoading(false);
-      setIsRefreshing(false);
+      if (currentTenantId.current === activeTenant.id) { setLoading(false); setIsRefreshing(false); }
     }
   }, [activeTenant, securityContext, remoteOrders, soundEnabled, canListDrivers]);
 
@@ -774,7 +825,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
 
             <button
               type="button"
-              onClick={() => setSelectedOrder(null)}
+              onClick={closeOrderDetails}
               className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-black/5 transition-colors cursor-pointer shrink-0"
               title="Fechar painel de detalhes"
             >
@@ -860,7 +911,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                     </div>
                     <div className="min-w-0">
                       <div className="font-extrabold text-[10.5px] text-slate-900 truncate leading-tight">{selectedOrder.customerName}</div>
-                      <div className="text-[8px] text-slate-500 font-mono leading-none truncate mt-0.5">{selectedOrder.customerPhone}</div>
+                      <div className="text-[8px] text-slate-500 font-mono leading-none truncate mt-0.5">{maskCustomerPhone(selectedOrder.customerPhone)}</div>
                     </div>
                   </div>
 
@@ -979,15 +1030,13 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
               <div className="text-[7.5px] font-bold uppercase tracking-wider text-slate-400">Linha do Tempo Operacional</div>
               <div className="space-y-1.5 border-l-2 border-slate-200 pl-2.5 ml-1 text-[8px]">
                 <div className="relative">
-                  <div className={`w-2 h-2 rounded-full ${selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-red-500' : 'bg-amber-500'} absolute -left-[14px] top-1 ring-2 ring-white`} />
+                  <div className="w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white" style={{ backgroundColor: statusColorTokens('PENDING').solid }} />
                   <div className="font-bold text-slate-900 text-[9px]">Pedido Criado</div>
                   <div className="text-[7.5px] text-slate-500 font-mono">{orderTimeStr}</div>
                 </div>
 
                 <div className="relative">
-                  <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
-                    selectedOrder.status !== 'PENDING' ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-red-400' : 'bg-amber-400' : 'bg-slate-300'
-                  }`} />
+                  <div className="w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white" style={{ backgroundColor: selectedOrder.status !== 'PENDING' ? statusColorTokens('CONFIRMED').solid : '#cbd5e1' }} />
                   <div className="font-bold text-slate-900 text-[9px]">Confirmação</div>
                   <div className="text-[7.5px] text-slate-500">
                     {selectedOrder.status !== 'PENDING' ? 'Confirmado' : 'Aguardando'}
@@ -995,11 +1044,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 </div>
 
                 <div className="relative">
-                  <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
-                    selectedOrder.status === 'PREPARING' || selectedOrder.status === 'READY' || selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-orange-600' : 'bg-blue-600'
-                      : 'bg-slate-300'
-                  }`} />
+                  <div className="w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white" style={{ backgroundColor: ['PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(selectedOrder.status) ? statusColorTokens('PREPARING').solid : '#cbd5e1' }} />
                   <div className="font-bold text-slate-900 text-[9px]">Preparo na Cozinha</div>
                   <div className="text-[7.5px] text-slate-500">
                     {selectedOrder.status === 'PREPARING' ? 'Em produção' : selectedOrder.status === 'PENDING' || selectedOrder.status === 'CONFIRMED' ? 'Pendente' : 'Concluído'}
@@ -1007,11 +1052,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 </div>
 
                 <div className="relative">
-                  <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
-                    selectedOrder.status === 'READY' || selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-purple-700' : 'bg-green-700'
-                      : 'bg-slate-300'
-                  }`} />
+                  <div className="w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white" style={{ backgroundColor: ['READY', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(selectedOrder.status) ? statusColorTokens('READY').solid : '#cbd5e1' }} />
                   <div className="font-bold text-slate-900 text-[9px]">{selectedOrder.fulfillmentType === 'DINE_IN' ? 'Aguardando garçom' : 'Pronto para Envio'}</div>
                   <div className="text-[7.5px] text-slate-500">
                     {selectedOrder.status === 'READY' ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'Pronto no balcão' : 'Embalado' : 'Pendente'}
@@ -1019,11 +1060,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 </div>
 
                 <div className="relative">
-                  <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
-                    selectedOrder.status === 'OUT_FOR_DELIVERY' || selectedOrder.status === 'DELIVERED'
-                      ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-purple-600' : 'bg-cyan-600'
-                      : 'bg-slate-300'
-                  }`} />
+                  <div className="w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white" style={{ backgroundColor: ['OUT_FOR_DELIVERY', 'DELIVERED'].includes(selectedOrder.status) ? statusColorTokens('OUT_FOR_DELIVERY').solid : '#cbd5e1' }} />
                   <div className="font-bold text-slate-900 text-[9px]">{selectedOrder.fulfillmentType === 'DINE_IN' ? 'Serviço na mesa' : 'Em Rota de Entrega'}</div>
                   <div className="text-[7.5px] text-slate-500">
                     {selectedOrder.status === 'OUT_FOR_DELIVERY' ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'Pedido indo até você' : 'A caminho' : 'Pendente'}
@@ -1031,9 +1068,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                 </div>
 
                 <div className="relative">
-                  <div className={`w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white ${
-                    selectedOrder.status === 'DELIVERED' ? selectedOrder.fulfillmentType === 'DINE_IN' ? 'bg-green-600' : 'bg-slate-500' : 'bg-slate-300'
-                  }`} />
+                  <div className="w-2 h-2 rounded-full absolute -left-[14px] top-1 ring-2 ring-white" style={{ backgroundColor: selectedOrder.status === 'DELIVERED' ? statusColorTokens('DELIVERED').solid : '#cbd5e1' }} />
                   <div className="font-bold text-slate-900 text-[9px]">Entregue</div>
                   <div className="text-[7.5px] text-slate-500">
                     {selectedOrder.status === 'DELIVERED' ? 'Finalizado' : 'Pendente'}
@@ -1166,7 +1201,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
             ) : (
               <button
                 type="button"
-                onClick={() => setSelectedOrder(null)}
+                onClick={closeOrderDetails}
                 className="py-1 px-1 rounded-md border border-slate-200 bg-slate-50 text-slate-600 text-[8.5px] font-bold cursor-pointer h-7"
               >
                 Fechar
@@ -1265,6 +1300,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
 
         {/* ÁREA OPERACIONAL DE PEDIDOS: KANBAN / LISTA */}
         <div className={`flex flex-1 min-h-0 min-w-0 flex-col gap-3 p-3 ${effectiveViewMode === 'table' ? 'overflow-y-auto' : 'overflow-hidden'}`}>
+          <DeliveryDisputesPanel key={activeTenant.id} tenantId={activeTenant.id} onResolved={() => { void fetchOrders(true); }} />
           {staleActiveCount > 0 && (
             <div data-testid="stale-orders-banner" className="flex items-start gap-2 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-3 py-2 text-[11px]">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
@@ -1406,7 +1442,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
                                 <div className="flex items-center gap-2">
                                   <div>
                                     <div className="font-bold text-slate-900">{dineInOrderLabel(order)}</div>
-                                    <div className="font-mono text-[10.5px] leading-none text-slate-500">{order.customerPhone}</div>
+                                    <div className="font-mono text-[10.5px] leading-none text-slate-500">{maskCustomerPhone(order.customerPhone)}</div>
                                   </div>
                                 </div>
                               </td>
@@ -1503,7 +1539,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
           {/* Telas estreitas: gaveta sobreposta */}
           <div
             className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 min-[1180px]:hidden animate-in fade-in"
-            onClick={() => setSelectedOrder(null)}
+            onClick={closeOrderDetails}
           >
             <aside
               data-testid="order-detail-drawer"

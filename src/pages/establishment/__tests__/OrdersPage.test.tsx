@@ -37,13 +37,14 @@ vi.mock('../../../components/pickup/PickupHandoverModal', () => ({ PickupHandove
 vi.mock('../../../components/establishment/PDVModal', () => ({ PDVModal: () => null }));
 vi.mock('../../../components/establishment/ThermalReceiptModal', () => ({ ThermalReceiptModal: () => null }));
 vi.mock('../../../components/chat/OrderChat', () => ({ OrderChat: () => null }));
+vi.mock('../../../components/establishment/orders/DeliveryDisputesPanel', () => ({ DeliveryDisputesPanel: () => null }));
 
 import { OrdersPage } from '../OrdersPage';
 import { KanbanOrderCard } from '../../../components/establishment/KanbanOrderCard';
 
 const VIEW_KEY = 'adegafood_orders_view_mode';
 const order = (status: OrderStatus, extra: Partial<Order> = {}): Order => ({
-  id: 'order-1', orderNumber: 123, customerName: 'Cliente Teste',
+  id: 'order-1', tenantId: 'tenant-1', orderNumber: 123, customerName: 'Cliente Teste',
   status, fulfillmentType: 'DELIVERY', createdAt: new Date().toISOString(),
   totalAmount: 10, items: [], statusHistory: [], paymentMethod: 'CASH', paymentStatus: 'PAID',
   ...extra,
@@ -58,7 +59,9 @@ const render = async (tab = 'ALL') => { await act(async () => { root.render(<Ord
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear(); sessionStorage.clear();
+  window.history.replaceState(null, '', '/');
   mocks.auth.activeRole = 'OWNER';
+  mocks.auth.activeTenant = { id: 'tenant-1', name: 'Loja', settings: {} };
   mocks.offerRows = []; mocks.listDrivers.mockResolvedValue([]); mocks.queue.mockResolvedValue({ mode: 'OWNER_PICKS', drivers: [] });
   mocks.offer.mockResolvedValue({ success: true }); mocks.cancelOffer.mockResolvedValue({ success: true });
   mocks.getOrders.mockResolvedValue([order('PREPARING')]);
@@ -68,6 +71,75 @@ beforeEach(() => {
   vi.spyOn(window, 'matchMedia').mockImplementation(() => ({ matches: false }) as MediaQueryList);
   container = document.createElement('div'); document.body.appendChild(container);
   root = createRoot(container);
+});
+
+describe('deep link do pedido e isolamento por loja', () => {
+  const panel = () => container.querySelector('[data-testid="order-detail-panel"]');
+  const hash = async (orderId: string) => {
+    await act(async () => {
+      window.history.replaceState(null, '', `/#/painel/est-orders?order=${encodeURIComponent(orderId)}`);
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+  };
+  it('abre o drawer do parâmetro ao montar e troca ao mudar o hash', async () => {
+    mocks.getOrders.mockResolvedValue([order('PREPARING', { id: 'a', orderNumber: 10 }), order('PREPARING', { id: 'b', orderNumber: 11 })]);
+    window.history.replaceState(null, '', '/#/painel/est-orders?order=a');
+    await render();
+    expect(panel()?.textContent).toContain('Pedido #10');
+    await hash('b');
+    expect(panel()?.textContent).toContain('Pedido #11');
+    await click(panel()!.querySelector('[title="Fechar painel de detalhes"]') as HTMLElement);
+    expect(panel()).toBeNull();
+    expect(window.location.hash).toBe('#/painel/est-orders');
+    await render(); expect(panel()).toBeNull();
+  });
+  it('ignora pedido de outra loja ou oculto pelo gate de pagamento no parâmetro', async () => {
+    mocks.getOrders.mockResolvedValue([
+      order('PREPARING', { id: 'local' }),
+      order('PREPARING', { id: 'foreign', tenantId: 'other-store', customerName: 'Outra loja' }),
+      order('PENDING', { id: 'unpaid', awaitingOnlinePayment: true }),
+    ]);
+    window.history.replaceState(null, '', '/#/painel/est-orders?order=foreign');
+    await render();
+    expect(panel()).toBeNull(); expect(container.textContent).not.toContain('Outra loja');
+    await hash('unpaid'); expect(panel()).toBeNull();
+    await hash('local'); expect(panel()).not.toBeNull();
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(window.location.hash).toBe('#/painel/est-orders');
+  });
+  it('descarta resposta atrasada da loja anterior após trocar de loja', async () => {
+    let finishOld: (orders: Order[]) => void;
+    mocks.getOrders.mockImplementationOnce(() => new Promise<Order[]>(resolve => { finishOld = resolve; }));
+    await render();
+    mocks.auth.activeTenant = { id: 'tenant-2', name: 'Nova loja', settings: {} };
+    mocks.getOrders.mockResolvedValue([order('PREPARING', { id: 'new', tenantId: 'tenant-2', customerName: 'Cliente atual' })]);
+    await render();
+    expect(container.textContent).toContain('Cliente atual');
+    await act(async () => { finishOld!([order('PREPARING', { customerName: 'Cliente anterior' })]); });
+    expect(container.textContent).not.toContain('Cliente anterior');
+    expect(container.textContent).toContain('Cliente atual');
+  });
+  it('remove o drawer e os dados carregados ao trocar de loja enquanto a próxima carrega', async () => {
+    window.history.replaceState(null, '', '/#/painel/est-orders?order=order-1');
+    await render();
+    expect(panel()?.textContent).toContain('Cliente Teste');
+    mocks.auth.activeTenant = { id: 'tenant-2', name: 'Nova loja', settings: {} };
+    mocks.getOrders.mockImplementation(() => new Promise(() => {}));
+    await render();
+    expect(panel()).toBeNull();
+    expect(container.textContent).not.toContain('Cliente Teste');
+  });
+  it('exibe telefone mascarado no detalhe e na lista', async () => {
+    mocks.getOrders.mockResolvedValue([order('PREPARING', { customerPhone: '(11) 91234-5678' })]);
+    await render();
+    await click(container.querySelector('[data-testid="order-card-order-1"]')!);
+    expect(panel()?.textContent).toContain('•••• 78');
+    expect(panel()?.textContent).not.toContain('(11) 91234-5678');
+    await click(panel()!.querySelector('[title="Fechar painel de detalhes"]') as HTMLElement);
+    await click(button('Lista'));
+    expect(container.textContent).toContain('•••• 78');
+    expect(container.textContent).not.toContain('(11) 91234-5678');
+  });
 });
 afterEach(async () => {
   await act(async () => { root.unmount(); });

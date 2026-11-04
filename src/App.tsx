@@ -77,6 +77,9 @@ import { TeamAccessPage } from './pages/team/TeamAccessPage';
 import { isOwnerPanelTab } from './components/layout/ownerPanel';
 import { isPanelPathname, panelRouteHash, readPanelRoute } from './lib/panelRoute';
 import { isMarketingTab } from './lib/marketingTabs';
+import { waiterPanelTarget } from './lib/waiter/panelRedirect';
+import { ScreenErrorBoundary } from './components/common/ScreenErrorBoundary';
+import { WaiterPanelRedirect } from './components/common/WaiterPanelRedirect';
 
 function AppContent() {
   // Mantém o convite em memória após remover o token da URL e do storage.
@@ -113,6 +116,7 @@ function AppContent() {
     enterPreviewWithoutLogin,
   } = useAuth();
   const { available: modulesAvailable, loading: modulesLoading, isModuleEnabled } = useModules();
+  const waiterTarget = waiterPanelTarget(activeRole, activeTenant?.slug, window.location);
 
   const [activeTab, setActiveTabState] = useState<string>(() => {
     const route = readPanelRoute(window.location.hash);
@@ -189,9 +193,6 @@ function AppContent() {
       setActiveTab(getDefaultAllowedTab(activeRole, storePermissions));
     }
     if (activeRole === 'KITCHEN' && activeTenant?.id && !['/cozinha', '/app/', '/mesa/'].some(path => window.location.pathname === path || (path.endsWith('/') && window.location.pathname.startsWith(path))) && !window.location.pathname.startsWith('/equipe/')) window.location.replace('/cozinha');
-    if (activeRole === 'WAITER' && activeTenant?.slug && !window.location.pathname.startsWith('/garcom/') && !window.location.pathname.startsWith('/app/') && !window.location.pathname.startsWith('/mesa/') && !window.location.pathname.startsWith('/equipe/')) {
-      window.location.replace(`/garcom/${encodeURIComponent(activeTenant.slug)}`);
-    }
   }, [activeRole, activeTab, activeTenant?.slug, storePermissions, storeAccessLoading]);
 
   // Restaura navegação de retorno se o login com Google veio de uma loja pública (/app/:slug)
@@ -225,6 +226,7 @@ function AppContent() {
 
   // Rotas públicas ou dedicadas verificadas antes do gate administrativo
   const pathname = window.location.pathname;
+  if (waiterTarget) return <WaiterPanelRedirect target={waiterTarget} />;
 
   // QR Code da mesa: /mesa/:token
   const tableToken = pathname.match(/^\/mesa\/([^/]+)\/?$/)?.[1];
@@ -807,7 +809,7 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <LegalBoundary><AppContent /></LegalBoundary>
+        <ScreenErrorBoundary><LegalBoundary><AppContent /></LegalBoundary></ScreenErrorBoundary>
         {/* Prévia do Design do App (iframe no painel): sem banner de cookies sobre a réplica. */}
         {!isEmbeddedPreview(window) && <CookieBanner />}
         <InstallDriverAppHint />

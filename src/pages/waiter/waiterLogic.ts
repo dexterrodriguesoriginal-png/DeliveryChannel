@@ -1,6 +1,6 @@
 // App do Garçom — regras puras (sem React/rede): quem pode usar, contadores e textos.
 import type { CallLike } from '../../lib/salon/tableStatus';
-import { TABLE_STATUS_COLOR } from '../../lib/salon/tableStatus';
+import { statusColorTokens, type StatusColorTokens } from '../../lib/orders/statusColors';
 import type { WaiterTab as TabRow, WaiterRound } from '../../repositories/salonStaffRepository';
 
 /** Papéis da equipe que usam o App do Garçom (mesmos que o Salão aceita). */
@@ -53,16 +53,15 @@ export function newlyReadyRoundIds(previous: ReadonlyMap<string, string> | null,
   return current.filter(r => r.status === 'READY' && previous.has(r.id) && previous.get(r.id) !== 'READY').map(r => r.id);
 }
 
-export function waiterOrderStatus(status: string): { label: string; color: string } {
-  switch (status) {
-    case 'PENDING': case 'CONFIRMED': return { label: 'Pedido novo · aguardando preparo', color: TABLE_STATUS_COLOR.NEW_ORDER };
-    case 'PREPARING': return { label: 'Preparando seu pedido', color: TABLE_STATUS_COLOR.PREPARING };
-    case 'READY': case 'WAITING_FOR_DRIVER': return { label: 'Pronto no balcão · balcão chamando', color: TABLE_STATUS_COLOR.READY };
-    case 'OUT_FOR_DELIVERY': return { label: 'Pedido indo até você', color: '#0891b2' };
-    case 'DELIVERED': return { label: 'Entregue', color: '#059669' };
-    case 'CANCELLED': return { label: 'Cancelado', color: '#dc2626' };
-    default: return { label: 'Aguardando atualização', color: '#64748b' };
-  }
+export function waiterOrderStatus(status: string): { label: string; color: string; colors: Readonly<StatusColorTokens> } {
+  const labels: Record<string, string> = {
+    PENDING: 'Pedido novo · aguardando preparo', CONFIRMED: 'Pedido novo · aguardando preparo',
+    PREPARING: 'Preparando seu pedido', READY: 'Pronto no balcão · balcão chamando',
+    WAITING_FOR_DRIVER: 'Pronto no balcão · balcão chamando', OUT_FOR_DELIVERY: 'Pedido indo até você',
+    DELIVERED: 'Entregue', CANCELLED: 'Cancelado',
+  };
+  const colors = statusColorTokens(status);
+  return { label: labels[status] || 'Aguardando atualização', color: colors.solid, colors };
 }
 
 /** Awaiting payment can only reopen the existing Pix; it is never a manual confirmation. */

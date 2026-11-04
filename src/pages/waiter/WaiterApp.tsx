@@ -14,6 +14,9 @@ import { newIdempotencyKey } from '../../lib/backend';
 import { dineInRoundItems, type DineInCartLine } from '../../lib/customer/dineInCart';
 import { deriveTableStatus, compareTables, matchesFilter, matchesSearch, statusCounts, ELAPSED_REFRESH_MS, type CallLike, type TableFilter } from '../../lib/salon/tableStatus';
 import { formatTableLabel } from '../../lib/orders/labels';
+import { statusColorStyle, statusColorTokens } from '../../lib/orders/statusColors';
+import { deliveryRepository } from '../../repositories/deliveryRepository';
+import { DeliveryDisputesPanel } from '../../components/establishment/orders/DeliveryDisputesPanel';
 import { mesasQrRepository, NO_CAPABILITIES, type MesasQrCapabilities } from '../../repositories/mesasQrRepository';
 import { salonStaffRepository, type SalonAccessExtras, type SalonSnapshot, type StaffHolderCode, type WaiterCallRow, type WaiterSession } from '../../repositories/salonStaffRepository';
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
@@ -710,7 +713,8 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       {!caps.tableAccess && snap && <p role="status" className="mx-auto mt-3 w-full max-w-2xl px-4 text-xs text-slate-400">Algumas funções (recusar e abrir mesa) chegam com a próxima atualização do sistema.</p>}
 
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-32 pt-4">
-        {readyRounds.length > 0 && <button type="button" aria-live="polite" onClick={() => { unlockAudio(); setTab('PEDIDOS'); }} data-testid="waiter-counter-alert" className="mb-3 flex w-full items-center gap-3 rounded-2xl border border-violet-400 bg-violet-800 p-4 text-left text-white shadow-lg"><BellRing className="h-7 w-7 shrink-0" /><span><strong className="block">Balcão chamando</strong><span className="text-sm">{readyRounds.length === 1 ? '1 pedido pronto no balcão' : `${readyRounds.length} pedidos prontos no balcão`} · toque para ver suas mesas</span></span></button>}
+        <DeliveryDisputesPanel tenantId={tenantId} onResolved={() => { void load(); }} />
+        {readyRounds.length > 0 && <button type="button" aria-live="polite" onClick={() => { unlockAudio(); setTab('PEDIDOS'); }} data-testid="waiter-counter-alert" className="mb-3 flex w-full items-center gap-3 rounded-2xl border p-4 text-left shadow-lg" style={statusColorStyle('READY')}><BellRing className="h-7 w-7 shrink-0" /><span><strong className="block">Balcão chamando</strong><span className="text-sm">{readyRounds.length === 1 ? '1 pedido pronto no balcão' : `${readyRounds.length} pedidos prontos no balcão`} · toque para ver suas mesas</span></span></button>}
         {orderAlert && (
           <div role="alert" data-testid="waiter-order-alert" className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-emerald-400/50 bg-emerald-500/15 p-3.5 text-white shadow-lg">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -783,10 +787,12 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           {!myRounds.length ? <p className="rounded-2xl bg-white/5 p-5 text-sm text-slate-300">Nenhum pedido nas suas mesas. Ao assumir um chamado ou receber uma mesa, os pedidos aparecem aqui.</p> : <div className="space-y-3">{myRounds.map(r => {
             const status = waiterOrderStatus(r.status);
             const table = tabs.find(t => t.id === r.tab_id);
-            return <button key={r.id} type="button" onClick={() => table && setSelectedId(table.table_id)} className="block w-full space-y-2 rounded-2xl border-l-4 bg-white/5 p-4 text-left ring-1 ring-white/10" style={{ borderLeftColor: status.color }}>
-              <div className="flex items-start justify-between gap-2"><strong>{labelByTab.get(r.tab_id) || 'Mesa'}</strong><span className="text-xs text-slate-400">#{r.order_number} · rodada {r.round_no}</span></div>
-              <p className="font-bold" style={{ color: status.color }}>{status.label}</p><p className="text-xs text-slate-400">Pedido feito às {new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
-            </button>;
+            return <article key={r.id} className="w-full space-y-2 rounded-2xl border-l-4 bg-white/5 p-4 ring-1 ring-white/10" style={{ borderLeftColor: statusColorTokens(r.status).solid }}>
+              <button type="button" onClick={() => table && setSelectedId(table.table_id)} className="block w-full space-y-2 text-left"><span className="flex items-start justify-between gap-2"><strong>{labelByTab.get(r.tab_id) || 'Mesa'}</strong><span className="text-xs text-slate-400">#{r.order_number} · rodada {r.round_no}</span></span>
+              <span className="block rounded-lg border px-2 py-1 font-bold" style={statusColorStyle(r.status)}>{status.label}</span><span className="block text-xs text-slate-400">Pedido feito às {new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></button>
+              {r.status === 'DELIVERED' && r.delivered_at && <p className="text-xs text-slate-300">Entregue às {new Date(r.delivered_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
+              {['READY', 'OUT_FOR_DELIVERY'].includes(r.status) && <button type="button" disabled={!!busy} onClick={() => void run(`delivered-${r.id}`, () => deliveryRepository.markDelivered(r.id), 'Entrega registrada.')} className="min-h-11 w-full rounded-xl px-3 text-sm font-black disabled:opacity-50" style={{ backgroundColor: statusColorTokens('DELIVERED').solid, color: '#fff' }}>Entregue</button>}
+            </article>;
           })}</div>}
         </section>}
 
@@ -895,7 +901,6 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <button type="button" aria-pressed={notificationsEnabled} onClick={() => { unlockAudio(); setNotificationsEnabled(v => !v); }} className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10"><span>Som e vibração quando ficar pronto</span><span className="text-emerald-300">{notificationsEnabled ? 'Ligados' : 'Desligados'}</span></button>
             <button type="button" onClick={() => void toggleWake()} aria-pressed={wake} className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10"><span>Manter a tela ligada</span><span className={`rounded-full px-3 py-1 text-xs ${wake ? 'bg-emerald-500 text-slate-950' : 'bg-white/10 text-slate-300'}`}>{wake ? 'Ligado' : 'Desligado'}</span></button>
             {(activeRole === 'OWNER' || activeRole === 'MANAGER') && <a href="/" className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10">Abrir o painel completo<ChevronRight className="h-4 w-4 text-slate-500" /></a>}
-            {activeRole === 'WAITER' && <a href="/#/painel/est-salon" className="flex h-14 w-full items-center justify-between rounded-2xl bg-white/5 px-4 text-sm font-bold ring-1 ring-white/10">Abrir o Salão<ChevronRight className="h-4 w-4 text-slate-500" /></a>}
             <button type="button" onClick={() => void signOut()} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border border-white/15 text-sm font-bold text-slate-200"><LogOut className="h-4 w-4" />Sair</button>
           </section>
         )}
@@ -944,6 +949,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           helpSuccess={helpSuccess}
           onOpenTable={openTable}
           onOrder={() => selectedTab && void openOrder(selectedTab.id, selected.label)}
+          onMarkDelivered={orderId => void run(`delivered-${orderId}`, () => deliveryRepository.markDelivered(orderId), 'Entrega registrada.')}
           canCollect={canCollectTab(selectedTab?.status, activeRole, !!selectedTab && (myTabIds.has(selectedTab.id) || !assignments.some(a => a.table_id === selected.id)))}
           onConfirmPayment={method => {
             if (!selectedTab || selectedTab.status === 'AWAITING_PAYMENT' || !canCollectTab(selectedTab.status, activeRole, myTabIds.has(selectedTab.id) || !assignments.some(a => a.table_id === selected.id))) return;

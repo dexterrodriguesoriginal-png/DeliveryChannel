@@ -34,7 +34,7 @@ export interface WaiterCallRow {
   dispatched_at?: string | null;
   escalated_at?: string | null;
 }
-export interface WaiterRound { id: string; tab_id: string; order_number: number; customer_name: string; status: string; subtotal: number; created_at: string; round_no: number; waiter_id?: string | null }
+export interface WaiterRound { id: string; tab_id: string; order_number: number; customer_name: string; status: string; subtotal: number; created_at: string; round_no: number; waiter_id?: string | null; delivered_at?: string | null; delivered_by?: string | null; delivery_dispute?: { id: string; status: string; created_at: string; resolved_at: string | null } | null }
 export interface SalonSnapshot { tables: WaiterTable[]; tabs: WaiterTab[]; sessions: WaiterSession[]; calls: WaiterCallRow[]; rounds: WaiterRound[]; releaseRequired: boolean | null }
 
 export interface SalonAccessExtras {
@@ -77,7 +77,7 @@ export const salonStaffRepository = {
   async fetchRoundsForTabs(tenantId: string, tabIds: string[]): Promise<WaiterRound[]> {
     if (!tabIds.length) return [];
     const roundR = await supabase.from('orders')
-      .select('id,tab_id,order_number,customer_name,status,subtotal,created_at,round_no,waiter_id')
+      .select('id,tab_id,order_number,customer_name,status,subtotal,created_at,round_no,waiter_id,delivered_at,delivered_by')
       .eq('tenant_id', tenantId).eq('fulfillment_type', 'DINE_IN').in('tab_id', tabIds).neq('status', 'CANCELLED').order('round_no');
     const direct = must(roundR) as WaiterRound[];
     if (direct.length > 0) return direct;

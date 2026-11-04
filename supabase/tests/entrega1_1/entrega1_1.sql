@@ -141,3 +141,151 @@ RESET ROLE;
 SELECT t.ok(NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'
  AND p.proname IN('_reopen_tab_from_bill','reopen_tab_from_bill','staff_reopen_tab','_tab_receipt_email','tab_receipt_target','reserve_tab_receipt','finish_tab_receipt')
  AND (NOT p.prosecdef OR p.proconfig IS DISTINCT FROM ARRAY['search_path=""']::text[])),'A segurança: SECURITY DEFINER com search_path vazio');
+
+-- B4: entrega, prazo da contestação, isolamento e resolução de rodadas.
+INSERT INTO public.dining_tables(id,tenant_id,label,qr_token)
+SELECT ('e1220000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,CASE WHEN n=13 THEN :'B'::uuid ELSE :'A'::uuid END,
+ 'Mesa B4 '||n,'entrega1-1-b4-token-'||n FROM generate_series(7,13) n;
+INSERT INTO public.dining_tabs(id,tenant_id,mode,table_id,status,service_fee_percent,responsible_user_id)
+SELECT ('e1230000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,CASE WHEN n=13 THEN :'B'::uuid ELSE :'A'::uuid END,'TABLE',
+ ('e1220000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'OPEN',10,:'CLIENT' FROM generate_series(7,13) n;
+INSERT INTO public.tab_sessions(id,tenant_id,tab_id,auth_user_id,display_name,device_id,approved_at)
+SELECT ('e1240000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,CASE WHEN n=13 THEN :'B'::uuid ELSE :'A'::uuid END,
+ ('e1230000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,:'CLIENT','Cliente sintético','fixture-b4-'||n,now() FROM generate_series(7,13) n;
+INSERT INTO public.tab_sessions(id,tenant_id,tab_id,auth_user_id,display_name,device_id,approved_at,expires_at,ended_at,ended_reason) VALUES
+ ('e1240000-0000-0000-0000-000000000070',:'A','e1230000-0000-0000-0000-000000000007',:'OTHER','Pendente','pending-b4',NULL,now()+interval '1 hour',NULL,NULL),
+ ('e1240000-0000-0000-0000-000000000071',:'A','e1230000-0000-0000-0000-000000000007',:'CLIENT','Expirado','expired-b4',now()-interval '2 hours',now()-interval '1 hour',NULL,NULL),
+ ('e1240000-0000-0000-0000-000000000072',:'A','e1230000-0000-0000-0000-000000000007',:'CLIENT','Removido','removed-b4',now()-interval '2 hours',now()+interval '1 hour',now(),'REMOVED');
+INSERT INTO public.orders(id,tenant_id,tab_id,fulfillment_type,status,subtotal,total_amount,payment_method,payment_status,origin,order_number,customer_name,customer_phone,delivery_address)
+SELECT ('e1250000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,CASE WHEN n=13 THEN :'B'::uuid ELSE :'A'::uuid END,
+ ('e1230000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'DINE_IN',CASE WHEN n=9 THEN 'CONFIRMED' ELSE 'READY' END,50,50,'CASH','PENDING','DINE_IN_QR',1200+n,'Cliente sintético','11900000000','Mesa sintética'
+FROM generate_series(7,13) n;
+INSERT INTO public.order_items(order_id,product_id,product_name,quantity,unit_price,total_price)
+SELECT ('e1250000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,
+ CASE WHEN n=13 THEN 'd0000000-0000-0000-0000-0000000000b1'::uuid ELSE 'd0000000-0000-0000-0000-0000000000a1'::uuid END,
+ 'Item sintético',5,10,50 FROM generate_series(7,13) n;
+
+SET ROLE authenticated;
+SELECT t.login(:'OWNER_B'::uuid);
+SELECT t.throws($q$SELECT public.waiter_mark_delivered('e1250000-0000-0000-0000-000000000007')$q$,'ORDER_NOT_FOUND','B4 equipe de outra loja não entrega rodada A');
+SELECT t.login(:'WAITER'::uuid);
+SELECT t.throws($q$UPDATE public.orders SET delivered_by='a0000000-0000-0000-0000-000000000001' WHERE id='e1250000-0000-0000-0000-000000000007'$q$,'permission denied','B4 garçom não falsifica autoria por UPDATE REST');
+SELECT t.throws($q$SELECT public.waiter_mark_delivered('e1250000-0000-0000-0000-000000000009')$q$,'INVALID_STATE','B4 rodada não pronta não pode ser entregue');
+SELECT public.waiter_mark_delivered('e1250000-0000-0000-0000-000000000007') AS delivered \gset
+SELECT t.ok(:'delivered'::jsonb @> jsonb_build_object('status','DELIVERED','delivered_by',:'WAITER'),'B4 garçom marca rodada pronta como entregue com autoria');
+SELECT t.ok(:'delivered'::jsonb->>'delivered_at' IS NOT NULL,'B4 horário da entrega gravado');
+SELECT t.is(public.waiter_mark_delivered('e1250000-0000-0000-0000-000000000007'),:'delivered'::jsonb,'B4 marcar Entregue repetidamente é idempotente');
+RESET ROLE;
+SELECT t.is((SELECT count(*) FROM public.order_status_history WHERE order_id='e1250000-0000-0000-0000-000000000007' AND status='DELIVERED'),1::bigint,'B4 entrega idempotente não duplica histórico');
+UPDATE public.orders SET status='OUT_FOR_DELIVERY' WHERE id='e1250000-0000-0000-0000-000000000008';
+SET ROLE authenticated;
+SELECT t.login(:'WAITER'::uuid);
+SELECT public.waiter_mark_delivered('e1250000-0000-0000-0000-000000000008');
+SELECT t.is(t.order_status('e1250000-0000-0000-0000-000000000008'),'DELIVERED','B4 rodada saiu/pronto também pode ser entregue');
+SELECT t.login(:'CLIENT'::uuid);
+SELECT t.ok((public.get_my_tab('e1240000-0000-0000-0000-000000000007')->'rounds'->0->>'canDisputeDelivery')::boolean,'B4 servidor oferece Não recebi durante cinco minutos');
+SELECT t.ok(public.get_my_tab('e1240000-0000-0000-0000-000000000007')->'rounds'->0->'items'->0->>'deliveredAt' IS NOT NULL,'B4 cada item tem horário de entrega');
+SELECT t.throws($q$SELECT public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000008','e1250000-0000-0000-0000-000000000007')$q$,'FORBIDDEN','B4 sessão de outra mesa da mesma loja não contesta');
+SELECT t.throws($q$SELECT public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000013','e1250000-0000-0000-0000-000000000007')$q$,'FORBIDDEN','B4 sessão de outra loja não contesta');
+SELECT t.throws($q$SELECT public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000071','e1250000-0000-0000-0000-000000000007')$q$,'FORBIDDEN','B4 sessão expirada não contesta');
+SELECT t.throws($q$SELECT public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000072','e1250000-0000-0000-0000-000000000007')$q$,'FORBIDDEN','B4 sessão removida não contesta');
+SELECT t.login(:'OTHER'::uuid);
+SELECT t.throws($q$SELECT public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000007','e1250000-0000-0000-0000-000000000007')$q$,'FORBIDDEN','B4 sessão de outro usuário não contesta');
+SELECT t.throws($q$SELECT public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000070','e1250000-0000-0000-0000-000000000007')$q$,'FORBIDDEN','B4 convidado sem aprovação não contesta');
+SELECT t.login(:'CLIENT'::uuid);
+SELECT public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000007','e1250000-0000-0000-0000-000000000007') AS dispute \gset
+SELECT t.is(public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000007','e1250000-0000-0000-0000-000000000007'),:'dispute'::jsonb,'B4 Não recebi repetido devolve uma só contestação');
+SELECT t.is(public.get_my_tab('e1240000-0000-0000-0000-000000000007')->'rounds'->0->'deliveryDispute'->>'status','OPEN','B4 cliente vê contestação aberta');
+SELECT t.ok(NOT (public.get_my_tab('e1240000-0000-0000-0000-000000000007')->'rounds'->0->>'canDisputeDelivery')::boolean,'B4 uma contestação por rodada desativa novo aviso');
+SELECT t.is(t.visible('SELECT * FROM public.order_delivery_disputes'),0::bigint,'B4 cliente não enumera contestações da loja');
+RESET ROLE;
+SELECT t.is((SELECT count(*) FROM public.order_delivery_disputes WHERE order_id='e1250000-0000-0000-0000-000000000007'),1::bigint,'B4 duplicidade protegida por pedido');
+SELECT t.is((SELECT count(*) FROM public.owner_notifications WHERE kind='ORDER_DELIVERY_DISPUTE' AND ref_id='e1250000-0000-0000-0000-000000000007'),1::bigint,'B4 dono recebe um alerta sem dados pessoais');
+SELECT t.ok(EXISTS(SELECT 1 FROM public.order_delivery_disputes d JOIN public.waiter_calls c ON c.id=d.call_id WHERE d.order_id='e1250000-0000-0000-0000-000000000007' AND c.type='HELP' AND c.status='OPEN'),'B4 contestação abre chamado do garçom');
+UPDATE public.orders SET delivered_at=now()-interval '5 minutes 1 second' WHERE id='e1250000-0000-0000-0000-000000000008';
+SET ROLE authenticated;
+SELECT t.login(:'CLIENT'::uuid);
+SELECT t.throws($q$SELECT public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000008','e1250000-0000-0000-0000-000000000008')$q$,'DELIVERY_DISPUTE_EXPIRED','B4 prazo de cinco minutos validado no servidor');
+SELECT t.ok(NOT (public.get_my_tab('e1240000-0000-0000-0000-000000000008')->'rounds'->0->>'canDisputeDelivery')::boolean,'B4 sem contestação após cinco minutos entrega permanece recebida');
+SELECT t.login(:'OWNER_B'::uuid);
+SELECT t.is(t.visible('SELECT * FROM public.order_delivery_disputes'),0::bigint,'B4 RLS oculta contestação da outra loja');
+SELECT t.throws(format('SELECT public.resolve_delivery_dispute(%L,%L)',:'dispute'::jsonb->>'id','RESENT'),'FORBIDDEN','B4 outra loja não resolve contestação');
+SELECT t.throws($q$SELECT public.list_open_delivery_disputes('10000000-0000-0000-0000-00000000000a')$q$,'FORBIDDEN','B4 outra loja não lista fila');
+SELECT t.login(:'WAITER'::uuid);
+SELECT t.is(t.visible('SELECT * FROM public.order_delivery_disputes'),1::bigint,'B4 garçom da mesa lê contestação por RLS');
+SELECT t.is(jsonb_array_length(public.list_open_delivery_disputes(:'A')),1,'B4 fila retorna contestação aberta ao garçom');
+SELECT t.throws($q$UPDATE public.order_delivery_disputes SET status='RESENT'$q$,'permission denied','B4 equipe não contorna RPC de resolução');
+SELECT t.throws($q$INSERT INTO public.order_delivery_disputes(tenant_id,order_id) VALUES('10000000-0000-0000-0000-00000000000a','e1250000-0000-0000-0000-000000000012')$q$,'permission denied','B4 equipe não cria contestação sem sessão do cliente');
+SELECT t.throws(format('SELECT public.resolve_delivery_dispute(%L,%L)',:'dispute'::jsonb->>'id','QUALQUER'),'INVALID_RESOLUTION','B4 resolução inválida recusada');
+SELECT public.resolve_delivery_dispute((:'dispute'::jsonb->>'id')::uuid,'RESENT');
+SELECT t.is(t.order_status('e1250000-0000-0000-0000-000000000007'),'PREPARING','B4 Reenviar retorna rodada à produção');
+SELECT t.ok((t.order_row('e1250000-0000-0000-0000-000000000007')->>'delivered_at') IS NULL AND (t.order_row('e1250000-0000-0000-0000-000000000007')->>'delivered_by') IS NULL,'B4 Reenviar limpa horário/autoria da tentativa anterior');
+SELECT public.resolve_delivery_dispute((:'dispute'::jsonb->>'id')::uuid,'RESENT');
+SELECT t.throws(format('SELECT public.resolve_delivery_dispute(%L,%L)',:'dispute'::jsonb->>'id','CONFIRMED_DELIVERED'),'DISPUTE_RESOLVED','B4 resolução concluída não pode mudar para outra ação');
+SELECT t.is(public.list_open_delivery_disputes(:'A')->0->>'order_status','PREPARING','B4 reenvio permanece na fila enquanto volta à produção');
+RESET ROLE;
+SELECT t.ok(EXISTS(SELECT 1 FROM public.order_delivery_disputes d JOIN public.waiter_calls c ON c.id=d.call_id WHERE d.order_id='e1250000-0000-0000-0000-000000000007' AND c.status='HANDLED' AND d.status='RESENT' AND d.resolved_by=:'WAITER' AND d.resolved_at IS NOT NULL),'B4 resolução audita ator/horário e atende chamado exato');
+SELECT t.ok(NOT EXISTS(SELECT 1 FROM public.order_status_history WHERE order_id='e1250000-0000-0000-0000-000000000007' AND changed_by LIKE '%@%'),'B4 histórico da entrega sem e-mail da equipe');
+UPDATE public.orders SET status='READY' WHERE id='e1250000-0000-0000-0000-000000000007';
+SET ROLE authenticated;
+SELECT t.login(:'WAITER'::uuid);
+SELECT public.waiter_mark_delivered('e1250000-0000-0000-0000-000000000007');
+SELECT t.is(jsonb_array_length(public.list_open_delivery_disputes(:'A')),0,'B4 reentrega concluída remove rodada reenviada da fila');
+RESET ROLE;
+
+-- Um pagamento que encerra a sessão não elimina os cinco minutos de contestação.
+SET ROLE authenticated;
+SELECT t.login(:'WAITER'::uuid);
+SELECT public.waiter_mark_delivered('e1250000-0000-0000-0000-000000000010');
+SELECT t.login(:'OWNER'::uuid);
+SELECT t.throws($q$UPDATE public.orders SET delivered_by='e1110000-0000-0000-0000-000000000003' WHERE id='e1250000-0000-0000-0000-000000000010'$q$,'permission denied','B4 dono também não falsifica autoria por UPDATE REST');
+SELECT public.close_tab('e1230000-0000-0000-0000-000000000010','[{"method":"CASH","amount_cents":5500}]');
+SELECT t.login(:'CLIENT'::uuid);
+SELECT public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000010','e1250000-0000-0000-0000-000000000010') AS closed_dispute \gset
+SELECT t.is(:'closed_dispute'::jsonb->>'status','OPEN','B4 sessão encerrada por pagamento mantém prazo legítimo');
+SELECT t.login(:'WAITER'::uuid);
+SELECT t.is(public.list_open_delivery_disputes(:'A')->0->>'order_id','e1250000-0000-0000-0000-000000000010','B4 garçom vê disputa mesmo após mesa ficar livre');
+SELECT public.resolve_delivery_dispute((:'closed_dispute'::jsonb->>'id')::uuid,'CONFIRMED_DELIVERED');
+SELECT t.is(t.order_status('e1250000-0000-0000-0000-000000000010'),'DELIVERED','B4 Confirmar entrega conserva estado entregue');
+RESET ROLE;
+SELECT t.ok(EXISTS(SELECT 1 FROM public.order_delivery_disputes WHERE order_id='e1250000-0000-0000-0000-000000000010' AND status='CONFIRMED_DELIVERED' AND resolved_by=:'WAITER'),'B4 confirmação de entrega auditada');
+SELECT t.ok(EXISTS(SELECT 1 FROM public.dining_tracking_revisions WHERE tab_id='e1230000-0000-0000-0000-000000000010'),'B4 alterações de contestação sinalizam a comanda encerrada');
+
+-- Reenvio após pagamento continua acessível até a nova entrega, sem reabrir a mesa.
+SET ROLE authenticated;
+SELECT t.login(:'WAITER'::uuid);
+SELECT public.waiter_mark_delivered('e1250000-0000-0000-0000-000000000012');
+SELECT t.login(:'OWNER'::uuid);
+SELECT public.close_tab('e1230000-0000-0000-0000-000000000012','[{"method":"CASH","amount_cents":5500}]');
+SELECT t.login(:'CLIENT'::uuid);
+SELECT public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000012','e1250000-0000-0000-0000-000000000012') AS resent_closed \gset
+SELECT t.login(:'WAITER'::uuid);
+SELECT public.resolve_delivery_dispute((:'resent_closed'::jsonb->>'id')::uuid,'RESENT');
+SELECT t.ok(public.list_open_delivery_disputes(:'A')->0 @> '{"order_id":"e1250000-0000-0000-0000-000000000012","status":"RESENT","order_status":"PREPARING"}','B4 reenvio de mesa fechada continua na fila');
+RESET ROLE;
+UPDATE public.orders SET status='READY' WHERE id='e1250000-0000-0000-0000-000000000012';
+SET ROLE authenticated;
+SELECT t.login(:'WAITER'::uuid);
+SELECT t.is(public.list_open_delivery_disputes(:'A')->0->>'order_status','READY','B4 fila sinaliza reenvio pronto da mesa fechada');
+SELECT public.waiter_mark_delivered('e1250000-0000-0000-0000-000000000012');
+SELECT t.is(jsonb_array_length(public.list_open_delivery_disputes(:'A')),0,'B4 Entregue encerra acompanhamento do reenvio da mesa fechada');
+SELECT t.is(t.sq($q$SELECT status FROM public.dining_tabs WHERE id='e1230000-0000-0000-0000-000000000012'$q$),'CLOSED','B4 reenvio e reentrega não reabrem mesa paga');
+RESET ROLE;
+
+-- Atribuição de mesa também restringe o garçom, mesmo com a mesma loja.
+INSERT INTO public.waiter_table_assignments(tenant_id,table_id,waiter_id)
+VALUES(:'A','e1220000-0000-0000-0000-000000000011',:'OWNER');
+SET ROLE authenticated;
+SELECT t.login(:'WAITER'::uuid);
+SELECT t.throws($q$SELECT public.waiter_mark_delivered('e1250000-0000-0000-0000-000000000011')$q$,'ORDER_NOT_FOUND','B4 garçom não entrega mesa atribuída a outro colaborador');
+SELECT t.login(:'CLIENT'::uuid);
+SELECT t.throws($q$SELECT public.waiter_mark_delivered('e1250000-0000-0000-0000-000000000012')$q$,'ORDER_NOT_FOUND','B4 cliente não marca própria rodada como entregue');
+SET ROLE anon;
+SELECT t.login(NULL);
+SELECT t.throws($q$SELECT public.customer_dispute_delivery('e1240000-0000-0000-0000-000000000012','e1250000-0000-0000-0000-000000000012')$q$,'permission denied','B4 anon não contesta sem sessão autenticada');
+SELECT t.throws($q$SELECT * FROM public.order_delivery_disputes$q$,'permission denied','B4 anon não lê contestações');
+RESET ROLE;
+SELECT t.ok(NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'
+ AND p.proname IN('_can_manage_delivery_dispute','waiter_mark_delivered','customer_dispute_delivery','resolve_delivery_dispute','list_open_delivery_disputes','_delivery_dispute_tracking_signal')
+ AND (NOT p.prosecdef OR p.proconfig IS DISTINCT FROM ARRAY['search_path=""']::text[])),'B segurança: SECURITY DEFINER com search_path vazio');
+SELECT t.ok(EXISTS(SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='order_delivery_disputes'),'B4 contestações participam do realtime com RLS');

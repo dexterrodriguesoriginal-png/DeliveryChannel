@@ -1,46 +1,43 @@
 import type { FulfillmentType, OrderStatus } from '../../types';
+import { STATUS_COLORS, statusColorTokens, type StatusColorTokens } from './statusColors';
 
-/**
- * 19/10 (padrão KDS, aplicado em todo o painel do dono):
- * Novo = âmbar (sino) · Confirmado = âmbar claro · Em preparo = azul (chama) · Pronto = verde da marca (sacola)
- * Em rota = ciano (moto) · Entregue = cinza · Cancelado = vermelho suave (X) · Atrasado = vermelho forte (relógio).
- * Nunca só cor: todo selo tem ícone + texto.
- */
+/** Every order surface uses the Pedidos Kanban palette, with icon and text. */
 export type StatusIconKey = 'bell' | 'confirmed' | 'flame' | 'ready' | 'bike' | 'delivered' | 'cancelled' | 'late';
-export interface StatusChip { label: string; className: string; icon: StatusIconKey }
-
+export interface StatusChip { label: string; className: string; icon: StatusIconKey; colors: Readonly<StatusColorTokens> }
+const COLOR_CLASS = 'order-status-colors';
+const chip = (status: OrderStatus, label: string, icon: StatusIconKey): StatusChip => ({
+  label, icon, className: COLOR_CLASS, colors: statusColorTokens(status),
+});
 const CHIP: Record<OrderStatus, StatusChip> = {
-  PENDING: { label: 'NOVO', icon: 'bell', className: 'bg-amber-100 text-amber-900 border-amber-400' },
-  CONFIRMED: { label: 'CONFIRMADO', icon: 'confirmed', className: 'bg-amber-50 text-amber-800 border-amber-200' },
-  PREPARING: { label: 'EM PREPARO', icon: 'flame', className: 'bg-blue-100 text-blue-900 border-blue-300' },
-  READY: { label: 'PRONTO', icon: 'ready', className: 'bg-green-100 text-green-900 border-green-400' },
-  WAITING_FOR_DRIVER: { label: 'PRONTO', icon: 'ready', className: 'bg-green-100 text-green-900 border-green-400' },
-  OUT_FOR_DELIVERY: { label: 'EM ROTA', icon: 'bike', className: 'bg-cyan-100 text-cyan-900 border-cyan-300' },
-  DELIVERED: { label: 'ENTREGUE', icon: 'delivered', className: 'bg-slate-100 text-slate-700 border-slate-300' },
-  CANCELLED: { label: 'CANCELADO', icon: 'cancelled', className: 'bg-red-50 text-red-800 border-red-200' },
+  PENDING: chip('PENDING', 'NOVO', 'bell'),
+  CONFIRMED: chip('CONFIRMED', 'CONFIRMADO', 'confirmed'),
+  PREPARING: chip('PREPARING', 'EM PREPARO', 'flame'),
+  READY: chip('READY', 'PRONTO', 'ready'),
+  WAITING_FOR_DRIVER: chip('WAITING_FOR_DRIVER', 'PRONTO', 'ready'),
+  OUT_FOR_DELIVERY: chip('OUT_FOR_DELIVERY', 'EM ROTA', 'bike'),
+  DELIVERED: chip('DELIVERED', 'ENTREGUE', 'delivered'),
+  CANCELLED: chip('CANCELLED', 'CANCELADO', 'cancelled'),
 };
-export const LATE_CHIP: StatusChip = { label: 'ATRASADO', icon: 'late', className: 'bg-red-600 text-white border-red-700' };
-
+export const LATE_CHIP: StatusChip = { label: 'ATRASADO', icon: 'late', className: COLOR_CLASS, colors: STATUS_COLORS.LATE };
 const DINE_IN_CHIP: Partial<Record<OrderStatus, StatusChip>> = {
-  PENDING: { label: 'AGUARDANDO', icon: 'bell', className: 'bg-red-100 text-red-900 border-red-400' },
-  CONFIRMED: { label: 'ACEITO', icon: 'confirmed', className: 'bg-red-50 text-red-900 border-red-300' },
-  PREPARING: { label: 'EM PREPARO', icon: 'flame', className: 'bg-orange-100 text-orange-900 border-orange-400' },
-  READY: { label: 'AGUARDANDO GARÇOM', icon: 'ready', className: 'bg-purple-100 text-purple-900 border-purple-400' },
-  OUT_FOR_DELIVERY: { label: 'INDO ATÉ A MESA', icon: 'ready', className: 'bg-purple-100 text-purple-900 border-purple-400' },
-  DELIVERED: { label: 'ENTREGUE', icon: 'delivered', className: 'bg-green-100 text-green-900 border-green-400' },
+  PENDING: chip('PENDING', 'AGUARDANDO', 'bell'),
+  CONFIRMED: chip('CONFIRMED', 'ACEITO', 'confirmed'),
+  READY: chip('READY', 'AGUARDANDO GARÇOM', 'ready'),
+  OUT_FOR_DELIVERY: chip('OUT_FOR_DELIVERY', 'INDO ATÉ A MESA', 'ready'),
 };
 
 export function statusChip(status: OrderStatus, late = false, fulfillmentType?: FulfillmentType): StatusChip {
   if (late) return LATE_CHIP;
   if (fulfillmentType === 'DINE_IN' && DINE_IN_CHIP[status]) return DINE_IN_CHIP[status]!;
-  return CHIP[status] ?? CHIP.DELIVERED;
+  return CHIP[status] ?? CHIP.PENDING;
 }
 
-/** Cores dos filtros/contadores da faixa de alertas (mesmas dos selos). */
+/** Kept for callers' layout classes; colors come from the matching shared token. */
 export const FILTER_CHIP_CLASS = {
-  novos: CHIP.PENDING.className,
-  emPreparo: CHIP.PREPARING.className,
-  prontos: CHIP.READY.className,
-  atrasados: LATE_CHIP.className,
+  novos: COLOR_CLASS, emPreparo: COLOR_CLASS, prontos: COLOR_CLASS, atrasados: COLOR_CLASS,
   estoque: 'bg-orange-50 text-orange-800 border-orange-300',
+} as const;
+export const FILTER_CHIP_COLORS = {
+  novos: STATUS_COLORS.PENDING, emPreparo: STATUS_COLORS.PREPARING, prontos: STATUS_COLORS.READY,
+  atrasados: STATUS_COLORS.LATE, estoque: STATUS_COLORS.PREPARING,
 } as const;

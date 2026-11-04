@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { BellRing, Check, Clock, Crown, Plus, UserCheck, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { formatBRL } from '../../lib/pricing/money';
+import { statusColorStyle, statusColorTokens } from '../../lib/orders/statusColors';
 import { inviteUrl } from '../../lib/customer/tableAccess';
 import type { TableStatusInfo } from '../../lib/salon/tableStatus';
 import type { StaffHolderCode, WaiterCallRow, WaiterRound, WaiterSession, WaiterTab, WaiterTable } from '../../repositories/salonStaffRepository';
@@ -34,6 +35,7 @@ export const WaiterTableSheet: React.FC<{
   onConfirmPayment?: (method: 'CASH' | 'CREDIT_CARD') => void;
   onPaymentSettled?: () => void;
   onReopenBill?: () => void;
+  onMarkDelivered?: (orderId: string) => void;
   onResetHolder: () => void;
   onChangeHolder?: () => void;
   onReleaseEmptyTab?: (reason: string) => void;
@@ -43,7 +45,7 @@ export const WaiterTableSheet: React.FC<{
   canHelp?: boolean;
   onHelpTable?: () => void;
   helpSuccess?: boolean;
-}> = ({ table, tab, info, sessions, calls, rounds, holderSessionId, holderCode, tenantSlug, features, busy, message, onClose, onApprove, onReject, onHandleCall, onOpenTable, onOrder, canCollect, onConfirmPayment, onPaymentSettled, onReopenBill, onResetHolder, onChangeHolder, onReleaseEmptyTab, onTransferHolder, currentUserId, onAcceptCall, canHelp, onHelpTable, helpSuccess }) => {
+}> = ({ table, tab, info, sessions, calls, rounds, holderSessionId, holderCode, tenantSlug, features, busy, message, onClose, onApprove, onReject, onHandleCall, onOpenTable, onOrder, canCollect, onConfirmPayment, onPaymentSettled, onReopenBill, onMarkDelivered, onResetHolder, onChangeHolder, onReleaseEmptyTab, onTransferHolder, currentUserId, onAcceptCall, canHelp, onHelpTable, helpSuccess }) => {
   const [confirmReject, setConfirmReject] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [releaseEmptyOpen, setReleaseEmptyOpen] = useState(false);
@@ -88,10 +90,10 @@ export const WaiterTableSheet: React.FC<{
               <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-500">Rodadas</p><p className="text-lg font-black">{rounds.length}</p></div>
             </div>
 
-            {tab.status === 'BILL_REQUESTED' && <p role="status" className="salon-bill-alert rounded-2xl border border-[#8B5E3C] bg-[#F3E9DF] p-4 text-sm font-bold text-[#8B5E3C]">Conta solicitada pelo cliente. Aguarde o caixa autorizar o fechamento.</p>}
-            {tab.status === 'WAITER_AUTHORIZED' && <p role="status" className="salon-bill-alert rounded-2xl border border-[#8B5E3C] bg-[#F3E9DF] p-4 text-sm font-bold text-[#8B5E3C]">Garçom autorizado a fechar esta conta.</p>}
-            {tab.status === 'AWAITING_PAYMENT' && !canCollect && <p role="status" className="rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-950">Aguardando PIX.</p>}
-            {onReopenBill && ['BILL_REQUESTED', 'WAITER_AUTHORIZED'].includes(tab.status) && <button type="button" disabled={!!busy} onClick={onReopenBill} className={`${btn} w-full border border-[#8B5E3C] bg-[#F3E9DF] text-[#8B5E3C]`}>Reabrir conta · Pedir mais</button>}
+            {tab.status === 'BILL_REQUESTED' && <p role="status" className="salon-bill-alert rounded-2xl border p-4 text-sm font-bold" style={statusColorStyle('BILL')}>Conta solicitada pelo cliente. Aguarde o caixa autorizar o fechamento.</p>}
+            {tab.status === 'WAITER_AUTHORIZED' && <p role="status" className="salon-bill-alert rounded-2xl border p-4 text-sm font-bold" style={statusColorStyle('AUTHORIZED')}>Garçom autorizado a fechar esta conta.</p>}
+            {tab.status === 'AWAITING_PAYMENT' && !canCollect && <p role="status" className="rounded-2xl border p-4 text-sm font-bold" style={statusColorStyle('AWAITING_PAYMENT')}>Aguardando PIX.</p>}
+            {onReopenBill && ['BILL_REQUESTED', 'WAITER_AUTHORIZED'].includes(tab.status) && <button type="button" disabled={!!busy} onClick={onReopenBill} className={`${btn} w-full border`} style={statusColorStyle('BILL')}>Reabrir conta · Pedir mais</button>}
 
             {pending.length > 0 && (
               <div className="space-y-2" data-testid="waiter-sheet-pending">
@@ -193,7 +195,7 @@ export const WaiterTableSheet: React.FC<{
             <div className="space-y-2">
               <h3 className="text-sm font-black text-slate-700">Rodadas</h3>
               {rounds.length === 0 && <p className="text-sm text-slate-500">Nenhuma rodada enviada.</p>}
-              {rounds.map(r => { const status = waiterOrderStatus(r.status); return <div key={r.id} className="rounded-2xl border border-slate-200 p-3"><div className="flex justify-between gap-2 font-bold"><span>Rodada {r.round_no} · #{r.order_number}</span><span>{formatBRL(Number(r.subtotal))}</span></div><p className="mt-0.5 text-sm font-bold" style={{ color: status.color }}>{status.label}</p><p className="text-xs text-slate-400"><Clock className="mr-1 inline h-3 w-3" />{new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p></div>; })}
+              {rounds.map(r => { const status = waiterOrderStatus(r.status); return <div key={r.id} className="rounded-2xl border p-3" style={{ borderColor: statusColorTokens(r.status).border }}><div className="flex justify-between gap-2 font-bold"><span>Rodada {r.round_no} · #{r.order_number}</span><span>{formatBRL(Number(r.subtotal))}</span></div><p className="mt-1 rounded-lg border px-2 py-1 text-sm font-bold" style={statusColorStyle(r.status)}>{status.label}</p><p className="mt-1 text-xs text-slate-500"><Clock className="mr-1 inline h-3 w-3" />{new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>{r.delivered_at && r.status === 'DELIVERED' && <p className="mt-1 text-xs font-semibold" style={{ color: statusColorTokens('DELIVERED').fg }}>Entregue às {new Date(r.delivered_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}{onMarkDelivered && ['READY', 'OUT_FOR_DELIVERY'].includes(r.status) && <button type="button" disabled={!!busy} onClick={() => onMarkDelivered(r.id)} className={`${btn} mt-3 w-full`} style={{ backgroundColor: statusColorTokens('DELIVERED').solid, color: '#fff' }}><Check className="h-4 w-4" aria-hidden="true" />Entregue</button>}</div>; })}
             </div>
 
             <div className="grid grid-cols-2 gap-2 pb-2">

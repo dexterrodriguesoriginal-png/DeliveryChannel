@@ -59,7 +59,7 @@ describe('orderAlerts: Novos / Atrasados / Prontos aguardando entregador', () =>
 describe('orderAlerts: fluxo inteiro pelo Dashboard (um botão por etapa)', () => {
   const d = (status: string, extra: Record<string, unknown> = {}) => ({ status, fulfillmentType: 'DELIVERY', ...extra }) as any;
   it('entrega: Aceitar -> Iniciar preparo -> Marcar como pronto -> Chamar entregador', () => {
-    expect(nextStepFor(d('PENDING'), 'OWNER')).toMatchObject({ label: 'Aceitar', to: 'CONFIRMED' });
+    expect(nextStepFor(d('PENDING'), 'OWNER')).toMatchObject({ label: 'Aceitar pedido', to: 'PREPARING' });
     expect(nextStepFor(d('CONFIRMED'), 'OWNER')).toMatchObject({ label: 'Iniciar preparo', to: 'PREPARING' });
     expect(nextStepFor(d('PREPARING'), 'OWNER')).toMatchObject({ label: 'Marcar como pronto', to: 'READY' });
     expect(nextStepFor(d('READY'), 'OWNER')).toMatchObject({ label: 'Chamar entregador', to: 'WAITING_FOR_DRIVER', note: 'Chamando motoboy' });
@@ -71,13 +71,11 @@ describe('orderAlerts: fluxo inteiro pelo Dashboard (um botão por etapa)', () =
   it('retirada: pronto -> Confirmar retirada (DELIVERED, sem motivo)', () => {
     expect(nextStepFor(d('READY', { fulfillmentType: 'PICKUP' }), 'CASHIER')).toMatchObject({ label: 'Confirmar retirada', to: 'DELIVERED' });
   });
-  it('mesa (DINE_IN): mostra Abrir mesa e nunca Chamar entregador', () => {
-    for (const st of ['PENDING', 'CONFIRMED', 'PREPARING', 'READY']) {
-      expect(nextStepFor(d(st, { fulfillmentType: 'DINE_IN', tableLabel: 'Mesa 04' }), 'OWNER')).toMatchObject({
-        kind: 'open_table',
-        label: 'Abrir mesa',
-      });
-    }
+  it('mesa: aceita/inicia produção pelo gateway de pedidos e nunca chama entregador', () => {
+    expect(nextStepFor(d('PENDING', { fulfillmentType: 'DINE_IN' }), 'OWNER')).toMatchObject({ kind: 'accept', label: 'Aceitar pedido', to: 'PREPARING' });
+    expect(nextStepFor(d('CONFIRMED', { fulfillmentType: 'DINE_IN' }), 'CASHIER')).toMatchObject({ kind: 'start', label: 'Enviar p/ produção', to: 'PREPARING' });
+    expect(nextStepFor(d('PREPARING', { fulfillmentType: 'DINE_IN' }), 'OWNER')).toMatchObject({ kind: 'ready', to: 'READY' });
+    expect(nextStepFor(d('READY', { fulfillmentType: 'DINE_IN' }), 'OWNER')).toBeNull();
     expect(nextStepFor(d('DELIVERED', { fulfillmentType: 'DINE_IN' }), 'OWNER')).toBeNull();
   });
   it('papel sem permissão não vê botão', () => {

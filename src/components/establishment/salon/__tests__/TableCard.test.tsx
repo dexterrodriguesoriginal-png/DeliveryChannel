@@ -7,6 +7,8 @@ afterEach(cleanup);
 import { TableCard, tableAriaLabel } from '../TableCard';
 import { deriveTableStatus } from '../../../../lib/salon/tableStatus';
 
+import { STATUS_COLORS } from '../../../../lib/orders/statusColors';
+
 const NOW = Date.parse('2026-10-26T15:00:00Z');
 const tab = (min: number, status: 'OPEN' | 'BILL_REQUESTED' = 'OPEN') => ({ id: 'tab1', table_id: 't1', status, opened_at: new Date(NOW - min * 60000).toISOString(), service_fee_percent: 10, service_fee_removed: false });
 const rounds = [{ id: 'r', tab_id: 'tab1', status: 'CONFIRMED', subtotal: 100, created_at: '' }];
@@ -61,4 +63,16 @@ describe('TableCard', () => {
     expect(screen.getByRole('progressbar')).toBeTruthy();
     expect(screen.getByTestId('salon-table-t1').textContent).toContain('Aguardando PIX');
   });
+});
+
+it('cards consomem a paleta canônica em CSS variables, inclusive PIX sem cor de Livre', () => {
+  const base = {id:'t1',label:'Mesa 1',area:null,seats:2,onOpen:() => {}};
+  const {rerender} = render(<TableCard {...base} info={deriveTableStatus({tab:{...tab(5),status:'AWAITING_PAYMENT'},now:NOW})} />);
+  const card = screen.getByTestId('salon-table-t1');
+  expect(card.style.getPropertyValue('--sc-accent')).toBe(STATUS_COLORS.AWAITING_PAYMENT.solid);
+  expect(card.style.getPropertyValue('--sc-bg')).toBe(STATUS_COLORS.AWAITING_PAYMENT.bg);
+  expect(card.style.getPropertyValue('--sc-accent')).not.toBe(STATUS_COLORS.FREE.solid);
+  rerender(<TableCard {...base} info={deriveTableStatus({tab:tab(5,'BILL_REQUESTED'),now:NOW})} />);
+  expect(card.style.getPropertyValue('--sc-accent')).toBe(STATUS_COLORS.BILL.solid);
+  expect(card.style.getPropertyValue('--sc-bg')).toBe(STATUS_COLORS.BILL.bg);
 });

@@ -13,14 +13,6 @@
 .salon-card:hover { transform:translateY(-3px); box-shadow:0 2px 4px rgba(15,23,42,.06), 0 16px 28px -14px var(--sc-shadow); border-color:var(--sc-accent); }
 .salon-card:active { transform:translateY(0) scale(.985); }
 .salon-card:focus-visible { outline:3px solid var(--sc-accent); outline-offset:3px; }
-.salon-card--FREE { --sc-bg:#f0fdfa; --sc-border:#99f6e4; --sc-text:#134e4a; --sc-accent:#0f766e; --sc-chip:#ccfbf1; --sc-shadow:rgba(13,148,136,.45); }
-.salon-card--OCCUPIED { --sc-bg:#fefce8; --sc-border:#fde047; --sc-text:#422006; --sc-accent:#a16207; --sc-chip:#fef08a; --sc-shadow:rgba(202,138,4,.45); }
-.salon-card--LONG_STAY { --sc-bg:#fef2f2; --sc-border:#fca5a5; --sc-text:#7f1d1d; --sc-accent:#b91c1c; --sc-chip:#fecaca; --sc-shadow:rgba(220,38,38,.45); }
-.salon-card--BILL, .salon-card--AUTHORIZED { --sc-bg:#F3E9DF; --sc-border:#8B5E3C; --sc-text:#593820; --sc-accent:#8B5E3C; --sc-chip:#e7d1be; --sc-shadow:rgba(139,94,60,.45); }
-.salon-card--AWAITING_PAYMENT { --sc-bg:#f0f9ff; --sc-border:#7dd3fc; --sc-text:#0c4a6e; --sc-accent:#0369a1; --sc-chip:#e0f2fe; --sc-shadow:rgba(3,105,161,.45); }
-.salon-card--NEW_ORDER { --sc-bg:#fef2f2; --sc-border:#fca5a5; --sc-text:#7f1d1d; --sc-accent:#dc2626; --sc-chip:#fee2e2; --sc-shadow:rgba(220,38,38,.45); }
-.salon-card--PREPARING { --sc-bg:#fff7ed; --sc-border:#fdba74; --sc-text:#7c2d12; --sc-accent:#ea580c; --sc-chip:#ffedd5; --sc-shadow:rgba(234,88,12,.45); }
-.salon-card--READY { --sc-bg:#faf5ff; --sc-border:#a855f7; --sc-text:#581c87; --sc-accent:#7c3aed; --sc-chip:#e9d5ff; --sc-shadow:rgba(124,58,237,.55); }
 .salon-card--CALL { box-shadow:0 0 0 0 rgba(239,68,68,.5), 0 8px 20px -12px var(--sc-shadow); animation:salon-rise .35s cubic-bezier(.2,.8,.2,1) both, salon-halo 2s ease-out infinite; animation-delay:calc(var(--i,0) * 14ms), 0s; }
 
 .salon-chip { display:inline-flex; align-items:center; gap:6px; padding:3px 9px 3px 7px; border-radius:999px; background:var(--sc-chip); color:var(--sc-text); font-size:11px; font-weight:800; letter-spacing:.01em; line-height:1.4; }
@@ -106,7 +98,7 @@
 }
 
 /* Aguardando liberação: alguém leu o QR e espera o garçom. Âmbar pulsante, impossível de ignorar. */
-.salon-card--PENDING { --sc-border:#f59e0b; --sc-accent:#b45309; border-width:2.5px; animation:salon-rise .35s cubic-bezier(.2,.8,.2,1) both, salon-amber 1.6s ease-out infinite; animation-delay:calc(var(--i,0) * 14ms), 0s; }
+.salon-card--PENDING { border-color:#f59e0b; border-width:2.5px; animation:salon-rise .35s cubic-bezier(.2,.8,.2,1) both, salon-amber 1.6s ease-out infinite; animation-delay:calc(var(--i,0) * 14ms), 0s; }
 .salon-pending { display:inline-flex; align-items:center; padding:3px 9px; border-radius:999px; background:#d97706; color:#fff; font-size:11px; font-weight:900; letter-spacing:.01em; line-height:1.4; box-shadow:0 4px 10px -3px rgba(217,119,6,.7); }
 @keyframes salon-amber { 0% { box-shadow:0 0 0 0 rgba(245,158,11,.6), 0 8px 20px -12px var(--sc-shadow); } 70% { box-shadow:0 0 0 14px rgba(245,158,11,0), 0 8px 20px -12px var(--sc-shadow); } 100% { box-shadow:0 0 0 0 rgba(245,158,11,0), 0 8px 20px -12px var(--sc-shadow); } }
 @media (prefers-reduced-motion: reduce) { .salon-card--PENDING { animation:none; } }

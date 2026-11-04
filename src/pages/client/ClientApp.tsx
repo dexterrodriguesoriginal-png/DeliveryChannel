@@ -1,3 +1,4 @@
+import { statusColorStyle, statusColorTokens } from '../../lib/orders/statusColors';
 import { CheckoutTrackingAction } from '../../components/client/CheckoutTrackingAction';
 import { reconcileOrderSeen } from '../../lib/customer/orderSeen';
 import { analyticsAllowed, openCookiePreferences } from '../../lib/legal/cookies';
@@ -1642,6 +1643,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     const isDelivery = !isCancelled && !isDelivered && (order.status === 'OUT_FOR_DELIVERY' || order.status === 'READY' || order.status === 'WAITING_FOR_DRIVER');
     const isPreparing = !isCancelled && !isDelivered && !isPending && !isDelivery;
     const isFocused = focusOrderId === order.id;
+    const statusColors = statusColorTokens(order.status);
 
     return (
       <div 
@@ -1680,18 +1682,12 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
         {/* STATUS BADGES & ATENDIMENTO */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className={`px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] uppercase border flex items-center gap-1.5 ${
-            isPending ? 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse' :
-            isPreparing ? 'bg-blue-50 text-blue-800 border-blue-200' :
-            isDelivery ? 'bg-purple-50 text-purple-800 border-purple-200' :
-            isDelivered ? 'bg-emerald-100 text-emerald-900 border-emerald-300' :
-            'bg-rose-50 text-rose-800 border-rose-200'
-          }`}>
-            {isPending && <Clock className="w-3 h-3 text-amber-600 animate-spin" />}
-            {isPreparing && <Clock className="w-3 h-3 text-blue-600 animate-spin" />}
-            {isDelivery && <Bike className="w-3 h-3 text-purple-600" />}
-            {isDelivered && <CheckCircle2 className="w-3 h-3 text-emerald-700" />}
-            {isCancelled && <AlertCircle className="w-3 h-3 text-rose-700" />}
+          <span style={statusColorStyle(statusColors)} className={`px-2.5 py-1 rounded-lg font-mono font-bold text-[11px] uppercase border flex items-center gap-1.5 ${isPending ? 'animate-pulse' : ''}`}>
+            {isPending && <Clock className="w-3 h-3 animate-spin" style={{ color: statusColors.solid }} />}
+            {isPreparing && <Clock className="w-3 h-3 animate-spin" style={{ color: statusColors.solid }} />}
+            {isDelivery && <Bike className="w-3 h-3" style={{ color: statusColors.solid }} />}
+            {isDelivered && <CheckCircle2 className="w-3 h-3" style={{ color: statusColors.solid }} />}
+            {isCancelled && <AlertCircle className="w-3 h-3" style={{ color: statusColors.solid }} />}
             <span>
               {order.status === 'PREPARING' && timeline.current?.key === 'preparing'
                 ? `Em preparo (${order.prepTimeMinutes || storeData.settings.defaultPrepTimeMinutes || 30} min)`

@@ -15,7 +15,7 @@ describe('online payment gate across staff views', () => {
     expect(newOrderIds(new Set(), rows)).toEqual(['cash']);
     expect(nextStepFor(rows[0], 'OWNER')).toBeNull();
     expect(nextStepFor(rows[2], 'OWNER')).toBeNull();
-    expect(nextStepFor(rows[1], 'OWNER')?.to).toBe('CONFIRMED');
+    expect(nextStepFor(rows[1], 'OWNER')).toMatchObject({ kind: 'accept', to: 'PREPARING' });
   });
   it('releases the same order after confirmation and preserves delivery/PDV defaults', () => {
     const pending = order('online', true);

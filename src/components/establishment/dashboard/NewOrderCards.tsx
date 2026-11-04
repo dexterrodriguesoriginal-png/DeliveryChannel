@@ -24,12 +24,12 @@ export function NewOrderCards({ orders, role, busyOrderId, onAccept, onView, onD
         <p className="font-bold text-slate-900">Novo pedido #{order.orderNumber}</p>
         <p className="truncate text-sm text-slate-600">{order.fulfillmentType === 'DINE_IN' ? formatTableLabel(order.tableLabel, 'Mesa') : order.customerName || 'Cliente'}</p>
         <p className="truncate text-xs text-slate-500">{itemsSummary(order)}</p>
-        {order.fulfillmentType === 'DINE_IN' && order.status !== 'PENDING' && <p className="mt-1 text-xs font-semibold text-emerald-800">Enviado à cozinha</p>}
+        {order.fulfillmentType === 'DINE_IN' && order.status === 'CONFIRMED' && <p className="mt-1 text-xs font-semibold text-slate-600">Aguardando envio para produção</p>}
         <div className="mt-2 flex gap-2">
-          {order.status === 'PENDING' && canAcceptOrders(role) && <button type="button" disabled={busyOrderId === order.id} onClick={() => onAccept(order)}
-            className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-60">{busyOrderId === order.id ? 'Salvando…' : 'Aceitar pedido'}</button>}
+          {(order.status === 'PENDING' || (order.fulfillmentType === 'DINE_IN' && order.status === 'CONFIRMED')) && canAcceptOrders(role) && <button type="button" disabled={busyOrderId === order.id} onClick={() => onAccept(order)}
+            className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-60">{busyOrderId === order.id ? 'Salvando…' : order.status === 'CONFIRMED' ? 'Enviar p/ produção' : 'Aceitar pedido'}</button>}
           <button type="button" onClick={() => onView(order)} className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-900">
-            {order.fulfillmentType === 'DINE_IN' ? 'Ver mesa' : 'Ver pedido'}
+            Ver pedido
           </button>
         </div>
       </div>

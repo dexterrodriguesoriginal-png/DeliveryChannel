@@ -7,6 +7,8 @@ import { productRepository } from '../../repositories/productRepository';
 import { QualityScoreCard } from '../../components/establishment/quality/QualityScoreCard';
 import { tenantRepository } from '../../repositories/tenantRepository';
 import { orderRepository } from '../../repositories/orderRepository';
+import { acceptOrderForProduction } from '../../repositories/orderProduction';
+import { maskCustomerPhone } from '../../lib/privacy/customerContact';
 import { customerRepository } from '../../repositories/customerRepository';
 import { driverInviteRepository } from '../../repositories/driverRepository';
 import { canAssignDrivers } from '../../lib/driverAdmin';
@@ -40,7 +42,7 @@ import { formatBRL } from '../../lib/pricing/money';
 import { StoreHeaderCard } from '../../components/establishment/dashboard/StoreHeaderCard';
 import { NewOrderCards } from '../../components/establishment/dashboard/NewOrderCards';
 import { OrderAlertsCard } from '../../components/establishment/dashboard/OrderAlertsCard';
-import { buildOrderAlerts, newOrderIds, updateNewOrderQueue, nextStepFor, FOCUS_ORDER_KEY, NextStep } from '../../lib/orders/orderAlerts';
+import { buildOrderAlerts, newOrderIds, updateNewOrderQueue, nextStepFor, orderDetailsHash, FOCUS_ORDER_KEY, NextStep } from '../../lib/orders/orderAlerts';
 import { validateStatusChange } from '../../repositories/orderMappers';
 import { applyOrderUpdate } from '../../lib/orders/applyOrderUpdate';
 import { dispatchErrorMessage, noApprovedDriverMessage, NO_APPROVED_DRIVER_TITLE, shouldBlockCallDriver } from '../../lib/orders/dispatchErrors';
@@ -62,7 +64,13 @@ interface EstablishmentDashboardProps {
   onNavigate?: (tab: string) => void;
 }
 
-export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ onNavigate }) => {
+export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = props => {
+  const { activeTenant } = useAuth();
+  if (!activeTenant) return null;
+  return <EstablishmentDashboardContent key={activeTenant.id} {...props} />;
+};
+
+const EstablishmentDashboardContent: React.FC<EstablishmentDashboardProps> = ({ onNavigate }) => {
   const { activeTenant, currentUser, supabaseUser, securityContext, activeRole } = useAuth();
   const { showToast } = useToast();
 
@@ -80,6 +88,10 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   const [newOrderQueue, setNewOrderQueue] = useState<Order[]>([]);
   const currentTenantRef = useRef(activeTenant?.id);
   currentTenantRef.current = activeTenant?.id;
+  useEffect(() => {
+    currentTenantRef.current = activeTenant?.id;
+    return () => { currentTenantRef.current = undefined; };
+  }, [activeTenant?.id]);
   // 19/10: Tela da Cozinha — pedidos que viraram Pronto (bipe próprio + aviso com a próxima ação)
   const prevReadyIdsRef = useRef<Set<string> | null>(null);
   const [readyAlertIds, setReadyAlertIds] = useState<string[]>([]);
@@ -121,7 +133,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
           : Promise.resolve([] as Driver[]),
         productRepository.getProducts(securityContext, activeTenant.id).catch(() => []),
       ]);
-      let fetchedOrders = visibleStaffOrders(receivedOrders);
+      let fetchedOrders = visibleStaffOrders(receivedOrders).filter(order => order.tenantId === activeTenant.id);
       const missingTableLabelOrderIds = [...new Set(fetchedOrders
         .filter(order => order.fulfillmentType === 'DINE_IN' && !order.tableLabel)
         .map(order => order.id))];
@@ -218,12 +230,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
 
   // 19/10: próxima etapa pelo Dashboard — mesma ação (update_order_status) e regras da tela Pedidos.
   const handleAlertStep = async (order: Order, step: NextStep) => {
-    if (!activeTenant?.id) return;
-    if (step.kind === 'open_table') {
-      setNewOrderQueue(prev => prev.filter(o => o.id !== order.id));
-      handleOpenOrderTable(order);
-      return;
-    }
+    if (!activeTenant?.id || order.tenantId !== activeTenant.id) return;
     if (step.kind === 'call_driver' && shouldBlockCallDriver({ canListDrivers, driversLoaded, approvedCount: (remoteDrivers || []).length })) {
       showToast({ type: 'warning', title: NO_APPROVED_DRIVER_TITLE, message: noApprovedDriverMessage() });
       return;
@@ -238,12 +245,17 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
     if (!check.ok) { showToast({ type: 'warning', title: 'Alteração não permitida', message: check.message }); return; }
     setBusyOrderId(order.id);
     try {
-      const updated = await orderRepository.updateStatus(securityContext, activeTenant.id, order.id, step.to, check.note || undefined, order.status);
+      const updated = (step.kind === 'accept' || (step.kind === 'start' && step.to === 'PREPARING'))
+        ? await acceptOrderForProduction(securityContext, activeTenant.id, order)
+        : await orderRepository.updateStatus(securityContext, activeTenant.id, order.id, step.to, check.note || undefined, order.status);
+      if (currentTenantRef.current !== activeTenant.id) return;
       setRemoteOrders(prev => applyOrderUpdate(prev, updated));
       setNewOrderQueue(prev => prev.filter(o => o.id !== order.id));
       showToast({ type: 'success', title: step.label, message: ownerStatusToastMessage(updated?.status || step.to, updated?.orderNumber || order.orderNumber) });
       await fetchRealData(true);
     } catch (err: any) {
+      if (currentTenantRef.current !== activeTenant.id) return;
+      void fetchRealData(true); // A partial two-step acceptance must be recovered from the server.
       const dispatch = false;
       showToast({
         type: 'error',
@@ -256,8 +268,10 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
   };
 
   const handleAlertView = (order: Order) => {
+    if (order.tenantId !== activeTenant?.id) return;
     try { sessionStorage.setItem(FOCUS_ORDER_KEY, order.id); } catch { /* sem storage */ }
     onNavigate?.('est-orders');
+    window.location.hash = orderDetailsHash(order.id);
   };
 
   // 19/10: bipe a cada ~5 s enquanto houver pedido em "Novo" (para quando todos forem aceitos)
@@ -443,6 +457,13 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
 
   // Avançar status do pedido
   const handleAdvanceStatus = async (orderId: string, currentStatus: string) => {
+    const order = orders.find(item => item.id === orderId);
+    if (!order || order.tenantId !== activeTenant?.id) return;
+    if (currentStatus === 'PENDING' || currentStatus === 'CONFIRMED') {
+      const step = nextStepFor(order, activeRole);
+      if (step) await handleAlertStep(order, step);
+      return;
+    }
     let nextStatus: any = 'PREPARING';
     if (currentStatus === 'PENDING') nextStatus = 'CONFIRMED';
     else if (currentStatus === 'CONFIRMED') nextStatus = 'PREPARING';
@@ -450,7 +471,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
     else if (currentStatus === 'READY') {
       const order = orders.find(o => o.id === orderId);
       if (order?.fulfillmentType === 'DINE_IN') {
-        handleOpenOrderTable(order);
+        handleAlertView(order);
         return;
       }
       if (order?.fulfillmentType === 'DELIVERY') {
@@ -563,14 +584,14 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
         busyId={busyOrderId}
         onCallDriver={(o) => { const st = nextStepFor(o, activeRole); if (st) handleAlertStep(o, st); }}
         onOpenPickup={(o) => handleAlertView(o)}
-        onOpenTable={(o) => handleOpenOrderTable(o)}
+        onViewOrder={handleAlertView}
         onDismiss={(id) => setReadyAlertIds(prev => prev.filter(x => x !== id))}
       />}
       <NewOrderCards orders={newOrderQueue} role={activeRole} busyOrderId={busyOrderId}
-        onAccept={order => { void handleAlertStep(order, { kind: 'accept', label: 'Aceitar pedido', to: 'CONFIRMED' }); }}
+        onAccept={order => { const step = nextStepFor(order, activeRole); if (step) void handleAlertStep(order, step); }}
         onView={order => {
           setNewOrderQueue(prev => prev.filter(o => o.id !== order.id));
-          if (order.fulfillmentType === 'DINE_IN') handleOpenOrderTable(order); else handleAlertView(order);
+          handleAlertView(order);
         }}
         onDismiss={id => setNewOrderQueue(prev => prev.filter(o => o.id !== id))} />
       <OrderAlertsCard
@@ -979,7 +1000,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
                       </td>
                       <td className="p-3.5">
                         <div className="font-bold text-slate-900">{order.customerName}</div>
-                        <div className="text-[11px] text-slate-400 font-mono">{order.customerPhone}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">{maskCustomerPhone(order.customerPhone)}</div>
                       </td>
                       <td className="p-3.5">
                         <div className="text-slate-800 font-medium">
@@ -1001,6 +1022,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
                         {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </td>
                       <td className="p-3.5 pr-5 text-right">
+                        <Button size="sm" variant="outline" onClick={() => handleAlertView(order)} className="text-xs">Ver pedido</Button>
                         {order.status === 'PENDING' && (
                           <Button
                             size="sm"
@@ -1008,7 +1030,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
                             onClick={() => handleAdvanceStatus(order.id, order.status)}
                             className="text-xs bg-emerald-700 hover:bg-emerald-800"
                           >
-                            Aceitar
+                            Aceitar pedido
                           </Button>
                         )}
                         {order.status === 'CONFIRMED' && (
@@ -1018,7 +1040,7 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
                             onClick={() => handleAdvanceStatus(order.id, order.status)}
                             className="text-xs"
                           >
-                            Preparar
+                            {order.fulfillmentType === 'DINE_IN' ? 'Enviar p/ produção' : 'Preparar'}
                           </Button>
                         )}
                         {order.status === 'PREPARING' && (
@@ -1032,16 +1054,6 @@ export const EstablishmentDashboard: React.FC<EstablishmentDashboardProps> = ({ 
                           </Button>
                         )}
                         <DriverOfferStatus orderId={order.id} />
-                        {order.status === 'READY' && order.fulfillmentType === 'DINE_IN' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleOpenOrderTable(order)}
-                            className="text-xs"
-                          >
-                            Abrir mesa
-                          </Button>
-                        )}
                         {order.status === 'READY' && order.fulfillmentType === 'PICKUP' && (
                           <Button
                             size="sm"

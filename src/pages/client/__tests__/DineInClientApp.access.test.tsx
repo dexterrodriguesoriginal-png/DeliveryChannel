@@ -20,6 +20,7 @@ vi.mock('../../../repositories/mesasQrRepository', () => ({ mesasQrRepository: {
 vi.mock('../../../repositories/tableAccessRepository', () => ({ tableAccessRepository: h.access, TableAccessError: class extends Error {} }));
 
 import { DineInClientApp } from '../DineInClientApp';
+import { dineInCartStorageKey } from '../../../lib/customer/dineInCartStorage';
 
 const TOKEN = 'k'.repeat(48);
 const V1 = { available: true, version: 1, qrPause: true, tabPix: true, tableAccess: false, waiterApp: false };
@@ -53,6 +54,16 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     expect(screen.getByLabelText('Celular')).toBeTruthy();
     await waitFor(() => expect(JSON.parse(localStorage.getItem('dc_pending_mesa') || '{}').token).toBe(TOKEN));
     expect(h.access.enterTable).not.toHaveBeenCalled();
+  });
+  it('restaura a sacola antes de permitir o primeiro clique em adicionar', async () => {
+    h.caps.mockResolvedValue(V2); baseRpc();
+    localStorage.setItem(dineInCartStorageKey(TOKEN), JSON.stringify({ at: Date.now(), checkoutPending: false, lines: [{ productId: 'p1', quantity: 2, options: [], notes: '' }] }));
+    render(<DineInClientApp token={TOKEN} />);
+    const add = await screen.findByRole('button', { name: 'Adicionar Chopp' });
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toContain('2');
+    fireEvent.click(add);
+    await waitFor(() => expect(JSON.parse(localStorage.getItem(dineInCartStorageKey(TOKEN)) || '{}').lines?.[0]?.quantity).toBe(3));
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toContain('3');
   });
   it('visitante anônimo antigo também precisa se identificar', async () => {
     h.caps.mockResolvedValue(V2); baseRpc(); h.auth.user = { id: 'anon', is_anonymous: true };

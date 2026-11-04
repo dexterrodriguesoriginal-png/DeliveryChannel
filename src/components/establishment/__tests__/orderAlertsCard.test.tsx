@@ -68,14 +68,24 @@ describe('OrderAlertsCard (Dashboard, faixa compacta)', () => {
     expect(html).toContain('NOVO');
     expect(html).toContain('Vila Silviânia');
   });
-  it('pedido de mesa (DINE_IN) exibe badge "Mesa 04 · Salão" e ação "Abrir mesa", nunca "Chamar entregador"', () => {
+  it('pedido de mesa pronto exibe Ver pedido e nunca abre rota do salão ou chama entregador', () => {
     const html = render([
       o('o46', 'READY', 5, { orderNumber: 46, fulfillmentType: 'DINE_IN', tableLabel: 'Mesa 04', deliveryAddress: '' }),
     ], 'OWNER');
     expect(html).toContain('Mesa 04 · Salão');
-    expect(html).toContain('Abrir mesa');
-    expect(html).toContain('data-step="open_table"');
+    expect(html).toContain('Ver pedido');
+    expect(html).not.toContain('Abrir mesa');
+    expect(html).not.toContain('data-step="open_table"');
     expect(html).not.toContain('Chamar entregador');
-    expect(html).not.toContain('Entrega');
+    expect(html).toContain('AGUARDANDO GARÇOM');
   });
 });
+
+ it('mesa aguardando oferece Ver pedido e Aceitar pedido; confirmada envia para produção', () => {
+   const pending = render([o('o80','PENDING',1,{fulfillmentType:'DINE_IN',tableLabel:'Mesa 08'})], 'OWNER');
+   expect(pending).toContain('Ver pedido'); expect(pending).toContain('Aceitar pedido');
+   expect(pending).toContain('data-step="accept"'); expect(pending).not.toContain('Abrir mesa');
+   const confirmed = render([o('o81','CONFIRMED',1,{fulfillmentType:'DINE_IN',tableLabel:'Mesa 08'})], 'OWNER');
+   expect(confirmed).toContain('Ver pedido'); expect(confirmed).toContain('Enviar p/ produção');
+   expect(confirmed).toContain('data-step="start"');
+ });

@@ -1,14 +1,10 @@
 .dinein-bill-requested {
-  color: #8B5E3C;
-  background-color: #F3E9DF;
-  border: 1px solid #8B5E3C;
+  border: 1px solid;
   animation: dinein-bill-pulse 1.2s ease-in-out infinite;
 }
 
 .dinein-bill-awaiting-pix {
-  color: #075985;
-  background-color: #e0f2fe;
-  border: 1px solid #0284c7;
+  border: 1px solid;
 }
 
 @keyframes dinein-bill-pulse {

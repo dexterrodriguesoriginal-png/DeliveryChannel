@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import type { OrderBrief } from '../lib/notifications/notificationView';
 export type DispatchMode = 'AUTO_QUEUE' | 'OWNER_PICKS';
 export interface QueueDriver { id: string; user_id: string; name: string; last_ride: string | null }
-export interface OwnerNotification { id: string; tenant_id: string; kind: 'ORDER_NEW' | 'DRIVER_JOIN_REQUEST' | 'ORDER_MESSAGE' | 'TAB_REOPENED'; ref_id: string; title: string; created_at: string; read_at: string | null; /** Destino de mesa derivado do pedido/comanda autorizado, nunca do INSERT realtime. */ tableTarget?: string }
+export interface OwnerNotification { id: string; tenant_id: string; kind: 'ORDER_NEW' | 'DRIVER_JOIN_REQUEST' | 'ORDER_MESSAGE' | 'TAB_REOPENED' | 'ORDER_DELIVERY_DISPUTE'; ref_id: string; title: string; created_at: string; read_at: string | null; /** Destino de mesa derivado do pedido/comanda autorizado, nunca do INSERT realtime. */ tableTarget?: string }
 export interface OrderMessage { id: string; tenant_id: string; order_id: string; sender_role: 'DRIVER' | 'STORE'; body: string; created_at: string }
 async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.rpc(fn, args);
@@ -17,7 +17,7 @@ export const dispatchChatRepository = {
     // Realtime is untrusted input. Re-check the tenant before making any lookup,
     // and derive table targets from authorized rows rather than event properties.
     const scoped = rows.filter(n => n.tenant_id === tenantId).map(({ tableTarget: _ignored, ...n }) => n);
-    const orderIds = [...new Set(scoped.filter(n => n.kind === 'ORDER_NEW' || n.kind === 'ORDER_MESSAGE').map(n => n.ref_id))];
+    const orderIds = [...new Set(scoped.filter(n => ['ORDER_NEW', 'ORDER_MESSAGE', 'ORDER_DELIVERY_DISPUTE'].includes(n.kind)).map(n => n.ref_id))];
     const tabIds = [...new Set(scoped.filter(n => n.kind === 'TAB_REOPENED').map(n => n.ref_id))];
     const [orders, tabs] = await Promise.all([
       orderIds.length ? supabase.from('orders').select('id,tenant_id,awaiting_online_payment').eq('tenant_id', tenantId).in('id', orderIds) : Promise.resolve({ data: [], error: null }),
@@ -31,7 +31,7 @@ export const dispatchChatRepository = {
         const tableTarget = tableByTab.get(n.ref_id);
         return tableTarget ? [{ ...n, tableTarget }] : [];
       }
-      return n.kind === 'DRIVER_JOIN_REQUEST' || ((n.kind === 'ORDER_NEW' || n.kind === 'ORDER_MESSAGE') && visible.has(n.ref_id)) ? [n] : [];
+      return n.kind === 'DRIVER_JOIN_REQUEST' || ((['ORDER_NEW', 'ORDER_MESSAGE', 'ORDER_DELIVERY_DISPUTE'].includes(n.kind)) && visible.has(n.ref_id)) ? [n] : [];
     });
   },
   async notifications(tenantId: string): Promise<OwnerNotification[]> {

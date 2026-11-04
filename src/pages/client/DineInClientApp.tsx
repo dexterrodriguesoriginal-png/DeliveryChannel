@@ -25,8 +25,10 @@ import { ConfirmLoggedUserGate, IdentityGate, InvitePanel, InviteWelcomeScreen, 
 import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import { DineInCartSheet } from '../../components/client/dinein/DineInCartSheet';
-import { DineInTracking } from '../../components/client/dinein/DineInTracking';
+import { DineInDeliveryNotice, DineInTracking } from '../../components/client/dinein/DineInTracking';
 import { dineInStatus, type DineInTrackedRound } from '../../lib/customer/dineInTracking';
+import { canDisputeDelivery, deliveryNoticeLabel, type DeliveryState } from '../../lib/customer/deliveryDispute';
+import { statusColorStyle } from '../../lib/orders/statusColors';
 import { restoreDineInCart, saveDineInCart } from '../../lib/customer/dineInCartStorage';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
 import { clearDeferredPrompt, getDeferredPrompt } from '../../lib/pwa/installState';
@@ -41,7 +43,7 @@ import {
 } from '../../lib/customer/dineInCart';
 
 type TableResolution = { available: boolean; tenantSlug?: string; storeName?: string; tableLabel?: string };
-type TabRound = DineInTrackedRound & { customerName: string; mine?: boolean; subtotal: number; items: Array<{ name: string; quantity: number; unitPrice: number; totalPrice: number }> };
+type TabRound = DineInTrackedRound & DeliveryState & { customerName: string; mine?: boolean; subtotal: number; items: Array<{ name: string; quantity: number; unitPrice: number; totalPrice: number; deliveredAt?: string | null }> };
 type MyTab = { tabId: string; status: 'OPEN' | 'BILL_REQUESTED' | 'WAITER_AUTHORIZED' | 'AWAITING_PAYMENT' | 'CLOSED' | 'CANCELLED'; pixStatus?: string | null; mode: 'TABLE' | 'INDIVIDUAL'; tableLabel: string; serviceFeePercent: number; serviceFeeRemoved: boolean; rounds: TabRound[]; subtotal: number;
   /** Only with the table-access model (capabilities v2). */
   me?: { sessionId: string; role: 'RESPONSIBLE' | 'GUEST'; approved: boolean; displayName?: string; ended?: boolean; endedReason?: string | null };
@@ -160,6 +162,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [confirmOrderOpen, setConfirmOrderOpen] = useState(false);
   const [awaitingReleaseModalOpen, setAwaitingReleaseModalOpen] = useState(false);
   const [tableWaiter, setTableWaiter] = useState<TableWaiter | null>(null);
+  const [disputeBusyId, setDisputeBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sessionId) { setTableWaiter(null); return; }
@@ -188,6 +191,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     if (previousUserRef.current && previousUserRef.current !== supabaseUser?.id) {
       setSessionId(''); setTab(null); setTabClosed(false); setAccountOpen(false); setBillOpen(false);
       setBusy(false); setJoinBusy(false); setInviteBusy(false); setMembersBusy(false);
+      setDisputeBusyId(null);
       setEntryRole(null); setEntryApproved(null); setInUse(false); setInvite(null); setEndedReason(null);
       setConfirmOrderOpen(false); setPendingApproval(false); setAwaitingReleaseModalOpen(false);
       submitLockRef.current = false; submitKeyRef.current = uuid();
@@ -212,6 +216,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const billReopenAllowed = !!sessionId && !tabClosed && !qrPaused && canReopenBill(tab?.status, tab?.pixStatus);
   const awaitingPix = tab?.status === 'AWAITING_PAYMENT';
   const billStatusLabel = awaitingPix ? 'Aguardando PIX' : 'Conta pedida';
+  const billColors = statusColorStyle(awaitingPix ? 'AWAITING_PAYMENT' : tab?.status === 'WAITER_AUTHORIZED' ? 'AUTHORIZED' : 'BILL');
   const orderingDisabled = qrPaused || tabClosed || billRequested;
   const split = useMemo(() => {
     const customCents = parseTenderCents(customShare) || 0;
@@ -320,6 +325,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setSessionId('');
     setEntered(false);
     setBusy(false); setJoinBusy(false); setInviteBusy(false); setMembersBusy(false);
+    setDisputeBusyId(null);
     setEntryRole(null); setEntryApproved(null); setInUse(false); setEntryDone(false); setEndedReason(null); setInvite(null);
     setAccountOpen(false); setBillOpen(false); setCartOpen(false); setConfirmOrderOpen(false); setCheckoutIdentityOpen(false);
     setPendingApproval(false); setAwaitingReleaseModalOpen(false);
@@ -811,6 +817,28 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     }
   };
 
+  const disputeDelivery = async (orderId: string) => {
+    const round = tab?.rounds?.find(item => item.orderId === orderId && item.mine !== false);
+    if (!sessionId || disputeBusyId || !round || !canDisputeDelivery(round)) return;
+    const source = activeIdentityRef.current;
+    setDisputeBusyId(orderId);
+    try {
+      const { error: disputeError } = await supabase.rpc('customer_dispute_delivery', { p_session_id: sessionId, p_order: orderId });
+      if (!contextMatches(source)) return;
+      if (disputeError) {
+        const message = errorText(disputeError);
+        setNotice(/WINDOW|EXPIRED|TIME|5_MIN/i.test(message)
+          ? 'O prazo de 5 minutos terminou. Chame o garçom para conferir sua entrega.'
+          : 'Não foi possível avisar sobre a entrega. Chame o garçom para ajudar.');
+      } else setNotice('Avisamos a equipe de que você não recebeu o pedido. O garçom vai conferir.');
+      await loadAccount(true);
+    } catch {
+      if (contextMatches(source)) setNotice('Não foi possível avisar sobre a entrega. Confira sua conexão e tente novamente.');
+    } finally {
+      if (contextMatches(source)) setDisputeBusyId(null);
+    }
+  };
+
   // Convite (só o Responsável): código curto que expira, revogável.
   const createInvite = async () => {
     if (!sessionId) return;
@@ -857,7 +885,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const totalCartItems = cart.reduce((sum, line) => sum + line.quantity, 0);
   const customerDisplayName = tab?.me?.displayName || displayNameForEntry();
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-700"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Carregando mesa e cardápio…</div>;
+  // Restore the saved bag before exposing Add/Checkout: a first click must never
+  // be overwritten by the hydration effect, including after changing table QR.
+  if (loading || (!error && resolution?.available && cartHydratedToken !== token)) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-700"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Carregando mesa e cardápio…</div>;
   if (unavailable) {
     return <main className="min-h-screen grid place-items-center bg-slate-50 p-6"><section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl"><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><h1 className="text-xl font-extrabold">Salão indisponível no momento</h1><p className="mt-2 text-sm text-slate-600">{error || 'Confira o QR Code ou chame um atendente.'}</p></section></main>;
   }
@@ -1094,7 +1124,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           <div className="flex justify-between border-t pt-3 font-bold"><span>Subtotal estimado</span><span>{formatBRL(totalCart)}</span></div>
           <button type="button" onClick={handleRequestOrder} disabled={busy || orderingDisabled} className="mt-3 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Fazer pedido'}</button>
           {(pendingApproval || awaitingRelease) && <p className="mt-2 text-xs font-semibold text-amber-800">Aguarde a liberação da mesa. {PENDING_APPROVAL_TITLE}. {PENDING_APPROVAL_TEXT}</p>}
-          {billRequested && <p className="mt-2 text-xs font-semibold text-[#8B5E3C]">{awaitingPix ? 'Aguardando a confirmação do PIX. Sua mesa continua ocupada.' : billReopenAllowed ? 'Conta pedida. Use “Pedir mais” para continuar consumindo.' : 'Conta pedida. O pagamento está em andamento; chame o garçom se precisar de ajuda.'}</p>}
+          {billRequested && <p className="mt-2 text-xs font-semibold" style={{ color: billColors.color }}>{awaitingPix ? 'Aguardando a confirmação do PIX. Sua mesa continua ocupada.' : billReopenAllowed ? 'Conta pedida. Use “Pedir mais” para continuar consumindo.' : 'Conta pedida. O pagamento está em andamento; chame o garçom se precisar de ajuda.'}</p>}
         </section>}
         {awaitingReleaseModalOpen && awaitingRelease && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setAwaitingReleaseModalOpen(false); }}>
@@ -1197,11 +1227,12 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             </button>
           </section>
         </div>}
-        {billRequested && !tabClosed && <section aria-label="Situação da conta" className={`mt-4 rounded-xl p-3 text-sm ${awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested'}`}>
+        {billRequested && !tabClosed && <section aria-label="Situação da conta" className={`mt-4 rounded-xl p-3 text-sm ${awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested'}`} style={billColors}>
           <p className="font-bold">{billStatusLabel}</p>
           <p className="mt-1">{awaitingPix ? 'Sua mesa continua ocupada até a confirmação do pagamento.' : billReopenAllowed ? 'Quer uma saideira? Reabra a comanda para fazer mais pedidos.' : 'O pagamento está em andamento. Aguarde a confirmação ou chame o garçom.'}</p>
           {billReopenAllowed && <button type="button" onClick={() => void reopenBill()} disabled={busy} className="mt-3 rounded-lg border border-current bg-white px-4 py-2 font-bold disabled:opacity-50">{busy ? 'Reabrindo…' : 'Pedir mais'}</button>}
         </section>}
+        {tab?.rounds?.filter(round => round.mine !== false && (round.status === 'DELIVERED' || round.deliveryDispute)).map(round => <DineInDeliveryNotice key={round.orderId} round={round} busy={disputeBusyId === round.orderId} onDispute={orderId => void disputeDelivery(orderId)} />)}
         {tabClosed && <div role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Conta encerrada. Para pedir de novo, chame o garçom.</div>}
         {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       </section>
@@ -1212,7 +1243,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       <nav aria-label="Ações da mesa" className="fixed inset-x-0 bottom-0 z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
         <div className="mx-auto grid max-w-2xl grid-cols-3 gap-2">
           <button type="button" onClick={() => void requestWaiter()} disabled={busy || tabClosed || !sessionId} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><UserRound className="h-5 w-5" />Chamar garçom</button>
-          <button type="button" onClick={() => { setBillOpen(true); void loadAccount(true); }} disabled={busy || tabClosed || billRequested || !sessionId} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold disabled:cursor-default ${billRequested ? awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested' : 'text-slate-800 disabled:opacity-40'}`}><ReceiptText className="h-5 w-5" />{billRequested ? billStatusLabel : 'Pedir a conta'}</button>
+          <button type="button" onClick={() => { setBillOpen(true); void loadAccount(true); }} disabled={busy || tabClosed || billRequested || !sessionId} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold disabled:cursor-default ${billRequested ? awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested' : 'text-slate-800 disabled:opacity-40'}`} style={billRequested ? billColors : undefined}><ReceiptText className="h-5 w-5" />{billRequested ? billStatusLabel : 'Pedir a conta'}</button>
           <button type="button" disabled={!sessionId} onClick={() => { setAccountOpen(true); void loadAccount(); }} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><CircleUserRound className="h-5 w-5" />Minha conta</button>
         </div>
       </nav>
@@ -1225,10 +1256,14 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             <InvitePanel invite={invite} busy={inviteBusy} link={invite && resolution?.tenantSlug ? inviteUrl(window.location.origin, resolution.tenantSlug, token, invite.code) : ''} onCreate={() => void createInvite()} onRevoke={() => void revokeInvite()} />
             <MembersPanel members={tab?.members || []} mySessionId={sessionId} busy={membersBusy} onRemove={member => void removeMember(member)} onTransfer={member => void transferTo(member)} />
           </div>}
-          <div className="my-4 space-y-3">{tab?.rounds?.length ? tab.rounds.map(round => <article key={round.orderId} data-testid={`account-round-${round.orderId}`} className={`rounded-xl p-3 ${round.status === 'DELIVERED' ? 'bg-green-50 text-green-800' : round.status === 'CANCELLED' ? 'bg-red-50 text-red-800' : 'bg-slate-50 text-slate-700'}`}>
+          <div className="my-4 space-y-3">{tab?.rounds?.length ? tab.rounds.map(round => <article key={round.orderId} data-testid={`account-round-${round.orderId}`} className="rounded-xl border p-3" style={statusColorStyle(round.status)}>
             <div className="mb-2 flex justify-between font-bold"><span>Rodada {round.roundNo}</span><span>{formatBRL(round.subtotal)}</span></div>
             <p className="mb-2 text-xs">{access ? `Pedido de ${round.mine ? 'você' : round.customerName}` : round.customerName} · {dineInStatus(round.status).label}</p>
-            {round.items.map((item, index) => <p key={`${round.orderId}-${index}`} className="text-sm">{item.quantity}× {item.name}</p>)}
+            {round.deliveryDispute && <p className="mb-2 text-xs font-semibold">{deliveryNoticeLabel(round)}</p>}
+            {round.items.map((item, index) => {
+              const deliveredAt = round.status === 'DELIVERED' ? item.deliveredAt || round.deliveredAt : null;
+              return <p key={`${round.orderId}-${index}`} className="text-sm">{item.quantity}× {item.name}{deliveredAt && Number.isFinite(Date.parse(deliveredAt)) && <span className="ml-2 text-xs">Entregue às <time dateTime={deliveredAt}>{new Date(deliveredAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time></span>}</p>;
+            })}
           </article>) : <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Ainda não há pedidos nesta conta.</p>}</div>
           <div className="space-y-2 border-t pt-3 text-sm">
             <div className="flex justify-between"><span>Subtotal da conta</span><b>{formatBRL(tab?.subtotal || 0)}</b></div>

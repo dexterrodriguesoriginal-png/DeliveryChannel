@@ -1,13 +1,13 @@
 import React from 'react';
-import { BellRing, Bike, MapPin, UtensilsCrossed, X } from 'lucide-react';
+import { BellRing, Bike, Eye, MapPin, X } from 'lucide-react';
 import type { Order } from '../../types';
 import { formatTableLabel } from '../../lib/orders/labels';
 import { ORDER_STATUS_THEME, BRAND_ACTION } from '../../utils/orderStatusTheme';
 
-/** 19/10: aviso no painel quando a cozinha marca "Pronto": entrega → Chamar entregador; retirada → fila de chegada; mesa → Abrir mesa. */
+/** Aviso quando a cozinha marca Pronto; Ver pedido mantém a rodada acessível no drawer de Pedidos. */
 export const KitchenReadyAlert: React.FC<{
-  orders: Order[]; busyId?: string | null; onCallDriver: (o: Order) => void; onOpenPickup: (o: Order) => void; onOpenTable?: (o: Order) => void; onDismiss: (id: string) => void;
-}> = ({ orders, busyId, onCallDriver, onOpenPickup, onOpenTable, onDismiss }) => {
+  orders: Order[]; busyId?: string | null; onCallDriver: (o: Order) => void; onOpenPickup: (o: Order) => void; onViewOrder?: (o: Order) => void; onDismiss: (id: string) => void;
+}> = ({ orders, busyId, onCallDriver, onOpenPickup, onViewOrder, onDismiss }) => {
   if (orders.length === 0) return null;
   const t = ORDER_STATUS_THEME.READY;
   return (
@@ -22,7 +22,7 @@ export const KitchenReadyAlert: React.FC<{
             <div className="font-bold text-gray-950">Pedido #{o.orderNumber} pronto <span className="text-xs font-semibold text-gray-500">· {placeLabel}</span></div>
             <div className="flex items-center gap-2">
               {dineIn ? (
-                <button type="button" onClick={() => (onOpenTable || onOpenPickup)(o)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold" style={{ backgroundColor: BRAND_ACTION.bg, color: BRAND_ACTION.text }}><UtensilsCrossed className="w-4 h-4" />Abrir mesa</button>
+                <button type="button" onClick={() => (onViewOrder || onOpenPickup)(o)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold" style={{ backgroundColor: BRAND_ACTION.bg, color: BRAND_ACTION.text }}><Eye className="w-4 h-4" />Ver pedido</button>
               ) : pickup ? (
                 <button type="button" onClick={() => onOpenPickup(o)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold" style={{ backgroundColor: BRAND_ACTION.bg, color: BRAND_ACTION.text }}><MapPin className="w-4 h-4" />Fila de chegada</button>
               ) : (

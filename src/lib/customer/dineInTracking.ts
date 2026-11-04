@@ -24,7 +24,6 @@ export function dineInStatus(status: string) {
   return {
     ...colors,
     label: labels[status] || 'Aguardando',
-    ...(status === 'CANCELLED' ? { color: '#ef4444', tint: '#fdecec', ink: '#b91c1c' } : {}),
   };
 }
 

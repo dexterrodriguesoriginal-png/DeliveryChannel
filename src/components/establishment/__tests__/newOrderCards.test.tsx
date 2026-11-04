@@ -29,14 +29,16 @@ describe('Fila de cards por pedido', () => {
     expect(ui.getAllByRole('button', { name: 'Aceitar pedido' })).toHaveLength(3);
     expect(ui.getAllByTestId('new-order-card')[0].getAttribute('data-order-id')).toBe('4');
   });
-  it('rodada CONFIRMED ganha card com Ver mesa e Enviado à cozinha', () => {
+  it('rodada CONFIRMED oferece Ver pedido e Enviar p/ produção', () => {
     const round = order('2', { status: 'CONFIRMED', fulfillmentType: 'DINE_IN', tableLabel: '02' });
     const fresh = newOrderIds(new Set(['1']), [round]);
-    const view = vi.fn();
-    const ui = render(<NewOrderCards orders={updateNewOrderQueue([], [round], fresh)} role="OWNER" onAccept={vi.fn()} onView={view} onDismiss={vi.fn()} />);
-    expect(ui.getByText('Enviado à cozinha')).toBeTruthy();
+    const view = vi.fn(), accept = vi.fn();
+    const ui = render(<NewOrderCards orders={updateNewOrderQueue([], [round], fresh)} role="OWNER" onAccept={accept} onView={view} onDismiss={vi.fn()} />);
+    expect(ui.getByText('Aguardando envio para produção')).toBeTruthy();
     expect(ui.queryByRole('button', { name: 'Aceitar pedido' })).toBeNull();
-    fireEvent.click(ui.getByRole('button', { name: 'Ver mesa' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Enviar p/ produção' }));
+    expect(accept).toHaveBeenCalledWith(round);
+    fireEvent.click(ui.getByRole('button', { name: 'Ver pedido' }));
     expect(view).toHaveBeenCalledWith(round);
   });
   it('limita a três e +N; fechar remove só aquele card, aceitar remove o PENDING quando status muda', () => {

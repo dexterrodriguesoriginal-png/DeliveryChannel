@@ -1,5 +1,6 @@
 // Pure logic for the Salão map (no React, no network): status, totals, filters, search.
 // The closing/payment rules live in SQL (close_tab); nothing here decides money, it only displays it.
+import { STATUS_COLORS } from '../orders/statusColors';
 
 export type TableStatusKind = 'FREE' | 'OCCUPIED' | 'LONG_STAY' | 'NEW_ORDER' | 'PREPARING' | 'READY' | 'BILL' | 'AUTHORIZED' | 'AWAITING_PAYMENT';
 export type TableFilter = 'ALL' | TableStatusKind | 'CALL';
@@ -87,8 +88,9 @@ export const STATUS_LABEL: Record<TableStatusKind, string> = {
 
 /** A pending PIX is occupied and must remain visually distinct from a free table. */
 export const TABLE_STATUS_COLOR: Record<TableStatusKind, string> = {
-  FREE: '#0f766e', OCCUPIED: '#a16207', LONG_STAY: '#b91c1c', NEW_ORDER: '#dc2626',
-  PREPARING: '#ea580c', READY: '#7c3aed', BILL: '#8B5E3C', AUTHORIZED: '#8B5E3C', AWAITING_PAYMENT: '#0369a1',
+  FREE: STATUS_COLORS.FREE.solid, OCCUPIED: STATUS_COLORS.OCCUPIED.solid, LONG_STAY: STATUS_COLORS.LONG_STAY.solid,
+  NEW_ORDER: STATUS_COLORS.PENDING.solid, PREPARING: STATUS_COLORS.PREPARING.solid, READY: STATUS_COLORS.READY.solid,
+  BILL: STATUS_COLORS.BILL.solid, AUTHORIZED: STATUS_COLORS.AUTHORIZED.solid, AWAITING_PAYMENT: STATUS_COLORS.AWAITING_PAYMENT.solid,
 };
 
 export interface DeriveInput {

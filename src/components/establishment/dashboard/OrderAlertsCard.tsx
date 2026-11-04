@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Bell, Clock, Bike, Package, MessageCircle, Eye, CheckCircle2, ChefHat, ShoppingBag, ArrowRight, X, Flame, ClockAlert, Boxes, Volume2, VolumeX, UtensilsCrossed } from 'lucide-react';
+import { Bell, Clock, Bike, Package, MessageCircle, Eye, CheckCircle2, ChefHat, ShoppingBag, ArrowRight, X, Flame, ClockAlert, Boxes, Volume2, VolumeX } from 'lucide-react';
 import type { Order, RoleId } from '../../../types';
 import { formatBRL } from '../../../lib/pricing/money';
 import { paymentMethodLabel } from '../../../lib/orders/labels';
 import { OrderAgeBadge } from '../OrderAgeBadge';
-import { FILTER_CHIP_CLASS } from '../../../lib/orders/statusChip';
+import { FILTER_CHIP_CLASS, FILTER_CHIP_COLORS } from '../../../lib/orders/statusChip';
+import { statusColorStyle } from '../../../lib/orders/statusColors';
 import { OrderStatusChip } from '../StatusIcon';
 import { SlaTimerChip } from '../SlaTimerChip';
 import { prepLimitMinutes } from '../../../lib/orders/sla';
@@ -45,11 +46,10 @@ const STEP_STYLE: Record<NextStep['kind'], string> = {
   ready: 'bg-[#15803d] hover:bg-[#166534] text-white',
   call_driver: 'bg-[#15803d] hover:bg-[#166534] text-white',
   pickup_done: 'bg-[#15803d] hover:bg-[#166534] text-white',
-  open_table: 'bg-[#15803d] hover:bg-[#166534] text-white',
 };
 const STEP_ICON: Record<NextStep['kind'], React.ReactNode> = {
   accept: <CheckCircle2 className="w-3.5 h-3.5" />, start: <ChefHat className="w-3.5 h-3.5" />, ready: <Package className="w-3.5 h-3.5" />,
-  call_driver: <Bike className="w-3.5 h-3.5" />, pickup_done: <ShoppingBag className="w-3.5 h-3.5" />, open_table: <UtensilsCrossed className="w-3.5 h-3.5" />,
+  call_driver: <Bike className="w-3.5 h-3.5" />, pickup_done: <ShoppingBag className="w-3.5 h-3.5" />,
 };
 
 interface ChipDef { key: AlertFilter | 'estoque'; label: string; count: number; on: string; icon: React.ReactNode }
@@ -86,6 +86,7 @@ export const OrderAlertsCard: React.FC<Props> = ({
       : () => setFilter(prev => (prev === c.key ? null : (c.key as AlertFilter)));
     return (
       <button key={c.key} type="button" onClick={onClick} data-testid={`alert-chip-${c.key}`} data-count={c.count}
+        style={muted ? undefined : statusColorStyle(FILTER_CHIP_COLORS[c.key])}
         aria-pressed={c.key === 'estoque' ? undefined : active}
         title={c.key === 'atrasados' ? `Aceitos ou em preparo há mais de ${lateLimit}` : c.key === 'estoque' ? 'Ver estoque' : `Filtrar: ${c.label}`}
         className={`inline-flex items-center gap-1 h-7 px-2.5 rounded-full border text-[11px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
@@ -118,13 +119,13 @@ export const OrderAlertsCard: React.FC<Props> = ({
           <span className="text-[11px] text-slate-500">{new Date(o.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
           <SlaTimerChip status={o.status} createdAt={o.createdAt} prepMinutes={prepMinutes} />
           {orderAgeInfo(o).level === 'stale' && <OrderAgeBadge order={o} />}
-          <OrderStatusChip status={o.status} late={late} />
+          <OrderStatusChip status={o.status} late={late} fulfillmentType={o.fulfillmentType} />
         </div>
         <div className="flex items-center gap-1 min-w-0 flex-1">
           <span className="text-[13px] font-bold text-slate-900 truncate">{o.customerName || 'Cliente'}</span>
           {wa && (
             <a href={wa} target="_blank" rel="noopener noreferrer" data-testid="alert-whatsapp" aria-label={`WhatsApp de ${o.customerName || 'cliente'}`}
-              title={o.customerPhone} className="shrink-0 p-0.5 rounded text-emerald-700 hover:bg-emerald-50">
+              title="Conversar pelo WhatsApp" className="shrink-0 p-0.5 rounded text-emerald-700 hover:bg-emerald-50">
               <MessageCircle className="w-3.5 h-3.5" />
             </a>
           )}
@@ -152,8 +153,8 @@ export const OrderAlertsCard: React.FC<Props> = ({
             </span>
           ) : null}
           <button type="button" onClick={() => onView(o)} data-testid="alert-view" aria-label="Ver pedido" title="Ver pedido (detalhes, recusar ou cancelar)"
-            className="shrink-0 h-8 w-8 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center cursor-pointer">
-            <Eye className="w-4 h-4" />
+            className="shrink-0 h-8 gap-1.5 px-3 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center text-xs font-bold cursor-pointer">
+            <Eye className="w-4 h-4" />Ver pedido
           </button>
         </div>
       </li>

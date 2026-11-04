@@ -106,8 +106,9 @@ export function updateNewOrderQueue(previous: readonly Order[], orders: readonly
 
 /** Pedido que a tela Pedidos deve abrir selecionado ao vir do Dashboard ("Ver pedido"). */
 export const FOCUS_ORDER_KEY = 'dc_focus_order_id';
+export const orderDetailsHash = (orderId: string) => `#/painel/est-orders?order=${encodeURIComponent(orderId)}`;
 
-export type NextStepKind = 'accept' | 'start' | 'ready' | 'call_driver' | 'pickup_done' | 'open_table';
+export type NextStepKind = 'accept' | 'start' | 'ready' | 'call_driver' | 'pickup_done';
 export interface NextStep {
   kind: NextStepKind;
   label: string;
@@ -119,20 +120,20 @@ export interface NextStep {
 /**
  * Único botão de próxima etapa para o estado atual (fluxo inteiro pelo Dashboard):
  * Aceitar -> Iniciar preparo -> Marcar como pronto -> Chamar entregador (entrega) / Confirmar retirada (retirada).
- * Pedidos de mesa (DINE_IN) exibem sempre "Abrir mesa" e nunca "Chamar entregador".
+ * Pedidos de mesa (DINE_IN) têm as mesmas ações de produção e nunca chamam entregador.
  * null = nada a fazer pela loja agora (aguardando entregador, em rota, final) ou papel sem permissão.
  */
 export function nextStepFor(order: Pick<Order, 'status' | 'fulfillmentType' | 'driverId' | 'awaitingOnlinePayment'>, role: RoleId | string | null | undefined): NextStep | null {
   if (!isOrderVisibleToStaff(order) || !canAcceptOrders(role)) return null;
   if (order.fulfillmentType === 'DINE_IN') {
-    if (order.status === 'PENDING' || order.status === 'CONFIRMED' || order.status === 'PREPARING' || order.status === 'READY') {
-      return { kind: 'open_table', label: 'Abrir mesa', to: 'CONFIRMED' };
-    }
+    if (order.status === 'PENDING') return { kind: 'accept', label: 'Aceitar pedido', to: 'PREPARING' };
+    if (order.status === 'CONFIRMED') return { kind: 'start', label: 'Enviar p/ produção', to: 'PREPARING' };
+    if (order.status === 'PREPARING') return { kind: 'ready', label: 'Marcar como pronto', to: 'READY' };
     return null;
   }
   const pickup = order.fulfillmentType === 'PICKUP';
   switch (order.status) {
-    case 'PENDING': return { kind: 'accept', label: 'Aceitar', to: 'CONFIRMED' };
+    case 'PENDING': return { kind: 'accept', label: 'Aceitar pedido', to: 'PREPARING' };
     case 'CONFIRMED': return { kind: 'start', label: 'Iniciar preparo', to: 'PREPARING' };
     case 'PREPARING': return { kind: 'ready', label: 'Marcar como pronto', to: 'READY' };
     case 'READY':
