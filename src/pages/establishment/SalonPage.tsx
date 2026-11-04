@@ -842,7 +842,7 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
         <li><i style={{ background: '#FF5050' }} />Ocupada há mais de {longStay} min</li>
         <li><i style={{ background: '#8B5A2B' }} />Conta solicitada (piscando)</li>
         <li><i style={{ background: '#8B5A2B', border: '2px solid #FF5050' }} />Aguardando PIX (alerta)</li>
-        <li><i style={{ background: '#9B4DE0' }} />Garçom autorizado a fechar</li>
+        <li><i style={{ background: '#8B5A2B' }} />Conta pedida · selo roxo: garçom autorizado</li>
         <li><i style={{ background: '#dc2626' }} />Sino = chamado ou liberação pendente</li>
         <li className="ml-auto">
 <label className="salon-longstay"><span>Mesa longa após</span>

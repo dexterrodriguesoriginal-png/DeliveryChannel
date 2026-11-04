@@ -105,10 +105,10 @@
 
 /* Conta pedida e Aguardando PIX: marrom sólido (#8B5A2B), piscando. Aguardando PIX tem borda vermelha de alerta (#FF5050). */
 .salon-bill-alert { color:#FFFFFF; background:#8B5A2B; border:2px solid #5C3A1B; }
-.salon-card--BILL, .salon-card--AWAITING_PAYMENT, .salon-bill-alert { animation:salon-bill-pulse 1.2s ease-in-out infinite; }
+.salon-card--BILL, .salon-card--AUTHORIZED, .salon-card--AWAITING_PAYMENT, .salon-bill-alert { animation:salon-bill-pulse 1.2s ease-in-out infinite; }
 .salon-card--AWAITING_PAYMENT { border-color:#FF5050; border-width:3px; animation:salon-pix-pulse 1.2s ease-in-out infinite; }
 @keyframes salon-bill-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(139,90,43,.2); } 50% { box-shadow:0 0 0 6px rgba(139,90,43,.5); } }
 @keyframes salon-pix-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(255,80,80,.25); } 50% { box-shadow:0 0 0 6px rgba(255,80,80,.6); } }
 @media (prefers-reduced-motion: reduce) {
-  .salon-card--BILL, .salon-card--AWAITING_PAYMENT, .salon-bill-alert { animation:none !important; border-width:3px; }
+  .salon-card--BILL, .salon-card--AUTHORIZED, .salon-card--AWAITING_PAYMENT, .salon-bill-alert { animation:none !important; border-width:3px; }
 }

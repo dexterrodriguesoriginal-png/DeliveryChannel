@@ -2,6 +2,7 @@ import React from 'react';
 import { BellRing, Clock, UserCheck, Users } from 'lucide-react';
 import { formatBRL } from '../../../lib/pricing/money';
 import { TableStatusInfo, tableColorTokens, tableDisplayNumber } from '../../../lib/salon/tableStatus';
+import { statusColorStyle } from '../../../lib/orders/statusColors';
 import './salon.css';
 
 export interface TableCardProps {
@@ -54,10 +55,11 @@ export const TableCard: React.FC<TableCardProps> = React.memo(({ id, label, area
         </span>
       )}
       <div className="flex flex-wrap items-start justify-between gap-1.5 pr-9">
-        <span className="salon-chip"><i className="salon-dot" />{info.kind === 'LONG_STAY' ? 'Muito tempo' : info.label}</span>
+        <span className="salon-chip"><i className="salon-dot" />{info.kind === 'LONG_STAY' ? 'Muito tempo' : info.kind === 'AUTHORIZED' ? 'Conta solicitada' : info.label}</span>
         {joinedLabel && <span className="salon-chip" data-testid={`salon-joined-${id}`}>Mesas juntas: {joinedLabel}</span>}
         {info.pendingRelease && <span className="salon-pending" data-testid={`salon-pending-${id}`}>Aguardando liberação</span>}
       </div>
+      {info.kind === 'AUTHORIZED' && <span data-testid={`salon-authorized-${id}`} className="rounded-xl border px-2.5 py-2 text-xs font-extrabold" style={statusColorStyle('AUTHORIZED')}>Garçom autorizado a fechar esta conta</span>}
       <div className="min-w-0">
         <div className="salon-num" aria-hidden="true">{tableDisplayNumber(label)}</div>
         <div className="salon-name" title={label}>{label}{area ? ` · ${area}` : ''}</div>

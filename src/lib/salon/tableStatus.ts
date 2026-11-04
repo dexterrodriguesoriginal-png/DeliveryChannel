@@ -93,7 +93,7 @@ export const STATUS_LABEL: Record<TableStatusKind, string> = {
  * - Azul (#1AB0F5, texto #0F172A, 7.26:1): Pedido novo / Pronto no balcão
  * - Vermelho (#FF5050, texto #0F172A, 5.52:1): Ocupada há muito tempo
  * - Marrom sólido (#8B5A2B, texto #FFFFFF, 5.85:1): Conta solicitada (piscando) e Aguardando PIX (piscando + borda vermelha #FF5050)
- * - Roxo (#9B4DE0, texto #FFFFFF, 4.64:1): Garçom autorizado a fechar
+ * - Autorização mantém a mesa marrom; roxo é exclusivo do selo dentro do cartão.
  */
 export const SALON_TABLE_COLORS: Readonly<Record<TableStatusKind, Readonly<StatusColorTokens>>> = {
   FREE: STATUS_COLORS.FREE,
@@ -103,7 +103,7 @@ export const SALON_TABLE_COLORS: Readonly<Record<TableStatusKind, Readonly<Statu
   READY: { bg: '#1AB0F5', fg: '#0F172A', border: '#0284C7', solid: '#1AB0F5' },
   LONG_STAY: STATUS_COLORS.LONG_STAY,
   BILL: STATUS_COLORS.BILL,
-  AUTHORIZED: STATUS_COLORS.AUTHORIZED,
+  AUTHORIZED: STATUS_COLORS.BILL,
   AWAITING_PAYMENT: STATUS_COLORS.AWAITING_PAYMENT,
 };
 

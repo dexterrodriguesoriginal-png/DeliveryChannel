@@ -52,15 +52,21 @@ describe('TableCard', () => {
     const info = deriveTableStatus({ tab: tab(5), rounds, needsReview: true, now: NOW });
     expect(tableAriaLabel('Mesa 1', info, 2)).toContain('PIX para conferir');
   });
-  it('conta autorizada roxa e Pix aguardando pagamento (marrom com borda vermelha) continuam com a comanda ocupada', () => {
+  it('conta autorizada marrom com selo roxo e Pix aguardando pagamento (marrom com borda vermelha) continuam com a comanda ocupada', () => {
     const authorized = deriveTableStatus({ tab: { ...tab(10), status: 'WAITER_AUTHORIZED' }, rounds, now: NOW });
     const awaiting = deriveTableStatus({ tab: { ...tab(10), status: 'AWAITING_PAYMENT' }, rounds, now: NOW });
     const { rerender } = render(<TableCard id="t1" label="Mesa 1" area={null} seats={2} info={authorized} onOpen={() => {}} />);
     expect(screen.getByTestId('salon-table-t1').className).toContain('salon-card--AUTHORIZED');
-    expect(screen.getByTestId('salon-table-t1').style.getPropertyValue('--sc-bg')).toBe('#9B4DE0');
+    expect(screen.getByTestId('salon-table-t1').style.getPropertyValue('--sc-bg')).toBe('#8B5A2B');
+    expect(screen.getByText('Conta solicitada')).toBeTruthy();
+    const badge = screen.getByTestId('salon-authorized-t1');
+    expect(badge.textContent).toBe('Garçom autorizado a fechar esta conta');
+    expect(badge.style.backgroundColor).toBe('#9B4DE0');
+    expect(badge.style.color).toBe('#FFFFFF');
     expect(screen.getByTestId('salon-table-t1').textContent).toContain('Garçom autorizado');
     rerender(<TableCard id="t1" label="Mesa 1" area={null} seats={2} info={awaiting} onOpen={() => {}} />);
     expect(screen.getByTestId('salon-table-t1').getAttribute('data-status')).toBe('AWAITING_PAYMENT');
+    expect(screen.queryByTestId('salon-authorized-t1')).toBeNull();
     expect(screen.getByTestId('salon-table-t1').style.getPropertyValue('--sc-bg')).toBe('#8B5A2B');
     expect(screen.getByTestId('salon-table-t1').style.getPropertyValue('--sc-border')).toBe('#FF5050');
     expect(screen.getByRole('progressbar')).toBeTruthy();

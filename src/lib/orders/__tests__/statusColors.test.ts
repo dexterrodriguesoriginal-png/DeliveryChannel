@@ -90,7 +90,7 @@ describe('tokens compartilhados de status', () => {
     expect(TABLE_STATUS_COLOR.READY).toBe('#1AB0F5');
     expect(TABLE_STATUS_COLOR.LONG_STAY).toBe('#FF5050');
     expect(TABLE_STATUS_COLOR.BILL).toBe('#8B5A2B');
-    expect(TABLE_STATUS_COLOR.AUTHORIZED).toBe('#9B4DE0');
+    expect(TABLE_STATUS_COLOR.AUTHORIZED).toBe('#8B5A2B');
     expect(TABLE_STATUS_COLOR.AWAITING_PAYMENT).toBe('#8B5A2B');
     expect(tableColorTokens('AWAITING_PAYMENT').border).toBe('#FF5050');
     expect(SALON_TABLE_COLORS.FREE.fg).toBe('#0F172A');

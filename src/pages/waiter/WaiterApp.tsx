@@ -842,7 +842,7 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <li><i style={{ background: '#FF5050' }} />Ocupada há muito tempo</li>
             <li><i style={{ background: '#8B5A2B' }} />Conta solicitada (piscando)</li>
             <li><i style={{ background: '#8B5A2B', border: '2px solid #FF5050' }} />Aguardando PIX (alerta)</li>
-            <li><i style={{ background: '#9B4DE0' }} />Autorizado a fechar</li>
+            <li><i style={{ background: '#8B5A2B' }} />Conta pedida · selo roxo: autorizado</li>
           </ul>
           {!snap && <p className="flex items-center gap-2 py-10 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Carregando o salão…</p>}
           {snap && !tables.length && <p className="rounded-2xl bg-white/5 p-5 text-sm text-slate-300">Nenhuma mesa cadastrada. O dono cadastra em Mesas e QR Code, no painel.</p>}
