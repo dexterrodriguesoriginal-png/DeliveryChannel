@@ -93,7 +93,7 @@ export interface DineInExpensesProps {
 
   /**
    * O callback deve lan?ar erro se request_bill
-   * não confirmar o recebimento da solicita??o.
+   * não confirmar o recebimento da solicitação.
    */
   onRequestBill: (
     choice: BillPaymentChoice,
@@ -133,16 +133,16 @@ const PAYMENT_DESCRIPTIONS: Record<
   string
 > = {
   CARD_AT_TABLE:
-    'Um atendente leva a maquininha at? sua mesa.',
+    'Um atendente leva a maquininha até sua mesa.',
 
   PIX_AT_TABLE:
-    'A equipe orientar? o pagamento PIX na mesa.',
+    'A equipe orientará o pagamento PIX na mesa.',
 
   PAY_AT_COUNTER:
     'Solicite a conta para pagar no caixa.',
 
   CALL_WAITER:
-    'Chame um atendente para tirar suas d?vidas.',
+    'Chame um atendente para tirar suas dúvidas.',
 };
 
 // =====================================================
@@ -172,7 +172,7 @@ function getBillStatusLabel(
       return 'Comanda cancelada';
 
     default:
-      return 'Aguardando atualiza??o';
+      return 'Aguardando atualização';
   }
 }
 
@@ -229,7 +229,7 @@ export function DineInExpenses({
   );
 
   /**
-   * Sem sessão aprovada, não exibir informa??es
+   * Sem sessão aprovada, não exibir informações
    * de consumo nem valores da comanda.
    */
   const hasAuthorizedSession =
@@ -285,14 +285,14 @@ export function DineInExpenses({
     backButtonRef.current?.focus();
   }, []);
 
-  // Foco do di?logo de fechamento.
+  // Foco do diálogo de fechamento.
   useEffect(() => {
     if (paymentModalOpen) {
       paymentCloseRef.current?.focus();
     }
   }, [paymentModalOpen]);
 
-  // Sem sessão ativa, descartar a sele??o.
+  // Sem sessão ativa, descartar a seleção.
   useEffect(() => {
     if (!hasAuthorizedSession) {
       setPaymentModalOpen(false);
@@ -302,8 +302,8 @@ export function DineInExpenses({
     }
   }, [hasAuthorizedSession]);
 
-  // ESC apenas fecha o di?logo enquanto não
-  // existir uma opera??o em andamento.
+  // ESC apenas fecha o diálogo enquanto não
+  // existir uma operação em andamento.
   useEffect(() => {
     if (!paymentModalOpen) return;
 
@@ -363,7 +363,7 @@ export function DineInExpenses({
         await onCallWaiter();
 
         setMessage(
-          'Gar?om solicitado. Aguarde o atendimento.',
+          'Garçom solicitado. Aguarde o atendimento.',
         );
       } else {
         const choice =
@@ -371,21 +371,21 @@ export function DineInExpenses({
 
         if (!choice) {
           throw new Error(
-            'Opção de pagamento inv?lida.',
+            'Opção de pagamento inválida.',
           );
         }
 
         /**
-         * A aplica??o principal chama a RPC
-         * request_bill com o m?todo selecionado.
+         * A aplicação principal chama a RPC
+         * request_bill com o método selecionado.
          *
-         * N?O chamar close_tab aqui.
+         * NÃO chamar close_tab aqui.
          */
         await onRequestBill(choice);
 
         setMessage(
-          'Solicita??o enviada. ' +
-          'Aguarde a atualiza??o da comanda.',
+          'Solicitação enviada. ' +
+          'Aguarde a atualização da comanda.',
         );
       }
 
@@ -397,7 +397,7 @@ export function DineInExpenses({
           await onRefresh();
         } catch {
           setMessage(
-            'Solicita??o enviada. Não foi poss?vel ' +
+            'Solicitação enviada. Não foi possível ' +
             'atualizar a tela agora. Tente atualizar.',
           );
         }
@@ -406,7 +406,7 @@ export function DineInExpenses({
       setError(
         err instanceof Error
           ? err.message
-          : 'Não foi poss?vel enviar a solicita??o.',
+          : 'Não foi possível enviar a solicitação.',
       );
     } finally {
       setSubmitting(false);
@@ -426,7 +426,7 @@ export function DineInExpenses({
 
     try {
       /**
-       * O backend ? quem decide se a comanda
+       * O backend é quem decide se a comanda
        * ainda pode ser reaberta.
        *
        * Não alterar o status local manualmente.
@@ -434,7 +434,7 @@ export function DineInExpenses({
       await onReopenBill();
 
       setMessage(
-        'Solicita??o de reabertura conclu?da. ' +
+        'Solicitação de reabertura concluída. ' +
         'Consulte o status atualizado da comanda.',
       );
 
@@ -443,7 +443,7 @@ export function DineInExpenses({
           await onRefresh();
         } catch {
           setMessage(
-            'Reabertura solicitada, mas a atualiza??o ' +
+            'Reabertura solicitada, mas a atualização ' +
             'da tela não foi conclu?da.',
           );
         }
@@ -452,7 +452,7 @@ export function DineInExpenses({
       setError(
         err instanceof Error
           ? err.message
-          : 'Não foi poss?vel reabrir a comanda.',
+          : 'Não foi possível reabrir a comanda.',
       );
     } finally {
       setSubmitting(false);
@@ -468,8 +468,8 @@ export function DineInExpenses({
       await onRefresh();
     } catch {
       setError(
-        'Não foi poss?vel atualizar os gastos. ' +
-        'Confira sua conex?o.',
+        'Não foi possível atualizar os gastos. ' +
+        'Confira sua conexão.',
       );
     }
   }
@@ -573,7 +573,7 @@ export function DineInExpenses({
         </p>
       )}
 
-      {/* SESS?O N?O DISPON?VEL */}
+      {/* SESS?O NÃO DISPON?VEL */}
 
       {!hasAuthorizedSession && (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
@@ -699,7 +699,7 @@ export function DineInExpenses({
                         </div>
 
                         <strong className="text-center text-lg tabular-nums">
-                          {line.quantity}?
+                          {line.quantity}×
                         </strong>
 
                         <strong className="text-right text-base tabular-nums">
@@ -821,7 +821,7 @@ export function DineInExpenses({
                 !summary.canReopenBill && (
                   <p className="flex min-h-16 flex-1 items-center justify-center text-center text-sm font-semibold opacity-70">
                     {getBillStatusLabel(summary.status)}
-                    {' ? '}consulte a equipe para mais informa??es.
+                    {' ? '}consulte a equipe para mais informações.
                   </p>
                 )}
             </div>
@@ -835,7 +835,7 @@ export function DineInExpenses({
 
       {paymentModalOpen && summary && (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4"
           role="presentation"
         >
           <section
@@ -951,12 +951,12 @@ export function DineInExpenses({
                       size={24}
                       className="animate-spin"
                     />
-                    Enviando solicita??o...
+                    Enviando solicitação...
                   </>
                 ) : (
                   <>
                     <ShieldCheck size={24} />
-                    Confirmar solicita??o
+                    Confirmar solicitação
                   </>
                 )}
               </button>
