@@ -13,6 +13,7 @@ import { categoryRepository } from '../../repositories/categoryRepository';
 import { promotionRepository } from '../../repositories/promotionRepository';
 import { PromoPerformancePanel } from '../../components/marketing/PromoPerformancePanel';
 import { MenuOutdoorPanel } from '../../components/marketing/MenuOutdoorPanel';
+import { UpsellMarketingPanel } from '../../components/marketing/UpsellMarketingPanel';
 import { CampaignsPanel } from '../../components/marketing/CampaignsPanel';
 import { mediaRepository } from '../../repositories/mediaRepository';
 import { QRCodeCard } from '../../components/common/QRCodeCard';
@@ -156,13 +157,15 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
   // N5: campanhas só OWNER/MANAGER (RLS; sem CEO/SUPER_ADMIN) e só com backend n1n6.
   const canManageCampaigns = isN1N6Backend() && (activeRole === 'OWNER' || activeRole === 'MANAGER');
   const menuOutdoorTabVisible = canManageMenuOutdoor(activeRole);
+  const upsellTabVisible = activeRole === 'OWNER' || activeRole === 'MANAGER';
   const canManage = activeRole === 'OWNER' || activeRole === 'MANAGER' || activeRole === 'SUPER_ADMIN' || activeRole === 'CEO';
 
   // Navegação interna da ferramenta
   const [internalActiveTab, setInternalActiveTab] = useState<MarketingTab>('creatives');
   const selectedTab = requestedTab === null ? 'creatives' : requestedTab ?? internalActiveTab;
   const activeTab = (selectedTab === 'campaigns' && !canManageCampaigns)
-    || (selectedTab === 'menu-outdoor' && !menuOutdoorTabVisible) ? 'creatives' : selectedTab;
+    || (selectedTab === 'menu-outdoor' && !menuOutdoorTabVisible)
+    || (selectedTab === 'upsell' && !upsellTabVisible) ? 'creatives' : selectedTab;
   const changeActiveTab = (tab: MarketingTab) => {
     setInternalActiveTab(tab);
     onTabChange?.(tab);
@@ -1291,6 +1294,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
           </button>
         )}
 
+        {upsellTabVisible && <button type="button" data-testid="tab-upsell" onClick={() => changeActiveTab('upsell')} className={`flex min-h-12 items-center gap-2 border-b-2 px-3 pb-3 text-sm font-semibold ${activeTab === 'upsell' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Sparkles className="h-4 w-4" />Leve também</button>}
+
         {pickupQrTabVisible && (
           <button
             onClick={() => changeActiveTab('pickup-qr')}
@@ -1626,6 +1631,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
         <MenuOutdoorPanel tenantId={activeTenant.id} viewerId={securityContext.userId}
           role={activeRole} products={products} />
       )}
+      {activeTab === 'upsell' && upsellTabVisible && <UpsellMarketingPanel tenantId={activeTenant.id} viewerId={securityContext.userId} role={activeRole} products={products} />}
 
       {activeTab === 'materials' && (
         <div className="space-y-6">

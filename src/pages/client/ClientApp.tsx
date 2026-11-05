@@ -138,6 +138,8 @@ import {
 import { customerAppRepository } from '../../repositories/customerAppRepository';
 import { CartScreen } from '../../components/client/customer/CartScreen';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
+import { UpsellSheet } from '../../components/client/customer/UpsellSheet';
+import { useSmartUpsell } from '../../hooks/useSmartUpsell';
 import { SearchScreen } from '../../components/client/customer/SearchScreen';
 import { OffersScreen } from '../../components/client/customer/OffersScreen';
 import { ProfileScreen, ProfilePage } from '../../components/client/customer/ProfileScreen';
@@ -281,6 +283,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
   // 4. Carrinho estritamente isolado pelo tenant.id real
   const [cart, setCart] = useState<CartItem[]>([]);
+  // An accepted suggestion may need the existing required-options flow first.
+  const pendingUpsellProductRef = useRef<string | null>(null);
+  useEffect(() => { pendingUpsellProductRef.current = null; }, [slug, supabaseUser?.id]);
 
   // 5. Histórico e Pedidos do Cliente
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
@@ -954,13 +959,23 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // Chave de idempotência por tentativa de checkout (renovada após pedido concluído).
   const checkoutIdempotencyKeyRef = useRef<string>(newIdempotencyKey());
 
+  const upsell = useSmartUpsell({
+    slug: !isLoadingStore && storeData?.tenant.slug === slug ? slug : '',
+    identityKey: supabaseUser && !supabaseUser.is_anonymous ? supabaseUser.id : null,
+    products: storeData?.products || [],
+    channel: 'DELIVERY',
+    hidden: previewMode || isCheckoutOpen || isPromoCheckoutOpen || isAuthModalOpen || isAccountOpen
+      || addressFlow.open || navTab === 'cart' || isSubmittingOrder || Boolean(completedOrder),
+    onAcceptProduct: product => handleAddToCart(product, CATALOG_ORIGIN, { upsell: true }),
+  });
+
   // Normalização de telefone / WhatsApp com máscara brasileira
   const handlePhoneChange = (val: string) => {
     setCustomerPhone(formatBRPhone(val));
   };
 
   // Manipulação de Carrinho
-  const handleAddToCart = (product: Product, origin: PurchaseOrigin = CATALOG_ORIGIN, opts?: { silent?: boolean; selections?: SelectedProductOption[] }) => {
+  const handleAddToCart = (product: Product, origin: PurchaseOrigin = CATALOG_ORIGIN, opts?: { silent?: boolean; selections?: SelectedProductOption[]; upsell?: boolean }) => {
     const isAvailable = product.isAvailable !== undefined ? product.isAvailable : (product.stockQuantity > 0);
     if (!isAvailable) {
       showToast({
@@ -973,8 +988,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
     // Sempre guarda o produto CANÔNICO do catálogo (o preço da campanha vem da origem, nunca de um produto alterado).
     const canonical = storeData?.products.find((x) => x.id === product.id && x.tenantId === storeData.tenant.id) || product;
+    const fromUpsell = opts?.upsell === true || pendingUpsellProductRef.current === canonical.id;
     const groups = canonical.optionGroups || [];
     if (addonsEnabled && groups.some(group => group.active) && !opts?.selections) {
+      pendingUpsellProductRef.current = opts?.upsell ? canonical.id : null;
       setSelectedProductOrigin(origin);
       setSelectedProductModal(canonical);
       setSelectedOptionChoices([]);
@@ -982,20 +999,24 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     }
     const selections = opts?.selections;
     if (groups.length && selections && !validateOptionSelection(groups, selections).valid) return;
+    let nextCart: CartItem[];
     if (selections?.length) {
       const stableOptions = [...selections].sort((a, b) => `${a.groupId}:${a.optionId}`.localeCompare(`${b.groupId}:${b.optionId}`));
       const key = configuredCartLineKey(canonical.id, origin, stableOptions);
-      setCart(prev => {
-        const existing = prev.find(item => item.key === key);
-        return existing
-          ? prev.map(item => item.key === key ? { ...item, quantity: item.quantity + 1 } : item)
-          : [...prev, { key, product: canonical, quantity: 1, origin, options: stableOptions }];
-      });
-      if (!opts?.silent) showToast({ type: 'success', title: 'Adicionado à Sacola', message: `${product.name} adicionado com sucesso.` });
-      return;
+      const existing = cart.find(item => item.key === key);
+      nextCart = existing
+        ? cart.map(item => item.key === key ? { ...item, quantity: item.quantity + 1 } : item)
+        : [...cart, { key, product: canonical, quantity: 1, origin, options: stableOptions }];
+    } else {
+      // Even the same product keeps distinct catalog/campaign purchase origins.
+      nextCart = addToOriginCart<Product>(cart, canonical, origin) as CartItem[];
     }
-    // Mesmo produto de origens diferentes = linhas diferentes (não mescla catálogo com campanha).
-    setCart((prev) => addToOriginCart<Product>(prev, canonical, origin) as CartItem[]);
+    setCart(nextCart);
+    if (pendingUpsellProductRef.current === canonical.id) pendingUpsellProductRef.current = null;
+    if (!opts?.silent) {
+      setSelectedProductModal(null);
+      if (!fromUpsell) void upsell.notifyAdded(canonical, nextCart.map(item => ({ productId: item.product.id, quantity: item.quantity })));
+    }
 
     if (opts?.silent) return;
     showToast({
@@ -1203,6 +1224,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   }, [storeData, handleSelectProduct]);
 
   const handleCloseProductModal = useCallback(() => {
+    pendingUpsellProductRef.current = null;
     setSelectedProductModal(null);
     try {
       const url = new URL(window.location.href);
@@ -1462,6 +1484,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         // Sem preço: só produto, quantidade, observação e (para itens de campanha) a referência da origem.
         items: cart.map(item => toCheckoutItem(item)),
       });
+      // Attribution is optional telemetry; a failure must never undo a real order.
+      void upsell.trackOrder(order.id).catch(() => {});
 
       // O cupom é consumido pelo servidor dentro do checkout (sem resgate pelo navegador).
       setCompletedCouponRedemption(null);
@@ -3586,6 +3610,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           primaryColor={buttonColor}
         />
       )}
+
+      <UpsellSheet offer={upsell.offer} title={upsell.title} busy={upsell.busy} error={upsell.error}
+        onAccept={upsell.accept} onClose={upsell.dismiss} />
 
       <AddressFlow
         open={addressFlow.open}

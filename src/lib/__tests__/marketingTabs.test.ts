@@ -7,6 +7,7 @@ describe('Marketing pickup QR tab', () => {
     expect(isMarketingTab('pickup-qr')).toBe(true);
     expect(isMarketingTab('campaigns')).toBe(true);
     expect(isMarketingTab('menu-outdoor')).toBe(true);
+    expect(isMarketingTab('upsell')).toBe(true);
     expect(isMarketingTab('not-a-marketing-tab')).toBe(false);
   });
 

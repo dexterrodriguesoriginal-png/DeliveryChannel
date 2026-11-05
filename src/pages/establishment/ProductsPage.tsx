@@ -33,6 +33,7 @@ import { formatBRL } from '../../lib/pricing/money';
 import { useModules } from '../../hooks/useModules';
 import { QualityBadge } from '../../components/establishment/quality/QualityScoreCard';
 import { ProductOptionGroupsPanel } from '../../components/establishment/ProductOptionGroupsPanel';
+import { ProductUpsellPinsEditor } from '../../components/establishment/ProductUpsellPinsEditor';
 
 export const ProductsPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ onNavigate }) => {
   const { activeTenant, securityContext } = useAuth();
@@ -53,6 +54,7 @@ export const ProductsPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [upsellProduct, setUpsellProduct] = useState<Product | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -95,6 +97,7 @@ export const ProductsPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({
   useEffect(() => {
     loadData();
   }, [loadData]);
+  useEffect(() => { setUpsellProduct(null); }, [activeTenant?.id, securityContext.userId, securityContext.userRole]);
 
   if (!activeTenant) return null;
 
@@ -516,6 +519,7 @@ export const ProductsPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({
 
                       <td className="p-3.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {securityContext.tenantId === activeTenant.id && ['OWNER', 'MANAGER'].includes(securityContext.userRole) && p.tenantId === activeTenant.id && <button type="button" onClick={() => setUpsellProduct(p)} aria-label={`Sugerir junto com ${p.name}`} className="min-h-11 whitespace-nowrap rounded-xl bg-emerald-50 px-3 text-xs font-bold text-emerald-900 hover:bg-emerald-100">Sugerir junto</button>}
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(p)}
@@ -558,6 +562,7 @@ export const ProductsPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({
       )}
 
       {/* Modal de Criação / Edição de Produto */}
+      {upsellProduct && <ProductUpsellPinsEditor tenantId={activeTenant.id} viewerId={securityContext.userId} role={securityContext.userRole} source={upsellProduct} products={products} onClose={() => setUpsellProduct(null)} />}
       <Modal
         isOpen={isModalOpen}
         onClose={() => !isSaving && setIsModalOpen(false)}

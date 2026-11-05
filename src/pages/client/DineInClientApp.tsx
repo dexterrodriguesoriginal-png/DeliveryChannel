@@ -8,6 +8,9 @@ import { formatBRL } from '../../lib/pricing/money';
 import type { Category, Product, SelectedProductOption } from '../../types';
 import type { MenuTheme } from '../../types/menuTheme';
 import { productToPricingLine } from '../../lib/pricing/fulfillmentPricing';
+import { useSmartUpsell } from '../../hooks/useSmartUpsell';
+import { UpsellSheet } from '../../components/client/customer/UpsellSheet';
+import type { UpsellCartItem } from '../../types/upsell';
 import { waiterV2Repository, type TableWaiter } from '../../repositories/waiterV2Repository';
 import { initials } from '../../lib/waiter/waiterRouting';
 import { billSplitAmounts, BillSplitMode, DineInPaymentMethod, parseTenderCents, tenderStatus } from '../../lib/customer/dineIn';
@@ -130,6 +133,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [checkoutIdentityOpen, setCheckoutIdentityOpen] = useState(false);
   const [optionsProduct, setOptionsProduct] = useState<Product | null>(null);
   const [optionChoices, setOptionChoices] = useState<SelectedProductOption[]>([]);
+  const optionsFromUpsell = useRef(false);
+  const pendingUpsellAdd = useRef<{ product: Product; items: UpsellCartItem[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [pendingApproval, setPendingApproval] = useState(false);
@@ -214,6 +219,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       setEntryRole(null); setEntryApproved(null); setInUse(false); setInvite(null); setEndedReason(null);
       setConfirmOrderOpen(false); setPendingApproval(false); setAwaitingReleaseModalOpen(false);
       setOptionsProduct(null); setOptionChoices([]);
+      pendingUpsellAdd.current = null; optionsFromUpsell.current = false;
       submitLockRef.current = false; submitKeyRef.current = uuid();
       setIdentityConfirmed(false); openedUserRef.current = '';
       try { sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${token}`); } catch { /* storage optional */ }
@@ -243,6 +249,25 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const billStatusLabel = awaitingPix ? 'Aguardando PIX' : 'Conta pedida';
   const billColors = statusColorStyle(awaitingPix ? 'AWAITING_PAYMENT' : tab?.status === 'WAITER_AUTHORIZED' ? 'AUTHORIZED' : 'BILL');
   const orderingDisabled = qrPaused || tabClosed || billRequested;
+  const upsell = useSmartUpsell({
+    slug: resolution?.tenantSlug || '',
+    identityKey: needsIdentity ? null : supabaseUser!.id,
+    cartScopeKey: token,
+    products, channel: 'TOTEM',
+    hidden: loading || view !== 'MENU' || busy || orderingDisabled || !!optionsProduct
+      || checkoutIdentityOpen || confirmOrderOpen || accountOpen || billOpen || awaitingReleaseModalOpen || moveTableOpen,
+    onAcceptProduct: product => addItem(product, true),
+  });
+  const { trackOrder: trackUpsellOrder, beforeCheckout: beforeUpsellCheckout, notifyAdded: notifyUpsellAdded } = upsell;
+  const reviewRound = useCallback(() => {
+    void beforeUpsellCheckout(cart.map(line => ({ productId: line.product.id, quantity: line.quantity })), () => setConfirmOrderOpen(true));
+  }, [beforeUpsellCheckout, cart]);
+  useEffect(() => {
+    const added = pendingUpsellAdd.current;
+    if (!added || optionsProduct) return;
+    pendingUpsellAdd.current = null;
+    void notifyUpsellAdded(added.product, added.items);
+  }, [cart, optionsProduct, notifyUpsellAdded]);
   const split = useMemo(() => {
     const customCents = parseTenderCents(customShare) || 0;
     try { return billSplitAmounts(accountTotalCents, splitMode, Number(splitParts), customCents); } catch { return []; }
@@ -359,6 +384,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setEntryRole(null); setEntryApproved(null); setInUse(false); setEntryDone(false); setEndedReason(null); setInvite(null);
     setAccountOpen(false); setBillOpen(false); setCartOpen(false); setConfirmOrderOpen(false); setCheckoutIdentityOpen(false);
     setOptionsProduct(null); setOptionChoices([]);
+    pendingUpsellAdd.current = null; optionsFromUpsell.current = false;
     setPendingApproval(false); setAwaitingReleaseModalOpen(false);
     submitLockRef.current = false; submitKeyRef.current = uuid();
     setIdentityConfirmed(false);
@@ -500,10 +526,10 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   // automatically: the customer still reviews and confirms the items.
   useEffect(() => {
     if (!checkoutPending || needsIdentity || !sessionId || !cart.length || busy) return;
-    setCheckoutIdentityOpen(false);
+    if (checkoutIdentityOpen) { setCheckoutIdentityOpen(false); return; }
     if (awaitingRelease) { setAwaitingReleaseModalOpen(true); return; }
-    if (!orderingDisabled) { setConfirmOrderOpen(true); setCheckoutPending(false); }
-  }, [checkoutPending, needsIdentity, sessionId, cart.length, busy, awaitingRelease, orderingDisabled]);
+    if (!orderingDisabled) { setCheckoutPending(false); reviewRound(); }
+  }, [checkoutPending, checkoutIdentityOpen, needsIdentity, sessionId, cart.length, busy, awaitingRelease, orderingDisabled, reviewRound]);
 
   const submitInviteCode = useCallback(async (code: string) => {
     if (!supabaseUser || !deviceIdRef.current) return;
@@ -675,6 +701,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
     if (data) {
+      if (typeof data.orderId === 'string') void trackUpsellOrder(data.orderId);
       setConfirmOrderOpen(false);
       setPendingApproval(false);
       setAwaitingReleaseModalOpen(false);
@@ -686,7 +713,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       setNotice('Pedido feito! A cozinha já recebeu.');
       await loadAccount(true);
     }
-  }, [access, cart, contextMatches, loadAccount, sessionId, tabClosed]);
+  }, [access, cart, contextMatches, loadAccount, sessionId, tabClosed, trackUpsellOrder]);
 
   useEffect(() => {
     if (!pendingApproval || tabClosed) return;
@@ -714,17 +741,20 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       if (sessionId) void tableAccessRepository.pingPending(sessionId);
       return;
     }
-    setConfirmOrderOpen(true);
+    reviewRound();
   };
 
-  const addItem = (product: Product) => {
+  const addItem = (product: Product, fromUpsell = false) => {
     if (orderingDisabled || busy || !products.some(item => item.id === product.id)) return;
     if (product.optionGroups?.some(group => group.active)) {
+      optionsFromUpsell.current = fromUpsell;
       setOptionsProduct(product);
       setOptionChoices([]);
       return;
     }
-    setCart(current => addDineInCartLine(current, product));
+    const next = addDineInCartLine(cart, product);
+    if (!fromUpsell) pendingUpsellAdd.current = { product, items: next.map(line => ({ productId: line.product.id, quantity: line.quantity })) };
+    setCart(next);
     triggerAddedFeedback(product.name, 1);
   };
   const addConfiguredItem = () => {
@@ -736,7 +766,10 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
     const addedName = optionsProduct.name;
-    setCart(current => addDineInCartLine(current, optionsProduct, optionChoices));
+    const next = addDineInCartLine(cart, optionsProduct, optionChoices);
+    if (!optionsFromUpsell.current) pendingUpsellAdd.current = { product: optionsProduct, items: next.map(line => ({ productId: line.product.id, quantity: line.quantity })) };
+    optionsFromUpsell.current = false;
+    setCart(next);
     setOptionsProduct(null);
     setOptionChoices([]);
     setNotice('');
@@ -747,7 +780,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       const line = cart.find(item => item.key === key);
       if (line) triggerAddedFeedback(line.product.name, delta);
     }
-    setCart(current => changeDineInCartLineQuantity(current, key, delta));
+    const next = changeDineInCartLineQuantity(cart, key, delta);
+    setCart(next);
+    if (!next.length) upsell.clear();
   };
   const changeLineNotes = (key: string, lineNotes: string) =>
     setCart(current => setDineInCartLineNotes(current, key, lineNotes));
@@ -1143,7 +1178,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             )}
             <button
               type="button"
-              onClick={() => setCartOpen(true)}
+              onClick={() => { upsell.dismiss(); setCartOpen(true); }}
               data-testid="dinein-bag-counter"
               aria-label={`Sacola com ${totalCartItems} ${totalCartItems === 1 ? 'item' : 'itens'}`}
               className={`relative flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-900 transition-transform duration-300 ${bagBounce ? 'scale-110 ring-2 ring-emerald-500 animate-bounce' : 'scale-100'}`}
@@ -1228,8 +1263,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           orderingDisabled={orderingDisabled}
           busy={busy}
           onAddProduct={addItem}
-          onOpenProduct={product => { if (!orderingDisabled && !busy) { setOptionsProduct(product); setOptionChoices([]); } }}
-          onOpenCart={() => setCartOpen(true)}
+          onOpenProduct={product => { if (!orderingDisabled && !busy) { optionsFromUpsell.current = false; setOptionsProduct(product); setOptionChoices([]); } }}
+          onOpenCart={() => { upsell.dismiss(); setCartOpen(true); }}
           onBack={() => setView('HOME')}
         />}
         {awaitingReleaseModalOpen && awaitingRelease && (
@@ -1499,6 +1534,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           </section>
         </div>
       )}
+      <UpsellSheet offer={upsell.offer} title={upsell.title} busy={upsell.busy} error={upsell.error} onAccept={upsell.accept} onClose={upsell.dismiss} />
     </main>
   );
 };
