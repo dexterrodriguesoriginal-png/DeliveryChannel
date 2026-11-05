@@ -35,3 +35,4 @@ As cores de Pedido novo / Em preparo / Pronto no balcão das mesas são derivada
 - **Alertas de pedidos (Dashboard)**: painel e linhas usam `STATUS_COLORS[x].alertBg`, um tom um pouco mais forte que o fundo claro de Pedidos, mantendo o texto `fg` (AA):
   vermelho `#fbd5d5` (novo/atrasado), laranja `#fee2cc` (em preparo), roxo `#ecdcfc` (pronto/servido), verde `#d3efdd`, cinza `#e4e6e9`.
   Prioridade do painel: Atrasados/Novos (vermelho) > Em preparo (laranja) > Prontos (roxo). Linha atrasada segue `LATE` (vermelho sólido).
+

@@ -332,3 +332,4 @@ describe('Entrega 1.1: diretório, abas e convites', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });
+

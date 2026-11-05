@@ -18,3 +18,4 @@ grep 'ROLLBACK_BLOCKED' "$TMP/down.log" >/dev/null
 snapshot >"$TMP/after"
 diff -u "$TMP/before" "$TMP/after"
 echo 'PASS: rollback006 reconhece uso apenas de configuração e preserva o valor'
+

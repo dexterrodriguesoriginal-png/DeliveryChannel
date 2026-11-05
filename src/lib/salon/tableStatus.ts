@@ -238,3 +238,4 @@ export function writeLongStay(storage: Pick<Storage, 'setItem'> | undefined, ten
   try { storage?.setItem(`salon_long_stay_${tenantId}`, String(value)); } catch { /* best effort */ }
   return value;
 }
+

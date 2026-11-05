@@ -187,3 +187,4 @@ END $$;
 REVOKE ALL ON FUNCTION public.finish_tab_receipt(uuid,boolean,text) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.finish_tab_receipt(uuid,boolean,text) TO service_role;
 COMMIT;
+

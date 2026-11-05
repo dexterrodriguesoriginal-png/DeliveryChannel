@@ -78,3 +78,4 @@ grep -Eiq 'DELETE[[:space:]]+FROM[[:space:]]+storage\.' $DOWN && { echo 'FALHOU:
 for d in gv2_fx gv2_run gv2_rb gv2_ref; do dropdb --if-exists $d >/dev/null 2>&1; done
 [ $STATUS = 0 ] && echo 'PASS: garcom_v2 (suíte, rollback exato, reaplicação)' || echo 'FAIL'
 exit $STATUS
+

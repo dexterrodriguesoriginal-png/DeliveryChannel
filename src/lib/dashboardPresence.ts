@@ -12,3 +12,4 @@ export function useMarkDashboardOpen(): void {
 export function useIsDashboardOpen(): boolean {
   return useSyncExternalStore(cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, () => mounted > 0, () => false);
 }
+

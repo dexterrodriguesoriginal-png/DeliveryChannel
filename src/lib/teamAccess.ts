@@ -43,3 +43,4 @@ export function canCustomizeRolePermission(role: RoleId, permission: string): bo
   };
   return !ceilings[role] || ceilings[role]!.includes(permission);
 }
+

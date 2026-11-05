@@ -76,3 +76,4 @@ describe('retorno do primeiro acesso da equipe', () => {
     expect(emailRedirectUrl({ origin: 'https://app.test', pathname: '/garcom/../segredo' })).toBe('https://app.test');
   });
 });
+

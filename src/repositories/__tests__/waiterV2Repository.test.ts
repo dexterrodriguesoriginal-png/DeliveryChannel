@@ -108,3 +108,4 @@ describe('waiterV2Repository', () => {
     expect(waiterRpcMessage({ code: '42501', message: 'x' })).toBe('Sem permissão para esta ação.');
   });
 });
+

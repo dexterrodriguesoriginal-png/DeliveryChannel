@@ -185,3 +185,4 @@ describe('registro do Service Worker e toast "Nova versão disponível — atual
     expect(swCode).toContain("url.pathname.endsWith('.webmanifest')");
   });
 });
+

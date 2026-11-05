@@ -235,3 +235,4 @@ describe('isolamento e atualização do alerta de conta pedida', () => {
     expect(h.beep).toHaveBeenCalledTimes(2);
   });
 });
+

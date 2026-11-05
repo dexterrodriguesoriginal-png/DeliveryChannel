@@ -307,3 +307,4 @@ export function LegalBoundary({ children }: { children: React.ReactNode }) {
     </main>
   );
 }
+

@@ -113,3 +113,4 @@ export class TabPixService {
   }
 }
 export { chargeRecord, confirmationRecord };
+

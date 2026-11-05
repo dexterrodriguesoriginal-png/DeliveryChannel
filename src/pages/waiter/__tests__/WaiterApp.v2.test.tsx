@@ -385,3 +385,4 @@ describe('Garçom v2 — Login simples e Modos de atendimento', () => {
     }
   });
 });
+

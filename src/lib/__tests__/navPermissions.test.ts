@@ -43,3 +43,4 @@ describe('áreas e menu por papel', () => {
     expect(canAccessEstTab('MANAGER', 'inventada', ['manage_catalog'])).toBe(false);
   });
 });
+

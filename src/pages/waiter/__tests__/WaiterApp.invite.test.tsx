@@ -345,3 +345,4 @@ describe('/garcom — cadastro só após convite da loja', () => {
     expect(password.type).toBe('password');
   });
 });
+

@@ -376,3 +376,4 @@ SELECT t.login(:'W1'::uuid);
 SELECT t.throws($q$SELECT public.request_bill('d3000000-0000-0000-0000-000000000015')$q$,'FORBIDDEN','B1: garçom não pede conta usando sessão cliente QR');
 SELECT t.throws($q$UPDATE public.dining_tabs SET waiter_authorized_by=auth.uid(),waiter_authorized_at=now(),status='WAITER_AUTHORIZED' WHERE id='d2000000-0000-0000-0000-000000000015'$q$,'permission denied','B4: garçom não forja auditoria por UPDATE');
 RESET ROLE;
+

@@ -62,3 +62,4 @@ describe('payment order actor permissions', () => {
     expect(db.rpc).not.toHaveBeenCalled();
   });
 });
+

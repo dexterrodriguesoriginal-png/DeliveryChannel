@@ -101,3 +101,4 @@ export function newReadyIds(prev: ReadonlySet<string> | null, orders: readonly {
   if (!prev) return [];
   return orders.filter(o => o.status === 'READY' && !prev.has(o.id)).map(o => o.id);
 }
+

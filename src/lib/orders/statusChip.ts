@@ -41,3 +41,4 @@ export const FILTER_CHIP_COLORS = {
   novos: STATUS_COLORS.PENDING, emPreparo: STATUS_COLORS.PREPARING, prontos: STATUS_COLORS.READY,
   atrasados: STATUS_COLORS.LATE, estoque: STATUS_COLORS.PREPARING,
 } as const;
+

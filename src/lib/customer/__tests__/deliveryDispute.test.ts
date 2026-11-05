@@ -40,3 +40,4 @@ describe('contestação da entrega pelo cliente', () => {
     expect(deliveryNoticeLabel(confirmedWithCode, start)).toBe('Entrega confirmada com código');
   });
 });
+

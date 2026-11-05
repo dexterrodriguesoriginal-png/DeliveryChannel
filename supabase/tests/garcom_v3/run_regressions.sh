@@ -75,3 +75,4 @@ chk "$(fhr)" "$(fh)" 'segundo rollback alterou funções'
 for d in gv3_fx gv3_run gv3_rb gv3_ref gv3_data_rb; do dropdb --if-exists $d >/dev/null 2>&1; done
 [ $STATUS = 0 ] && echo 'PASS: garcom_v3 (suíte, rollback exato, reaplicação)' || echo 'FAIL'
 exit $STATUS
+

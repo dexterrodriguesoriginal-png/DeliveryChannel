@@ -230,3 +230,4 @@ export async function registerPwaServiceWorker(opts: RegisterSwOptions = {}): Pr
 
   return reg;
 }
+

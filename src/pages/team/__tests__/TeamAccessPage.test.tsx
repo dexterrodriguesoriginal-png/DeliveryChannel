@@ -72,3 +72,4 @@ describe('primeiro acesso por papel e loja', () => {
     expect(readTeamAccessPath('/equipe/%2e%2e/owner')).toBeNull();
   });
 });
+

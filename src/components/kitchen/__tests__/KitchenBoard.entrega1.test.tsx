@@ -31,3 +31,4 @@ describe('KDS da equipe', () => {
     expect(repo.listOrders).toHaveBeenCalledTimes(2);
   });
 });
+

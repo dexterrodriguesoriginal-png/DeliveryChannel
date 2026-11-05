@@ -34,3 +34,4 @@ describe('links e papéis da equipe', () => {
     expect(maskTeamInviteEmail('inválido')).toBe('***');
   });
 });
+

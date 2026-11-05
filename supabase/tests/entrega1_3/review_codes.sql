@@ -110,3 +110,4 @@ SELECT t.login(:'WAITER'::uuid);
 SELECT t.ok((public.waiter_mark_delivered('e13c0000-0000-0000-0000-000000000014',:'CODE_EARLY')->>'success')::boolean,'review-code garçom entrega rodada depois do pagamento antecipado');
 RESET ROLE;
 SELECT t.login(NULL);
+

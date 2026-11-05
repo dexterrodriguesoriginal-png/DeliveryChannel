@@ -46,3 +46,4 @@ export function createReceiptStore(env: NodeJS.ProcessEnv): ReceiptStore | null 
   const paymentStore = createPaymentStore(env);
   return paymentStore ? new SupabaseReceiptStore(paymentStore.db) : null;
 }
+

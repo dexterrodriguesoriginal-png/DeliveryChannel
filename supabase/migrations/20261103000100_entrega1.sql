@@ -601,3 +601,4 @@ DROP FUNCTION pg_temp.entrega1_empty_search_path(text);
 DROP FUNCTION pg_temp.entrega1_checked_regexp_replace(text,text,text,text);
 DROP FUNCTION pg_temp.entrega1_checked_replace(text,text,text,text);
 COMMIT;
+

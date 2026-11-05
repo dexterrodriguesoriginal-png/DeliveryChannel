@@ -23,3 +23,4 @@ SELECT t.ok(CASE WHEN to_regprocedure('public.seed_demo_pack(text)') IS NULL
   'F3: seed segue a janela da migração (N1 automático; demo-pack 3500 apenas no onboarding)');
 SELECT t.ok(NOT EXISTS (SELECT 1 FROM public.offers o JOIN public.products p ON p.id = o.product_id
     WHERE o.tenant_id='10000000-0000-0000-0000-00000000000c' AND p.tenant_id <> o.tenant_id), 'F3: seed só usa o próprio tenant');
+

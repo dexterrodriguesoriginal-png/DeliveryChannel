@@ -206,3 +206,4 @@ GRANT EXECUTE ON FUNCTION public.set_waiter_table_move_approval(uuid,boolean),pu
  public._salon_owns_move_session(uuid,uuid,uuid),public.list_table_move_requests(uuid),public.list_my_table_move_requests(uuid),
  public.resolve_table_move_request(uuid,boolean) TO authenticated;
 COMMIT;
+

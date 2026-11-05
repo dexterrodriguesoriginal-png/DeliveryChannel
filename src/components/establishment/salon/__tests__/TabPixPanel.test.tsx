@@ -130,3 +130,4 @@ describe('TabPixPanel', () => {
     expect(pixSecondsLeft(new Date(1_000).toISOString(), 4_000)).toBe(0);
   });
 });
+

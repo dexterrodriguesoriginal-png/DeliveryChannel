@@ -76,3 +76,4 @@ export function canCollectTab(status: string | undefined, role: string | null | 
   if (role === 'OWNER' || role === 'MANAGER' || role === 'CASHIER') return !!status && !['CLOSED', 'CANCELLED'].includes(status);
   return role === 'WAITER' && attendsTable && (status === 'WAITER_AUTHORIZED' || status === 'AWAITING_PAYMENT');
 }
+

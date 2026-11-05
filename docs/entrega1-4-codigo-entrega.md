@@ -28,3 +28,4 @@ a opção; confirmação com código bloqueia “Não recebi”.
 setter → `submit_round` → trigger → projeção aprovada, rodadas de outro
 integrante (`mine=false`), ausência de códigos retroativos, isolamento,
 confirmação e bloqueio após cinco erros.
+

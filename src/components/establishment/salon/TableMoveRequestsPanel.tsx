@@ -70,3 +70,4 @@ export function TableMoveRequestsPanel({ tenantId, viewerId = '', role, onResolv
     </article>)}
   </section>;
 }
+

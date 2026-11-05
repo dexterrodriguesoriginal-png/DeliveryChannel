@@ -43,3 +43,4 @@ describe('estatísticas agregadas do salão', () => {
     await expect(salonNightStatsRepository.load('store-b')).rejects.toThrow(SALON_STATS_ERROR);
   });
 });
+

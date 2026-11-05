@@ -17,3 +17,4 @@ export const storeTeamRepository = {
   listPermissions: (tenantId: string) => call<StoreRolePermission[]>('list_store_role_permissions', { p_tenant: tenantId }),
   setPermission: (tenantId: string, role: RoleId, permission: string, enabled: boolean) => call<void>('set_store_role_permission', { p_tenant: tenantId, p_role: role, p_permission: permission, p_enabled: enabled }),
 };
+

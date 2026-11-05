@@ -428,3 +428,4 @@ export const WaiterModesModal: React.FC<WaiterModesModalProps> = ({
     </Modal>
   );
 };
+

@@ -111,3 +111,4 @@ export const KitchenPage: React.FC = () => {
       onFatal={(code, text) => code === 'KITCHEN_LOCKED' ? load() : setState({ kind: 'msg', text, repair: code === 'KITCHEN_DEVICE_REVOKED' || code === 'NOT_PAIRED' })} />
   );
 };
+

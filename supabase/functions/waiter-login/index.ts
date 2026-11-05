@@ -38,3 +38,4 @@ Deno.serve(async (req: Request) => {
   if (error || !data.session) return json(GENERIC, 401);
   return json({ ok: true, session: { access_token: data.session.access_token, refresh_token: data.session.refresh_token } });
 });
+

@@ -43,3 +43,4 @@ describe('Projeção segura de entrega para o salão', () => {
     expect(h.rpc).toHaveBeenCalledExactlyOnceWith('staff_submit_table_round', { p_table_id: 'secondary-table', p_items: items, p_idempotency_key: 'idempotency' });
   });
 });
+

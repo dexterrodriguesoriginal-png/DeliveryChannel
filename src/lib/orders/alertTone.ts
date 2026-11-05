@@ -33,3 +33,4 @@ export const ALERT_TONE_CLASS: Record<AlertTone, string> = {
   stock: 'bg-white border-orange-300 border-l-orange-500',
   neutral: 'bg-white border-slate-200 border-l-slate-300',
 };
+

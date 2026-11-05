@@ -109,3 +109,4 @@ export function createPaymentStore(env: NodeJS.ProcessEnv): PaymentStore | null 
   if (!url || !env.SUPABASE_SERVICE_ROLE_KEY) return null;
   return new PaymentStore(createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } }));
 }
+

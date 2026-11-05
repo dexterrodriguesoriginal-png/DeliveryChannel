@@ -36,3 +36,4 @@ O rollback005 restaura o schema/ACL anterior somente quando não há registros d
 Com pagamentos mistos, o recibo lista todas as formas registradas (por exemplo `CASH + CREDIT_CARD`), sem reduzir o pagamento à última parcela.
 
 Ao fechar mesas juntas, os vínculos ativos das mesas são liberados. O garçom que efetivamente fechou (`closed_by`) ou solicitou a cobrança PIX paga (`created_by` de uma cobrança confirmada, sem revisão e no valor correto) mantém acesso ao comprovante daquela conta. A regra continua exigindo vínculo ativo com a mesma loja, ferramenta/perfil habilitados e não concede acesso a outras contas.
+

@@ -42,3 +42,4 @@ describe('rótulos pt-BR de pedido', () => {
     expect(orderTypeLabel('DINE_IN', 'Mesa 04')).toBe('Mesa 04');
   });
 });
+

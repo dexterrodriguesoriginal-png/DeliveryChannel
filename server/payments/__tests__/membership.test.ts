@@ -33,3 +33,4 @@ describe('sensitive provider account membership', () => {
     await expect(store.membership('owner', membershipId)).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });
+

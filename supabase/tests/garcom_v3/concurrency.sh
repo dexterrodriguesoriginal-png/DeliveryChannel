@@ -44,3 +44,4 @@ SELECT t.is((SELECT count(*) FROM public.tab_payments WHERE tab_id='d2000000-000
 SELECT t.is((SELECT change_given_cents FROM public.tab_payments WHERE tab_id='d2000000-0000-0000-0000-000000000017'),9000,'A4: dinheiro aceita nota maior que o dobro da conta e troco correto');
 SELECT t.is((SELECT count(*) FROM public.orders WHERE tab_id='d2000000-0000-0000-0000-000000000017'),1::bigint,'A5 concorrência: consumo novo não entra depois do fechamento');
 SQL
+

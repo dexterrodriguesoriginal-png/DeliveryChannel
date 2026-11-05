@@ -198,3 +198,4 @@ export function cartStorageKey(tenantId: string): string {
   if (!tenantId) throw new Error('tenantId obrigatório para chave de carrinho');
   return `adegafood_cart_${tenantId}`;
 }
+

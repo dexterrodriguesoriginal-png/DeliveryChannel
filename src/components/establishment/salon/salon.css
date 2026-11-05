@@ -112,3 +112,4 @@
 @media (prefers-reduced-motion: reduce) {
   .salon-card--BILL, .salon-card--AUTHORIZED, .salon-card--AWAITING_PAYMENT, .salon-bill-alert { animation:none !important; border-width:3px; }
 }
+

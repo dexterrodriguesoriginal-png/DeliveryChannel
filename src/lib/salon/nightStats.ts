@@ -55,3 +55,4 @@ export function salonStatsDuration(seconds: number | null): string {
   const rounded = Math.max(0, Math.round(seconds));
   return rounded < 60 ? `${rounded} s` : formatElapsed(Math.round(rounded / 60));
 }
+

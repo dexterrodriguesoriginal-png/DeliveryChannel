@@ -92,3 +92,4 @@ RESET ROLE;
 SELECT set_config('t.delete_active', t.mk_order(:A,'PREPARING')::text, false);
 SELECT t.throws(format($$DELETE FROM public.orders WHERE id = %L$$, current_setting('t.delete_active')), 'ORDER_DELETE_FORBIDDEN|DELETE_FORBIDDEN|Somente|somente', 'N1: trigger preserva pedido em preparo na sessão autenticada');
 \endif
+

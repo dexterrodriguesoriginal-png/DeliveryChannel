@@ -149,3 +149,4 @@ SELECT t.ok(
   (SELECT count(*)::int FROM public.orders WHERE tenant_id = :'A' AND fulfillment_type = 'DINE_IN') >= 1,
   'WAITER consegue ler pedidos DINE_IN da própria loja'
 );
+

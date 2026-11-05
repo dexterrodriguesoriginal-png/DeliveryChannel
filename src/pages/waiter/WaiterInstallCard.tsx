@@ -79,3 +79,4 @@ export const WaiterInstallCard: React.FC<WaiterInstallCardProps> = ({
     </section>
   );
 };
+

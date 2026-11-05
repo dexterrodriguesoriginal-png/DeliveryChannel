@@ -45,3 +45,4 @@ describe('open dining tab warning', () => {
    expect(rows[0]).toMatchObject({billRequested:true,checkoutHref:'#/painel/est-salon?table=5&checkout=1'});
    expect(rows[1].billRequested).toBe(false);
  });
+

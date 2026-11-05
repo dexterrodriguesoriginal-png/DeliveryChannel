@@ -94,3 +94,4 @@ describe('equipe e mesas', () => {
     expect(summarizeTables(['Varanda'])).toBe('Varanda');
   });
 });
+

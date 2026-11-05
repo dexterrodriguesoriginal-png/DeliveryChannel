@@ -592,3 +592,4 @@ const TeamPageForTenant: React.FC = () => {
     </div>
   );
 };
+

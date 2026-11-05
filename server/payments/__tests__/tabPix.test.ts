@@ -209,3 +209,4 @@ describe('HTTP contract', () => {
     expect((await fetch(`${url}/tabs/${TAB}/pix`, { method: 'POST', headers: { ...auth, Origin: 'https://evil.example' } })).status).toBe(403);
   });
 });
+

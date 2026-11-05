@@ -45,3 +45,4 @@ describe('cards de movimento do salão', () => {
     expect(refresh).toHaveBeenCalledOnce();
   });
 });
+

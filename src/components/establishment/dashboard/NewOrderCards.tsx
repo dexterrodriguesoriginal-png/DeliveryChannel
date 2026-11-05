@@ -38,3 +38,4 @@ export function NewOrderCards({ orders, role, busyOrderId, onAccept, onView, onD
     {orders.length > 3 && <p data-testid="new-orders-more" className="text-sm font-semibold text-emerald-900">+{orders.length - 3} {orders.length - 3 === 1 ? 'pedido' : 'pedidos'}</p>}
   </section>;
 }
+

@@ -60,3 +60,4 @@ export function readLastStoreSlug(storage: KV | null | undefined): string | null
   if (!storage) return null;
   try { return storeSlugFromPath(`/app/${storage.getItem(LAST_STORE_SLUG_KEY) || ''}`); } catch { return null; }
 }
+

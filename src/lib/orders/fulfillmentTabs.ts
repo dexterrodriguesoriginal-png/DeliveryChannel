@@ -100,3 +100,4 @@ export function visibleFulfillmentTabsFor(
     .filter(([tab, key]) => isEnabled(key) || orders.some(order => matchesFulfillmentTab(order as Order, tab)))
     .map(([tab]) => tab);
 }
+

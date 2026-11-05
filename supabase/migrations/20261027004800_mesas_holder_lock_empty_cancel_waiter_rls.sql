@@ -607,3 +607,4 @@ AS $$ SELECT jsonb_build_object('version', 3, 'qr_pause', true, 'tab_pix', true,
 GRANT EXECUTE ON FUNCTION public.mesas_qr_capabilities() TO anon, authenticated;
 
 COMMIT;
+

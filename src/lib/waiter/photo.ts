@@ -25,3 +25,4 @@ export async function fileToWaiterPhoto(file: File): Promise<string> {
   }
   throw new Error('A foto é muito grande. Escolha outra.');
 }
+

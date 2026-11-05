@@ -236,3 +236,4 @@ describe('OAuth state and encryption', () => {
     expect(limiter.allow('b',2)).toBe(true); expect(limiter.allow('c',2)).toBe(false); expect(limiter.allow('c',101)).toBe(true);
   });
 });
+

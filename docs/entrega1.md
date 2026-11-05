@@ -58,3 +58,4 @@ O rollback recusa execução enquanto houver membros ou convites com papel `KITC
 - O gerenciamento de Auth exige conta sintética exclusiva, associação atual de Garçom e metadados confiáveis. Perfis antigos de contas promovidas, compartilhadas ou pessoais não autorizam redefinir senha, remover ban ou alterar o perfil global. A exclusão continua restrita ao vínculo da loja.
 
 Validação final única desta revisão: TypeScript sem erros; 1.807 testes Vitest aprovados em 216 arquivos; 164 verificações SQL aprovadas; cinco baselines divergentes recusados sem alterar o schema; dois ciclos de rollback exato aprovados.
+

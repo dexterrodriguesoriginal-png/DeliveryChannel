@@ -31,3 +31,4 @@ describe('statusChip (paleta única de Pedidos)', () => {
     expect(statusChip('READY', false, 'PICKUP')).toEqual(statusChip('READY'));
   });
 });
+

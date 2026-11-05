@@ -31,3 +31,4 @@ describe('Cobrança pelo garçom autorizado', () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 });
+

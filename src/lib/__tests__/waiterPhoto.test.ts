@@ -23,3 +23,4 @@ describe('foto da equipe', () => {
     await expect(fileToWaiterPhoto(new File(['photo'], 'photo.jpg', { type: 'image/jpeg' }))).rejects.toThrow('A foto é muito grande. Escolha outra.');
   });
 });
+

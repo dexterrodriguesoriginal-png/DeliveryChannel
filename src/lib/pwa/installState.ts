@@ -181,3 +181,4 @@ export function baseCurve(elapsedMs: number): number {
 export function estimatedInstallPercent(elapsedMs: number, _installedAtMs?: number | null): number {
   return progressAt(elapsedMs);
 }
+

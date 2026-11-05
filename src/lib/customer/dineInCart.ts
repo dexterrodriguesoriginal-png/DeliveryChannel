@@ -112,3 +112,4 @@ export function dineInOptionLabels(product: Product, selections: SelectedProduct
     return [`${group.name}: ${option.name}${selection.qty > 1 ? ` ×${selection.qty}` : ''}`];
   });
 }
+

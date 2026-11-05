@@ -12,3 +12,4 @@ it('aguarda slug e respeita o papel resolvido',()=>{
   expect(waiterPanelTarget('OWNER','loja',{pathname:'/',hash:'#/painel/est-salon'})).toBeNull();
   expect(waiterPanelTarget('WAITER',undefined,{pathname:'/',hash:''})).toBeNull();
 });
+

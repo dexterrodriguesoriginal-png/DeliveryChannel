@@ -26,3 +26,4 @@ describe('alertTone (cor da faixa de alertas, padrão KDS)', () => {
     expect(ALERT_TONE_CLASS.amber).not.toContain('orange');
   });
 });
+

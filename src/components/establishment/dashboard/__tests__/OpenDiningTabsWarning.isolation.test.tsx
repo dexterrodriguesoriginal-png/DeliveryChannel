@@ -36,3 +36,4 @@ it('ignora resposta atrasada de outra loja',async()=>{
   expect(screen.queryByText(/Mesa exclusiva A/)).toBeNull();
   expect(screen.queryByTestId('open-dining-tabs-warning')).toBeNull();
 });
+

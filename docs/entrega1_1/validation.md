@@ -70,3 +70,4 @@ Pendências operacionais: configurar `RESEND_API_KEY` e remetente verificado em 
 Os downs removem essas tabelas e suas FKs, sem tentar restaurar NOT NULL em históricos cujo ator já foi excluído nem recriar RESTRICT antes de remover a tabela. A proteção existente que bloqueia exclusão normal de pedidos continua intacta; somente a fixture local suspende temporariamente esse trigger para testar a cascata e o reativa em seguida.
 
 Validação da revisão: TypeScript sem erros; Vitest completo com 237 arquivos / 1.958 testes aprovados; regressão SQL de entrega1_1 com 180/180 asserções aprovadas (11 novas), além de apply → rollback exato → apply → rollback exato. Nenhum acesso a produção, deploy ou merge.
+

@@ -66,3 +66,4 @@ describe('autorização da mudança de mesa', () => {
     expect(changed).not.toHaveBeenCalled(); expect(screen.getByText('Mesa 3 → Mesa 7')).toBeTruthy();
   });
 });
+

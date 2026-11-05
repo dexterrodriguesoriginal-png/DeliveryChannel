@@ -48,3 +48,4 @@ export function elapsedMinutes(start?: string | null, end?: string | null): stri
 export function queuePositionLabel(position?: number | null) {
   return Number.isSafeInteger(position) && position! > 0 ? `Você é o ${position}º da fila` : null;
 }
+

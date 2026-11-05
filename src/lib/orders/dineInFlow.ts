@@ -12,3 +12,4 @@ export function dineInNextAction(order: Pick<Order, 'status' | 'fulfillmentType'
     default: return null;
   }
 }
+

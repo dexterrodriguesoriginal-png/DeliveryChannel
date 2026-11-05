@@ -50,3 +50,4 @@ SQL de testes: `supabase/tests/entrega1_3/c.sql`.
 ## Revisão de B/C
 
 Os commits `769be0b` e `110e8ed` foram revisados, preservando A. Achados, correções e reprodução em `docs/entrega1_3/revisao-b-c.md`. Validação final: tsc verde, **2.031 testes Vitest**, **12 suítes SQL em strict/legacy**, Entrega1.3 com **166/166 por modo**, rollback005/006 exato isolado e acumulado em dois ciclos, concorrência e preservação do histórico após uso. Sem merge/deploy.
+

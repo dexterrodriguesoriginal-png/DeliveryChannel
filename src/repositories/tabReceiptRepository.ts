@@ -36,3 +36,4 @@ export const tabReceiptRepository = {
     throw new Error('Não foi possível enviar o comprovante. Tente novamente em instantes.');
   },
 };
+

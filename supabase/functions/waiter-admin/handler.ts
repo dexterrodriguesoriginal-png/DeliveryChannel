@@ -280,3 +280,4 @@ function serverError(error: any, action: string, stage: Stage): Response {
   if (code === '23514' || code === '22001') return fail(400, 'INVALID_INPUT', 'Confira o nome, o telefone e o e-mail de contato do garçom.', extra);
   return fail(500, 'INTERNAL', 'Não foi possível concluir o cadastro. Tente novamente em instantes.', extra);
 }
+

@@ -92,3 +92,4 @@ SELECT t.ok((SELECT bool_and(drift = 0) FROM public.audit_coupon_counters('10000
 SELECT t.login('a0000000-0000-0000-0000-000000000004');
 SELECT t.throws($$SELECT * FROM public.audit_coupon_counters('10000000-0000-0000-0000-00000000000a')$$, 'FORBIDDEN', 'CASHIER não audita contadores');
 RESET ROLE;
+

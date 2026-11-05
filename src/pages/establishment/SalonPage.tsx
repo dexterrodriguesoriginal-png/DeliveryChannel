@@ -1292,3 +1292,4 @@ export const SalonPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ on
     </div>
   );
 };
+

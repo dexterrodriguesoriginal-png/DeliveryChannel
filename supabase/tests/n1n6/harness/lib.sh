@@ -59,3 +59,4 @@ apply_n_series() {
     apply_migration "$db" "$f" || return $?
   done
 }
+

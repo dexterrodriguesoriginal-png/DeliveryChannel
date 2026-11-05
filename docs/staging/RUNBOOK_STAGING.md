@@ -131,3 +131,4 @@ Em staging o descarte mais simples é **apagar o projeto de staging inteiro** (a
 
 Tudo verde em §2 (verify/post), `staging.e2e.ts`, checklist de navegador, C1–C9 do design e
 **aprovação escrita do fundador**. Só então a mesma sequência em produção, e só depois o build `n1n6`.
+

@@ -92,3 +92,4 @@ export function itemsSummary(order: Pick<Order, 'items'>): { short: string; full
   const rest = items.length - 2;
   return { short: items.slice(0, 2).map(fmt).join(', ') + (rest > 0 ? ` +${rest}` : ''), full: items.map(fmt).join(', ') };
 }
+

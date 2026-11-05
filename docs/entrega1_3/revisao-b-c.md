@@ -30,3 +30,4 @@ As migrations `20261104000500` e `20261104000600` mantêm arquivos de rollback c
 - `npm run build`: aprovado, sem publicação.
 
 O modo de contas individuais é recusado nas operações de grupo para impedir que uma única conta escolhida por `LIMIT 1` oculte as outras dívidas. Contas por mesa com taxas incompatíveis também precisam de conferência antes de serem juntadas. Emails reais dependem de `RESEND_API_KEY` e `RECEIPT_FROM` no servidor Node existente; nenhum email real foi enviado nem segredo configurado nesta revisão.
+

@@ -135,3 +135,4 @@ export const SalonSidebar: React.FC<SalonSidebarProps> = ({ tab, onTabChange, op
     </aside>
   );
 };
+

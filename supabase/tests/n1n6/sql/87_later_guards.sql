@@ -14,3 +14,4 @@ SELECT t.login(NULL);
 INSERT INTO public.tenants(id,slug,name,document,phone,email,status)
 VALUES('10000000-0000-0000-0000-00000000000c','late-guards-c','Loja sintética C','00000000000191','1100','later-guards@example.invalid','ACTIVE');
 SELECT t.is((SELECT count(*) FROM public.products WHERE tenant_id='10000000-0000-0000-0000-00000000000c' AND is_demo),0::bigint,'3500: inserção direta de loja não semeia; seed ocorre no onboarding');
+

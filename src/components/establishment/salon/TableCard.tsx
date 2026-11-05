@@ -82,3 +82,4 @@ export const TableCard: React.FC<TableCardProps> = React.memo(({ id, label, area
   );
 });
 TableCard.displayName = 'TableCard';
+

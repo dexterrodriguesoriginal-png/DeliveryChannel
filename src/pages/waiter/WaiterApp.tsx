@@ -1158,3 +1158,4 @@ const WaiterMain: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     </div>
   );
 };
+

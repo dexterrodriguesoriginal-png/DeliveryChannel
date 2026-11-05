@@ -73,3 +73,4 @@ SELECT t.is((SELECT table_id FROM public.dining_tabs WHERE id='e1430000-0000-000
 SELECT t.is((SELECT status FROM public.table_move_requests WHERE tab_id='e1430000-0000-0000-0000-000000000203'),'PENDING','1.4.1 revogação concorrente mantém solicitação para dono');
 SQL
 echo 'PASS: concorrência aprovação/QR e revogação/aprovação do garçom'
+

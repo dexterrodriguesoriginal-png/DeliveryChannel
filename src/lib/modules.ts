@@ -163,3 +163,4 @@ export const TOOL_SHORTCUTS: readonly ToolShortcut[] = [
 export function visibleToolShortcuts(modules: ReadonlySet<ModuleKey> | null | undefined, role: string | null | undefined): ToolShortcut[] {
   return TOOL_SHORTCUTS.filter(tool => (!tool.requiresModule || isModuleEnabled(modules, tool.requiresModule)) && !!role && tool.roles.includes(role));
 }
+

@@ -18,3 +18,4 @@ describe('selo de status usa os hex compartilhados em todos os canais', () => {
     }
   });
 });
+

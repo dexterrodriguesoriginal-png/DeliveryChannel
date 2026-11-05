@@ -14,3 +14,4 @@ describe('dashboardPresence (popup verde não duplica no Dashboard)', () => {
     expect(r.getByTestId('p').textContent).toBe('false');
   });
 });
+

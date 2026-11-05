@@ -260,3 +260,4 @@ SELECT t.is((public.get_waiter_login_store('adega-a') ->> 'name'), 'Adega A', 't
 SELECT t.ok(public.get_waiter_login_store('nao-existe') IS NULL, 'loja inexistente => nulo');
 SELECT t.is((public.waiter_v2_capabilities() ->> 'version')::int, 1, 'capacidades v2 acessíveis');
 RESET ROLE;
+

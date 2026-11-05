@@ -32,3 +32,4 @@ BEGIN
  EXECUTE v_after;
 END $drift$;
 \ir ../../migrations/20261103000100_entrega1.sql
+

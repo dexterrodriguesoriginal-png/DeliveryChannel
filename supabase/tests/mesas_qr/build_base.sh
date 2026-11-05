@@ -20,3 +20,4 @@ for file in supabase/migrations/202610*.sql; do
   apply "$file" "$name"
 done
 echo "base ready: $PGDATABASE"
+

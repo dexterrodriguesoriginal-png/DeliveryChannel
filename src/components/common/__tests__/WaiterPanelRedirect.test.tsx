@@ -13,3 +13,4 @@ it('link administrativo de garçom navega ao app da própria loja com recuperaç
   expect(screen.getByRole('status').textContent).toContain('Abrindo o app do garçom');
   expect(screen.getByRole('link',{name:'Continuar atendimento'}).getAttribute('href')).toBe('/garcom/minha-loja');
 });
+

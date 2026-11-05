@@ -13,3 +13,4 @@ export const salonNightStatsRepository = {
     throw new Error(SALON_STATS_ERROR);
   },
 };
+

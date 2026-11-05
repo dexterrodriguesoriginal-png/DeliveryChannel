@@ -181,3 +181,4 @@ describe('InstallProgress — componente reutilizável com fake timers', () => {
     expect(query('open-installed-app')?.textContent).toBe('Abrir o app');
   });
 });
+

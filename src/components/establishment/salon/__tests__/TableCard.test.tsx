@@ -86,3 +86,4 @@ it('cards consomem a paleta sólida em CSS variables, inclusive PIX sem cor de L
   expect(card.style.getPropertyValue('--sc-accent')).toBe(STATUS_COLORS.BILL.solid);
   expect(card.style.getPropertyValue('--sc-bg')).toBe('#8B5A2B');
 });
+

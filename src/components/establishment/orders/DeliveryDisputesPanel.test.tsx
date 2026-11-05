@@ -60,3 +60,4 @@ describe('Entregas contestadas', () => {
     await waitFor(() => expect(screen.queryByText('Mesa 5 · Pedido #31')).toBeNull());
   });
 });
+

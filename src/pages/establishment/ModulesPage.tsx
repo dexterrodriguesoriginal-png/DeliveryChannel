@@ -285,3 +285,4 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
     </div>
   );
 };
+

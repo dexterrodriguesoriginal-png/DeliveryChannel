@@ -141,3 +141,4 @@ export function formatResponseTime(seconds: number | null | undefined): string {
   const s = Math.round(seconds);
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}min ${String(s % 60).padStart(2, '0')}s`;
 }
+

@@ -81,3 +81,4 @@ describe('Sidebar — isolamento de módulos e matriz de permissões', () => {
     }
   });
 });
+

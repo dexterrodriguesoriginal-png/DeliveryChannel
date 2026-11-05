@@ -33,3 +33,4 @@ export const WaiterAccessBlock: React.FC<{ email?: string | null; storeName?: st
     </div>
   );
 };
+

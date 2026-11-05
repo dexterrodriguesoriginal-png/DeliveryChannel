@@ -53,3 +53,4 @@ describe('fulfillmentTabs', () => {
     expect(pickupWaitingMinutes(o({}), now)).toBeNull();
   });
 });
+

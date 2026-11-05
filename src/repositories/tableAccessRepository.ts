@@ -121,3 +121,4 @@ export const tableAccessRepository = {
     return data as MoveTableResult;
   },
 };
+

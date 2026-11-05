@@ -35,3 +35,4 @@ describe('Sacola da mesa preservada durante cadastro', () => {
     expect(s.values.size).toBe(0);
   });
 });
+

@@ -138,3 +138,4 @@ describe('Cards de novas notificações: realtime e fallback', () => {
     expect(state.update).not.toHaveBeenCalled();
   });
 });
+

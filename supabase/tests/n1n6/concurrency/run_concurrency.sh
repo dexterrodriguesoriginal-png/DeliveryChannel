@@ -121,3 +121,4 @@ PUSED=$(Q "SELECT promo_times_used FROM public.offers WHERE id='$PROMO_OFFER'")
 echo "promo: sucesso=$POK esgotado=$PEXH promo_times_used=$PUSED"
 rec "checkout promocional limite 5 sob 12 conexões paralelas: 5 sucessos, 7 PROMO_EXHAUSTED, contador 5" "$([ "$POK" = 5 ] && [ "$PEXH" = 7 ] && [ "$PUSED" = 5 ] && echo true || echo false)" "ok=$POK exh=$PEXH used=$PUSED"
 rm -rf "$OUT"
+

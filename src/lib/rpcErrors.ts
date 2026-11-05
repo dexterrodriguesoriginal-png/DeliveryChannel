@@ -56,3 +56,4 @@ export class RpcBusinessError extends Error {
     this.name = 'RpcBusinessError';
   }
 }
+

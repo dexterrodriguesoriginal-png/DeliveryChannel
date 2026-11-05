@@ -71,3 +71,4 @@ describe('isolamento do carrinho por loja', () => {
     expect(() => cartStorageKey('')).toThrow();
   });
 });
+

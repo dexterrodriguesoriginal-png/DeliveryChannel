@@ -69,3 +69,4 @@ export const paymentRepository = {
   },
   confirm: (id: string) => request(`/orders/${encodeURIComponent(id)}/confirm`, {}),
 };
+

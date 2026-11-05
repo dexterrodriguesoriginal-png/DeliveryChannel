@@ -160,3 +160,4 @@ $$;
 REVOKE ALL ON FUNCTION public.reserve_tab_receipt(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.reserve_tab_receipt(uuid,uuid) TO service_role;
 COMMIT;
+

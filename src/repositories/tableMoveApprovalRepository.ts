@@ -37,3 +37,4 @@ export const tableMoveApprovalRepository = {
     return rows(data);
   },
 };
+

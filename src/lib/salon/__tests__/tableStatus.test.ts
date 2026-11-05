@@ -155,3 +155,4 @@ describe('filters, counts and search', () => {
    expect(TABLE_STATUS_COLOR.AUTHORIZED).toBe('#8B5A2B');
    expect(deriveTableStatus({tab:tab({status:'AWAITING_PAYMENT'}),now:NOW}).kind).toBe('AWAITING_PAYMENT');
  });
+

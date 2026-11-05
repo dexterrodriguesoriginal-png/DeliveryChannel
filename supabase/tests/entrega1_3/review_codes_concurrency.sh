@@ -46,3 +46,4 @@ P <<'SQL'
 SELECT t.ok(EXISTS(SELECT 1 FROM public.salon_order_delivery_codes c JOIN public.orders o ON o.id=c.order_id WHERE c.order_id='e13c0000-0000-0000-0000-000000000101' AND c.attempts=5 AND c.confirmed_at IS NULL AND o.status='OUT_FOR_DELIVERY'),'review-code duas conexões preservam limite de cinco tentativas e impedem entrega');
 SQL
 echo 'PASS: concorrência da última tentativa do código de entrega'
+

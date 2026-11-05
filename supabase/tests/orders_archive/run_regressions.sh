@@ -70,3 +70,4 @@ SQL
   dropdb "$PGDATABASE"
   trap - EXIT
 done
+

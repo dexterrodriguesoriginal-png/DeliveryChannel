@@ -156,3 +156,4 @@ SELECT t.ok((SELECT relrowsecurity FROM pg_class WHERE oid='public._entrega1_3_c
 SELECT t.ok((SELECT relrowsecurity FROM pg_class WHERE oid='public.salon_order_delivery_codes'::regclass),'C segurança RLS em salon_order_delivery_codes');
 SELECT t.ok((SELECT relrowsecurity FROM pg_class WHERE oid='public.dining_tab_tables'::regclass),'C segurança RLS em dining_tab_tables');
 SELECT t.ok((SELECT relrowsecurity FROM pg_class WHERE oid='public.tab_table_moves'::regclass),'C segurança RLS em tab_table_moves');
+

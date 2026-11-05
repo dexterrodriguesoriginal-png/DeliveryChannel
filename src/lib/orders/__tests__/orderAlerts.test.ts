@@ -133,3 +133,4 @@ describe('orderAlerts: faixa compacta (chips, lista, bairro)', () => {
     expect(shortPlace({ fulfillmentType: 'DELIVERY', deliveryAddress: 'Avenida Muito Comprida Demais Sem Bairro 123' } as any, 10)).toHaveLength(10);
   });
 });
+

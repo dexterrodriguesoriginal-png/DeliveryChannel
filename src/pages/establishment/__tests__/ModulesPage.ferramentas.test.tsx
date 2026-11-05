@@ -65,3 +65,4 @@ describe('Ferramentas (página)', () => {
     expect(h.setTool).not.toHaveBeenCalled();
   });
 });
+

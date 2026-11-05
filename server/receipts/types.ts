@@ -29,3 +29,4 @@ export interface ReceiptStore {
   reserve(tabId: string, userId: string, overrideEmail?: string): Promise<TabReceipt>;
   finish(attemptId: string, sent: boolean, reason?: ReceiptFailure): Promise<void>;
 }
+

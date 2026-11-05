@@ -335,3 +335,4 @@ export const salonStaffRepository = {
     return Boolean((data as { require_delivery_code?: boolean } | null)?.require_delivery_code);
   },
 };
+

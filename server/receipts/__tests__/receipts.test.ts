@@ -143,3 +143,4 @@ describe('receipt provider boundary', () => {
     expect(rpc).toHaveBeenLastCalledWith('finish_tab_receipt', { p_attempt: receipt.attempt_id, p_sent: false, p_reason: 'EMAIL_PROVIDER_NOT_CONFIGURED' });
   });
 });
+

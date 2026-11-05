@@ -68,3 +68,4 @@ export default defineConfig(({ mode }) => {
 function pickVite(e: NodeJS.ProcessEnv): Record<string, string | undefined> {
   return Object.fromEntries(Object.entries(e).filter(([k]) => k.startsWith('VITE_')));
 }
+

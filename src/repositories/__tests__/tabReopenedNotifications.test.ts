@@ -57,3 +57,4 @@ it('disputa referencia apenas pedido visível da loja e ignora destino de mesa f
   expect(await dispatchChatRepository.visibleNotifications('A',rows)).toEqual([expect.objectContaining({id:'n1',ref_id:'own'})]);
   expect((await dispatchChatRepository.visibleNotifications('A',rows))[0].tableTarget).toBeUndefined();
 });
+

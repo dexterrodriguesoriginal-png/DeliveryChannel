@@ -230,3 +230,4 @@ export class PaymentService {
     await this.refresh(payment, order, '', hint, true);
   }
 }
+

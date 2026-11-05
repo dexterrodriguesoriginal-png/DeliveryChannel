@@ -150,3 +150,4 @@ SELECT t.throws(format('SELECT public.resolve_table_move_request(%L,true)',:'rep
 SELECT t.is(public.resolve_table_move_request((:'replacement'::jsonb->>'requestId')::uuid,false)->>'status','REJECTED','1.4.1 dono ainda pode recusar solicitação expirada');
 RESET ROLE;
 SELECT t.login(NULL);
+

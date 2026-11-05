@@ -91,3 +91,4 @@ SELECT t.is((SELECT role_id FROM public.tenant_users WHERE tenant_id='10000000-0
 SELECT t.ok(NOT has_function_privilege('anon','public.waiter_assert_member(uuid,uuid)','EXECUTE') AND NOT has_function_privilege('authenticated','public.waiter_assert_member(uuid,uuid)','EXECUTE') AND has_function_privilege('service_role','public.waiter_assert_member(uuid,uuid)','EXECUTE'),'assert de identidade gerenciada conserva ACL mínima service_role');
 SELECT set_config('request.jwt.claim.role','',false);
 SELECT t.login(NULL);
+

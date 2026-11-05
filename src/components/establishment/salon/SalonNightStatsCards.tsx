@@ -33,3 +33,4 @@ export const SalonNightStatsCards: React.FC<SalonNightStatsCardsProps> = ({ stat
     <p className="mt-2 px-1 text-[10px] leading-tight text-slate-500">Mesas atendidas contam visitas encerradas. Contas abertas incluem as anteriores ao período.</p>
   </section>;
 };
+

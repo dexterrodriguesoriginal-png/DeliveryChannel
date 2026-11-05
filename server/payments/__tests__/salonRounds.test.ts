@@ -33,3 +33,4 @@ describe('service-role Salão rounds fallback', () => {
     expect(db.from).not.toHaveBeenCalled();
   });
 });
+

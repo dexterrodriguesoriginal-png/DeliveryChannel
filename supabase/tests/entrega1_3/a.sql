@@ -103,3 +103,4 @@ SELECT t.throws($q$SELECT * FROM public._entrega1_3_a_restore$q$,'permission den
 SELECT t.throws($q$SELECT public._salon_order_pickup_call()$q$,'permission denied','A segurança trigger não é RPC pública');
 RESET ROLE;
 SELECT t.ok((SELECT relrowsecurity FROM pg_class WHERE oid='public._entrega1_3_a_restore'::regclass),'A segurança RLS no snapshot novo');
+

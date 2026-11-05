@@ -56,3 +56,4 @@ describe('kitchenBoard', () => {
     expect(newReadyIds(new Set(['a']), [{ id: 'a', status: 'READY' }, { id: 'b', status: 'READY' }, { id: 'c', status: 'PREPARING' }])).toEqual(['b']);
   });
 });
+

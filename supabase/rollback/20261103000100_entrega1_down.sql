@@ -52,3 +52,4 @@ DROP FUNCTION public._store_role_defaults(text);
 DELETE FROM public.roles WHERE id='KITCHEN';
 DROP TABLE public._entrega1_restore;
 COMMIT;
+

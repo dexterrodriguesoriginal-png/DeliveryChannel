@@ -138,3 +138,4 @@ REVOKE ALL ON FUNCTION public.salon_night_stats(uuid) FROM PUBLIC,anon,authentic
 GRANT EXECUTE ON FUNCTION public.salon_night_stats(uuid) TO authenticated;
 
 COMMIT;
+

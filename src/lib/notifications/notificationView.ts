@@ -46,3 +46,4 @@ export function notificationDetail(brief?: OrderBrief | null): string {
   if (brief.total != null && Number.isFinite(brief.total)) parts.push(formatBRL(brief.total));
   return parts.join(' · ');
 }
+

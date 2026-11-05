@@ -24,3 +24,4 @@ describe('Alertas de pedidos muda de cor ao vivo (Entrega 1.5)', () => {
     expect([first, second, third].join('|')).toMatch(/(#fbd5d5|251, 213, 213).*\|.*(#fee2cc|254, 226, 204).*\|.*(#ecdcfc|236, 220, 252)/);
   });
 });
+

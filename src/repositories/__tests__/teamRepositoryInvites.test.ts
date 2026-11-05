@@ -63,3 +63,4 @@ describe('0900: convites de equipe por RPC', () => {
     expect(fromTables).toEqual([]);
   });
 });
+

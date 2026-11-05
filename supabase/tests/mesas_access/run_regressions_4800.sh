@@ -162,3 +162,4 @@ P -d acc48_rb -1 -f $DOWN || { echo 'FALHOU segundo rollback da 4800'; STATUS=1;
 for d in acc48_fx acc48_pre acc48_pre_acc acc48_post acc48_post_acc acc48_rb; do dropdb --if-exists $d >/dev/null 2>&1; done
 [ $STATUS = 0 ] && echo 'PASS: base 4600+4700, regressões 81–84 + mesas_qr + mesas_access, nova suíte 4800, rollback exato e reaplicação' || echo 'FAIL'
 exit $STATUS
+

@@ -63,3 +63,4 @@ if ! P "$DB" -c "SET t.suite='87_later_guards'" -f "$HERE/sql/87_later_guards.sq
 fi
 psql -X -At -d "$DB" -c "SELECT CASE WHEN ok THEN 'OK' ELSE 'FAIL' END||'|operacao_modulos|'||replace(name,'|','/')||'|$MODE/'||suite||' '||coalesce(replace(detail,'|','/'),'') FROM t.results ORDER BY id"
 [ "$(psql -X -At -d "$DB" -c 'SELECT count(*) FROM t.results WHERE NOT ok')" = 0 ]
+

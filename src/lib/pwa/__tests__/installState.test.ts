@@ -126,3 +126,4 @@ describe('porcentagem estimada da instalação (curva de 60 s)', () => {
     expect(again).toBeGreaterThan(end);
   });
 });
+

@@ -642,3 +642,4 @@ SELECT t.ok(EXISTS(SELECT 1 FROM public.orders WHERE id=:'FK_ORDER_B' AND tenant
 SELECT t.ok(EXISTS(SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid='public.orders'::regclass
  AND tgname='trg_orders_before_delete_guard' AND tgenabled='O'),
  'Revisão B4 guard de exclusão reativado ao terminar a manutenção local');
+

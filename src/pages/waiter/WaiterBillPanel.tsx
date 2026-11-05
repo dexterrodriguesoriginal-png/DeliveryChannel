@@ -35,3 +35,4 @@ export const WaiterBillPanel: React.FC<{
     </section>
   );
 };
+

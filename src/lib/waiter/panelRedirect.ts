@@ -6,3 +6,4 @@ export function waiterPanelTarget(role: string | null | undefined, slug: string 
   if (/^\/(garcom(?:\/|$)|app\/|mesa\/|equipe\/)/.test(location.pathname)) return null;
   return target;
 }
+

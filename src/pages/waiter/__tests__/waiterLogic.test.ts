@@ -78,3 +78,4 @@ describe('PWA do Garçom', () => {
     expect(html).toContain('<title>Garçom</title>');
   });
 });
+

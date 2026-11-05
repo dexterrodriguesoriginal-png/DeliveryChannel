@@ -127,3 +127,4 @@ export const WaiterPerformanceReport: React.FC<WaiterPerformanceReportProps> = (
     </Card>
   );
 };
+

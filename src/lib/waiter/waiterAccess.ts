@@ -37,3 +37,4 @@ export function waiterLoginWhatsAppUrl(url: string, storeName?: string | null, u
 export function readWaiterEmailParam(search: string): string | null {
   try { return cleanWaiterEmail(new URLSearchParams(search).get('email')); } catch { return null; }
 }
+

@@ -53,3 +53,4 @@ export function injectStoreHead(html: string, slug: string, store: StoreIdentity
 export function withTimeout<T>(p: Promise<T>, ms: number, fb: T): Promise<T> {
   return Promise.race([p.catch(() => fb), new Promise<T>((r) => setTimeout(() => r(fb), ms))]);
 }
+

@@ -22,3 +22,4 @@ grep 'ROLLBACK_BLOCKED' "$TMP/down.log" >/dev/null
 snapshot >"$TMP/after"
 diff -u "$TMP/before" "$TMP/after"
 echo 'PASS: rollback007 preserva histórico e reconhece configuração em uso'
+

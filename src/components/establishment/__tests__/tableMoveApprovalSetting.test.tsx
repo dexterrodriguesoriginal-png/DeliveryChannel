@@ -95,3 +95,4 @@ describe('Permissão do garçom para autorizar mudanças de mesa', () => {
     expect(screen.queryByText('Permissão salva.')).toBeNull();
   });
 });
+

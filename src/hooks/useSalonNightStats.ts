@@ -58,3 +58,4 @@ export function useSalonNightStats(tenantId: string | undefined, enabled: boolea
   const current = enabled && tenantId && snapshot?.tenantId === tenantId ? snapshot : null;
   return { stats: current?.stats ?? null, loading: !!enabled && !!tenantId && (current?.loading ?? true), error: current?.error ?? '', refresh };
 }
+

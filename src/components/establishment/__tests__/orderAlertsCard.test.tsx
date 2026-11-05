@@ -110,3 +110,4 @@ describe('OrderAlertsCard (Dashboard, faixa compacta)', () => {
    expect(confirmed).toContain('Ver pedido'); expect(confirmed).toContain('Enviar p/ produção');
    expect(confirmed).toContain('data-step="start"');
  });
+

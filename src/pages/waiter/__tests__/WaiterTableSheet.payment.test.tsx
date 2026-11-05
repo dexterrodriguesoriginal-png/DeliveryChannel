@@ -143,3 +143,4 @@ describe('Pagamento na mesa do garçom', () => {
     expect(screen.getByRole('heading', { name: 'Pagamento confirmado' })).toBeTruthy();
   });
 });
+

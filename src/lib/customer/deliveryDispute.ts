@@ -33,3 +33,4 @@ export function deliveryNoticeLabel(round: DeliveryState, now = Date.now()): str
   if (round.status === 'DELIVERED' && Number.isFinite(delivered) && now >= delivered + DELIVERY_DISPUTE_WINDOW_MS) return 'Pedido recebido';
   return 'Seu pedido foi entregue';
 }
+

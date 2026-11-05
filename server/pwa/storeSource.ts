@@ -102,3 +102,4 @@ export function demoResolver(): StoreResolver {
     return { status: 'ok', store: { id: t.id, slug: t.slug, name: t.name, theme: t.theme } };
   };
 }
+

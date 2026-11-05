@@ -10,3 +10,4 @@ export function isValidReceiptEmail(value: unknown): value is string {
     && !local.startsWith('.') && !local.endsWith('.') && !local.includes('..')
     && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(domain);
 }
+

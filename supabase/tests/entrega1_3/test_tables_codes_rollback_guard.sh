@@ -27,3 +27,4 @@ grep 'ROLLBACK_BLOCKED' "$TMP/down.log" >/dev/null
 snapshot >"$TMP/after"
 diff -u "$TMP/before" "$TMP/after"
 echo 'PASS: rollback006 usado recusado; sessões, dívidas, códigos, tentativas e auditoria preservados'
+

@@ -580,3 +580,4 @@ describe('card compacto e painel lateral de detalhes', () => {
     expect(panel()).toBeNull();
   });
 });
+

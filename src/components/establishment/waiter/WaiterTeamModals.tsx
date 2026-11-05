@@ -177,3 +177,4 @@ export const ResetWaiterPasswordModal: React.FC<ResetProps> = ({ member, onClose
     </Modal>
   );
 };
+

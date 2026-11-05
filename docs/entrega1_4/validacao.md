@@ -18,3 +18,4 @@ Base: `origin/main` em `77b68d97d12713d511a1507351f5c71688139c46`. Branch: `feat
 - Duas conexões reais testam aprovação contra QR e revogação contra aprovação do garçom. Rollback usado recusa perda de histórico/configuração.
 - Sem nova permissão para `anon`; só sessões aprovadas recebem códigos, e a validação no servidor conserva o limite de tentativas.
 - Nenhuma alteração em `vite.config.*`, `tsconfig*` ou configurações Vitest. Nenhum `prompt_*.md` versionado. Sem merge, deploy ou acesso a dados de produção.
+

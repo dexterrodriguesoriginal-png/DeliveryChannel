@@ -54,3 +54,4 @@ export function parseWaiterLoginPath(pathname: string): string | null {
   const m = /^\/garcom\/([a-z0-9][a-z0-9-]{0,63})\/?$/i.exec(pathname);
   return m ? m[1].toLowerCase() : null;
 }
+

@@ -78,3 +78,4 @@ export function roleDestination(role: RoleId | null | undefined, slug: string, p
   if (role === 'DRIVER') return '/entregador';
   return `/${panelRouteHash({ page: getDefaultAllowedTab(role, permissions) })}`;
 }
+

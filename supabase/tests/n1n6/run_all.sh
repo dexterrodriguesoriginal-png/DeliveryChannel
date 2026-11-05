@@ -74,3 +74,4 @@ for c in $(printf '%s\n' "${!CAT_PASS[@]}" "${!CAT_FAIL[@]}" | sort -u); do
 done
 echo "TOTAL passou=$TOTAL_PASS falhou=$TOTAL_FAIL"
 [ "$TOTAL_FAIL" -eq 0 ]
+

@@ -1095,3 +1095,4 @@ const EstablishmentDashboardContent: React.FC<EstablishmentDashboardProps> = ({ 
     </DriverOffersContext.Provider>
   );
 };
+

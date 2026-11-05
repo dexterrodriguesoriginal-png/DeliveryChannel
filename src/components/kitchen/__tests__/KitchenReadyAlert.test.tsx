@@ -14,3 +14,4 @@ it('pedido de mesa pronto abre seu detalhe sem chamar entregador ou navegar ao s
   fireEvent.click(ui.getByRole('button', { name: 'Ver pedido' }));
   expect(view).toHaveBeenCalledWith(order); expect(call).not.toHaveBeenCalled();
 });
+

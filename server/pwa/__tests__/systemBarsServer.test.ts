@@ -86,3 +86,4 @@ describe('barras do sistema no servidor (manifesto + HTML de /app/<slug>)', () =
     } finally { server.close(); }
   });
 });
+

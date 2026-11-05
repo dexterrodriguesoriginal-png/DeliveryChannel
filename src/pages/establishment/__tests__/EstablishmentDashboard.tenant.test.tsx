@@ -95,3 +95,4 @@ describe('ciclo da loja ativa no dashboard', () => {
     expect(container.textContent).not.toContain('Cliente anterior');
   });
 });
+

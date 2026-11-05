@@ -402,3 +402,4 @@ export const MembersPanel: React.FC<{
 export const Spinner: React.FC<{ label: string }> = ({ label }) => (
   <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-700"><Loader2 className="mr-2 h-5 w-5 animate-spin" />{label}</div>
 );
+

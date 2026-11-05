@@ -24,3 +24,4 @@ export class ReceiptService {
     return { sent: true };
   }
 }
+

@@ -56,3 +56,4 @@ P -At -d "$RUN" -c "SELECT 'FALHOU: '||name||' — '||coalesce(detail,'') FROM t
 P -At -d "$RUN" -c "SELECT 'entrega1_1: '||count(*) FILTER(WHERE ok)||' passou, '||count(*) FILTER(WHERE NOT ok)||' falhou' FROM t.results"
 [ "$(P -At -d "$RUN" -c 'SELECT count(*) FROM t.results WHERE NOT ok')" = 0 ]
 echo 'PASS: entrega1_1 (dinheiro, mesas, comprovantes e isolamento)'
+

@@ -153,3 +153,4 @@ export const TabPixPanel: React.FC<TabPixPanelProps> = ({ tabId, totalCents, tab
     </section>
   );
 };
+

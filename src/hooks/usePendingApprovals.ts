@@ -83,3 +83,4 @@ export function usePendingApprovals(tenantId: string | undefined, enabled: boole
 
   return { pending, busyId, error, refresh, approve: (id: string) => act(id, 'approve'), reject: (id: string) => act(id, 'reject') };
 }
+

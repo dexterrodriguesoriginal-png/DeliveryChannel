@@ -50,3 +50,4 @@ describe('manual payment confirmation', () => {
     expect(rpc).toHaveBeenLastCalledWith('confirm_pending_online_payment', { p_tenant:'A',p_order_number:42 });
   });
 });
+

@@ -110,3 +110,4 @@ out=$(printf "BEGIN;\nSET LOCAL n1n6.rollback_confirm='N1V';\n\\\\i %s/n1v_rollb
 [ $? -eq 0 ] && ok $C "rollback N1.V executado" || fail $C "rollback N1.V" "$out"
 dropdb --if-exists $DB2
 dropdb --if-exists $DB
+

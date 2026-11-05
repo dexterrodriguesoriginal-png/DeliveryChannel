@@ -33,3 +33,4 @@ describe('RPCs de entrega', () => {
     await expect(deliveryRepository.markDelivered('order1')).rejects.toThrow(/Informe o código de 4 dígitos do cliente/);
   });
 });
+

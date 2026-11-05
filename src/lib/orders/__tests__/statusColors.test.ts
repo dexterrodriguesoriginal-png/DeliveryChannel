@@ -113,3 +113,4 @@ describe('tokens compartilhados de status', () => {
     expect(statusColorTokens('toString')).toBe(STATUS_COLORS.PENDING);
   });
 });
+

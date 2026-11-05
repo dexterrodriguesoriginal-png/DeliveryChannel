@@ -351,3 +351,4 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
     </div>
   );
 };
+

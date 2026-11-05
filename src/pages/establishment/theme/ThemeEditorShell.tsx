@@ -379,3 +379,4 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
     </ThemeEditorContext.Provider>
   );
 }
+

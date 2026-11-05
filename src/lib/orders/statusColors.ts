@@ -48,3 +48,4 @@ export function alertColorStyle(status: string | Readonly<StatusColorTokens>) {
   const colors = typeof status === 'string' ? statusColorTokens(status) : status;
   return { backgroundColor: colors.alertBg ?? colors.bg, color: colors.fg, borderColor: colors.border };
 }
+

@@ -28,3 +28,4 @@ describe('online payment gate across staff views', () => {
     expect(countPendingRows([{ tenant_id: 'A', awaiting_online_payment: true }, { tenant_id: 'A', awaiting_online_payment: false }, { tenant_id: 'B', awaiting_online_payment: false }], ['A'])).toEqual({ A: 1 });
   });
 });
+

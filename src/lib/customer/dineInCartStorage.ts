@@ -31,3 +31,4 @@ export function restoreDineInCart(storage: StorageAccess | null, token: string, 
     return { cart, checkoutPending: saved.checkoutPending === true && cart.length > 0 };
   } catch { return empty; }
 }
+

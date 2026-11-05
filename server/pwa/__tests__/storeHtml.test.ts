@@ -32,3 +32,4 @@ describe('HTML da vitrine com manifesto da loja', () => {
     expect(await withTimeout(new Promise(() => {}), 10, null)).toBeNull();
   });
 });
+

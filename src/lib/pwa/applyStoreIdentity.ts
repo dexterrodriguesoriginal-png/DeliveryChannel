@@ -165,3 +165,4 @@ function applyHeadMeta(name: string, shortName: string, themeColor: string, touc
   fav.href = touch;
   document.title = name;
 }
+

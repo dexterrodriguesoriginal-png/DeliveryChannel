@@ -289,3 +289,4 @@ describe('waiter-admin authenticated boundary', () => {
     expect(JSON.stringify(result) + JSON.stringify(vi.mocked(console.error).mock.calls)).not.toMatch(/contato@example|11999990000|senha123|service-key|caller-jwt|secret-key/);
   });
 });
+

@@ -2,3 +2,4 @@
 # using service_role. The legacy gateway verifier does not accept every ES256 JWT.
 [functions.waiter-admin]
 verify_jwt = false
+

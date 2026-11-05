@@ -148,3 +148,4 @@ SET ROLE authenticated;
 SELECT t.login('e1310000-0000-0000-0000-000000000045');
 SELECT t.throws($q$SELECT public.tab_receipt_target('e1330000-0000-0000-0000-000000000041')$q$,'FORBIDDEN','revisão outro garçom não ganha comprovante da conta unida encerrada');
 RESET ROLE;
+

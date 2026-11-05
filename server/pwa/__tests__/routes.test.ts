@@ -239,3 +239,4 @@ describe('proteção SSRF do logotipo', () => {
     await expect(assertPublicUrl('https://cdn.example/a.png', pub)).resolves.toBeInstanceOf(URL);
   });
 });
+

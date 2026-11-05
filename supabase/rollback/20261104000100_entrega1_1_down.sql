@@ -32,3 +32,4 @@ ALTER TABLE public.owner_notifications ADD CONSTRAINT owner_notifications_kind_c
  CHECK(kind IN ('ORDER_NEW','DRIVER_JOIN_REQUEST','ORDER_MESSAGE'));
 DROP TABLE public._entrega1_1_a_restore;
 COMMIT;
+

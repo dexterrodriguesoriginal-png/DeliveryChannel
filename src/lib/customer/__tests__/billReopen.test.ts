@@ -15,3 +15,4 @@ describe('reabertura da conta pelo cliente', () => {
     expect(canReopenBill(status)).toBe(false);
   });
 });
+

@@ -84,3 +84,4 @@ describe('estatísticas por loja no salão', () => {
     expect(mocks.removeChannel).toHaveBeenCalledWith(channel);
   });
 });
+

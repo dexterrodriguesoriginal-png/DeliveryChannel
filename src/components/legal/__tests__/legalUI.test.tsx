@@ -130,3 +130,4 @@ describe('legal public UI and anonymous entry points', () => {
     expect(form).toContain('Sem nota');
   });
 });
+

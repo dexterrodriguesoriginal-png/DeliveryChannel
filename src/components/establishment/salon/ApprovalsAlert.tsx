@@ -74,3 +74,4 @@ export const PanelApprovalsAlert: React.FC<{ onOpenTable: (tableId: string) => v
   }, [enabled, activeTenant?.id]);
   return <ApprovalsAlert tenantId={activeTenant?.id} enabled={enabled} canReject={canReject} onOpenTable={onOpenTable} />;
 };
+

@@ -214,3 +214,4 @@ describe('manifesto do entregador', () => {
     expect(document.querySelector('link[rel="manifest"]')!.getAttribute('href')).toBe('/driver.webmanifest');
   });
 });
+

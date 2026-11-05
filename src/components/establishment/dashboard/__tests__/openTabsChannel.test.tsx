@@ -38,3 +38,4 @@ describe('open-tabs realtime channel', () => {
     expect(h.channels.size).toBe(2);
   });
 });
+

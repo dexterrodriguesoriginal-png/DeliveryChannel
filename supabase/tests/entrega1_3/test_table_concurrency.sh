@@ -81,3 +81,4 @@ reverse_pid=$!
 wait "$forward_pid" || { cat "$TMP/join-forward.log"; exit 1; }
 wait "$reverse_pid" || { cat "$TMP/join-reverse.log"; exit 1; }
 echo 'PASS: concorrência mudar/QR, juntar/abrir e junções em ordem inversa'
+

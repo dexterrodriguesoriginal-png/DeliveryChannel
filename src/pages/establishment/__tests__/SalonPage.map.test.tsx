@@ -356,3 +356,4 @@ describe('SalonPage — mapa de mesas', () => {
     });
   });
 });
+

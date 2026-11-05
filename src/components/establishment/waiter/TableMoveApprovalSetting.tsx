@@ -83,3 +83,4 @@ const OwnerTableMoveApprovalSetting: React.FC<{ tenantId: string }> = ({ tenantI
     </div>
   );
 };
+

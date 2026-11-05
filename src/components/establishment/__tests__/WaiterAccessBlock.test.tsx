@@ -25,3 +25,4 @@ describe('WaiterAccessBlock', () => {
     expect(screen.getByRole('link', { name: 'Enviar pelo WhatsApp' }).getAttribute('href')).toContain(encodeURIComponent('https://x.app/garcom/bar-do-ze'));
   });
 });
+

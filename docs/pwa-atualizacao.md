@@ -48,3 +48,4 @@ Este documento descreve como funcionam as atualizações de identidade visual (l
 | **Android (Google Chrome / WebAPK)** | Atualiza **no próximo abrir** do app (ou imediatamente pelo aviso *"Nova versão disponível — atualizar"*). | Atualiza automaticamente em **~1–3 dias após o app ser aberto**, quando o Chrome executa o ciclo periódico de verificação do manifesto do WebAPK e detecta a nova URL `?v=<hash>` dos ícones. |
 | **iPhone / iPad (iOS Safari)** | Atualiza **no próximo abrir** do app. | O iOS congela o ícone e o nome no momento em que o atalho é criado. **Só troca o ícone ou o nome na tela inicial reinstalando** (removendo o atalho antigo e adicionando novamente à Tela de Início). |
 | **Desktop (Chrome / Edge)** | Atualiza **no próximo abrir** do app. | Atualiza após o navegador revalidar o manifesto ao abrir o app. |
+

@@ -73,3 +73,4 @@ ALTER TABLE public.owner_notifications ADD CONSTRAINT owner_notifications_kind_c
 DROP TABLE public._entrega1_3_c_code_settings_restore;
 DROP TABLE public._entrega1_3_c_restore;
 COMMIT;
+

@@ -59,3 +59,4 @@ psql -X -v ON_ERROR_STOP=1 -f supabase/rollback/20261026004100_payment_primary_a
 psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261026004100_payment_primary_accounts.sql
 psql -X -v ON_ERROR_STOP=1 -f supabase/tests/payments/primary_and_free_delivery.sql
 echo 'PASS: migration, backfill, primary selection, delivery checkout, rollback definitions/grants, reapplication'
+

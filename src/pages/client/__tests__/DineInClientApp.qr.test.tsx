@@ -78,3 +78,4 @@ describe('DineInClientApp — QR da mesa', () => {
     expect((await screen.findByTestId('dine-in-paused'))).toBeTruthy();
   });
 });
+

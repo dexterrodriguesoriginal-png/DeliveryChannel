@@ -95,3 +95,4 @@ export const TeamAccessPage: React.FC = () => {
     {message && <p role="alert" className="text-sm text-red-800">{message}</p>}
   </section></main>;
 };
+

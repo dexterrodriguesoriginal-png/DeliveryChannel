@@ -149,3 +149,4 @@ SELECT public.reserve_tab_receipt('e1330000-0000-0000-0000-000000000013',:'WAITE
 SELECT t.is(:'receipt_pix_after_group'::jsonb->>'method','PIX','B revisão solicitante PIX envia recibo após perda do vínculo');
 RESET ROLE;
 SELECT t.login(NULL);
+

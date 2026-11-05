@@ -131,3 +131,4 @@ export const KanbanOrderCard: React.FC<KanbanOrderCardProps> = ({
     </div>
   </article>;
 };
+

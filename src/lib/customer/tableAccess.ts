@@ -129,3 +129,4 @@ export function readPendingMesa(storage: KV | null | undefined, now = Date.now()
 export function clearPendingMesa(storage: KV | null | undefined): void {
   try { storage?.removeItem(PENDING_MESA_KEY); } catch { /* ignore */ }
 }
+

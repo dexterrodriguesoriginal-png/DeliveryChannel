@@ -224,3 +224,4 @@ export function shortPlace(order: Pick<Order, 'fulfillmentType' | 'deliveryAddre
   if (!s) return 'Entrega';
   return s.length > maxChars ? s.slice(0, maxChars - 1).trimEnd() + '…' : s;
 }
+

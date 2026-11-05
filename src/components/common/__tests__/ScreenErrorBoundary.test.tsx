@@ -15,3 +15,4 @@ it('erro de render mantém recuperação, oculta detalhes e permite voltar ao at
   fail=false;fireEvent.click(screen.getByRole('button',{name:'Tentar novamente'}));
   expect(screen.getByText('Atendimento recuperado')).toBeTruthy();
 });
+

@@ -42,3 +42,4 @@ export function receiptProvider(env: NodeJS.ProcessEnv, fetcher?: typeof fetch):
 
 /** Provider boundary keeps the receipt workflow independent of the transactional email adapter. */
 export async function sendReceipt(provider: ReceiptProvider, receipt: TabReceipt) { await provider.send(receipt); }
+

@@ -116,3 +116,4 @@ SELECT t.ok((SELECT relrowsecurity FROM pg_class WHERE oid='public.salon_order_d
  AND NOT has_table_privilege('anon','public.salon_order_delivery_codes','SELECT')
  AND NOT has_table_privilege('authenticated','public.salon_order_delivery_codes','SELECT'),
  'E14.3 RLS e ausência de acesso direto dos clientes preservados');
+

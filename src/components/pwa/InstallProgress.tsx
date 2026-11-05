@@ -217,3 +217,4 @@ export const InstallProgress: React.FC<InstallProgressProps> = ({
     </div>
   );
 };
+

@@ -346,3 +346,4 @@ export const SalonSetupPanel: React.FC<Props> = ({
     </section>
   );
 };
+

@@ -9,3 +9,4 @@ describe('destinatário único de comprovante', () => {
     expect(isValidReceiptEmail(value)).toBe(false);
   });
 });
+

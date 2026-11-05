@@ -30,3 +30,4 @@ export const PwaUpdateToast: React.FC = () => {
     </div>
   );
 };
+
