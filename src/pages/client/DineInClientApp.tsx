@@ -40,6 +40,7 @@ import { homeActionAvailability, type HomeVisibilityContext } from '../../lib/st
 import { storeHomeRepository } from '../../repositories/storeHomeRepository';
 
 import { DineInTotemMenu } from '../../components/client/dinein/DineInTotemMenu';
+import { DineInPremiumMenuAdapter } from '../../components/client/totem/DineInPremiumMenuAdapter';
 import { DineInDeliveryCode, DineInDeliveryNotice, DineInTracking } from '../../components/client/dinein/DineInTracking';
 import { dineInStatus, type DineInTrackedRound } from '../../lib/customer/dineInTracking';
 import { canDisputeDelivery, deliveryNoticeLabel, type DeliveryState } from '../../lib/customer/deliveryDispute';
@@ -209,6 +210,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const deviceIdRef = useRef('');
   const submitKeyRef = useRef(uuid());
   const submitLockRef = useRef(false);
+  const premiumFinanceLockRef = useRef(false);
   const openedUserRef = useRef('');
   const pingedRef = useRef('');
   const activeIdentityRef = useRef({ token, userId: supabaseUser?.id, sessionId, generation: 0 });
@@ -276,6 +278,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   }, [beforeUpsellCheckout, cart]);
   // Modo totem: após a inatividade, descarta a sacola e volta ao início do QR.
   const kioskActive = menuOptions.totemMode && view === 'MENU';
+  // Apenas o modo totem de QR de mesa: nunca /app/:slug ou vitrine mobile.
+  const premiumTotemActive = kioskActive && Boolean(storeTenantId);
   const resetKioskSession = useCallback(() => {
     upsell.clear();
     setCart([]); setCheckoutPending(false);
@@ -285,6 +289,32 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setView('HOME');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upsell.clear]);
+  const resetPremiumKioskSession = useCallback(() => {
+    // O mesmo reset visual do quiosque, agora com invalidação de identidade.
+    activeIdentityRef.current.generation += 1;
+    upsell.clear();
+    setCart([]);
+    setCheckoutPending(false);
+    setCartOpen(false); setConfirmOrderOpen(false); setCheckoutIdentityOpen(false);
+    setOptionsProduct(null); setOptionChoices([]);
+    setBillOpen(false); setAccountOpen(false);
+    setAwaitingReleaseModalOpen(false);
+    setTab(null); setTabClosed(false); setSessionId('');
+    setEntered(false); setEntryDone(false); setEntryApproved(null); setEntryRole(null);
+    setIdentityConfirmed(false); setPendingApproval(false);
+    openedUserRef.current = '';
+    submitLockRef.current = false;
+    submitKeyRef.current = uuid();
+    pendingUpsellAdd.current = null; optionsFromUpsell.current = false;
+    setView('HOME');
+    try { sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${token}`); } catch { /* optional */ }
+    saveDineInCart(typeof localStorage !== 'undefined' ? localStorage : null, token, [], false);
+    // Dispositivo compartilhado: não conservar o usuário anterior autenticado.
+    if (supabaseUser) void Promise.resolve(signOut()).catch(() => {
+      setNotice('Sessão anterior encerrada localmente. Faça nova identificação.');
+    });
+  }, [token, supabaseUser, signOut, upsell.clear]);
+
   useEffect(() => {
     const added = pendingUpsellAdd.current;
     if (!added || optionsProduct) return;
@@ -919,6 +949,71 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     }
   };
 
+  // Integração financeira exclusiva do TOTEM Premium.
+  // Uma escolha é sempre explicitamente enviada, sem fallback de assinatura antiga.
+  const premiumSession = () => {
+    const source = activeIdentityRef.current;
+    if (!access || !sessionId || needsIdentity || tabClosed || !tab ||
+      !tab.me?.approved || tab.me.sessionId !== sessionId ||
+      source.sessionId !== sessionId || !contextMatches(source)) {
+      throw new Error('Sessão não autorizada ou expirada. Entre novamente na mesa.');
+    }
+    return source;
+  };
+  const refreshPremiumExpenses = async (): Promise<void> => {
+    const source = premiumSession();
+    const { data, error: rpcError } = await supabase.rpc('get_my_tab', { p_session_id: source.sessionId });
+    if (!contextMatches(source)) throw new Error('A sessão mudou durante a consulta.');
+    if (rpcError || !data) throw new Error(errorText(rpcError) || 'Não foi possível atualizar a comanda.');
+    const updated = data as MyTab;
+    // Não confiar só na identidade do navegador ou no ID em storage.
+    if (updated.me?.sessionId !== source.sessionId || updated.me?.approved !== true) {
+      throw new Error('A resposta do servidor não pertence à sessão autorizada.');
+    }
+    setTab(updated);
+    if (updated.status === 'CLOSED' || updated.status === 'CANCELLED') setTabClosed(true);
+  };
+  const premiumFinancialOperation = async (action: (sid: string) => Promise<void>) => {
+    const source = premiumSession();
+    if (busy || premiumFinanceLockRef.current) throw new Error('Aguarde a operação anterior.');
+    premiumFinanceLockRef.current = true;
+    setBusy(true);
+    try {
+      await action(source.sessionId);
+      if (!contextMatches(source)) throw new Error('A sessão mudou durante a operação.');
+      try { await refreshPremiumExpenses(); }
+      catch { if (contextMatches(source)) setNotice('Solicitação enviada. Atualize a comanda para consultar o novo status.'); }
+    } finally {
+      premiumFinanceLockRef.current = false;
+      if (contextMatches(source)) setBusy(false);
+    }
+  };
+  const requestPremiumBill = async (choice: 'CARD' | 'PIX' | 'CAIXA') => {
+    if (tab?.status !== 'OPEN') throw new Error('Esta comanda não está aberta.');
+    await premiumFinancialOperation(async sid => {
+      const { error: rpcError } = await supabase.rpc('request_bill', {
+        p_session_id: sid, p_choice: choice, p_cash_tendered_cents: null,
+      });
+      if (rpcError) throw new Error(errorText(rpcError) || 'Não foi possível solicitar a conta.');
+      setNotice('Conta solicitada. A equipe foi avisada.');
+    });
+  };
+  const callWaiterFromPremium = async () => {
+    await premiumFinancialOperation(async sid => {
+      const { error: rpcError } = await supabase.rpc('call_waiter', { p_session_id: sid, p_type: 'CALL' });
+      if (rpcError) throw new Error(errorText(rpcError) || 'Não foi possível chamar o garçom.');
+      setNotice('Garçom chamado. Aguarde o atendimento.');
+    });
+  };
+  const reopenBillFromPremium = async () => {
+    if (!canReopenBill(tab?.status, tab?.pixStatus)) throw new Error('Comanda não pode ser reaberta agora.');
+    await premiumFinancialOperation(async sid => {
+      const { error: rpcError } = await supabase.rpc('reopen_tab_from_bill', { p_session_id: sid });
+      if (rpcError) throw new Error(errorText(rpcError) || 'Não foi possível reabrir a comanda.');
+      setNotice('Comanda reaberta após autorização do servidor.');
+    });
+  };
+
   const disputeDelivery = async (orderId: string) => {
     const round = tab?.rounds?.find(item => item.orderId === orderId && item.mine !== false);
     if (!sessionId || disputeBusyId || !round || !canDisputeDelivery(round)) return;
@@ -1221,7 +1316,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   return (
     <main className={view === 'MENU' ? 'dinein-menu-shell bg-slate-50' : view === 'HOME' ? 'min-h-screen bg-[#071a14]' : 'min-h-screen bg-slate-50 pb-28'} data-kiosk={kioskActive || undefined}>
-      <TotemKioskLayer enabled={kioskActive} idleSeconds={menuOptions.idleSeconds} onIdle={resetKioskSession} />
+      <TotemKioskLayer enabled={kioskActive} idleSeconds={menuOptions.idleSeconds} onIdle={premiumTotemActive ? resetPremiumKioskSession : resetKioskSession} />
       {view === 'HOME' ? (
         <div className="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-start justify-between gap-2 p-3 sm:p-4">
           <div className="pointer-events-none min-w-0">
@@ -1245,7 +1340,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           <button type="button" disabled={!sessionId} onClick={() => { setAccountOpen(true); void loadAccount(); }} aria-label="Ver minha conta" className="pointer-events-auto rounded-full bg-white/95 p-2 shadow-lg backdrop-blur disabled:opacity-40"><CircleUserRound className="h-6 w-6" /></button>
           </div>
         </div>
-      ) : (
+      ) : !premiumTotemActive ? (
       <header className="sticky top-0 z-20 border-b bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-2">
           <div>
@@ -1295,7 +1390,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           </div>
         </div>
       </header>
-      )}
+      ) : null}
       {addedToast && (
         <div
           aria-live="polite"
@@ -1341,7 +1436,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       </div>
 
-      <section className={view === 'MENU' ? 'dinein-menu-content' : view === 'HOME' ? 'dc-store-home-host' : 'mx-auto max-w-2xl px-4 py-5'}>
+      <section className={premiumTotemActive ? 'fixed inset-0 z-20 overflow-hidden' : view === 'MENU' ? 'dinein-menu-content' : view === 'HOME' ? 'dc-store-home-host' : 'mx-auto max-w-2xl px-4 py-5'}>
         {view === 'HOME' ? <StoreHomeScreen
           design={storeHomeDesign}
           storeName={displayStoreName || storeName}
@@ -1353,6 +1448,35 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           visibility={homeVisibility}
           available={homeAvailable}
           onAction={handleStoreHomeAction}
+        /> : premiumTotemActive ? <DineInPremiumMenuAdapter
+          key={`${token}:${storeTenantId}:${sessionId}`}
+          tenantId={storeTenantId}
+          storeName={storeName}
+          storeLogoUrl={storeLogoUrl}
+          storeTagline={storeHomeDesign.tagline || 'Bem-vindo ao nosso cardápio'}
+          location="TABLE"
+          tableLabel={mesaTitle(tab?.tableLabel || resolution?.tableLabel)}
+          categories={categories}
+          products={products}
+          menuTheme={menuTheme}
+          homeDesign={storeHomeDesign}
+          cartCount={totalCartItems}
+          orderingDisabled={orderingDisabled}
+          busy={busy}
+          verifiedSessionId={sessionId}
+          tabSessionId={tab?.me?.sessionId ?? null}
+          sessionAuthorized={Boolean(access && !needsIdentity && tab?.me?.approved === true && tab.me.sessionId === sessionId)}
+          tab={tab}
+          authorizedTableScope={false}
+          onGoHome={resetPremiumKioskSession}
+          onOpenCart={() => { upsell.dismiss(); setCartOpen(true); }}
+          onOpenTable={() => { if (sessionId && tab?.me?.approved === true) { setAccountOpen(true); void loadAccount(true); } }}
+          onAddProduct={addItem}
+          onOpenProduct={product => { if (!orderingDisabled && !busy) { optionsFromUpsell.current = false; setOptionsProduct(product); setOptionChoices([]); } }}
+          onRequestBill={requestPremiumBill}
+          onCallWaiter={callWaiterFromPremium}
+          onReopenBill={reopenBillFromPremium}
+          onRefreshExpenses={refreshPremiumExpenses}
         /> : <DineInTotemMenu
           key={`${token}:${storeTenantId}`}
           storeSlug={resolution?.tenantSlug || ''}
@@ -1480,7 +1604,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         ?.filter(round => round.mine !== false || (tab.me?.approved && !!round.deliveryCode))
         .map(round => tab.me?.approved ? round : { ...round, deliveryCode: null }) || []} />
 
-      {view === 'MENU' && <nav aria-label="Ações da mesa" className="dinein-menu-actions z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
+      {view === 'MENU' && !premiumTotemActive && <nav aria-label="Ações da mesa" className="dinein-menu-actions z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
         <div className="mx-auto grid max-w-2xl grid-cols-3 gap-2">
           <button type="button" onClick={() => void requestWaiter()} disabled={busy || tabClosed || !sessionId} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><UserRound className="h-5 w-5" />Chamar garçom</button>
           <button type="button" onClick={() => { setBillOpen(true); void loadAccount(true); }} disabled={busy || tabClosed || billRequested || !sessionId} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold disabled:cursor-default ${billRequested ? awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested' : 'text-slate-800 disabled:opacity-40'}`} style={billRequested ? billColors : undefined}><ReceiptText className="h-5 w-5" />{billRequested ? billStatusLabel : 'Pedir a conta'}</button>
