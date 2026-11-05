@@ -10,6 +10,7 @@ import { categoryRepository } from '../../../../repositories/categoryRepository'
 import { DEFAULT_MENU_THEME, MENU_COLOR_KEYS, MENU_FONTS, MENU_TEMPLATES, menuThemeContrastIssues } from '../../../../lib/theme/menuTheme';
 import { resolveSegment, sampleProducts } from '../../../../lib/theme/previewProducts';
 import { MenuThemePreview } from './MenuThemePreview';
+import { MenuOptionsPanel } from './MenuOptionsPanel';
 import { useBottomActionsOffset, useFloatingLeftOf } from '../../../../lib/ui/bottomActionsOffset';
 import '../themeEditor.css';
 import './menuThemeEditor.css';
@@ -107,6 +108,7 @@ export function MenuThemeEditor({ tenant, active = true }: { tenant: Tenant; act
             <section className="menu-design-section"><div className="menu-design-section-title"><Type size={18} /><div><h2>Fonte e formato</h2><p>Detalhes que deixam o toque mais agradável.</p></div></div><div className="menu-design-format-grid"><label>Fonte<select className="theme-select" value={draft.fontFamily} onChange={event => update({ fontFamily: event.target.value })}>{MENU_FONTS.map(font => <option key={font}>{font}</option>)}</select></label><label>Cantos: {draft.radius} px<input type="range" aria-label="Arredondamento dos cantos" min="0" max="32" value={draft.radius} onChange={event => update({ radius: Number(event.target.value) })} /></label><label>Espaçamento<select className="theme-select" value={draft.layout} onChange={event => update({ layout: event.target.value as MenuTheme['layout'] })}><option value="comfortable">Confortável</option><option value="compact">Compacto</option></select></label></div></section>
           </fieldset>
         </>}
+        {!loading && <MenuOptionsPanel securityContext={securityContext} tenantId={tenant.id} />}
       </main>
       <aside className="menu-design-live" aria-label="Prévia ao vivo do cardápio"><div className="menu-design-preview-toolbar"><div><span className="theme-eyebrow">PRÉVIA AO VIVO</span><h2>Comer com os olhos</h2></div><div className="menu-design-device-toggle" role="group" aria-label="Formato da prévia"><button type="button" aria-label="Prévia no celular" aria-pressed={device === 'phone'} onClick={() => setDevice('phone')}><Smartphone size={17} /></button><button type="button" aria-label="Prévia no tablet" aria-pressed={device === 'tablet'} onClick={() => setDevice('tablet')}><Tablet size={17} /></button></div></div><MenuThemePreview theme={draft} storeName={tenant.theme.storeName || tenant.name} categories={categories.map(category => category.name)} products={previewProducts} device={device} /><p className="menu-design-preview-caption">{products.length ? 'Prévia com produtos do seu catálogo.' : 'Produtos ilustrativos. Seu catálogo continua o mesmo.'} As alterações aparecem aqui antes de salvar.</p></aside>
     </div>

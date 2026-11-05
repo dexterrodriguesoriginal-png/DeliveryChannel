@@ -23,7 +23,8 @@ export interface DineInTotemMenuProps {
   onAddProduct(product: Product): void;
   onOpenProduct(product: Product): void;
   onOpenCart(): void;
-  onBack(): void;
+  /** Omitido no modo totem: sem navegação de volta do navegador. */
+  onBack?(): void;
 }
 
 const UNCATEGORIZED_ID = '__dinein_uncategorized';

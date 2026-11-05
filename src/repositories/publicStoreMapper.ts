@@ -19,6 +19,8 @@
 import { fulfillmentFieldsFromRaw } from '../lib/pricing/fulfillmentPricing';
 import { normalizeMenuTheme } from '../lib/theme/menuTheme';
 import type { MenuTheme } from '../types/menuTheme';
+import { normalizeMenuOptions } from '../lib/menu/menuOptions';
+import type { MenuOptions } from '../types/menuOptions';
 import {
   Campaign,
   CampaignCard,
@@ -55,6 +57,8 @@ export interface PublicStoreData {
   settings: TenantSettings;
   /** Visual do cardápio da mesa, independente do aplicativo da loja. */
   menuTheme?: MenuTheme;
+  /** Opções do cardápio da mesa (modo totem). */
+  menuOptions?: MenuOptions;
   categories: Category[];
   products: Product[];
   offers: Offer[];
@@ -467,6 +471,7 @@ export function mapPublicStorePayload(raw: unknown, receivedAtMs: number = Date.
     theme: mapTheme(raw.theme, tenant.name),
     settings: mapSettings(raw.settings),
     menuTheme: normalizeMenuTheme(raw.menuTheme),
+    menuOptions: normalizeMenuOptions(raw.menuOptions),
     categories: arr(raw.categories).map(mapCategory).filter(sameTenant),
     products: arr(raw.products).map(mapProduct).filter(sameTenant),
     offers: arr(raw.offers).map(mapOffer).filter(sameTenant),

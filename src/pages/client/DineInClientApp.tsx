@@ -7,6 +7,9 @@ import { publicStoreRepository } from '../../repositories/publicStoreRepository'
 import { formatBRL } from '../../lib/pricing/money';
 import type { Category, Product, SelectedProductOption } from '../../types';
 import type { MenuTheme } from '../../types/menuTheme';
+import type { MenuOptions } from '../../types/menuOptions';
+import { DEFAULT_MENU_OPTIONS } from '../../lib/menu/menuOptions';
+import { TotemKioskLayer } from '../../components/client/totem/TotemKioskLayer';
 import { productToPricingLine } from '../../lib/pricing/fulfillmentPricing';
 import { useSmartUpsell } from '../../hooks/useSmartUpsell';
 import { UpsellSheet } from '../../components/client/customer/UpsellSheet';
@@ -117,6 +120,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [menuTheme, setMenuTheme] = useState<MenuTheme>();
+  const [menuOptions, setMenuOptions] = useState<MenuOptions>({ ...DEFAULT_MENU_OPTIONS });
   const [storeTenantId, setStoreTenantId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -262,6 +266,17 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const reviewRound = useCallback(() => {
     void beforeUpsellCheckout(cart.map(line => ({ productId: line.product.id, quantity: line.quantity })), () => setConfirmOrderOpen(true));
   }, [beforeUpsellCheckout, cart]);
+  // Modo totem: após a inatividade, descarta a sacola e volta ao início do QR.
+  const kioskActive = menuOptions.totemMode && view === 'MENU';
+  const resetKioskSession = useCallback(() => {
+    upsell.clear();
+    setCart([]); setCheckoutPending(false);
+    setCartOpen(false); setConfirmOrderOpen(false); setCheckoutIdentityOpen(false);
+    setOptionsProduct(null); setOptionChoices([]);
+    pendingUpsellAdd.current = null; optionsFromUpsell.current = false;
+    setView('HOME');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upsell.clear]);
   useEffect(() => {
     const added = pendingUpsellAdd.current;
     if (!added || optionsProduct) return;
@@ -342,6 +357,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         setStoreTenantId(store.data.tenant.id);
         setCategories(store.data.categories || []);
         setMenuTheme(store.data.menuTheme);
+        setMenuOptions(store.data.menuOptions ?? { ...DEFAULT_MENU_OPTIONS });
         if (store.data.theme?.logoUrl) setStoreLogoUrl(store.data.theme.logoUrl);
         if (store.data.theme?.primaryColor) setStorePrimaryColor(store.data.theme.primaryColor);
         void applyStoreIdentity({ id: store.data.tenant.id, slug: result.tenantSlug, name: store.data.tenant.name,
@@ -1140,7 +1156,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   }
 
   return (
-    <main className={view === 'MENU' ? 'dinein-menu-shell bg-slate-50' : 'min-h-screen bg-slate-50 pb-28'}>
+    <main className={view === 'MENU' ? 'dinein-menu-shell bg-slate-50' : 'min-h-screen bg-slate-50 pb-28'} data-kiosk={kioskActive || undefined}>
+      <TotemKioskLayer enabled={kioskActive} idleSeconds={menuOptions.idleSeconds} onIdle={resetKioskSession} />
       <header className="sticky top-0 z-20 border-b bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-2">
           <div>
@@ -1265,7 +1282,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           onAddProduct={addItem}
           onOpenProduct={product => { if (!orderingDisabled && !busy) { optionsFromUpsell.current = false; setOptionsProduct(product); setOptionChoices([]); } }}
           onOpenCart={() => { upsell.dismiss(); setCartOpen(true); }}
-          onBack={() => setView('HOME')}
+          onBack={kioskActive ? undefined : () => setView('HOME')}
         />}
         {awaitingReleaseModalOpen && awaitingRelease && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setAwaitingReleaseModalOpen(false); }}>

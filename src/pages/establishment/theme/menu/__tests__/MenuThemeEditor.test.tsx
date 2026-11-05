@@ -13,6 +13,7 @@ vi.mock('../../../../../repositories/menuThemeRepository', async importOriginal 
   ...await importOriginal<typeof import('../../../../../repositories/menuThemeRepository')>(),
   menuThemeRepository: { load: mocks.load, save: mocks.save },
 }));
+vi.mock('../../../../../repositories/menuOptionsRepository', () => ({ menuOptionsRepository: { load: vi.fn().mockResolvedValue({ totemMode: false, idleSeconds: 60 }), save: vi.fn() } }));
 vi.mock('../../../../../repositories/productRepository', () => ({ productRepository: { getProducts: mocks.product } }));
 vi.mock('../../../../../repositories/categoryRepository', () => ({ categoryRepository: { getCategories: mocks.category } }));
 vi.mock('../../../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: true }));
