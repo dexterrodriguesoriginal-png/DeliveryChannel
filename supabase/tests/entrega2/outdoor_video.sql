@@ -1,4 +1,4 @@
--- 20261105000300: vídeo de até 5 min/200 MB, banner do YouTube (somente id) e exclusão isolada por loja.
+-- 20261105000300: vídeo de até 5 min/50 MB, banner do YouTube (somente id) e exclusão isolada por loja.
 \set A '10000000-0000-0000-0000-00000000000a'
 \set B '10000000-0000-0000-0000-00000000000b'
 \set OWNER 'a0000000-0000-0000-0000-000000000001'
@@ -11,26 +11,26 @@
 RESET ROLE;
 SELECT t.login(NULL);
 SELECT t.is((SELECT string_agg(id||':'||file_size_limit,',' ORDER BY id) FROM storage.buckets WHERE id LIKE 'marketing%'),
-  'marketing:209715200,marketing-public:209715200','OV buckets de marketing aceitam 200 MiB');
+  'marketing:52428800,marketing-public:52428800','OV buckets de marketing aceitam 50 MiB');
 SELECT t.lives(format($q$INSERT INTO public.marketing_media_assets(id,tenant_id,kind,media_type,extension,private_path,size_bytes)
-  VALUES(%L,%L,'CREATIVE','VIDEO','mp4',%L,150000000)$q$,:'BIG',:'A',:'A'||'/drafts/'||:'BIG'||'.mp4'),'OV vídeo de 150 MB cabe na regra da tabela');
-SELECT t.throws(format($q$UPDATE public.marketing_media_assets SET size_bytes=209715201 WHERE id=%L$q$,:'BIG'),'mma_size_limits','OV vídeo acima de 200 MiB recusado na tabela');
+  VALUES(%L,%L,'CREATIVE','VIDEO','mp4',%L,40000000)$q$,:'BIG',:'A',:'A'||'/drafts/'||:'BIG'||'.mp4'),'OV vídeo de 40 MB cabe na regra da tabela');
+SELECT t.throws(format($q$UPDATE public.marketing_media_assets SET size_bytes=52428801 WHERE id=%L$q$,:'BIG'),'mma_size_limits','OV vídeo acima de 50 MiB recusado na tabela');
 SELECT t.throws(format($q$UPDATE public.marketing_media_assets SET media_type='IMAGE',extension='png',size_bytes=5242881 WHERE id=%L$q$,:'BIG'),'mma_size_limits','OV imagem continua limitada a 5 MiB');
 SELECT t.ok(NOT has_function_privilege('anon','public.delete_menu_outdoor_slide(uuid,uuid)','EXECUTE'),'OV anon não exclui');
 SELECT t.ok(NOT has_table_privilege('authenticated','public.menu_outdoor_slides','DELETE'),'OV exclusão somente via RPC');
 SELECT t.ok(NOT has_function_privilege('anon','public.save_menu_outdoor_slide(uuid,uuid,uuid,text,uuid,integer,boolean,timestamptz,timestamptz,text)','EXECUTE'),'OV anon sem gestão');
 SET ROLE authenticated;
 SELECT t.login(:'OWNER'::uuid);
-SELECT t.ok((public.register_marketing_asset(:'A','CREATIVE','VIDEO','mp4',209715200)->>'max_bytes')::bigint=209715200,'OV dono registra vídeo de 200 MiB');
-SELECT t.throws(format('SELECT public.register_marketing_asset(%L,''CREATIVE'',''VIDEO'',''mp4'',209715201)',:'A'),'MEDIA_TOO_LARGE','OV registro acima de 200 MiB recusado');
+SELECT t.ok((public.register_marketing_asset(:'A','CREATIVE','VIDEO','mp4',52428800)->>'max_bytes')::bigint=52428800,'OV dono registra vídeo de 50 MiB');
+SELECT t.throws(format('SELECT public.register_marketing_asset(%L,''CREATIVE'',''VIDEO'',''mp4'',52428801)',:'A'),'MEDIA_TOO_LARGE','OV registro acima de 50 MiB recusado');
 SELECT t.throws(format('SELECT public.register_marketing_asset(%L,''CREATIVE'',''IMAGE'',''png'',5242881)',:'A'),'MEDIA_TOO_LARGE','OV imagem acima de 5 MiB recusada');
 SELECT public.register_marketing_asset(:'A','CREATIVE','VIDEO','mp4',1000) AS reg \gset
 RESET ROLE;
-INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('marketing',:'reg'::jsonb->>'path',jsonb_build_object('mimetype','video/mp4','size',150000000));
+INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('marketing',:'reg'::jsonb->>'path',jsonb_build_object('mimetype','video/mp4','size',40000000));
 SET ROLE authenticated;
 SELECT t.login(:'OWNER'::uuid);
 SELECT t.throws(format('SELECT public.confirm_marketing_upload(%L,1920,1080,301)',:'reg'::jsonb->>'asset_id'),'MEDIA_TOO_LONG','OV vídeo acima de 5 minutos recusado no servidor');
-SELECT t.is(public.confirm_marketing_upload((:'reg'::jsonb->>'asset_id')::uuid,1920,1080,300)->>'status','UPLOADED','OV vídeo de 5 min e 150 MB confirmado');
+SELECT t.is(public.confirm_marketing_upload((:'reg'::jsonb->>'asset_id')::uuid,1920,1080,300)->>'status','UPLOADED','OV vídeo de 5 min e 40 MB confirmado');
 
 -- YouTube
 SELECT public.save_menu_outdoor_slide(:'A',NULL,NULL,'Promo YouTube',NULL,5,true,NULL,NULL,:'YT') AS yt \gset

@@ -1,14 +1,14 @@
--- Outdoor do cardápio: vídeo de até 5 minutos (200 MB), banner do YouTube (somente id) e exclusão de banner.
+-- Outdoor do cardápio: vídeo de até 5 minutos (50 MB), banner do YouTube (somente id) e exclusão de banner.
 -- Reversão: supabase/rollback/20261105000300_outdoor_video_youtube_down.sql.
 -- Nenhuma linha existente é alterada; banners existentes passam a ter media_kind='ASSET'.
 
--- 1) Limite de vídeo: 35 MiB -> 200 MiB (209715200 bytes) nos buckets e nas regras do servidor.
---    Observação: o limite GLOBAL de upload do projeto Supabase (Storage > Settings) precisa ser >= 200 MB;
+-- 1) Limite de vídeo: 35 MiB -> 50 MiB (52428800 bytes) nos buckets e nas regras do servidor.
+--    Observação: o limite GLOBAL de upload do projeto Supabase (Storage > Settings) precisa ser >= 50 MB;
 --    no plano Free ele é fixo em 50 MB.
-UPDATE storage.buckets SET file_size_limit = 209715200 WHERE id IN ('marketing','marketing-public');
+UPDATE storage.buckets SET file_size_limit = 52428800 WHERE id IN ('marketing','marketing-public');
 ALTER TABLE public.marketing_media_assets DROP CONSTRAINT mma_size_limits;
 ALTER TABLE public.marketing_media_assets ADD CONSTRAINT mma_size_limits CHECK (size_bytes IS NULL OR
-  (media_type = 'IMAGE' AND size_bytes <= 5242880) OR (media_type = 'VIDEO' AND size_bytes <= 209715200));
+  (media_type = 'IMAGE' AND size_bytes <= 5242880) OR (media_type = 'VIDEO' AND size_bytes <= 52428800));
 
 CREATE OR REPLACE FUNCTION public.register_marketing_asset(p_tenant_id UUID, p_kind TEXT, p_media_type TEXT, p_extension TEXT, p_declared_size BIGINT)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -29,7 +29,7 @@ BEGIN
     IF NOT ((v_type = 'IMAGE' AND v_ext IN ('jpg','jpeg','png','webp')) OR (v_type = 'VIDEO' AND v_ext IN ('mp4','webm'))) THEN
         RAISE EXCEPTION 'MEDIA_INVALID_EXTENSION: extensão % não permitida para %.', v_ext, v_type;
     END IF;
-    v_max := CASE WHEN v_type = 'IMAGE' THEN 5242880 ELSE 209715200 END;
+    v_max := CASE WHEN v_type = 'IMAGE' THEN 5242880 ELSE 52428800 END;
     IF p_declared_size IS NULL OR p_declared_size <= 0 OR p_declared_size > v_max THEN
         RAISE EXCEPTION 'MEDIA_TOO_LARGE: limite de % bytes.', v_max;
     END IF;
@@ -64,7 +64,7 @@ BEGIN
     IF v_mime IS NULL OR NOT public._mime_matches_extension(v_mime, v.extension) THEN
         RAISE EXCEPTION 'MEDIA_MIME_MISMATCH: tipo do arquivo (%) não confere com a extensão %.', v_mime, v.extension;
     END IF;
-    IF v_size IS NULL OR v_size <= 0 OR v_size > (CASE WHEN v.media_type = 'IMAGE' THEN 5242880 ELSE 209715200 END) THEN
+    IF v_size IS NULL OR v_size <= 0 OR v_size > (CASE WHEN v.media_type = 'IMAGE' THEN 5242880 ELSE 52428800 END) THEN
         RAISE EXCEPTION 'MEDIA_TOO_LARGE: arquivo acima do limite.';
     END IF;
     IF (p_width IS NOT NULL AND (p_width <= 0 OR p_width > 10000)) OR (p_height IS NOT NULL AND (p_height <= 0 OR p_height > 10000))

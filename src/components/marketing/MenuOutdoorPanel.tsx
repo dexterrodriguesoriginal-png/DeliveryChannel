@@ -228,7 +228,7 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
                 {asset.mediaType === 'VIDEO' ? <><video src={asset.publicUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" /><Video size={20} className="absolute right-2 top-2 text-white" /></> : <img src={asset.publicUrl} alt="" className="h-full w-full object-cover" loading="lazy" />}
               </button>)}</div>
             </div>}
-            <p className="mt-3 flex gap-2 text-xs leading-relaxed text-slate-500"><Video size={16} className="shrink-0" />JPG, PNG ou WEBP até 5 MB. MP4 ou WEBM com até 5 minutos e 200 MB. A mídia é publicada pelo mesmo fluxo seguro da sua biblioteca de marketing.</p>
+            <p className="mt-3 flex gap-2 text-xs leading-relaxed text-slate-500"><Video size={16} className="shrink-0" />JPG, PNG ou WEBP até 5 MB. MP4 ou WEBM com até 5 minutos e 50 MB (maior que isso, use um link do YouTube). A mídia é publicada pelo mesmo fluxo seguro da sua biblioteca de marketing.</p>
           </div>
           <div className="space-y-4">
             <label className="block text-sm font-semibold text-slate-700">Título do banner <span className="font-normal text-slate-400">(opcional)</span><input value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="Hoje é dia de experimentar algo novo" className={fieldClass} /></label>

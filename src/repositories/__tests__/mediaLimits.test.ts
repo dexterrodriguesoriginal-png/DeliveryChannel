@@ -9,11 +9,11 @@ describe('Limites de vídeo do outdoor', () => {
     expect(videoDurationError(600)).toMatch(/10min00s/);
   });
   it.each([undefined, NaN, Infinity, 0, -1])('recusa duração ilegível (%s)', d => expect(videoDurationError(d)).toMatch(/duração/));
-  it('vídeo de 200 MB passa; acima disso e imagem acima de 5 MB não', () => {
-    expect(MAX_VIDEO_BYTES).toBe(209715200);
-    expect(mediaSizeError('VIDEO', 150 * 1024 * 1024)).toBeNull();
+  it('vídeo de 50 MB passa; acima disso e imagem acima de 5 MB não', () => {
+    expect(MAX_VIDEO_BYTES).toBe(52428800);
+    expect(mediaSizeError('VIDEO', 40 * 1024 * 1024)).toBeNull();
     expect(mediaSizeError('VIDEO', MAX_VIDEO_BYTES)).toBeNull();
-    expect(mediaSizeError('VIDEO', MAX_VIDEO_BYTES + 1)).toMatch(/200 MB/);
+    expect(mediaSizeError('VIDEO', MAX_VIDEO_BYTES + 1)).toMatch(/50 MB.*YouTube/);
     expect(mediaSizeError('IMAGE', 6 * 1024 * 1024)).toMatch(/5 MB/);
   });
 });

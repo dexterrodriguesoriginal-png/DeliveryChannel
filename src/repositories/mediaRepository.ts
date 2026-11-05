@@ -65,9 +65,9 @@ function readDimensions(file: File, mediaType: 'IMAGE' | 'VIDEO'): Promise<{ wid
   });
 }
 
-/** Limites alinhados ao servidor (migration 20261105000300): vídeo até 5 min e 200 MB. */
+/** Limites alinhados ao servidor (migration 20261105000300): vídeo até 5 min e 50 MB. */
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-export const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 export const MAX_VIDEO_SECONDS = 300;
 
 /** Regra de duração do vídeo (lida no navegador via loadedmetadata). Devolve a mensagem de erro ou null. */
@@ -84,7 +84,7 @@ export function videoDurationError(duration: number | undefined): string | null 
 
 export function mediaSizeError(mediaType: 'IMAGE' | 'VIDEO', size: number): string | null {
   if (mediaType === 'IMAGE' && size > MAX_IMAGE_BYTES) return 'A imagem passa de 5 MB. Envie uma versão mais leve.';
-  if (mediaType === 'VIDEO' && size > MAX_VIDEO_BYTES) return 'O vídeo passa de 200 MB. Exporte em 1080p (ou 720p) e envie novamente.';
+  if (mediaType === 'VIDEO' && size > MAX_VIDEO_BYTES) return 'O vídeo passa de 50 MB. Para vídeos maiores, publique no YouTube e use a opção "Ou use um vídeo do YouTube".';
   return null;
 }
 
