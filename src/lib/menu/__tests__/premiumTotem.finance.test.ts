@@ -32,7 +32,7 @@ const expense = (next: ExpenseTab['status'], pixStatus: string | null = null): E
 describe('solicitação de fechamento, sem liberação automática', () => {
   it('expõe CARD/PIX/CAIXA apenas como preferências de request_bill', () => {
     expect(EXPENSE_PAYMENT_OPTIONS.map(x => x.serverChoice)).toEqual(['CARD', 'PIX', 'CAIXA', null]);
-    expect(EXPENSE_PAYMENT_OPTIONS.some(x => x.serverChoice === 'CLOSED')).toBe(false);
+    expect(EXPENSE_PAYMENT_OPTIONS.some(x => (x.serverChoice as string | null) === 'CLOSED')).toBe(false);
     expect(buildExpenseSummary(expense('OPEN')).canRequestBill).toBe(true);
   });
 

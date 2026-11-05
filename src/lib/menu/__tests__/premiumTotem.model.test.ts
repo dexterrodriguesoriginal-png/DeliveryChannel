@@ -1,17 +1,17 @@
 
 /**
  * DELIVERY CHANNEL
- * TESTES � CARD�PIO PREMIUM DO TOTEM
+ * TESTES — CARDÁPIO PREMIUM DO TOTEM
  *
  * Arquivo:
  * src/features/dineInMenu/dineInMenu.model.test.ts
  *
- * Testa regras de apresenta��o e isolamento.
+ * Testa regras de apresentação e isolamento.
  *
- * N�o utiliza o banco de produ��o.
- * N�o cria pedidos.
- * N�o executa pagamentos.
- * N�o altera mesas.
+ * Não utiliza o banco de produção.
+ * Não cria pedidos.
+ * Não executa pagamentos.
+ * Não altera mesas.
  */
 
 import {
@@ -128,7 +128,7 @@ function expenseTab(
         subtotal: 35,
         items: [
           {
-            name: 'Por��o',
+            name: 'Porção',
             quantity: 1,
             unitPrice: 35,
             totalPrice: 35,
@@ -184,7 +184,7 @@ describe('Isolamento entre estabelecimentos', () => {
     expect(result.products[0].id).toBe('produto-a');
   });
 
-  it('n�o permite categoria de outra loja', () => {
+  it('não permite categoria de outra loja', () => {
     const result = buildMenuCatalog(
       TENANT_A,
       [category('categoria-externa', TENANT_B)],
@@ -195,7 +195,7 @@ describe('Isolamento entre estabelecimentos', () => {
     expect(result.products).toHaveLength(0);
   });
 
-  it('n�o exibe dados sem tenant v�lido', () => {
+  it('não exibe dados sem tenant válido', () => {
     const result = buildMenuCatalog(
       '',
       [category('cat-a')],
@@ -206,7 +206,7 @@ describe('Isolamento entre estabelecimentos', () => {
     expect(result.products).toEqual([]);
   });
 
-  it('n�o deixa produto cruzar lojas', () => {
+  it('não deixa produto cruzar lojas', () => {
     const result = buildMenuCatalog(
       TENANT_A,
       [category('cat-a')],
@@ -226,7 +226,7 @@ describe('Isolamento entre estabelecimentos', () => {
 // 3. CATEGORIAS E PRODUTOS
 // =====================================================
 
-describe('Categorias do card�pio', () => {
+describe('Categorias do cardápio', () => {
   it('ordena categorias conforme cadastro', () => {
     const result = buildMenuCatalog(
       TENANT_A,
@@ -280,7 +280,7 @@ describe('Categorias do card�pio', () => {
     expect(result.products).toHaveLength(0);
   });
 
-  it('oculta produtos indispon�veis', () => {
+  it('oculta produtos indisponíveis', () => {
     const result = buildMenuCatalog(
       TENANT_A,
       [category('cat-a')],
@@ -330,7 +330,7 @@ describe('Categorias do card�pio', () => {
     ).toBe('cervejas');
   });
 
-  it('n�o retorna produtos para categoria inv�lida', () => {
+  it('não retorna produtos para categoria inválida', () => {
     const catalog = buildMenuCatalog(
       TENANT_A,
       [category('cervejas')],
@@ -359,10 +359,10 @@ describe('Categorias do card�pio', () => {
 });
 
 // =====================================================
-// 4. PRE�OS E PROMO��ES
+// 4. PREÇOS E PROMOÇÕES
 // =====================================================
 
-describe('Pre�os do card�pio', () => {
+describe('Preços do cardápio', () => {
   it('converte reais em centavos', () => {
     const result = buildMenuCatalog(
       TENANT_A,
@@ -378,7 +378,7 @@ describe('Pre�os do card�pio', () => {
       .toBe(1250);
   });
 
-  it('aplica pre�o promocional v�lido', () => {
+  it('aplica preço promocional válido', () => {
     const result = buildMenuCatalog(
       TENANT_A,
       [category('cat-a')],
@@ -398,7 +398,7 @@ describe('Pre�os do card�pio', () => {
     expect(item.isPromotional).toBe(true);
   });
 
-  it('ignora promo��o maior que pre�o normal', () => {
+  it('ignora promoção maior que preço normal', () => {
     const result = buildMenuCatalog(
       TENANT_A,
       [category('cat-a')],
@@ -416,7 +416,7 @@ describe('Pre�os do card�pio', () => {
     expect(item.isPromotional).toBe(false);
   });
 
-  it('formata valores monet�rios em portugu�s', () => {
+  it('formata valores monetários em português', () => {
     const text = formatMenuMoney(2590);
 
     expect(text).toContain('25,90');
@@ -425,10 +425,10 @@ describe('Pre�os do card�pio', () => {
 });
 
 // =====================================================
-// 5. SEGURAN�A DAS IMAGENS
+// 5. SEGURANÇA DAS IMAGENS
 // =====================================================
 
-describe('Seguran�a de URLs', () => {
+describe('Segurança de URLs', () => {
   it('aceita URL HTTPS', () => {
     expect(
       safeMenuImageUrl(
@@ -469,7 +469,7 @@ describe('Seguran�a de URLs', () => {
     ).toBe('');
   });
 
-  it('bloqueia conte�do que n�o � URL', () => {
+  it('bloqueia conteúdo que não é URL', () => {
     expect(
       safeMenuImageUrl('<script>alert(1)</script>'),
     ).toBe('');
@@ -477,7 +477,7 @@ describe('Seguran�a de URLs', () => {
 });
 
 // =====================================================
-// 6. �CONES E TEMA
+// 6. ÍCONES E TEMA
 // =====================================================
 
 describe('Identidade visual', () => {
@@ -491,11 +491,11 @@ describe('Identidade visual', () => {
     expect(resolveCategoryIcon('Pizzas'))
       .toBe('pizza');
 
-    expect(resolveCategoryIcon('Hamb�rgueres'))
+    expect(resolveCategoryIcon('Hambúrgueres'))
       .toBe('sandwich');
   });
 
-  it('utiliza o tema do card�pio', () => {
+  it('utiliza o tema do cardápio', () => {
     const result = resolveMenuVisualTheme(
       DEFAULT_MENU_THEME,
       undefined,
@@ -511,13 +511,13 @@ describe('Identidade visual', () => {
       .toBe(DEFAULT_MENU_THEME.radius);
   });
 
-  it('possui navega��o com Meus gastos', () => {
+  it('possui navegação com Meus gastos', () => {
     const labels = MENU_NAVIGATION.map(
       item => item.label,
     );
 
     expect(labels).toEqual([
-      'In�cio',
+      'Início',
       'Carrinho',
       'Mesa',
       'Meus gastos',
@@ -531,8 +531,8 @@ describe('Identidade visual', () => {
 // 7. MEUS GASTOS
 // =====================================================
 
-describe('C�lculo de Meus gastos', () => {
-  it('n�o inclui consumo explicitamente de outro cliente', () => {
+describe('Cálculo de Meus gastos', () => {
+  it('não inclui consumo explicitamente de outro cliente', () => {
     const summary = buildExpenseSummary(
       expenseTab(),
       false,
@@ -561,7 +561,7 @@ describe('C�lculo de Meus gastos', () => {
     expect(summary.totalCents).toBe(6050);
   });
 
-  it('n�o cobra taxa removida', () => {
+  it('não cobra taxa removida', () => {
     const summary = buildExpenseSummary(
       expenseTab({
         serviceFeeRemoved: true,
@@ -573,7 +573,7 @@ describe('C�lculo de Meus gastos', () => {
     expect(summary.totalCents).toBe(5500);
   });
 
-  it('n�o inclui pedidos cancelados', () => {
+  it('não inclui pedidos cancelados', () => {
     const summary = buildExpenseSummary(
       expenseTab(),
       true,
@@ -586,7 +586,7 @@ describe('C�lculo de Meus gastos', () => {
     ).toBe(false);
   });
 
-  it('n�o permite pedir conta sem aprova��o', () => {
+  it('não permite pedir conta sem aprovação', () => {
     const summary = buildExpenseSummary(
       expenseTab({
         me: {
@@ -608,7 +608,7 @@ describe('C�lculo de Meus gastos', () => {
     expect(summary.canRequestBill).toBe(true);
   });
 
-  it('n�o solicita novamente conta j� pedida', () => {
+  it('não solicita novamente conta já pedida', () => {
     const summary = buildExpenseSummary(
       expenseTab({
         status: 'BILL_REQUESTED',
@@ -640,7 +640,7 @@ describe('C�lculo de Meus gastos', () => {
     expect(summary.canReopenBill).toBe(false);
   });
 
-  it('bloqueia reabertura ap�s conta encerrada', () => {
+  it('bloqueia reabertura após conta encerrada', () => {
     const summary = buildExpenseSummary(
       expenseTab({
         status: 'CLOSED',
@@ -653,15 +653,15 @@ describe('C�lculo de Meus gastos', () => {
 });
 
 // =====================================================
-// 8. OP��ES DE FECHAMENTO
+// 8. OPÇÕES DE FECHAMENTO
 // =====================================================
 
-describe('Op��es de pagamento do totem', () => {
-  it('possui quatro op��es de atendimento', () => {
+describe('Opções de pagamento do totem', () => {
+  it('possui quatro opções de atendimento', () => {
     expect(EXPENSE_PAYMENT_OPTIONS).toHaveLength(4);
   });
 
-  it('registra as prefer�ncias de pagamento corretas', () => {
+  it('registra as preferências de pagamento corretas', () => {
     const choices = EXPENSE_PAYMENT_OPTIONS.map(
       item => item.serverChoice,
     );
@@ -674,7 +674,7 @@ describe('Op��es de pagamento do totem', () => {
     ]);
   });
 
-  it('n�o possui op��o de fechamento direto da mesa', () => {
+  it('não possui opção de fechamento direto da mesa', () => {
     const choices = EXPENSE_PAYMENT_OPTIONS.map(
       item => item.serverChoice,
     );
