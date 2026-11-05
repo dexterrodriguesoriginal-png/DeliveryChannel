@@ -23,6 +23,7 @@ import { DineInClientApp } from '../DineInClientApp';
 import { dineInCartStorageKey } from '../../../lib/customer/dineInCartStorage';
 
 const TOKEN = 'k'.repeat(48);
+const openMenu = async () => fireEvent.click(await screen.findByRole('button', { name: 'Cardápio' }));
 const V1 = { available: true, version: 1, qrPause: true, tabPix: true, tableAccess: false, waiterApp: false };
 const V2 = { ...V1, version: 2, tableAccess: true, waiterApp: true };
 const resolved = { available: true, tenantSlug: 'loja-x', storeName: 'Loja X', tableLabel: 'Mesa 03' };
@@ -45,6 +46,7 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
   it('navega e adiciona sem login; cadastro só ao finalizar e a mesa fica guardada para o retorno do e-mail', async () => {
     h.caps.mockResolvedValue(V2); baseRpc();
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
     expect(screen.queryByTestId('identity-gate')).toBeNull();
     fireEvent.click(screen.getByTestId('dinein-bag-counter'));
@@ -59,6 +61,7 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     h.caps.mockResolvedValue(V2); baseRpc();
     localStorage.setItem(dineInCartStorageKey(TOKEN), JSON.stringify({ at: Date.now(), checkoutPending: false, lines: [{ productId: 'p1', quantity: 2, options: [], notes: '' }] }));
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     const add = await screen.findByRole('button', { name: 'Adicionar Chopp' });
     expect(screen.getByTestId('dinein-bag-counter').textContent).toContain('2');
     fireEvent.click(add);
@@ -68,6 +71,7 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
   it('visitante anônimo antigo também precisa se identificar', async () => {
     h.caps.mockResolvedValue(V2); baseRpc(); h.auth.user = { id: 'anon', is_anonymous: true };
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
     expect(screen.queryByTestId('identity-gate')).toBeNull();
     fireEvent.click(screen.getByTestId('dinein-bag-counter'));
@@ -79,6 +83,7 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     h.caps.mockResolvedValue(V2); baseRpc();
     h.auth.signUp.mockResolvedValue({ success: true, requiresEmailConfirmation: true });
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
     fireEvent.click(screen.getByRole('button', { name: 'Fazer pedido' }));
     await screen.findByTestId('identity-gate');
@@ -102,6 +107,7 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     h.access.joinWithCode.mockResolvedValueOnce({ entry: null, invalid: true, free: false })
       .mockResolvedValueOnce({ entry: { state: 'GUEST', sessionId: 's2', approved: true }, invalid: false, free: false });
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     expect((await screen.findByTestId('confirm-logged-user-gate')).textContent).toContain('Entrar como Beto?');
     expect(h.access.enterTable).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('confirm-identity-continue'));
@@ -144,6 +150,7 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     h.access.removeGuest.mockResolvedValue(undefined);
     baseRpc({ get_my_tab: myTab('RESPONSIBLE') });
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     expect((await screen.findByTestId('role-chip')).textContent).toContain('responsável');
     fireEvent.click(screen.getByRole('button', { name: 'Ver minha conta' }));
@@ -160,6 +167,7 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     h.access.enterTable.mockResolvedValue({ state: 'GUEST', sessionId: 's2', approved: true });
     baseRpc({ get_my_tab: { data: { ended: true, endedReason: 'REMOVED', me: { sessionId: 's2', ended: true, endedReason: 'REMOVED' } }, error: null } });
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     expect((await screen.findByTestId('dine-in-ended')).textContent).toMatch(/removido desta mesa/);
     expect(screen.queryByTestId('invite-panel')).toBeNull();
@@ -169,6 +177,7 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     h.access.enterTable.mockResolvedValue({ state: 'RESPONSIBLE', sessionId: 's1', approved: false });
     baseRpc({ get_my_tab: myTab('RESPONSIBLE', false) });
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     const banner = await screen.findByTestId('awaiting-release');
     expect(banner.textContent).toContain('Avisamos o garçom');
@@ -192,6 +201,7 @@ describe('Mesa — modelo antigo (banco sem a migração) continua igual', () =>
       return { data: null, error: null };
     });
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
     expect(screen.getByTestId('added-to-bag-toast').textContent).toContain('Adicionado à sacola · 1× Chopp');
     expect(screen.getByTestId('dinein-bag-counter').textContent).toContain('1');

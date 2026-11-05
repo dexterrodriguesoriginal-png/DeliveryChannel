@@ -7,18 +7,27 @@ const h = vi.hoisted(() => ({
   rpc: vi.fn(), enterTable: vi.fn(), listFreeTables: vi.fn(), moveTable: vi.fn(), signUp: vi.fn(),
   user: null as null | { id: string; is_anonymous?: boolean; user_metadata?: Record<string, string> },
   subscriptions: [] as Array<{ table: string; filter: string; callback: () => void }>,
+  channels: new Map<string, { on: ReturnType<typeof vi.fn>; subscribe: ReturnType<typeof vi.fn> }>(),
+  installPrompt: null as null | ReturnType<typeof vi.fn>, clearInstallPrompt: vi.fn(),
   removed: vi.fn(),
 }));
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ supabaseUser: h.user, signUp: h.signUp }) }));
 vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: {
   rpc: (...args: unknown[]) => h.rpc(...args),
-  channel: () => {
-    const channel = { on: (_type: unknown, filter: { table: string; filter: string }, callback: () => void) => { h.subscriptions.push({ ...filter, callback }); return channel; }, subscribe: () => channel };
+  channel: (name: string) => {
+    // Supabase reuses the SAME object when a component asks for an existing channel name.
+    if (h.channels.has(name)) return h.channels.get(name);
+    const channel = {
+      on: vi.fn((_type: unknown, filter: { table: string; filter: string }, callback: () => void) => { h.subscriptions.push({ ...filter, callback }); return channel; }),
+      subscribe: vi.fn(() => channel),
+    };
+    h.channels.set(name, channel);
     return channel;
   }, removeChannel: (...args: unknown[]) => h.removed(...args),
 } }));
 const product = { id: 'p1', name: 'Chopp', description: '', price: 12, imageUrl: '', isActive: true, isAvailable: true, optionGroups: [] };
 vi.mock('../../../lib/pwa/applyStoreIdentity', () => ({ applyStoreIdentity: vi.fn().mockResolvedValue({}) }));
+vi.mock('../../../lib/pwa/installState', () => ({ getDeferredPrompt: () => h.installPrompt ? { prompt: h.installPrompt } : null, clearDeferredPrompt: () => h.clearInstallPrompt() }));
 vi.mock('../../../repositories/publicStoreRepository', () => ({ publicStoreRepository: { loadPublicStore: async () => ({ status: 'ok', data: { tenant: { id: 'tn', name: 'Loja X' }, products: [product] } }) } }));
 vi.mock('../../../repositories/tenantModuleRepository', () => ({ tenantModuleRepository: { getPublicEnabled: async () => new Set(['dine_in']) } }));
 vi.mock('../../../repositories/productOptionRepository', () => ({ productOptionRepository: { getPublicForProducts: async () => new Map() } }));
@@ -35,6 +44,7 @@ import { DineInClientApp, SESSION_KEY_PREFIX } from '../DineInClientApp';
 import { dineInCartStorageKey } from '../../../lib/customer/dineInCartStorage';
 
 const TOKEN = 'k'.repeat(48);
+const openMenu = async () => fireEvent.click(await screen.findByRole('button', { name: 'Cardápio' }));
 const round = (status = 'PENDING', id = 'o1') => ({ orderId: id, orderNumber: 12, roundNo: 1, status, customerName: 'Ana', mine: true, subtotal: 12, createdAt: '2026-11-03T12:00:00Z', queuePosition: 4, items: [{ name: 'Chopp', quantity: 1 }] });
 const myTab = (rounds: ReturnType<typeof round>[] = [], status = 'OPEN') => ({ tabId: 'tb', status, mode: 'TABLE', tableLabel: 'Mesa 03', serviceFeePercent: 0, serviceFeeRemoved: false, subtotal: rounds.length * 12, rounds, me: { sessionId: 's1', role: 'GUEST', approved: true, displayName: 'Ana' } });
 let account = myTab();
@@ -42,6 +52,7 @@ let moveRequests: any[] = [];
 
 beforeEach(() => {
   h.rpc.mockReset(); h.enterTable.mockReset(); h.listFreeTables.mockReset(); h.moveTable.mockReset(); h.signUp.mockReset(); h.subscriptions.length = 0; h.removed.mockReset();
+  h.channels.clear(); h.installPrompt = null; h.clearInstallPrompt.mockReset();
   localStorage.clear(); sessionStorage.clear(); h.user = null; account = myTab(); moveRequests = [];
   window.history.replaceState(null, '', '/app/loja-x?mesa=' + TOKEN);
   h.enterTable.mockResolvedValue({ state: 'GUEST', sessionId: 's1', approved: true });
@@ -62,12 +73,14 @@ describe('Garçom v3 — cliente QR', () => {
     h.user = { id: 'u1' };
     h.enterTable.mockReturnValueOnce(new Promise(resolve => { finishOldEntry = resolve; }));
     const view = render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     await waitFor(() => expect(h.enterTable).toHaveBeenCalledTimes(1));
     const nextToken = change === 'token' ? 'n'.repeat(48) : TOKEN;
     if (change === 'user') h.user = { id: 'u2' };
     h.enterTable.mockResolvedValue({ state: 'GUEST', sessionId: 'new-session', approved: true });
     view.rerender(<DineInClientApp token={nextToken} />);
+    await openMenu();
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     await waitFor(() => expect(sessionStorage.getItem(SESSION_KEY_PREFIX + nextToken)).toBe('new-session'));
     await act(async () => finishOldEntry({ state: 'RESPONSIBLE', sessionId: 'old-session', approved: true }));
@@ -84,6 +97,7 @@ describe('Garçom v3 — cliente QR', () => {
     h.rpc.mockImplementation((name: string, args: unknown) => name === 'submit_round'
       ? new Promise(resolve => { finishOldOrder = resolve; }) : originalRpc(name, args));
     const view = render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
     fireEvent.click(screen.getByRole('button', { name: 'Fazer pedido' }));
     fireEvent.click(await screen.findByTestId('confirm-order-submit'));
@@ -91,6 +105,7 @@ describe('Garçom v3 — cliente QR', () => {
     const nextToken = 'n'.repeat(48);
     h.enterTable.mockResolvedValue({ state: 'GUEST', sessionId: 'new-session', approved: true });
     view.rerender(<DineInClientApp token={nextToken} />);
+    await openMenu();
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar Chopp' }));
@@ -107,12 +122,14 @@ describe('Garçom v3 — cliente QR', () => {
     h.rpc.mockImplementation((name: string, args: unknown) => name === 'request_bill'
       ? new Promise(resolve => { finishOldBill = resolve; }) : originalRpc(name, args));
     const view = render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Pedir a conta' }));
     fireEvent.click(screen.getByRole('button', { name: 'Chamar garçom para fechar a conta' }));
     await waitFor(() => expect(finishOldBill).toBeTypeOf('function'));
     const nextToken = 'n'.repeat(48);
     h.enterTable.mockResolvedValue({ state: 'GUEST', sessionId: 'new-session', approved: true });
     view.rerender(<DineInClientApp token={nextToken} />);
+    await openMenu();
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     await screen.findByRole('button', { name: 'Pedir a conta' });
     await act(async () => finishOldBill({ data: null, error: null }));
@@ -122,6 +139,7 @@ describe('Garçom v3 — cliente QR', () => {
 
   it('sacola fixa abre itens sem rolar, volta ao menu e só pede cadastro ao finalizar; preserva quantidades até confirmar', async () => {
     const view = render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
     fireEvent.click(screen.getByTestId('dinein-bag-counter'));
     const bag = screen.getByRole('dialog', { name: 'Sua sacola' });
@@ -159,6 +177,7 @@ describe('Garçom v3 — cliente QR', () => {
     localStorage.setItem(dineInCartStorageKey(TOKEN), JSON.stringify({ at: Date.now(), checkoutPending: true, lines: [{ productId: 'p1', quantity: 3, options: [], notes: 'Sem gelo' }] }));
     h.user = { id: 'u1' };
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     const confirm = await screen.findByRole('dialog', { name: 'Confirmar pedido na mesa' });
     expect(confirm.textContent).toContain('3× Chopp');
@@ -169,6 +188,7 @@ describe('Garçom v3 — cliente QR', () => {
   it('acompanha sinal realtime da própria comanda, atualiza posição escalar e mostra timeline com duração', async () => {
     h.user = { id: 'u1' }; sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1'); account = myTab([round()]);
     const view = render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     expect((await screen.findByTestId('dinein-track-order')).textContent).toContain('Você é o 4º da fila');
     const subscription = h.subscriptions.find(item => item.table === 'dining_tracking_revisions');
     expect(subscription?.filter).toBe('tab_id=eq.tb');
@@ -189,6 +209,7 @@ describe('Garçom v3 — cliente QR', () => {
   it('pedido da conta muda texto/cor e bloqueia novo pedido; minha conta colore entregues e cancelados', async () => {
     h.user = { id: 'u1' }; sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1'); account = myTab([round('DELIVERED'), round('CANCELLED', 'o2')]);
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Pedir a conta' }));
     fireEvent.click(screen.getByRole('button', { name: 'Chamar garçom para fechar a conta' }));
     const pending = await screen.findByRole('button', { name: 'Conta pedida' });
@@ -211,6 +232,7 @@ describe('Garçom v3 — cliente QR', () => {
       return originalRpc(name, args);
     });
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     const reopen = await screen.findByRole('button', { name: 'Pedir mais' });
     expect(screen.getByRole('button', { name: 'Adicionar Chopp' }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('region', { name: 'Situação da conta' }).className).toContain('dinein-bill-requested');
@@ -230,6 +252,7 @@ describe('Garçom v3 — cliente QR', () => {
   ])('não oferece Pedir mais para $status com PIX $pixStatus', async state => {
     h.user = { id: 'u1' }; sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1'); account = { ...myTab([round()], state.status), ...state };
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('get_my_tab', { p_session_id: 's1' }));
     if (state.status === 'CLOSED') await screen.findByRole('alert');
     else await screen.findByRole('region', { name: 'Situação da conta' });
@@ -252,6 +275,7 @@ describe('Garçom v3 — cliente QR', () => {
       return originalRpc(name, args);
     });
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Pedir mais' }));
     await screen.findByText('O pagamento já está em andamento ou foi confirmado. Chame o garçom para conferir.');
     await screen.findByRole('button', { name: 'Aguardando PIX' });
@@ -274,6 +298,7 @@ describe('Garçom v3 — cliente QR', () => {
       return originalRpc(name, args);
     });
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     expect(await screen.findByText('Seu pedido foi entregue')).toBeTruthy();
     expect(screen.queryByTestId('delivery-notice-other-order')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Não recebi' }));
@@ -302,6 +327,7 @@ describe('Garçom v3 — cliente QR', () => {
       return originalRpc(name, args);
     });
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Não recebi' }));
     await screen.findByText('O prazo de 5 minutos terminou. Chame o garçom para conferir sua entrega.');
     await screen.findByText('Pedido recebido');
@@ -319,6 +345,7 @@ describe('Garçom v3 — cliente QR', () => {
       h.moveTable.mockReturnValueOnce(new Promise(resolve => { finishOld = resolve; }));
     }
     const view = render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     fireEvent.click(await screen.findByTestId('dinein-move-table-btn'));
     if (operation === 'move') fireEvent.click(await screen.findByTestId('move-to-table-old-table'));
     await waitFor(() => expect(finishOld).toBeTypeOf('function'));
@@ -327,6 +354,7 @@ describe('Garçom v3 — cliente QR', () => {
     h.enterTable.mockResolvedValue({ state: 'GUEST', sessionId: 'new-session', approved: true });
     h.listFreeTables.mockResolvedValue([{ id: 'new-table', label: 'Mesa atual', seats: 4, area: null }]);
     view.rerender(<DineInClientApp token={nextToken} />);
+    await openMenu();
     expect(screen.queryByTestId('dinein-move-table-modal')).toBeNull();
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     await waitFor(() => expect(sessionStorage.getItem(SESSION_KEY_PREFIX + nextToken)).toBe('new-session'));
@@ -354,6 +382,7 @@ describe('Garçom v3 — cliente QR', () => {
     });
 
     const view = render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     const moveBtn = await screen.findByTestId('dinein-move-table-btn');
     expect(moveBtn.hasAttribute('disabled')).toBe(false);
     fireEvent.click(moveBtn);
@@ -383,6 +412,7 @@ describe('Garçom v3 — cliente QR', () => {
     // Re-entering that QR would replace the debt with a newly opened account.
     view.unmount(); h.enterTable.mockClear(); h.rpc.mockClear();
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     await screen.findByRole('button', { name: 'Minha conta' });
     await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('get_my_tab', { p_session_id: 's1' }));
     expect(h.enterTable).not.toHaveBeenCalled();
@@ -400,6 +430,7 @@ describe('Garçom v3 — cliente QR', () => {
     account = myTab([round('PREPARING')]);
     moveRequests = [{ id: 'req1', status: 'PENDING', tabId: 'tb', fromTableId: 't3', toTableId: 't7', fromLabel: 'Mesa 03', toLabel: 'Mesa 07' }];
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     await screen.findByText('Mudança de mesa aguardando autorização. Sua conta continua na mesa atual.');
     moveRequests = [{ ...moveRequests[0], status: 'REJECTED' }];
     await act(async () => h.subscriptions.find(item => item.table === 'dining_tracking_revisions')!.callback());
@@ -422,6 +453,7 @@ describe('Garçom v3 — cliente QR', () => {
     } as any;
 
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     const trackingBar = await screen.findByTestId('dinein-track-order');
     expect(trackingBar.textContent).toContain('Seu código de entrega: 4821 - informe ao garçom');
     expect(screen.getByTestId('delivery-notice-o-confirmed').textContent).toContain('Entrega confirmada com código');
@@ -447,6 +479,7 @@ describe('Garçom v3 — cliente QR', () => {
     ]);
 
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     const visibleCodes = await screen.findByRole('region', { name: 'Seus códigos de entrega' });
     expect(visibleCodes.textContent).toContain('Seu código de entrega: 4821 - informe ao garçom');
     expect(visibleCodes.textContent).toContain('Seu código de entrega: 7193 - informe ao garçom');
@@ -465,6 +498,7 @@ describe('Garçom v3 — cliente QR', () => {
     sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
     account = myTab([{ ...round('READY'), deliveryCode: '4821' } as any]);
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     await screen.findByTestId('dinein-delivery-code-o1');
     account = { ...account, me: { ...account.me, approved: false } };
     await act(async () => h.subscriptions.find(item => item.table === 'tab_sessions')!.callback());
@@ -482,6 +516,7 @@ describe('Garçom v3 — cliente QR', () => {
     sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
     account = myTab([{ ...round('READY'), deliveryCode: '4821' } as any]);
     render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
     await screen.findByTestId('dinein-delivery-code-o1');
     const refresh = h.subscriptions.find(item => item.table === 'dining_tracking_revisions')!.callback;
     account = myTab([{ ...round('DELIVERED'), deliveryCode: '4821' } as any]);
@@ -496,5 +531,65 @@ describe('Garçom v3 — cliente QR', () => {
     expect(screen.getByTestId('dinein-delivery-code-next').textContent).toContain('Seu código de entrega: 7193 - informe ao garçom');
     expect(screen.getByTestId('dinein-track-order').textContent).toContain('7193');
     expect(screen.queryByTestId('dinein-delivery-code-o1')).toBeNull();
+  });
+});
+
+
+describe('Entrega 2 — início da mesa', () => {
+  it.each(['/mesa/' + TOKEN, '/app/slug-sem-autoridade?mesa=' + TOKEN])('abre Home no QR %s e usa somente a loja resolvida pelo token', async path => {
+    window.history.replaceState(null, '', path);
+    render(<DineInClientApp token={TOKEN} />);
+    const home = await screen.findByTestId('dinein-home');
+    expect(within(home).getByRole('link', { name: 'Meu app' }).getAttribute('href')).toBe('/app/loja-x');
+    expect(screen.queryByRole('button', { name: 'Adicionar Chopp' })).toBeNull();
+    expect(h.enterTable).not.toHaveBeenCalled();
+    fireEvent.click(within(home).getByRole('button', { name: 'Cardápio' }));
+    expect(await screen.findByRole('button', { name: 'Adicionar Chopp' })).toBeTruthy();
+  });
+
+  it('preserva a confirmação de identidade depois do atalho para um cliente logado', async () => {
+    h.user = { id: 'u1' };
+    render(<DineInClientApp token={TOKEN} />);
+    const home = await screen.findByTestId('dinein-home');
+    expect(h.enterTable).not.toHaveBeenCalled();
+    fireEvent.click(within(home).getByRole('button', { name: 'Cardápio' }));
+    await screen.findByTestId('confirm-identity-continue');
+    expect(h.enterTable).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('confirm-identity-continue'));
+    await waitFor(() => expect(h.enterTable).toHaveBeenCalledTimes(1));
+  });
+
+  it('Meu app reutiliza o evento de instalação e mantém a URL da loja correta', async () => {
+    h.installPrompt = vi.fn().mockResolvedValue(undefined);
+    render(<DineInClientApp token={TOKEN} />);
+    fireEvent.click(within(await screen.findByTestId('dinein-home')).getByRole('link', { name: 'Meu app' }));
+    await waitFor(() => expect(h.clearInstallPrompt).toHaveBeenCalledOnce());
+    expect(h.installPrompt).toHaveBeenCalledOnce();
+    expect(h.enterTable).not.toHaveBeenCalled();
+  });
+
+  it('a sacola continua acessível na Home e Adicionar mais itens abre o cardápio', async () => {
+    render(<DineInClientApp token={TOKEN} />);
+    await openMenu();
+    fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar ao início da mesa' }));
+    expect(screen.getByTestId('dinein-home')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('dinein-bag-counter'));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Sua sacola' })).getByRole('button', { name: 'Adicionar mais itens' }));
+    expect(screen.queryByTestId('dinein-home')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Adicionar Chopp' })).toBeTruthy();
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toBe('1');
+  });
+
+  it('duas instâncias da mesma mesa não se inscrevem duas vezes no mesmo canal', async () => {
+    h.user = { id: 'u1' };
+    sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
+    account = myTab([round()]);
+    const view = render(<React.StrictMode><DineInClientApp token={TOKEN} /><DineInClientApp token={TOKEN} /></React.StrictMode>);
+    await waitFor(() => expect(screen.getAllByTestId('dinein-home')).toHaveLength(2));
+    await waitFor(() => expect(h.channels.size).toBeGreaterThanOrEqual(4));
+    for (const channel of h.channels.values()) expect(channel.subscribe).toHaveBeenCalledOnce();
+    view.unmount();
+    expect(h.removed).toHaveBeenCalled();
   });
 });

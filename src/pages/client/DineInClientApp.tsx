@@ -1,6 +1,6 @@
 import { tableMoveApprovalRepository, type TableMoveRequest } from '../../repositories/tableMoveApprovalRepository';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, CircleUserRound, Crown, Loader2, Minus, Plus, ReceiptText, ShoppingBag, UserRound, Users, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, CircleUserRound, Crown, Loader2, Minus, Plus, ReceiptText, ShoppingBag, UserRound, Users, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
@@ -26,6 +26,7 @@ import { ConfirmLoggedUserGate, IdentityGate, InvitePanel, InviteWelcomeScreen, 
 import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import { DineInCartSheet } from '../../components/client/dinein/DineInCartSheet';
+import { DineInHomeTiles } from '../../components/client/dinein/DineInHomeTiles';
 import { DineInDeliveryCode, DineInDeliveryNotice, DineInTracking } from '../../components/client/dinein/DineInTracking';
 import { dineInStatus, type DineInTrackedRound } from '../../lib/customer/dineInTracking';
 import { canDisputeDelivery, deliveryNoticeLabel, type DeliveryState } from '../../lib/customer/deliveryDispute';
@@ -117,6 +118,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [tab, setTab] = useState<MyTab | null>(null);
   const [cart, setCart] = useState<DineInCartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [view, setView] = useState<'HOME' | 'MENU'>('HOME');
   const [cartHydratedToken, setCartHydratedToken] = useState('');
   const [checkoutPending, setCheckoutPending] = useState(false);
   const [checkoutIdentityOpen, setCheckoutIdentityOpen] = useState(false);
@@ -194,9 +196,12 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     && (!includeSession || source.sessionId === activeIdentityRef.current.sessionId)
   ), [token, supabaseUser?.id]);
   const previousUserRef = useRef(supabaseUser?.id);
+  const identitySwitchPendingRef = useRef(false);
 
   useEffect(() => {
     if (previousUserRef.current && previousUserRef.current !== supabaseUser?.id) {
+      identitySwitchPendingRef.current = true;
+      setView('HOME');
       setSessionId(''); setTab(null); setTabClosed(false); setAccountOpen(false); setBillOpen(false);
       setBusy(false); setJoinBusy(false); setInviteBusy(false); setMembersBusy(false);
       setDisputeBusyId(null);
@@ -333,6 +338,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   useEffect(() => {
     deviceIdRef.current = deviceId();
+    setView('HOME');
     setTab(null);
     setTabClosed(false);
     setSessionId('');
@@ -467,6 +473,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   // Parte E: Com conta já logada no aparelho, exige confirmação ("Entrar como <Nome>?") antes de entrar na mesa.
   useEffect(() => {
+    // The reset above and this effect run in the same flush. Do not reuse the
+    // preceding account's confirmation before React applies its state reset.
+    if (identitySwitchPendingRef.current) { identitySwitchPendingRef.current = false; return; }
     if (!supabaseUser || supabaseUser.is_anonymous || !resolution?.available) return;
     if (access) {
       if (!supabaseUser.is_anonymous && identityConfirmed) void openOrJoin();
@@ -559,7 +568,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     if (typeof supabase?.channel === 'function') {
       try {
         channel = supabase
-          .channel(`dinein-session-${sessionId}`)
+          .channel(`dinein-session-${sessionId}-${uuid()}`)
           .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_sessions', filter: `id=eq.${sessionId}` }, () => { void loadAccount(true); })
           .subscribe();
       } catch {
@@ -579,7 +588,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     const refresh = () => { void loadAccount(true); };
     try {
-      channel = supabase.channel(`dinein-tracking-${tab.tabId}`)
+      channel = supabase.channel(`dinein-tracking-${tab.tabId}-${uuid()}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'dining_tracking_revisions', filter: `tab_id=eq.${tab.tabId}` }, refresh)
         .subscribe(status => { if (status === 'SUBSCRIBED') refresh(); });
     } catch { /* periodic refresh remains available if realtime is offline */ }
@@ -955,6 +964,13 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const totalCart = totalCartCents / 100;
   const totalCartItems = cart.reduce((sum, line) => sum + line.quantity, 0);
   const customerDisplayName = tab?.me?.displayName || displayNameForEntry();
+  const openStoreApp: React.MouseEventHandler<HTMLAnchorElement> = event => {
+    const prompt = getDeferredPrompt();
+    if (prompt) {
+      event.preventDefault();
+      void prompt.prompt().then(() => clearDeferredPrompt()).catch(() => { /* the store link remains available to retry */ });
+    }
+  };
 
   // Restore the saved bag before exposing Add/Checkout: a first click must never
   // be overwritten by the hydration effect, including after changing table QR.
@@ -1038,13 +1054,13 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             setIdentityConfirmed(true);
           }}
         />
-        <button type="button" onClick={() => { setCheckoutIdentityOpen(false); setCheckoutPending(false); }} className="mx-auto mt-4 block rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold">Voltar ao cardápio com a sacola</button>
+        <button type="button" onClick={() => { setCheckoutIdentityOpen(false); setCheckoutPending(false); setView('MENU'); }} className="mx-auto mt-4 block rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold">Voltar ao cardápio com a sacola</button>
         {notice && <p role="alert" className="mx-auto mt-4 max-w-md rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
       </main>
     );
   }
   // Parte E: Com conta já logada no aparelho, mostra sempre "Entrar como <Nome>?" antes de entrar sozinho.
-  if (access && !needsIdentity && !sessionId && !identityConfirmed) {
+  if (view === 'MENU' && access && !needsIdentity && !sessionId && !identityConfirmed) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-8">
         <ConfirmLoggedUserGate
@@ -1062,6 +1078,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           }}
           onSwitchAccount={() => void handleSwitchAccount()}
         />
+        <button type="button" onClick={() => setView('HOME')} className="mx-auto mt-4 block rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold">Voltar ao início</button>
       </main>
     );
   }
@@ -1072,7 +1089,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       </main>
     );
   }
-  if (access && !needsIdentity && !sessionId) {
+  if (view === 'MENU' && access && !needsIdentity && !sessionId) {
     return (
       <main className="grid min-h-screen place-items-center bg-slate-50 p-6" data-testid="dine-in-entering">
         <section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl">
@@ -1162,14 +1179,29 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
       {!!tab?.rounds?.length && resolution?.tenantSlug && <aside data-testid="dinein-app-banner" className="mx-auto mt-3 flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
         <p className="text-slate-600">Peça também de casa com nosso app</p>
-        <a href={`/app/${encodeURIComponent(resolution.tenantSlug)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 font-bold text-emerald-800" onClick={event => {
-          const prompt = getDeferredPrompt();
-          if (prompt) { event.preventDefault(); void prompt.prompt().then(() => clearDeferredPrompt()).catch(() => { /* can retry using the store link */ }); }
-        }}>Instalar app da loja</a>
+        <a href={`/app/${encodeURIComponent(resolution.tenantSlug)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 font-bold text-emerald-800" onClick={openStoreApp}>Instalar app da loja</a>
       </aside>}
 
       <section className="mx-auto max-w-2xl px-4 py-5">
-        <h2 className="mb-3 text-lg font-black">Cardápio</h2>
+        {view === 'HOME' ? <DineInHomeTiles
+          storeName={storeName}
+          logoUrl={storeLogoUrl}
+          tableName={mesaTitle(tab?.tableLabel || resolution?.tableLabel)}
+          menuImageUrl={products.find(product => product.imageUrl)?.imageUrl}
+          storeAppHref={resolution?.tenantSlug ? `/app/${encodeURIComponent(resolution.tenantSlug)}` : undefined}
+          onStoreAppClick={openStoreApp}
+          onOpenMenu={() => setView('MENU')}
+          onCallWaiter={() => void requestWaiter()}
+          onRequestBill={() => { setBillOpen(true); void loadAccount(true); }}
+          waiterDisabled={busy || tabClosed || !sessionId || awaitingRelease}
+          billDisabled={busy || tabClosed || billRequested || !sessionId || awaitingRelease}
+          billLabel={billRequested ? billStatusLabel : 'Pedir minha conta'}
+          actionHint={tabClosed ? 'Sua conta foi encerrada. Chame a equipe para pedir novamente.' : awaitingRelease ? 'Os serviços da mesa ficam disponíveis após a liberação pela equipe.' : !sessionId ? 'Os serviços da mesa ficam disponíveis após sua entrada na conta.' : undefined}
+        /> : <>
+        <div className="mb-4 flex items-center gap-3">
+          <button type="button" onClick={() => setView('HOME')} aria-label="Voltar ao início da mesa" className="grid h-11 w-11 place-items-center rounded-full border border-slate-200 bg-white text-slate-800 shadow-sm hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-600"><ArrowLeft className="h-5 w-5" /></button>
+          <h2 className="text-lg font-black">Cardápio</h2>
+        </div>
         {products.length ? <div className="space-y-3">{products.map(product => {
           const quantity = cart.filter(line => line.product.id === product.id).reduce((sum, line) => sum + line.quantity, 0);
           return <article key={product.id} className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm">
@@ -1216,6 +1248,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           {(pendingApproval || awaitingRelease) && <p className="mt-2 text-xs font-semibold text-amber-800">Aguarde a liberação da mesa. {PENDING_APPROVAL_TITLE}. {PENDING_APPROVAL_TEXT}</p>}
           {billRequested && <p className="mt-2 text-xs font-semibold" style={{ color: billColors.color }}>{awaitingPix ? 'Aguardando a confirmação do PIX. Sua mesa continua ocupada.' : billReopenAllowed ? 'Conta pedida. Use “Pedir mais” para continuar consumindo.' : 'Conta pedida. O pagamento está em andamento; chame o garçom se precisar de ajuda.'}</p>}
         </section>}
+        </>}
         {awaitingReleaseModalOpen && awaitingRelease && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setAwaitingReleaseModalOpen(false); }}>
             <section role="dialog" aria-modal="true" aria-label="Aguarde a liberação da mesa" data-testid="awaiting-release-modal" className="w-full max-w-md rounded-3xl bg-white p-6 text-center shadow-2xl">
@@ -1331,18 +1364,18 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       </section>
 
-      {cartOpen && <DineInCartSheet cart={cart} busy={busy} disabled={orderingDisabled} onClose={() => setCartOpen(false)} onCheckout={handleRequestOrder} onQuantity={changeLineQuantity} onNotes={changeLineNotes} />}
+      {cartOpen && <DineInCartSheet cart={cart} busy={busy} disabled={orderingDisabled} onClose={() => setCartOpen(false)} onContinueShopping={() => { setCartOpen(false); setView('MENU'); }} onCheckout={handleRequestOrder} onQuantity={changeLineQuantity} onNotes={changeLineNotes} />}
       <DineInTracking rounds={tab?.rounds
         ?.filter(round => round.mine !== false || (tab.me?.approved && !!round.deliveryCode))
         .map(round => tab.me?.approved ? round : { ...round, deliveryCode: null }) || []} />
 
-      <nav aria-label="Ações da mesa" className="fixed inset-x-0 bottom-0 z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
+      {view === 'MENU' && <nav aria-label="Ações da mesa" className="fixed inset-x-0 bottom-0 z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
         <div className="mx-auto grid max-w-2xl grid-cols-3 gap-2">
           <button type="button" onClick={() => void requestWaiter()} disabled={busy || tabClosed || !sessionId} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><UserRound className="h-5 w-5" />Chamar garçom</button>
           <button type="button" onClick={() => { setBillOpen(true); void loadAccount(true); }} disabled={busy || tabClosed || billRequested || !sessionId} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold disabled:cursor-default ${billRequested ? awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested' : 'text-slate-800 disabled:opacity-40'}`} style={billRequested ? billColors : undefined}><ReceiptText className="h-5 w-5" />{billRequested ? billStatusLabel : 'Pedir a conta'}</button>
           <button type="button" disabled={!sessionId} onClick={() => { setAccountOpen(true); void loadAccount(); }} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><CircleUserRound className="h-5 w-5" />Minha conta</button>
         </div>
-      </nav>
+      </nav>}
 
       {accountOpen && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setAccountOpen(false); }}>
         <section role="dialog" aria-modal="true" aria-label="Minha conta" className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl">
