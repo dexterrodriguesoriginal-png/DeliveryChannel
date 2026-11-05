@@ -9,8 +9,6 @@ export interface MenuTheme {
   fontFamily: string;
   radius: number;
   layout: 'comfortable' | 'compact';
-  totemMode?: boolean;
-  totemIdleTimeout?: number;
 }
 
 export interface MenuTemplate {
