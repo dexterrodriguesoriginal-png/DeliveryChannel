@@ -490,13 +490,13 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
       return;
     }
 
-    // Limites alinhados ao bucket `marketing` (migration 023: file_size_limit = 35 MB).
-    const maxSize = isVideoFile ? 35 * 1024 * 1024 : 10 * 1024 * 1024;
+    // Limites alinhados ao servidor (migration 20261105000300: vídeo 200 MB, imagem 5 MB).
+    const maxSize = isVideoFile ? 200 * 1024 * 1024 : 5 * 1024 * 1024;
     if (file.size > maxSize) {
       showToast({
         type: 'error',
         title: 'Arquivo Muito Grande',
-        message: `Tamanho máximo: ${isVideoFile ? '35MB para vídeo' : '10MB para imagem'}.`,
+        message: `Tamanho máximo: ${isVideoFile ? '200MB para vídeo' : '5MB para imagem'}.`,
       });
       return;
     }
@@ -2339,7 +2339,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
                       <label className="w-full flex flex-col items-center justify-center p-5 border-2 border-dashed border-gray-300 hover:border-emerald-500 rounded-2xl cursor-pointer bg-white transition-colors">
                         <Upload className="w-6 h-6 text-gray-400 mb-1" />
                         <span className="text-xs font-bold text-gray-700">Clique para enviar imagem ou vídeo</span>
-                        <span className="text-[10px] text-gray-400 mt-0.5">JPG, PNG, WEBP até 10MB • MP4, WEBM até 35MB</span>
+                        <span className="text-[10px] text-gray-400 mt-0.5">JPG, PNG, WEBP até 5MB • MP4, WEBM até 200MB (5 min)</span>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
