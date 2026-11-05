@@ -1,7 +1,7 @@
 import { PhonePreview } from '../../components/common/PhonePreview';
 import { ArrivalQrMarketingCard } from '../../components/pickup/ArrivalQrMarketingCard';
 import { useModules } from '../../hooks/useModules';
-import { showPickupQrTab, type MarketingTab } from '../../lib/marketingTabs';
+import { canManageMenuOutdoor, showPickupQrTab, type MarketingTab } from '../../lib/marketingTabs';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { initialPromoFulfillmentTypes, promoFulfillmentTypesForSave } from '../../utils/promoCardFulfillment';
 import { useAuth } from '../../context/AuthContext';
@@ -12,6 +12,7 @@ import { productRepository } from '../../repositories/productRepository';
 import { categoryRepository } from '../../repositories/categoryRepository';
 import { promotionRepository } from '../../repositories/promotionRepository';
 import { PromoPerformancePanel } from '../../components/marketing/PromoPerformancePanel';
+import { MenuOutdoorPanel } from '../../components/marketing/MenuOutdoorPanel';
 import { CampaignsPanel } from '../../components/marketing/CampaignsPanel';
 import { mediaRepository } from '../../repositories/mediaRepository';
 import { QRCodeCard } from '../../components/common/QRCodeCard';
@@ -154,12 +155,14 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
 
   // N5: campanhas só OWNER/MANAGER (RLS; sem CEO/SUPER_ADMIN) e só com backend n1n6.
   const canManageCampaigns = isN1N6Backend() && (activeRole === 'OWNER' || activeRole === 'MANAGER');
+  const menuOutdoorTabVisible = canManageMenuOutdoor(activeRole);
   const canManage = activeRole === 'OWNER' || activeRole === 'MANAGER' || activeRole === 'SUPER_ADMIN' || activeRole === 'CEO';
 
   // Navegação interna da ferramenta
   const [internalActiveTab, setInternalActiveTab] = useState<MarketingTab>('creatives');
   const selectedTab = requestedTab === null ? 'creatives' : requestedTab ?? internalActiveTab;
-  const activeTab = selectedTab === 'campaigns' && !canManageCampaigns ? 'creatives' : selectedTab;
+  const activeTab = (selectedTab === 'campaigns' && !canManageCampaigns)
+    || (selectedTab === 'menu-outdoor' && !menuOutdoorTabVisible) ? 'creatives' : selectedTab;
   const changeActiveTab = (tab: MarketingTab) => {
     setInternalActiveTab(tab);
     onTabChange?.(tab);
@@ -1220,7 +1223,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
       </div>
 
       {/* Tabs de Navegação */}
-      <div className="flex items-center gap-2 border-b border-gray-200">
+      <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-200 pb-1 [&>button]:min-h-12 [&>button]:shrink-0 [&>button]:whitespace-nowrap">
         <button
           onClick={() => changeActiveTab('creatives')}
           className={`pb-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
@@ -1274,6 +1277,19 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
           <QrCode className="w-4 h-4" />
           <span>Materiais & QR Code</span>
         </button>
+
+        {menuOutdoorTabVisible && (
+          <button
+            onClick={() => changeActiveTab('menu-outdoor')}
+            data-testid="tab-menu-outdoor"
+            className={`flex min-h-12 items-center gap-2 border-b-2 px-3 pb-3 text-sm font-semibold transition-all ${
+              activeTab === 'menu-outdoor' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Film className="h-4 w-4" />
+            <span>Outdoor do cardápio</span>
+          </button>
+        )}
 
         {pickupQrTabVisible && (
           <button
@@ -1604,6 +1620,11 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
       {activeTab === 'pickup-qr' && pickupQrTabVisible && activeTenant?.id && (
         <ArrivalQrMarketingCard tenantId={activeTenant.id} storeName={activeTenant.name}
           canManage={activeRole === 'OWNER' || activeRole === 'MANAGER'} />
+      )}
+
+      {activeTab === 'menu-outdoor' && menuOutdoorTabVisible && (
+        <MenuOutdoorPanel tenantId={activeTenant.id} viewerId={securityContext.userId}
+          role={activeRole} products={products} />
       )}
 
       {activeTab === 'materials' && (
