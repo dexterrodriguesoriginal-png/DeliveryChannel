@@ -46,7 +46,7 @@ export const DineInDeliveryNotice: React.FC<{
   </section>;
 };
 
-export const DineInTracking: React.FC<{ rounds: Array<DineInTrackedRound & DeliveryState> }> = ({ rounds }) => {
+export const DineInTracking: React.FC<{ rounds: Array<DineInTrackedRound & DeliveryState>; compact?: boolean }> = ({ rounds, compact = false }) => {
   const [open, setOpen] = useState(false);
   if (!rounds.length) return null;
   const current = rounds.find(round => !['DELIVERED', 'CANCELLED'].includes(round.status));
@@ -54,10 +54,11 @@ export const DineInTracking: React.FC<{ rounds: Array<DineInTrackedRound & Deliv
   const currentColors = current ? statusColorTokens(current.status) : null;
   const codeRounds = rounds.filter(round => round.deliveryCode && !['DELIVERED', 'CANCELLED'].includes(round.status));
   return <>
-    {current && status && currentColors && <button type="button" data-testid="dinein-track-order" onClick={() => setOpen(true)} className="fixed bottom-24 right-4 z-30 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-2xl border px-4 py-3 text-left shadow-lg" style={statusColorStyle(currentColors)}>
+    {current && status && currentColors && <button type="button" data-testid="dinein-track-order" data-compact={compact} aria-label={compact ? 'Acompanhar pedido' : undefined} onClick={() => setOpen(true)} className="fixed bottom-24 right-4 z-30 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-2xl border px-4 py-3 text-left shadow-lg" style={statusColorStyle(currentColors)}>
       <Clock3 className="h-5 w-5 shrink-0" />
-      <span><b className="block text-sm">Acompanhar pedido</b><span aria-live="polite" className="block text-xs">{status.label}{queuePositionLabel(current.queuePosition) ? ` · ${queuePositionLabel(current.queuePosition)}` : ''}</span>
-        {codeRounds.map(round => <span key={round.orderId} className="mt-1 block text-sm font-bold">Seu código de entrega: <b className="font-mono text-lg">{round.deliveryCode}</b> - informe ao garçom{codeRounds.length > 1 ? ` · Rodada ${round.roundNo}` : ''}</span>)}
+      <span className="min-w-0"><b className="block text-sm">{compact ? 'Meu pedido' : 'Acompanhar pedido'}</b><span aria-live="polite" className={compact ? 'sr-only' : 'block text-xs'}>{status.label}{queuePositionLabel(current.queuePosition) ? ` · ${queuePositionLabel(current.queuePosition)}` : ''}</span>
+        {compact && <span aria-hidden="true" className="block truncate text-xs font-semibold">{codeRounds.length ? <>Código <b className="font-mono">{codeRounds[0].deliveryCode}</b>{codeRounds.length > 1 ? ` +${codeRounds.length - 1}` : ''}</> : status.label}</span>}
+        {codeRounds.map(round => <span key={round.orderId} className={compact ? 'sr-only' : 'mt-1 block text-sm font-bold'}>Seu código de entrega: <b className="font-mono text-lg">{round.deliveryCode}</b> - informe ao garçom{codeRounds.length > 1 ? ` · Rodada ${round.roundNo}` : ''}</span>)}
       </span>
     </button>}
     {open && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>

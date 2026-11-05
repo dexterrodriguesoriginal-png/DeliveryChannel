@@ -7,6 +7,47 @@
   border: 1px solid;
 }
 
+/* The catalog gets the remaining viewport while account dialogs stay fixed. */
+.dinein-menu-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+.dinein-menu-shell > header { flex-shrink: 0; }
+.dinein-menu-notices {
+  flex-shrink: 0;
+  max-height: 28vh;
+  max-height: 28dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.dinein-menu-notices:empty { display: none; }
+.dinein-menu-notices > section,
+.dinein-menu-notices > [role="status"],
+.dinein-menu-notices > [role="alert"] {
+  margin: 0.5rem auto;
+  width: calc(100% - 2rem);
+  max-width: 42rem;
+}
+.dinein-menu-content { flex: 1; min-height: 0; }
+.dinein-menu-actions { flex-shrink: 0; }
+.dinein-menu-shell [data-testid="dinein-track-order"] {
+  bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  right: auto;
+  left: 1rem;
+  width: calc(50% - 1.5rem);
+  max-width: 20rem;
+  min-height: 3rem;
+  padding: 0.5rem 0.75rem;
+}
+@media (max-width: 639px) {
+  .dinein-menu-shell > header > div { align-items: flex-start; }
+  .dinein-menu-shell > header > div > :first-child { min-width: 0; font-size: 0.75rem; }
+  .dinein-menu-shell > header > div > :last-child { flex-wrap: wrap; justify-content: flex-end; }
+}
+
 @keyframes dinein-bill-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgb(139 94 60 / 12%); }
   50% { box-shadow: 0 0 0 4px rgb(139 94 60 / 30%); }

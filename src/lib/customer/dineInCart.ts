@@ -1,5 +1,6 @@
 import type { Product, SelectedProductOption } from '../../types';
 import { optionPriceCents } from '../addons';
+import { productToPricingLine } from '../pricing/fulfillmentPricing';
 
 export interface DineInCartLine {
   key: string;
@@ -71,7 +72,7 @@ export function setDineInCartLineNotes(
 }
 
 export function dineInCartLineUnitPriceCents(line: DineInCartLine): number {
-  return Math.round(line.product.price * 100) +
+  return Math.round(productToPricingLine(line.product, 1).unitPrice * 100) +
     optionPriceCents(line.product.optionGroups || [], line.options);
 }
 

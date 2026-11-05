@@ -33,6 +33,28 @@ const product = {
 } as Product;
 
 describe('dine-in cart options', () => {
+  it('estima o mesmo preço promocional do totem e soma somente os adicionais escolhidos', () => {
+    const promotionalProduct = { ...product, price: 30, promotionalPrice: 20 };
+    const cart = addDineInCartLine([], promotionalProduct, [{ groupId: 'extras', optionId: 'cheese', qty: 1 }]);
+
+    expect(dineInCartLineUnitPriceCents(cart[0])).toBe(2250);
+    expect(dineInRoundItems(cart)).toEqual([{
+      productId: product.id,
+      quantity: 1,
+      notes: '',
+      options: [{ group_id: 'extras', option_id: 'cheese', qty: 1, fraction: null }],
+    }]);
+    // O preço é uma estimativa visual; submit_round continua calculando o valor no servidor.
+    expect(Object.keys(dineInRoundItems(cart)[0]).sort()).toEqual(['notes', 'options', 'productId', 'quantity']);
+  });
+
+  it.each([0, -1, 30, 40, Number.NaN, Number.POSITIVE_INFINITY])(
+    'ignora a promoção inválida %s e conserva o preço normal com adicionais', promotionalPrice => {
+      const cart = addDineInCartLine([], { ...product, price: 30, promotionalPrice }, [{ groupId: 'extras', optionId: 'bacon', qty: 1 }]);
+      expect(dineInCartLineUnitPriceCents(cart[0])).toBe(3400);
+    }
+  );
+
   it('keeps the same product with different choices on separate lines and merges identical choices', () => {
     const cheese = [{ groupId: 'extras', optionId: 'cheese', qty: 1 }];
     const bacon = [{ groupId: 'extras', optionId: 'bacon', qty: 1 }];

@@ -13,6 +13,7 @@ const product = { id: 'p1', name: 'Chopp', description: '', price: 12, imageUrl:
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ supabaseUser: h.auth.user, signUp: h.auth.signUp, signInWithPassword: h.auth.signInWithPassword }) }));
 vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: { rpc: (...a: unknown[]) => h.rpc(...a), auth: { signInAnonymously: vi.fn(), signInWithOAuth: vi.fn() } } }));
 vi.mock('../../../lib/pwa/applyStoreIdentity', () => ({ applyStoreIdentity: vi.fn().mockResolvedValue({}) }));
+vi.mock('../../../repositories/menuOutdoorRepository', () => ({ menuOutdoorRepository: { getPublicSlides: async () => [] } }));
 vi.mock('../../../repositories/publicStoreRepository', () => ({ publicStoreRepository: { loadPublicStore: async () => ({ status: 'ok', data: { tenant: { id: 'tn', name: 'Loja X' }, products: [product] } }) } }));
 vi.mock('../../../repositories/tenantModuleRepository', () => ({ tenantModuleRepository: { getPublicEnabled: async () => new Set(['dine_in']) } }));
 vi.mock('../../../repositories/productOptionRepository', () => ({ productOptionRepository: { getPublicForProducts: async () => new Map() } }));
@@ -85,7 +86,8 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     render(<DineInClientApp token={TOKEN} />);
     await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Fazer pedido' }));
+    fireEvent.click(screen.getByTestId('dinein-bag-counter'));
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar pedido' }));
     await screen.findByTestId('identity-gate');
     fireEvent.change(screen.getByLabelText('Seu nome'), { target: { value: 'Ana Souza' } });
     fireEvent.change(screen.getByLabelText('Celular'), { target: { value: '11 99999-0000' } });
@@ -172,7 +174,7 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     expect((await screen.findByTestId('dine-in-ended')).textContent).toMatch(/removido desta mesa/);
     expect(screen.queryByTestId('invite-panel')).toBeNull();
   });
-  it('mesa aguardando liberação: texto amigável (sem "aprovação do garçom"), aviso ao servidor e modal "Aguarde a liberação da mesa" ao tentar Fazer pedido', async () => {
+  it('mesa aguardando liberação: texto amigável (sem "aprovação do garçom"), aviso ao servidor e modal "Aguarde a liberação da mesa" ao finalizar a sacola', async () => {
     h.caps.mockResolvedValue(V2); h.auth.user = { id: 'u1' };
     h.access.enterTable.mockResolvedValue({ state: 'RESPONSIBLE', sessionId: 's1', approved: false });
     baseRpc({ get_my_tab: myTab('RESPONSIBLE', false) });
@@ -185,13 +187,14 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     await waitFor(() => expect(h.access.pingPending).toHaveBeenCalledWith('s1'));
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar Chopp' }));
     expect((await screen.findByTestId('added-to-bag-toast')).textContent).toContain('Adicionado à sacola · 1× Chopp');
-    fireEvent.click(screen.getByRole('button', { name: 'Fazer pedido' }));
+    fireEvent.click(screen.getByTestId('dinein-bag-counter'));
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar pedido' }));
     expect((await screen.findByTestId('awaiting-release-modal')).textContent).toContain('Aguarde a liberação da mesa');
   });
 });
 
 describe('Mesa — modelo antigo (banco sem a migração) continua igual', () => {
-  it('botão chama "Fazer pedido", abre modal de confirmação do pedido na mesa e a espera de liberação usa texto amigável', async () => {
+  it('finaliza a sacola e abre modal de confirmação do pedido na mesa e a espera de liberação usa texto amigável', async () => {
     h.caps.mockResolvedValue(V1); h.auth.user = { id: 'u1' };
     h.rpc.mockImplementation(async (name: string) => {
       if (name === 'resolve_table_qr') return { data: resolved, error: null };
@@ -206,10 +209,11 @@ describe('Mesa — modelo antigo (banco sem a migração) continua igual', () =>
     expect(screen.getByTestId('added-to-bag-toast').textContent).toContain('Adicionado à sacola · 1× Chopp');
     expect(screen.getByTestId('dinein-bag-counter').textContent).toContain('1');
     expect(screen.queryByText('Enviar para a cozinha')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Fazer pedido' }));
+    fireEvent.click(screen.getByTestId('dinein-bag-counter'));
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar pedido' }));
     expect(await screen.findByTestId('confirm-order-modal')).toBeTruthy();
     fireEvent.click(screen.getByTestId('confirm-order-submit'));
-    const note = await screen.findByRole('status');
+    const note = await screen.findByTestId('awaiting-release');
     expect(note.textContent).toContain('Avisamos o garçom');
     expect(h.access.enterTable).not.toHaveBeenCalled();
     expect(screen.queryByTestId('identity-gate')).toBeNull();

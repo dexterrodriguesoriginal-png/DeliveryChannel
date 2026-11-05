@@ -1,11 +1,13 @@
 import { tableMoveApprovalRepository, type TableMoveRequest } from '../../repositories/tableMoveApprovalRepository';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, ArrowLeft, CheckCircle2, CircleUserRound, Crown, Loader2, Minus, Plus, ReceiptText, ShoppingBag, UserRound, Users, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CircleUserRound, Crown, Loader2, ReceiptText, ShoppingBag, UserRound, Users, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
 import { formatBRL } from '../../lib/pricing/money';
-import type { Product, SelectedProductOption } from '../../types';
+import type { Category, Product, SelectedProductOption } from '../../types';
+import type { MenuTheme } from '../../types/menuTheme';
+import { productToPricingLine } from '../../lib/pricing/fulfillmentPricing';
 import { waiterV2Repository, type TableWaiter } from '../../repositories/waiterV2Repository';
 import { initials } from '../../lib/waiter/waiterRouting';
 import { billSplitAmounts, BillSplitMode, DineInPaymentMethod, parseTenderCents, tenderStatus } from '../../lib/customer/dineIn';
@@ -27,6 +29,7 @@ import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import { DineInCartSheet } from '../../components/client/dinein/DineInCartSheet';
 import { DineInHomeTiles } from '../../components/client/dinein/DineInHomeTiles';
+import { DineInTotemMenu } from '../../components/client/dinein/DineInTotemMenu';
 import { DineInDeliveryCode, DineInDeliveryNotice, DineInTracking } from '../../components/client/dinein/DineInTracking';
 import { dineInStatus, type DineInTrackedRound } from '../../lib/customer/dineInTracking';
 import { canDisputeDelivery, deliveryNoticeLabel, type DeliveryState } from '../../lib/customer/deliveryDispute';
@@ -109,6 +112,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [storeLogoUrl, setStoreLogoUrl] = useState<string | null>(null);
   const [storePrimaryColor, setStorePrimaryColor] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [menuTheme, setMenuTheme] = useState<MenuTheme>();
+  const [storeTenantId, setStoreTenantId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [firstName, setFirstName] = useState(() => {
@@ -207,6 +213,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
       setDisputeBusyId(null);
       setEntryRole(null); setEntryApproved(null); setInUse(false); setInvite(null); setEndedReason(null);
       setConfirmOrderOpen(false); setPendingApproval(false); setAwaitingReleaseModalOpen(false);
+      setOptionsProduct(null); setOptionChoices([]);
       submitLockRef.current = false; submitKeyRef.current = uuid();
       setIdentityConfirmed(false); openedUserRef.current = '';
       try { sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${token}`); } catch { /* storage optional */ }
@@ -248,6 +255,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setResolution(null);
     setResolvedToken('');
     setStoreName(''); setStoreLogoUrl(null); setStorePrimaryColor(null); setProducts([]);
+    setCategories([]); setMenuTheme(undefined); setStoreTenantId('');
     setQrPaused(false); setInvitePreview(null);
     setError('');
     void (async () => {
@@ -306,6 +314,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           : new Map();
         if (!alive) return;
         setStoreName(result.storeName || store.data.theme?.storeName || store.data.tenant.name);
+        setStoreTenantId(store.data.tenant.id);
+        setCategories(store.data.categories || []);
+        setMenuTheme(store.data.menuTheme);
         if (store.data.theme?.logoUrl) setStoreLogoUrl(store.data.theme.logoUrl);
         if (store.data.theme?.primaryColor) setStorePrimaryColor(store.data.theme.primaryColor);
         void applyStoreIdentity({ id: store.data.tenant.id, slug: result.tenantSlug, name: store.data.tenant.name,
@@ -347,6 +358,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setDisputeBusyId(null);
     setEntryRole(null); setEntryApproved(null); setInUse(false); setEntryDone(false); setEndedReason(null); setInvite(null);
     setAccountOpen(false); setBillOpen(false); setCartOpen(false); setConfirmOrderOpen(false); setCheckoutIdentityOpen(false);
+    setOptionsProduct(null); setOptionChoices([]);
     setPendingApproval(false); setAwaitingReleaseModalOpen(false);
     submitLockRef.current = false; submitKeyRef.current = uuid();
     setIdentityConfirmed(false);
@@ -706,6 +718,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const addItem = (product: Product) => {
+    if (orderingDisabled || busy || !products.some(item => item.id === product.id)) return;
     if (product.optionGroups?.some(group => group.active)) {
       setOptionsProduct(product);
       setOptionChoices([]);
@@ -715,7 +728,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     triggerAddedFeedback(product.name, 1);
   };
   const addConfiguredItem = () => {
-    if (!optionsProduct) return;
+    if (!optionsProduct || orderingDisabled || busy || !products.some(item => item.id === optionsProduct.id)) return;
     const groups = optionsProduct.optionGroups?.filter(group => group.active) || [];
     const validation = validateOptionSelection(groups, optionChoices);
     if (!validation.valid) {
@@ -728,16 +741,6 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setOptionChoices([]);
     setNotice('');
     triggerAddedFeedback(addedName, 1);
-  };
-  const changeQuantity = (productId: string, delta: number) => {
-    if (delta > 0) {
-      const p = products.find(item => item.id === productId);
-      if (p) triggerAddedFeedback(p.name, delta);
-    }
-    setCart(current => {
-      const line = [...current].reverse().find(item => item.product.id === productId);
-      return line ? changeDineInCartLineQuantity(current, line.key, delta) : current;
-    });
   };
   const changeLineQuantity = (key: string, delta: number) => {
     if (delta > 0) {
@@ -1102,7 +1105,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-28">
+    <main className={view === 'MENU' ? 'dinein-menu-shell bg-slate-50' : 'min-h-screen bg-slate-50 pb-28'}>
       <header className="sticky top-0 z-20 border-b bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-2">
           <div>
@@ -1162,6 +1165,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           <span className="truncate">Adicionado à sacola · {addedToast.quantity}× {addedToast.name}</span>
         </div>
       )}
+      <div className={view === 'MENU' ? 'dinein-menu-notices' : undefined}>
       {awaitingRelease && !qrPaused && (
         <div role="status" data-testid="awaiting-release" className="mx-auto mt-3 flex max-w-2xl items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
           <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-amber-700" />
@@ -1182,7 +1186,21 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         <a href={`/app/${encodeURIComponent(resolution.tenantSlug)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 font-bold text-emerald-800" onClick={openStoreApp}>Instalar app da loja</a>
       </aside>}
 
-      <section className="mx-auto max-w-2xl px-4 py-5">
+        {billRequested && !tabClosed && <section aria-label="Situação da conta" className={`mt-4 rounded-xl p-3 text-sm ${awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested'}`} style={billColors}>
+          <p className="font-bold">{billStatusLabel}</p>
+          <p className="mt-1">{awaitingPix ? 'Sua mesa continua ocupada até a confirmação do pagamento.' : billReopenAllowed ? 'Quer uma saideira? Reabra a comanda para fazer mais pedidos.' : 'O pagamento está em andamento. Aguarde a confirmação ou chame o garçom.'}</p>
+          {billReopenAllowed && <button type="button" onClick={() => void reopenBill()} disabled={busy} data-testid="dinein-reopen-bill-btn" className="mt-3 rounded-lg border border-[#1E8E38] bg-[#2DBE4E] px-4 py-2 font-bold text-[#0F172A] disabled:opacity-50" style={{ backgroundColor: '#2DBE4E', borderColor: '#1E8E38', color: '#0F172A' }}>{busy ? 'Reabrindo…' : 'Pedir mais'}</button>}
+        </section>}
+        {tab?.rounds?.filter(round => round.mine !== false && (round.status === 'DELIVERED' || round.deliveryDispute)).map(round => <DineInDeliveryNotice key={round.orderId} round={round} busy={disputeBusyId === round.orderId} onDispute={orderId => void disputeDelivery(orderId)} />)}
+        {tabClosed && <div role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Conta encerrada. Para pedir de novo, chame o garçom.</div>}
+        {moveRequest && <section aria-label="Situação da mudança de mesa" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-slate-950">
+          <p className="font-bold">{moveRequest.fromLabel} → {moveRequest.toLabel}</p>
+          <p role="status" className="mt-1">{moveRequest.status === 'PENDING' ? 'Mudança de mesa aguardando autorização. Sua conta continua na mesa atual.' : moveRequest.status === 'APPROVED' ? 'Mudança de mesa autorizada. Sua conta, pedidos e valores acompanham a nova mesa.' : moveRequest.status === 'REJECTED' ? 'Solicitação de mudança de mesa recusada. Sua conta continua na mesa atual.' : 'Solicitação de mudança de mesa cancelada. Sua conta continua na mesa atual.'}</p>
+        </section>}
+        {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
+      </div>
+
+      <section className={view === 'MENU' ? 'dinein-menu-content' : 'mx-auto max-w-2xl px-4 py-5'}>
         {view === 'HOME' ? <DineInHomeTiles
           storeName={storeName}
           logoUrl={storeLogoUrl}
@@ -1197,58 +1215,23 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           billDisabled={busy || tabClosed || billRequested || !sessionId || awaitingRelease}
           billLabel={billRequested ? billStatusLabel : 'Pedir minha conta'}
           actionHint={tabClosed ? 'Sua conta foi encerrada. Chame a equipe para pedir novamente.' : awaitingRelease ? 'Os serviços da mesa ficam disponíveis após a liberação pela equipe.' : !sessionId ? 'Os serviços da mesa ficam disponíveis após sua entrada na conta.' : undefined}
-        /> : <>
-        <div className="mb-4 flex items-center gap-3">
-          <button type="button" onClick={() => setView('HOME')} aria-label="Voltar ao início da mesa" className="grid h-11 w-11 place-items-center rounded-full border border-slate-200 bg-white text-slate-800 shadow-sm hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-600"><ArrowLeft className="h-5 w-5" /></button>
-          <h2 className="text-lg font-black">Cardápio</h2>
-        </div>
-        {products.length ? <div className="space-y-3">{products.map(product => {
-          const quantity = cart.filter(line => line.product.id === product.id).reduce((sum, line) => sum + line.quantity, 0);
-          return <article key={product.id} className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm">
-            {product.imageUrl && <img src={product.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover" />}
-            <div className="min-w-0 flex-1"><h3 className="font-bold">{product.name}</h3><p className="line-clamp-2 text-xs text-slate-500">{product.description}</p><p className="mt-1 font-bold">{formatBRL(product.price)}</p></div>
-            <div className="flex items-center gap-2">
-              {quantity > 0 && <button type="button" aria-label={`Remover ${product.name}`} onClick={() => changeQuantity(product.id, -1)} disabled={orderingDisabled || busy} className="rounded-full bg-slate-100 p-2 disabled:opacity-40"><Minus className="h-4 w-4" /></button>}
-              {quantity > 0 && <span className="min-w-4 text-center font-bold">{quantity}</span>}
-              <button type="button" aria-label={`Adicionar ${product.name}`} onClick={() => addItem(product)} disabled={orderingDisabled} className="rounded-full bg-emerald-700 p-2 text-white disabled:opacity-40"><Plus className="h-4 w-4" /></button>
-            </div>
-          </article>;
-        })}</div> : <p className="rounded-xl bg-white p-4 text-sm text-slate-600">Nenhum item disponível no cardápio agora.</p>}
-        {cart.length > 0 && <section className="mt-5 rounded-2xl border border-emerald-200 bg-white p-4">
-          <h2 className="font-extrabold">Sua rodada</h2>
-          {cart.map(line => {
-            const optionLabels = dineInOptionLabels(line.product, line.options);
-            return <div key={line.key} className="border-b border-slate-100 py-2 text-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-semibold">{line.quantity}× {line.product.name}</p>
-                  {optionLabels.map(label => <p key={label} className="text-xs text-slate-500">{label}</p>)}
-                  {line.notes && <p className="text-xs italic text-slate-600">Obs.: {line.notes}</p>}
-                  <p className="text-xs text-slate-500">{formatBRL(dineInCartLineUnitPriceCents(line) / 100)} cada</p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <button type="button" aria-label={`Remover uma unidade de ${line.product.name}`} onClick={() => changeLineQuantity(line.key, -1)} disabled={orderingDisabled || busy} className="rounded-full bg-slate-100 p-1.5 disabled:opacity-40"><Minus className="h-3.5 w-3.5" /></button>
-                  <span>{formatBRL(dineInCartLineUnitPriceCents(line) * line.quantity / 100)}</span>
-                  <button type="button" aria-label={`Adicionar uma unidade de ${line.product.name}`} onClick={() => changeLineQuantity(line.key, 1)} disabled={orderingDisabled || busy} className="rounded-full bg-slate-100 p-1.5 disabled:opacity-40"><Plus className="h-3.5 w-3.5" /></button>
-                </div>
-              </div>
-              <input
-                type="text"
-                maxLength={500}
-                aria-label={`Observação de ${line.product.name}`}
-                value={line.notes || ''}
-                onChange={e => changeLineNotes(line.key, e.target.value)}
-                placeholder="Alguma observação? (ex.: sem gelo, bem passado)"
-                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-emerald-600"
-              />
-            </div>;
-          })}
-          <div className="flex justify-between border-t pt-3 font-bold"><span>Subtotal estimado</span><span>{formatBRL(totalCart)}</span></div>
-          <button type="button" onClick={handleRequestOrder} disabled={busy || orderingDisabled} className="mt-3 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Fazer pedido'}</button>
-          {(pendingApproval || awaitingRelease) && <p className="mt-2 text-xs font-semibold text-amber-800">Aguarde a liberação da mesa. {PENDING_APPROVAL_TITLE}. {PENDING_APPROVAL_TEXT}</p>}
-          {billRequested && <p className="mt-2 text-xs font-semibold" style={{ color: billColors.color }}>{awaitingPix ? 'Aguardando a confirmação do PIX. Sua mesa continua ocupada.' : billReopenAllowed ? 'Conta pedida. Use “Pedir mais” para continuar consumindo.' : 'Conta pedida. O pagamento está em andamento; chame o garçom se precisar de ajuda.'}</p>}
-        </section>}
-        </>}
+        /> : <DineInTotemMenu
+          key={`${token}:${storeTenantId}`}
+          storeSlug={resolution?.tenantSlug || ''}
+          storeTenantId={storeTenantId}
+          storeName={storeName}
+          logoUrl={storeLogoUrl}
+          categories={categories}
+          products={products}
+          menuTheme={menuTheme}
+          cartCount={totalCartItems}
+          orderingDisabled={orderingDisabled}
+          busy={busy}
+          onAddProduct={addItem}
+          onOpenProduct={product => { if (!orderingDisabled && !busy) { setOptionsProduct(product); setOptionChoices([]); } }}
+          onOpenCart={() => setCartOpen(true)}
+          onBack={() => setView('HOME')}
+        />}
         {awaitingReleaseModalOpen && awaitingRelease && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setAwaitingReleaseModalOpen(false); }}>
             <section role="dialog" aria-modal="true" aria-label="Aguarde a liberação da mesa" data-testid="awaiting-release-modal" className="w-full max-w-md rounded-3xl bg-white p-6 text-center shadow-2xl">
@@ -1327,49 +1310,39 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           </div>
         )}
         {optionsProduct && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOptionsProduct(null); }}>
-          <section role="dialog" aria-modal="true" aria-label={`Personalizar ${optionsProduct.name}`} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5">
+          <section role="dialog" aria-modal="true" aria-label={`${optionsProduct.optionGroups?.some(group => group.active) ? 'Personalizar' : 'Detalhes de'} ${optionsProduct.name}`} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5">
             <div className="mb-4 flex items-start justify-between gap-3">
-              <div><h2 className="text-lg font-black">Personalizar {optionsProduct.name}</h2><p className="text-sm text-slate-500">Escolha os adicionais para este item.</p></div>
+              <div><h2 className="text-lg font-black">{optionsProduct.optionGroups?.some(group => group.active) ? `Personalizar ${optionsProduct.name}` : optionsProduct.name}</h2>{optionsProduct.optionGroups?.some(group => group.active) && <p className="text-sm text-slate-500">Escolha os adicionais para este item.</p>}</div>
               <button type="button" onClick={() => { setOptionsProduct(null); setOptionChoices([]); }} aria-label="Fechar personalização"><X className="h-5 w-5" /></button>
             </div>
+            {optionsProduct.imageUrl && <img src={optionsProduct.imageUrl} alt={optionsProduct.name} className="mb-4 aspect-[4/3] w-full rounded-2xl object-cover" />}
+            {optionsProduct.description && <p className="mb-4 text-sm text-slate-600">{optionsProduct.description}</p>}
             <ProductOptionsSelector
               groups={optionsProduct.optionGroups || []}
               selections={optionChoices}
               onChange={setOptionChoices}
             />
             <p className="mt-3 text-right text-base font-black">
-              {formatBRL((Math.round(optionsProduct.price * 100) + optionPriceCents(optionsProduct.optionGroups || [], optionChoices)) / 100)}
+              {formatBRL((Math.round(productToPricingLine(optionsProduct, 1).unitPrice * 100) + optionPriceCents(optionsProduct.optionGroups || [], optionChoices)) / 100)}
             </p>
             <button
               type="button"
               onClick={addConfiguredItem}
-              disabled={!validateOptionSelection(optionsProduct.optionGroups || [], optionChoices).valid}
+              disabled={orderingDisabled || busy || !validateOptionSelection(optionsProduct.optionGroups || [], optionChoices).valid}
               className="mt-4 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50"
             >
               Adicionar à rodada
             </button>
           </section>
         </div>}
-        {billRequested && !tabClosed && <section aria-label="Situação da conta" className={`mt-4 rounded-xl p-3 text-sm ${awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested'}`} style={billColors}>
-          <p className="font-bold">{billStatusLabel}</p>
-          <p className="mt-1">{awaitingPix ? 'Sua mesa continua ocupada até a confirmação do pagamento.' : billReopenAllowed ? 'Quer uma saideira? Reabra a comanda para fazer mais pedidos.' : 'O pagamento está em andamento. Aguarde a confirmação ou chame o garçom.'}</p>
-          {billReopenAllowed && <button type="button" onClick={() => void reopenBill()} disabled={busy} data-testid="dinein-reopen-bill-btn" className="mt-3 rounded-lg border border-[#1E8E38] bg-[#2DBE4E] px-4 py-2 font-bold text-[#0F172A] disabled:opacity-50" style={{ backgroundColor: '#2DBE4E', borderColor: '#1E8E38', color: '#0F172A' }}>{busy ? 'Reabrindo…' : 'Pedir mais'}</button>}
-        </section>}
-        {tab?.rounds?.filter(round => round.mine !== false && (round.status === 'DELIVERED' || round.deliveryDispute)).map(round => <DineInDeliveryNotice key={round.orderId} round={round} busy={disputeBusyId === round.orderId} onDispute={orderId => void disputeDelivery(orderId)} />)}
-        {tabClosed && <div role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Conta encerrada. Para pedir de novo, chame o garçom.</div>}
-        {moveRequest && <section aria-label="Situação da mudança de mesa" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-slate-950">
-          <p className="font-bold">{moveRequest.fromLabel} → {moveRequest.toLabel}</p>
-          <p role="status" className="mt-1">{moveRequest.status === 'PENDING' ? 'Mudança de mesa aguardando autorização. Sua conta continua na mesa atual.' : moveRequest.status === 'APPROVED' ? 'Mudança de mesa autorizada. Sua conta, pedidos e valores acompanham a nova mesa.' : moveRequest.status === 'REJECTED' ? 'Solicitação de mudança de mesa recusada. Sua conta continua na mesa atual.' : 'Solicitação de mudança de mesa cancelada. Sua conta continua na mesa atual.'}</p>
-        </section>}
-        {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       </section>
 
       {cartOpen && <DineInCartSheet cart={cart} busy={busy} disabled={orderingDisabled} onClose={() => setCartOpen(false)} onContinueShopping={() => { setCartOpen(false); setView('MENU'); }} onCheckout={handleRequestOrder} onQuantity={changeLineQuantity} onNotes={changeLineNotes} />}
-      <DineInTracking rounds={tab?.rounds
+      <DineInTracking compact={view === 'MENU'} rounds={tab?.rounds
         ?.filter(round => round.mine !== false || (tab.me?.approved && !!round.deliveryCode))
         .map(round => tab.me?.approved ? round : { ...round, deliveryCode: null }) || []} />
 
-      {view === 'MENU' && <nav aria-label="Ações da mesa" className="fixed inset-x-0 bottom-0 z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
+      {view === 'MENU' && <nav aria-label="Ações da mesa" className="dinein-menu-actions z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
         <div className="mx-auto grid max-w-2xl grid-cols-3 gap-2">
           <button type="button" onClick={() => void requestWaiter()} disabled={busy || tabClosed || !sessionId} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><UserRound className="h-5 w-5" />Chamar garçom</button>
           <button type="button" onClick={() => { setBillOpen(true); void loadAccount(true); }} disabled={busy || tabClosed || billRequested || !sessionId} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold disabled:cursor-default ${billRequested ? awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested' : 'text-slate-800 disabled:opacity-40'}`} style={billRequested ? billColors : undefined}><ReceiptText className="h-5 w-5" />{billRequested ? billStatusLabel : 'Pedir a conta'}</button>

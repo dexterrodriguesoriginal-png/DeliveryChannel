@@ -28,6 +28,7 @@ vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: 
 const product = { id: 'p1', name: 'Chopp', description: '', price: 12, imageUrl: '', isActive: true, isAvailable: true, optionGroups: [] };
 vi.mock('../../../lib/pwa/applyStoreIdentity', () => ({ applyStoreIdentity: vi.fn().mockResolvedValue({}) }));
 vi.mock('../../../lib/pwa/installState', () => ({ getDeferredPrompt: () => h.installPrompt ? { prompt: h.installPrompt } : null, clearDeferredPrompt: () => h.clearInstallPrompt() }));
+vi.mock('../../../repositories/menuOutdoorRepository', () => ({ menuOutdoorRepository: { getPublicSlides: async () => [] } }));
 vi.mock('../../../repositories/publicStoreRepository', () => ({ publicStoreRepository: { loadPublicStore: async () => ({ status: 'ok', data: { tenant: { id: 'tn', name: 'Loja X' }, products: [product] } }) } }));
 vi.mock('../../../repositories/tenantModuleRepository', () => ({ tenantModuleRepository: { getPublicEnabled: async () => new Set(['dine_in']) } }));
 vi.mock('../../../repositories/productOptionRepository', () => ({ productOptionRepository: { getPublicForProducts: async () => new Map() } }));
@@ -99,7 +100,8 @@ describe('Garçom v3 — cliente QR', () => {
     const view = render(<DineInClientApp token={TOKEN} />);
     await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Fazer pedido' }));
+    fireEvent.click(screen.getByTestId('dinein-bag-counter'));
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar pedido' }));
     fireEvent.click(await screen.findByTestId('confirm-order-submit'));
     await waitFor(() => expect(finishOldOrder).toBeTypeOf('function'));
     const nextToken = 'n'.repeat(48);
@@ -572,7 +574,7 @@ describe('Entrega 2 — início da mesa', () => {
     render(<DineInClientApp token={TOKEN} />);
     await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Voltar ao início da mesa' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
     expect(screen.getByTestId('dinein-home')).toBeTruthy();
     fireEvent.click(screen.getByTestId('dinein-bag-counter'));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Sua sacola' })).getByRole('button', { name: 'Adicionar mais itens' }));

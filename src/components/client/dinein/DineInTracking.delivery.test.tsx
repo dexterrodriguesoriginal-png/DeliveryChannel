@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { DineInDeliveryNotice, DineInTracking } from './DineInTracking';
 
 const deliveredAt = '2026-11-04T12:00:00.000Z';
@@ -44,5 +44,39 @@ describe('aviso de entrega no cardápio', () => {
     expect(screen.getByTestId('dinein-track-order').textContent).toContain('Aguardando');
     fireEvent.click(screen.getByTestId('dinein-track-order'));
     expect(screen.getByText('Cancelado', { selector: 'p' }).style.color).toBe('#374151');
+  });
+
+  it('mantém o acompanhamento compacto acessível, abre os códigos completos e acompanha novas rodadas', () => {
+    const pending = { ...round, orderId: 'o2', orderNumber: 13, roundNo: 2, status: 'PREPARING', deliveredAt: null, deliveryCode: '1234' };
+    const view = render(<DineInTracking compact rounds={[round, pending]} />);
+    const bubble = screen.getByRole('button', { name: 'Acompanhar pedido' });
+    expect(bubble.getAttribute('data-compact')).toBe('true');
+    const compactCode = within(bubble).getByText((_text, element) => element?.tagName === 'SPAN' && element.textContent === 'Código 1234');
+    expect(compactCode.closest('.sr-only')).toBeNull();
+
+    fireEvent.click(bubble);
+    const tracking = screen.getByRole('dialog', { name: 'Acompanhar pedido' });
+    expect(within(tracking).getByTestId('round-delivery-code-o2').textContent).toContain('Seu código de entrega: 1234 - informe ao garçom');
+    fireEvent.click(within(tracking).getByRole('button', { name: 'Fechar acompanhamento' }));
+
+    view.rerender(<DineInTracking compact rounds={[round, { ...pending, status: 'DELIVERED' }]} />);
+    expect(screen.queryByTestId('dinein-track-order')).toBeNull();
+    const next = { ...pending, orderId: 'o3', orderNumber: 14, roundNo: 3, status: 'PENDING', deliveryCode: '5678' };
+    view.rerender(<DineInTracking compact rounds={[round, { ...pending, status: 'DELIVERED' }, next]} />);
+    const nextBubble = screen.getByRole('button', { name: 'Acompanhar pedido' });
+    const nextCode = within(nextBubble).getByText((_text, element) => element?.tagName === 'SPAN' && element.textContent === 'Código 5678');
+    expect(nextCode.closest('.sr-only')).toBeNull();
+    expect(nextBubble.textContent).not.toContain('1234');
+  });
+
+  it('continua mostrando o texto completo e o código no balão padrão fora do totem', () => {
+    const pending = { ...round, status: 'PREPARING', deliveredAt: null, deliveryCode: '1234' };
+    render(<DineInTracking rounds={[pending]} />);
+    const bubble = screen.getByTestId('dinein-track-order');
+    expect(bubble.getAttribute('data-compact')).not.toBe('true');
+    expect(within(bubble).getByText('Acompanhar pedido').closest('.sr-only')).toBeNull();
+    expect(within(bubble).getByText('Preparando seu pedido').closest('.sr-only')).toBeNull();
+    const code = within(bubble).getByText((_text, element) => element?.tagName === 'SPAN' && element.textContent === 'Seu código de entrega: 1234 - informe ao garçom');
+    expect(code.closest('.sr-only')).toBeNull();
   });
 });
