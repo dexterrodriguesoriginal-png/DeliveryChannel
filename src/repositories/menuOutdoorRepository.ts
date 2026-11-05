@@ -1,18 +1,22 @@
 import { supabase } from '../lib/supabase';
 import { BackendError, requireBackend, toBackendError } from '../lib/backend';
 import type { PublishedMedia } from './mediaRepository';
+import { isYouTubeId } from '../lib/youtube';
 
 /** Only presentation fields from the public RPC; no account/customer information. */
 export interface PublicMenuOutdoorSlide {
   id: string;
   imageUrl?: string;
   videoUrl?: string;
+  /** Somente o id validado (11 caracteres); o embed é montado no render. */
+  youtubeId?: string;
   title?: string;
   productId?: string;
 }
 
 export interface MenuOutdoorSlide extends PublicMenuOutdoorSlide {
   tenantId: string;
+  /** Vazio em banners do YouTube. */
   assetId: string;
   sortOrder: number;
   active: boolean;
@@ -24,7 +28,9 @@ export interface MenuOutdoorSlide extends PublicMenuOutdoorSlide {
 
 export interface MenuOutdoorSlideDraft {
   id?: string;
-  assetId: string;
+  /** Informe assetId (foto/vídeo publicado) OU youtubeId, nunca os dois. */
+  assetId?: string;
+  youtubeId?: string;
   title?: string;
   productId?: string;
   sortOrder: number;
@@ -38,6 +44,16 @@ const UUID_PATH = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 const PUBLISHED_PATH = new RegExp(`^${UUID_PATH}/published/${UUID_PATH}\\.(?:jpg|jpeg|png|webp|mp4|webm)$`, 'i');
 
 function publicSlide(row: Record<string, unknown>): PublicMenuOutdoorSlide {
+  if (row.media_type === 'YOUTUBE') {
+    if (typeof row.id !== 'string' || !isYouTubeId(row.youtube_id)) {
+      throw new BackendError('MENU_OUTDOOR_INVALID', 'A mídia do outdoor não é válida.');
+    }
+    return {
+      id: row.id, youtubeId: row.youtube_id,
+      ...(typeof row.title === 'string' && row.title ? { title: row.title } : {}),
+      ...(typeof row.product_id === 'string' && row.product_id ? { productId: row.product_id } : {}),
+    };
+  }
   if (typeof row.id !== 'string' || typeof row.public_path !== 'string' || !PUBLISHED_PATH.test(row.public_path)
     || (row.media_type !== 'IMAGE' && row.media_type !== 'VIDEO')) {
     throw new BackendError('MENU_OUTDOOR_INVALID', 'A mídia do outdoor não é válida.');
@@ -53,14 +69,14 @@ function publicSlide(row: Record<string, unknown>): PublicMenuOutdoorSlide {
 
 function staffSlide(row: Record<string, unknown>): MenuOutdoorSlide {
   return {
-    ...(row.public_path == null ? {
+    ...(row.public_path == null && row.media_type !== 'YOUTUBE' ? {
       id: String(row.id),
       ...(typeof row.title === 'string' && row.title ? { title: row.title } : {}),
       ...(typeof row.product_id === 'string' && row.product_id ? { productId: row.product_id } : {}),
     } : publicSlide(row)),
-    mediaAvailable: typeof row.public_path === 'string',
+    mediaAvailable: typeof row.public_path === 'string' || row.media_type === 'YOUTUBE',
     tenantId: String(row.tenant_id),
-    assetId: String(row.asset_id),
+    assetId: typeof row.asset_id === 'string' ? row.asset_id : '',
     sortOrder: Number(row.sort_order),
     active: row.active === true,
     startsAt: typeof row.starts_at === 'string' ? row.starts_at : null,
@@ -104,10 +120,18 @@ export const menuOutdoorRepository = {
   /** Server validates membership, tenant-owned product and published asset on every write. */
   async save(tenantId: string, draft: MenuOutdoorSlideDraft): Promise<MenuOutdoorSlide> {
     requireBackend('outdoor do cardápio');
+    const youtubeId = draft.youtubeId || null;
+    if (youtubeId !== null && !isYouTubeId(youtubeId)) {
+      throw new BackendError('YOUTUBE_INVALID', 'Link do YouTube inválido.');
+    }
+    if ((youtubeId === null) === !draft.assetId) {
+      throw new BackendError('MEDIA_INVALID', 'Escolha uma foto, um vídeo ou um link do YouTube.');
+    }
     const { data, error } = await supabase.rpc('save_menu_outdoor_slide', {
       p_tenant_id: tenantId,
       p_id: draft.id ?? null,
-      p_asset_id: draft.assetId,
+      p_asset_id: youtubeId ? null : draft.assetId,
+      p_youtube_id: youtubeId,
       p_title: draft.title?.trim() || null,
       p_product_id: draft.productId || null,
       p_sort_order: draft.sortOrder,
@@ -117,5 +141,13 @@ export const menuOutdoorRepository = {
     });
     if (error) throw toBackendError(error, 'Não foi possível salvar o banner.');
     return staffSlide(data);
+  },
+
+  /** Exclui só o banner (tenant + dono/gerente validados no servidor). A mídia segue na biblioteca. */
+  async remove(tenantId: string, slideId: string): Promise<void> {
+    requireBackend('outdoor do cardápio');
+    const { data, error } = await supabase.rpc('delete_menu_outdoor_slide', { p_tenant_id: tenantId, p_id: slideId });
+    if (error) throw toBackendError(error, 'Não foi possível excluir o banner.');
+    if (data?.deleted !== true) throw new BackendError('DELETE_FAILED', 'O servidor não confirmou a exclusão do banner.');
   },
 };

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CalendarDays, Check, Edit3, ImagePlus, MonitorPlay, Plus, Upload, Video } from 'lucide-react';
+import { CalendarDays, Check, Edit3, ImagePlus, MonitorPlay, Plus, Trash2, Upload, Video, Youtube } from 'lucide-react';
+import { parseYouTubeId, youTubeEmbedUrl, youTubeThumbnailUrl } from '../../lib/youtube';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { mediaRepository, type PublishedMedia } from '../../repositories/mediaRepository';
@@ -20,6 +21,7 @@ const dateInput = (iso: string | null) => {
   const parts = extractDateAndTimeFromIso(iso);
   return parts.date ? `${parts.date}T${parts.time}` : '';
 };
+type EditorMedia = { assetId: string; publicUrl: string; mediaType: 'IMAGE' | 'VIDEO' | 'YOUTUBE'; youtubeId?: string };
 const dateIso = (value: string) => value ? new Date(`${value}:00-03:00`).toISOString() : null;
 
 export function menuOutdoorStatus(slide: Pick<MenuOutdoorSlide, 'active' | 'startsAt' | 'endsAt'> & { mediaAvailable?: boolean }, now = Date.now()) {
@@ -47,7 +49,9 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
   const [library, setLibrary] = useState<PublishedMedia[]>([]);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [libraryError, setLibraryError] = useState('');
-  const [media, setMedia] = useState<Pick<PublishedMedia, 'assetId' | 'publicUrl' | 'mediaType'> | null>(null);
+  const [media, setMedia] = useState<EditorMedia | null>(null);
+  const [youtubeLink, setYoutubeLink] = useState('');
+  const [deleting, setDeleting] = useState<MenuOutdoorSlide | null>(null);
   const [title, setTitle] = useState('');
   const [productId, setProductId] = useState('');
   const [sortOrder, setSortOrder] = useState('0');
@@ -75,7 +79,10 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
   const openEditor = (slide?: MenuOutdoorSlide) => {
     setError(''); setNotice('');
     setEditing(slide || 'new'); setLibraryOpen(false);
-    setMedia(slide ? { assetId: slide.assetId, publicUrl: slide.videoUrl || slide.imageUrl || '', mediaType: slide.videoUrl ? 'VIDEO' : 'IMAGE' } : null);
+    setYoutubeLink('');
+    setMedia(slide ? slide.youtubeId
+      ? { assetId: '', publicUrl: youTubeThumbnailUrl(slide.youtubeId), mediaType: 'YOUTUBE', youtubeId: slide.youtubeId }
+      : { assetId: slide.assetId, publicUrl: slide.videoUrl || slide.imageUrl || '', mediaType: slide.videoUrl ? 'VIDEO' : 'IMAGE' } : null);
     setTitle(slide?.title || ''); setProductId(slide?.productId || '');
     setSortOrder(String(slide?.sortOrder ?? (slides.length ? Math.max(...slides.map(row => row.sortOrder)) + 1 : 0)));
     setActive(slide?.active ?? true);
@@ -94,6 +101,27 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
     } catch (err) {
       if (alive.current) setError(err instanceof Error ? err.message : 'Não foi possível publicar a mídia.');
     } finally { if (alive.current) setUploading(false); }
+  };
+
+  const applyYoutube = () => {
+    const id = parseYouTubeId(youtubeLink);
+    if (!id) { setError('Link do YouTube inválido. Use um link como youtube.com/watch?v=…, youtu.be/… ou youtube.com/shorts/….'); return; }
+    setError(''); setLibraryOpen(false);
+    setMedia({ assetId: '', publicUrl: youTubeThumbnailUrl(id), mediaType: 'YOUTUBE', youtubeId: id });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting || saveLock.current) return;
+    const target = deleting;
+    saveLock.current = true; setBusy(true); setError(''); setNotice('');
+    try {
+      await menuOutdoorRepository.remove(tenantId, target.id);
+      if (!alive.current) return;
+      setSlides(previous => previous.filter(row => row.id !== target.id));
+      setDeleting(null); setNotice('Banner excluído. A mídia continua disponível na sua biblioteca.');
+    } catch (err) {
+      if (alive.current) { setDeleting(null); setError(err instanceof Error ? err.message : 'Não foi possível excluir o banner.'); }
+    } finally { saveLock.current = false; if (alive.current) setBusy(false); }
   };
 
   const persist = async (draft: MenuOutdoorSlideDraft) => {
@@ -120,7 +148,8 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
       setError('O término precisa ser depois do início da exibição.'); return;
     }
     void persist({
-      ...(editing === 'new' ? {} : { id: editing.id }), assetId: media.assetId,
+      ...(editing === 'new' ? {} : { id: editing.id }),
+      ...(media.mediaType === 'YOUTUBE' ? { youtubeId: media.youtubeId } : { assetId: media.assetId }),
       title, productId, sortOrder: Number(sortOrder), active, startsAt: start, endsAt: end,
     });
   };
@@ -153,17 +182,20 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
       </div> : <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {slides.map(slide => <article key={slide.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <div className="relative aspect-video bg-slate-100">
-            {slide.videoUrl ? <video src={slide.videoUrl} controls muted playsInline preload="metadata" className="h-full w-full object-cover" aria-label={slide.title || 'Vídeo do banner'} />
+            {slide.youtubeId ? <img src={youTubeThumbnailUrl(slide.youtubeId)} alt={slide.title || 'Vídeo do YouTube'} loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+              : slide.videoUrl ? <video src={slide.videoUrl} controls muted playsInline preload="metadata" className="h-full w-full object-cover" aria-label={slide.title || 'Vídeo do banner'} />
               : slide.imageUrl ? <img src={slide.imageUrl} alt={slide.title || 'Banner do cardápio'} loading="lazy" className="h-full w-full object-cover" />
                 : <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-500"><ImagePlus size={30} /><span className="text-sm">Mídia indisponível</span></div>}
             <span className="absolute left-3 top-3 rounded-full bg-slate-950/85 px-3 py-1 text-xs font-bold text-white">Ordem {slide.sortOrder}</span>
+            {slide.youtubeId && <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white"><Youtube size={14} />YouTube</span>}
           </div>
           <div className="p-5">
             <div className="flex items-start justify-between gap-2"><h4 className="font-bold text-slate-900">{slide.title || 'Banner sem título'}</h4><span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${menuOutdoorStatus(slide) === 'No ar' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-700'}`}>{menuOutdoorStatus(slide)}</span></div>
             <p className="mt-2 text-xs text-slate-500">{slide.productId ? catalog.find(product => product.id === slide.productId)?.name || 'Produto indisponível' : 'Destaque sem link de produto'}</p>
             {(slide.startsAt || slide.endsAt) && <p className="mt-3 flex items-start gap-2 text-xs leading-relaxed text-slate-600"><CalendarDays size={15} className="shrink-0" /><span>{slide.startsAt ? `De ${formatPromoDateTimeBr(slide.startsAt)}` : 'Início imediato'}<br />{slide.endsAt ? `Até ${formatPromoDateTimeBr(slide.endsAt)}` : 'Sem data de término'}</span></p>}
             <div className="mt-5 flex gap-2"><Button variant="outline" disabled={busy} onClick={() => openEditor(slide)} className="min-h-11 flex-1" leftIcon={<Edit3 size={16} />}>Editar</Button>
-              <Button variant="ghost" disabled={busy || (!slide.active && !slide.mediaAvailable)} title={!slide.mediaAvailable && !slide.active ? 'Escolha uma mídia publicada para ativar' : undefined} className="min-h-11 flex-1" onClick={() => void persist({ ...slide, active: !slide.active })}>{slide.active ? 'Pausar' : 'Ativar'}</Button></div>
+              <Button variant="ghost" disabled={busy || (!slide.active && !slide.mediaAvailable)} title={!slide.mediaAvailable && !slide.active ? 'Escolha uma mídia publicada para ativar' : undefined} className="min-h-11 flex-1" onClick={() => void persist({ ...slide, active: !slide.active })}>{slide.active ? 'Pausar' : 'Ativar'}</Button>
+              <Button variant="ghost" disabled={busy} onClick={() => { setError(''); setDeleting(slide); }} aria-label={`Excluir ${slide.title || 'banner sem título'}`} className="min-h-11 text-red-700 hover:bg-red-50" leftIcon={<Trash2 size={16} />}>Excluir</Button></div>
           </div>
         </article>)}
       </div>}
@@ -174,12 +206,19 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
         <div className="grid gap-6 md:grid-cols-2">
           <div>
             <div className="flex aspect-video items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-              {media?.publicUrl ? media.mediaType === 'VIDEO' ? <video src={media.publicUrl} controls muted playsInline className="h-full w-full object-cover" aria-label="Prévia do vídeo" /> : <img src={media.publicUrl} alt="Prévia do banner" className="h-full w-full object-cover" />
+              {media?.mediaType === 'YOUTUBE' && media.youtubeId ? <iframe src={youTubeEmbedUrl(media.youtubeId)} title="Prévia do vídeo do YouTube" allow="autoplay; encrypted-media" referrerPolicy="strict-origin-when-cross-origin" sandbox="allow-scripts allow-same-origin allow-presentation" className="h-full w-full border-0" />
+                : media?.publicUrl ? media.mediaType === 'VIDEO' ? <video src={media.publicUrl} controls muted playsInline className="h-full w-full object-cover" aria-label="Prévia do vídeo" /> : <img src={media.publicUrl} alt="Prévia do banner" className="h-full w-full object-cover" />
                 : <div className="text-center text-slate-400"><MonitorPlay className="mx-auto mb-2" size={38} /><p className="text-sm">Sua próxima vitrine começa aqui</p></div>}
             </div>
             <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" aria-label="Arquivo de imagem ou vídeo" className="sr-only" disabled={uploading || busy} onChange={event => { void upload(event.target.files?.[0]); event.target.value = ''; }} />
             <Button type="button" variant="outline" isLoading={uploading} disabled={busy} onClick={() => fileInput.current?.click()} className="mt-3 min-h-12 w-full" leftIcon={<Upload size={17} />}>{media ? 'Trocar foto ou vídeo' : 'Escolher foto ou vídeo'}</Button>
             {media && !media.publicUrl && <p className="mt-3 text-sm text-amber-800">A mídia foi despublicada. Você pode pausar o banner ou escolher outra mídia para ativá-lo.</p>}
+            <div className="mt-3 rounded-2xl border border-slate-200 p-3">
+              <label className="block text-sm font-semibold text-slate-700">Ou use um vídeo do YouTube
+                <input value={youtubeLink} onChange={e => setYoutubeLink(e.target.value)} maxLength={500} inputMode="url" placeholder="https://youtube.com/watch?v=…" className={fieldClass} disabled={busy || uploading} /></label>
+              <Button type="button" variant="outline" disabled={busy || uploading || !youtubeLink.trim()} onClick={applyYoutube} className="mt-2 min-h-12 w-full" leftIcon={<Youtube size={17} />}>Usar link do YouTube</Button>
+              <p className="mt-2 text-xs text-slate-500">O vídeo toca mudo e em repetição no cardápio.</p>
+            </div>
             <Button type="button" variant="ghost" disabled={busy || uploading} onClick={() => setLibraryOpen(value => !value)} className="mt-2 min-h-12 w-full">Usar mídia da biblioteca</Button>
             {libraryOpen && <div className="mt-3 space-y-3 rounded-2xl border border-slate-200 p-3" aria-label="Biblioteca de mídia publicada">
               <p className="text-xs font-semibold text-slate-600">Mídias publicadas desta loja</p>
@@ -189,7 +228,7 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
                 {asset.mediaType === 'VIDEO' ? <><video src={asset.publicUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" /><Video size={20} className="absolute right-2 top-2 text-white" /></> : <img src={asset.publicUrl} alt="" className="h-full w-full object-cover" loading="lazy" />}
               </button>)}</div>
             </div>}
-            <p className="mt-3 flex gap-2 text-xs leading-relaxed text-slate-500"><Video size={16} className="shrink-0" />JPG, PNG, WEBP, MP4 ou WEBM. A mídia é publicada pelo mesmo fluxo seguro da sua biblioteca de marketing.</p>
+            <p className="mt-3 flex gap-2 text-xs leading-relaxed text-slate-500"><Video size={16} className="shrink-0" />JPG, PNG ou WEBP até 5 MB. MP4 ou WEBM com até 5 minutos e 200 MB. A mídia é publicada pelo mesmo fluxo seguro da sua biblioteca de marketing.</p>
           </div>
           <div className="space-y-4">
             <label className="block text-sm font-semibold text-slate-700">Título do banner <span className="font-normal text-slate-400">(opcional)</span><input value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="Hoje é dia de experimentar algo novo" className={fieldClass} /></label>
@@ -201,6 +240,14 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
         <div className="rounded-2xl bg-slate-50 p-4"><h4 className="flex items-center gap-2 text-sm font-bold text-slate-800"><CalendarDays size={17} />Agendamento opcional</h4><p className="mt-1 text-xs text-slate-500">Horário de Brasília. Deixe vazio para exibir sem limite de período.</p><div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold text-slate-700">Início<input type="datetime-local" value={startsAt} onChange={e => setStartsAt(e.target.value)} className={fieldClass} /></label><label className="text-sm font-semibold text-slate-700">Término<input type="datetime-local" value={endsAt} onChange={e => setEndsAt(e.target.value)} className={fieldClass} /></label></div></div>
         <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end"><Button type="button" variant="outline" disabled={busy || uploading} onClick={() => setEditing(null)} className="min-h-12">Cancelar</Button><Button type="submit" isLoading={busy} disabled={!media || uploading} className="min-h-12">Salvar banner</Button></div>
       </form>
+    </Modal>
+
+    <Modal isOpen={deleting !== null} onClose={() => { if (!busy) setDeleting(null); }} title="Excluir banner?" description="O banner sai do cardápio na hora. Essa ação não pode ser desfeita." size="sm">
+      <p className="text-sm text-slate-700">Excluir <strong>{deleting?.title || 'Banner sem título'}</strong>? A foto ou o vídeo continua na sua biblioteca de mídia.</p>
+      <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <Button type="button" variant="outline" disabled={busy} onClick={() => setDeleting(null)} className="min-h-12">Cancelar</Button>
+        <Button type="button" isLoading={busy} onClick={() => void confirmDelete()} className="min-h-12 bg-red-600 text-white hover:bg-red-700" leftIcon={<Trash2 size={16} />}>Excluir banner</Button>
+      </div>
     </Modal>
   </section>;
 }

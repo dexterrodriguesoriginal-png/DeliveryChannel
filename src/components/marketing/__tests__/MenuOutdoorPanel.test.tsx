@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Product } from '../../../types';
 import type { MenuOutdoorSlide } from '../../../repositories/menuOutdoorRepository';
 
-const h = vi.hoisted(() => ({ list: vi.fn(), library: vi.fn(), save: vi.fn(), upload: vi.fn() }));
-vi.mock('../../../repositories/menuOutdoorRepository', () => ({ menuOutdoorRepository: { list: h.list, listPublishedMedia: h.library, save: h.save } }));
+const h = vi.hoisted(() => ({ list: vi.fn(), library: vi.fn(), save: vi.fn(), upload: vi.fn(), remove: vi.fn() }));
+vi.mock('../../../repositories/menuOutdoorRepository', () => ({ menuOutdoorRepository: { list: h.list, listPublishedMedia: h.library, save: h.save, remove: h.remove } }));
 vi.mock('../../../repositories/mediaRepository', () => ({ mediaRepository: { uploadAndPublishCreative: h.upload } }));
 import { MenuOutdoorPanel, menuOutdoorStatus } from '../MenuOutdoorPanel';
 
@@ -116,4 +116,40 @@ describe('Outdoor do cardápio: gestão', () => {
     expect(menuOutdoorStatus({ active: true, startsAt: null, endsAt: null }, now)).toBe('No ar');
     expect(menuOutdoorStatus({ active: true, startsAt: null, endsAt: null, mediaAvailable: false }, now)).toBe('Sem mídia publicada');
   });
+  it('exclui banner somente após confirmar', async () => {
+    h.list.mockResolvedValue([existing]); h.remove.mockResolvedValue(undefined);
+    render(<MenuOutdoorPanel {...props} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir Sabores da casa' }));
+    expect(h.remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(h.remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir Sabores da casa' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir banner' }));
+    await waitFor(() => expect(h.remove).toHaveBeenCalledExactlyOnceWith('tenant', 'slide'));
+    expect(await screen.findByText(/Banner excluído/)).toBeTruthy();
+    expect(screen.queryByText('Sabores da casa')).toBeNull();
+  });
+  it('falha na exclusão mantém o banner e mostra erro', async () => {
+    h.list.mockResolvedValue([existing]); h.remove.mockRejectedValue(new Error('Não foi possível excluir o banner.'));
+    render(<MenuOutdoorPanel {...props} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir Sabores da casa' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir banner' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText('Sabores da casa')).toBeTruthy();
+  });
+  it('cria banner a partir de link do YouTube e recusa link inválido', async () => {
+    await openNew();
+    const input = screen.getByLabelText(/Ou use um vídeo do YouTube/);
+    fireEvent.change(input, { target: { value: 'https://evil.example/watch?v=dQw4w9WgXcQ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Usar link do YouTube' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/YouTube inválido/);
+    fireEvent.change(input, { target: { value: 'https://youtu.be/dQw4w9WgXcQ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Usar link do YouTube' }));
+    const frame = screen.getByTitle('Prévia do vídeo do YouTube') as HTMLIFrameElement;
+    expect(frame.getAttribute('src')).toMatch(/^https:\/\/www\.youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?/);
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar banner' }));
+    await waitFor(() => expect(h.save).toHaveBeenCalledWith('tenant', expect.objectContaining({ youtubeId: 'dQw4w9WgXcQ' })));
+    expect(h.save.mock.calls[0][1].assetId).toBeUndefined();
+  });
 });
+

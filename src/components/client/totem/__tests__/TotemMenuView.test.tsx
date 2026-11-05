@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, fireEvent } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent } from '@testing-library/react';
 import TotemMenuView, { DEFAULT_TOTEM_THEME, type TotemOutdoorSlide } from '../TotemMenuView';
 import type { Category, Product } from '../../../../types';
 
@@ -319,4 +319,30 @@ describe('TotemMenuView', () => {
     expect(placeholders.length).toBeGreaterThan(0);
     expect(placeholders[0].textContent).toContain('Suco Natural de Laranja');
   });
+  const renderSlides = (slides: TotemOutdoorSlide[]) => render(
+    <TotemMenuView storeName="Loja" categories={mockCategories} products={mockProducts} outdoorSlides={slides}
+      theme={DEFAULT_TOTEM_THEME} cartCount={0} onAddProduct={vi.fn()} onOpenCart={vi.fn()} />);
+
+  it('renderiza banner do YouTube só como embed nocookie mudo', () => {
+    renderSlides([{ id: 'yt', youtubeId: 'dQw4w9WgXcQ', title: 'Promo' }]);
+    const frame = screen.getByTestId('outdoor-youtube');
+    expect(frame.getAttribute('src')).toBe('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1&mute=1&loop=1&playlist=dQw4w9WgXcQ&controls=0&playsinline=1');
+  });
+  it('não renderiza iframe para id de YouTube adulterado', () => {
+    renderSlides([{ id: 'yt', youtubeId: '"><script>' }]);
+    expect(screen.queryByTestId('outdoor-youtube')).toBeNull();
+  });
+  it('vídeo enviado toca até o fim antes de avançar (não corta em 5,5 s)', () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = renderSlides([{ id: 'v', videoUrl: 'https://media.example/a.mp4', title: 'Vídeo longo' }, { id: 'i', imageUrl: 'https://media.example/b.webp', title: 'Foto' }]);
+      act(() => { vi.advanceTimersByTime(60000); });
+      const video = container.querySelector('video')!;
+      expect(video).toBeTruthy(); expect(video.loop).toBe(false);
+      act(() => { fireEvent.ended(video); });
+      expect(container.querySelector('video')).toBeNull();
+      expect(screen.getByAltText('Foto')).toBeTruthy();
+    } finally { vi.useRealTimers(); }
+  });
 });
+

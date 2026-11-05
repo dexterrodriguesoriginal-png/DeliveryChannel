@@ -99,7 +99,7 @@ export function DineInTotemMenu({
 
   // Account polling and cart updates must not restart the presenter's carousel.
   const outdoorSlides = useMemo(() => outdoor.slug === storeSlug ? outdoor.slides.map(slide => ({
-    id: slide.id, imageUrl: slide.imageUrl, videoUrl: slide.videoUrl, title: slide.title,
+    id: slide.id, imageUrl: slide.imageUrl, videoUrl: slide.videoUrl, youtubeId: slide.youtubeId, title: slide.title,
     productId: slide.productId && catalog.originals.has(slide.productId) ? slide.productId : undefined,
   })) : [], [outdoor, storeSlug, catalog.originals]);
   const selectProduct = (candidate: Product, callback: (product: Product) => void) => {

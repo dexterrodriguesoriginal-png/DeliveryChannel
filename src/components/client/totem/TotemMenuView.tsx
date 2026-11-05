@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ArrowLeft, ShoppingBag, Plus, Utensils, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Category, Product } from '../../../types';
 import './totemMenu.css';
+import { isYouTubeId, youTubeEmbedUrl } from '../../../lib/youtube';
 
 export interface TotemTheme {
   background: string;
@@ -18,9 +19,15 @@ export interface TotemOutdoorSlide {
   id: string;
   imageUrl?: string;
   videoUrl?: string;
+  /** Id validado do YouTube (11 caracteres); o embed nocookie é montado aqui. */
+  youtubeId?: string;
   title?: string;
   productId?: string;
 }
+
+/** Fotos ficam 5,5 s; YouTube (sem evento de fim) fica 60 s; vídeo enviado avança ao terminar. */
+export const OUTDOOR_IMAGE_MS = 5500;
+export const OUTDOOR_YOUTUBE_MS = 60000;
 
 export interface TotemMenuViewProps {
   storeName: string;
@@ -138,14 +145,19 @@ export default function TotemMenuView({
     }
   }, [visibleCategories, activeCategoryId]);
 
-  // Rotate outdoor slides
+  // Rotate outdoor slides. Uploaded videos (até 5 min) play to the end before advancing.
+  const slideCount = outdoorSlides?.length ?? 0;
+  const currentKind = slideCount > 0
+    ? (outdoorSlides[currentSlideIndex % slideCount].videoUrl ? 'video' : outdoorSlides[currentSlideIndex % slideCount].youtubeId ? 'youtube' : 'image')
+    : 'none';
+  const advanceSlide = useCallback(() => {
+    if (slideCount > 1) setCurrentSlideIndex(prev => (prev + 1) % slideCount);
+  }, [slideCount]);
   useEffect(() => {
-    if (!outdoorSlides || outdoorSlides.length <= 1) return;
-    const timer = setInterval(() => {
-      setCurrentSlideIndex(prev => (prev + 1) % outdoorSlides.length);
-    }, 5500);
-    return () => clearInterval(timer);
-  }, [outdoorSlides]);
+    if (slideCount <= 1 || currentKind === 'video') return;
+    const timer = setTimeout(advanceSlide, currentKind === 'youtube' ? OUTDOOR_YOUTUBE_MS : OUTDOOR_IMAGE_MS);
+    return () => clearTimeout(timer);
+  }, [outdoorSlides, slideCount, currentSlideIndex, currentKind, advanceSlide]);
 
   const handleSelectCategory = (catId: string) => {
     setActiveCategoryId(catId);
@@ -255,12 +267,26 @@ export default function TotemMenuView({
           >
             {activeSlide.videoUrl ? (
               <video
+                key={activeSlide.id}
                 src={activeSlide.videoUrl}
                 autoPlay
-                loop
+                loop={slideCount <= 1}
+                onEnded={advanceSlide}
                 muted
                 playsInline
                 className="w-full h-full object-cover"
+              />
+            ) : activeSlide.youtubeId && isYouTubeId(activeSlide.youtubeId) ? (
+              <iframe
+                key={activeSlide.id}
+                data-testid="outdoor-youtube"
+                src={youTubeEmbedUrl(activeSlide.youtubeId)}
+                title={activeSlide.title || 'Vídeo de destaque'}
+                allow="autoplay; encrypted-media; picture-in-picture"
+                referrerPolicy="strict-origin-when-cross-origin"
+                sandbox="allow-scripts allow-same-origin allow-presentation"
+                tabIndex={-1}
+                className="pointer-events-none absolute inset-0 h-full w-full border-0"
               />
             ) : activeSlide.imageUrl ? (
               <img

@@ -65,12 +65,42 @@ function readDimensions(file: File, mediaType: 'IMAGE' | 'VIDEO'): Promise<{ wid
   });
 }
 
+/** Limites alinhados ao servidor (migration 20261105000300): vídeo até 5 min e 200 MB. */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+export const MAX_VIDEO_SECONDS = 300;
+
+/** Regra de duração do vídeo (lida no navegador via loadedmetadata). Devolve a mensagem de erro ou null. */
+export function videoDurationError(duration: number | undefined): string | null {
+  if (duration === undefined || !Number.isFinite(duration) || duration <= 0) {
+    return 'Não conseguimos ler a duração deste vídeo. Tente exportá-lo novamente em MP4.';
+  }
+  if (duration > MAX_VIDEO_SECONDS + 0.5) {
+    const min = Math.floor(duration / 60), sec = Math.round(duration % 60);
+    return `Este vídeo tem ${min}min${String(sec).padStart(2, '0')}s. O limite é de 5 minutos — corte o vídeo e envie novamente.`;
+  }
+  return null;
+}
+
+export function mediaSizeError(mediaType: 'IMAGE' | 'VIDEO', size: number): string | null {
+  if (mediaType === 'IMAGE' && size > MAX_IMAGE_BYTES) return 'A imagem passa de 5 MB. Envie uma versão mais leve.';
+  if (mediaType === 'VIDEO' && size > MAX_VIDEO_BYTES) return 'O vídeo passa de 200 MB. Exporte em 1080p (ou 720p) e envie novamente.';
+  return null;
+}
+
 export const mediaRepository = {
   /** Envia e publica um criativo; devolve o asset publicado (bucket marketing-public). */
   async uploadAndPublishCreative(tenantId: string, file: File): Promise<PublishedMedia> {
     requireBackend('mídia de marketing');
     requireN1N6('mídia de marketing');
     const { mediaType, extension } = classifyMediaFile(file);
+    const sizeError = mediaSizeError(mediaType, file.size);
+    if (sizeError) throw new BackendError('MEDIA_TOO_LARGE', sizeError);
+    const dims = await readDimensions(file, mediaType);
+    if (mediaType === 'VIDEO') {
+      const durationError = videoDurationError(dims.duration);
+      if (durationError) throw new BackendError('MEDIA_TOO_LONG', durationError);
+    }
 
     const { data: reg, error: regErr } = await supabase.rpc('register_marketing_asset', {
       p_tenant_id: tenantId,
@@ -89,7 +119,6 @@ export const mediaRepository = {
       .upload(reg.path, file, { contentType: file.type, upsert: false, cacheControl: '3600' });
     if (upErr) throw toBackendError(upErr, 'Falha no envio do arquivo.');
 
-    const dims = await readDimensions(file, mediaType);
     const { error: confErr } = await supabase.rpc('confirm_marketing_upload', {
       p_asset_id: reg.asset_id,
       p_width: dims.width ?? null,
