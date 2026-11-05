@@ -21,7 +21,7 @@ import { canReopenBill } from '../../lib/customer/billReopen';
 import './DineInClientApp.css';
 import { tenantModuleRepository } from '../../repositories/tenantModuleRepository';
 import { productOptionRepository } from '../../repositories/productOptionRepository';
-import { isModuleEnabled } from '../../lib/modules';
+import { isModuleEnabled, type ModuleKey } from '../../lib/modules';
 import { friendlyTableError } from '../../lib/salon/tableQr';
 import { mesasQrRepository } from '../../repositories/mesasQrRepository';
 import { tableAccessRepository, type FreeSalonTable, type InvitePreview } from '../../repositories/tableAccessRepository';
@@ -34,7 +34,11 @@ import { ConfirmLoggedUserGate, IdentityGate, InvitePanel, InviteWelcomeScreen, 
 import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import { DineInCartSheet } from '../../components/client/dinein/DineInCartSheet';
-import { DineInHomeTiles } from '../../components/client/dinein/DineInHomeTiles';
+import { StoreHomeScreen } from '../../components/client/storeHome/StoreHomeScreen';
+import { DEFAULT_HOME_DESIGN, type HomeAction, type StoreHomeDesign } from '../../lib/storeHome/storeHome.model';
+import { homeActionAvailability, type HomeVisibilityContext } from '../../lib/storeHome/storeHomeVisibility';
+import { storeHomeRepository } from '../../repositories/storeHomeRepository';
+
 import { DineInTotemMenu } from '../../components/client/dinein/DineInTotemMenu';
 import { DineInDeliveryCode, DineInDeliveryNotice, DineInTracking } from '../../components/client/dinein/DineInTracking';
 import { dineInStatus, type DineInTrackedRound } from '../../lib/customer/dineInTracking';
@@ -121,6 +125,10 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [menuTheme, setMenuTheme] = useState<MenuTheme>();
   const [menuOptions, setMenuOptions] = useState<MenuOptions>({ ...DEFAULT_MENU_OPTIONS });
+  const [storeHomeDesign, setStoreHomeDesign] = useState<StoreHomeDesign>(DEFAULT_HOME_DESIGN);
+  const [enabledModules, setEnabledModules] = useState<ReadonlySet<ModuleKey> | null>(null);
+  const [storeFulfillment, setStoreFulfillment] = useState<{ delivery: boolean; pickup: boolean }>({ delivery: true, pickup: true });
+
   const [storeTenantId, setStoreTenantId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -358,6 +366,15 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         setCategories(store.data.categories || []);
         setMenuTheme(store.data.menuTheme);
         setMenuOptions(store.data.menuOptions ?? { ...DEFAULT_MENU_OPTIONS });
+        setEnabledModules(enabledModules);
+        setStoreFulfillment({
+          delivery: store.data.settings?.deliveryEnabled !== false,
+          pickup: store.data.settings?.pickupEnabled !== false,
+        });
+        void storeHomeRepository.loadPublic(result.tenantSlug).then(design => {
+          if (alive) setStoreHomeDesign(design ?? DEFAULT_HOME_DESIGN);
+        }).catch(() => { if (alive) setStoreHomeDesign(DEFAULT_HOME_DESIGN); });
+
         if (store.data.theme?.logoUrl) setStoreLogoUrl(store.data.theme.logoUrl);
         if (store.data.theme?.primaryColor) setStorePrimaryColor(store.data.theme.primaryColor);
         void applyStoreIdentity({ id: store.data.tenant.id, slug: result.tenantSlug, name: store.data.tenant.name,
@@ -1155,9 +1172,80 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     );
   }
 
+  const homeVisibility: HomeVisibilityContext = {
+    // Neste fluxo o cliente já entrou por QR de mesa.
+    dineIn: true,
+    delivery: isModuleEnabled(enabledModules, 'delivery') && storeFulfillment.delivery,
+    pickup: isModuleEnabled(enabledModules, 'pickup') && storeFulfillment.pickup,
+    kiosk: kioskActive,
+  };
+
+  const homeAvailable = homeActionAvailability(storeHomeDesign.actions, {
+    hasSession: Boolean(sessionId),
+    waiterEnabled: !busy && !tabClosed && !awaitingRelease,
+    billEnabled: !busy && !tabClosed && !billRequested && !awaitingRelease,
+  });
+
+  const handleStoreHomeAction = (action: HomeAction) => {
+    switch (action) {
+      case 'MENU':
+      case 'TABLE':
+        setView('MENU');
+        return;
+      case 'ACCOUNT':
+        if (sessionId) {
+          setAccountOpen(true);
+          void loadAccount();
+        }
+        return;
+      case 'WAITER':
+        if (sessionId && !busy && !tabClosed && !awaitingRelease) void requestWaiter();
+        return;
+      case 'BILL':
+        if (sessionId && !busy && !tabClosed && !billRequested && !awaitingRelease) {
+          setBillOpen(true);
+          void loadAccount(true);
+        }
+        return;
+      case 'PICKUP':
+      case 'DELIVERY': {
+        const slug = resolution?.tenantSlug;
+        if (!slug) return;
+        window.open(`/app/${encodeURIComponent(slug)}`, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      default:
+        return;
+    }
+  };
+
   return (
-    <main className={view === 'MENU' ? 'dinein-menu-shell bg-slate-50' : 'min-h-screen bg-slate-50 pb-28'} data-kiosk={kioskActive || undefined}>
+    <main className={view === 'MENU' ? 'dinein-menu-shell bg-slate-50' : view === 'HOME' ? 'min-h-screen bg-[#071a14]' : 'min-h-screen bg-slate-50 pb-28'} data-kiosk={kioskActive || undefined}>
       <TotemKioskLayer enabled={kioskActive} idleSeconds={menuOptions.idleSeconds} onIdle={resetKioskSession} />
+      {view === 'HOME' ? (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-start justify-between gap-2 p-3 sm:p-4">
+          <div className="pointer-events-none min-w-0">
+            {access && myRole && (
+              <p data-testid="role-chip" className="pointer-events-auto inline-flex items-center gap-1 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-lg backdrop-blur">
+                {myRole === 'RESPONSIBLE' ? <><Crown className="h-3.5 w-3.5 text-amber-500" />Você é o responsável pela mesa</> : <>Convidado{tab?.responsibleName ? ` de ${tab.responsibleName}` : ''}</>}
+              </p>
+            )}
+          </div>
+          <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => { upsell.dismiss(); setCartOpen(true); }}
+            data-testid="dinein-bag-counter"
+            aria-label={`Sacola com ${totalCartItems} ${totalCartItems === 1 ? 'item' : 'itens'}`}
+            className={`pointer-events-auto relative flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-xs font-black text-emerald-900 shadow-lg backdrop-blur transition-transform duration-300 ${bagBounce ? 'scale-110 ring-2 ring-emerald-500 animate-bounce' : 'scale-100'}`}
+          >
+            <ShoppingBag className="h-4 w-4 text-emerald-700" />
+            <span>{totalCartItems}</span>
+          </button>
+          <button type="button" disabled={!sessionId} onClick={() => { setAccountOpen(true); void loadAccount(); }} aria-label="Ver minha conta" className="pointer-events-auto rounded-full bg-white/95 p-2 shadow-lg backdrop-blur disabled:opacity-40"><CircleUserRound className="h-6 w-6" /></button>
+          </div>
+        </div>
+      ) : (
       <header className="sticky top-0 z-20 border-b bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-2">
           <div>
@@ -1207,6 +1295,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           </div>
         </div>
       </header>
+      )}
       {addedToast && (
         <div
           aria-live="polite"
@@ -1252,22 +1341,18 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       </div>
 
-      <section className={view === 'MENU' ? 'dinein-menu-content' : 'mx-auto max-w-2xl px-4 py-5'}>
-        {view === 'HOME' ? <DineInHomeTiles
-          storeName={storeName}
+      <section className={view === 'MENU' ? 'dinein-menu-content' : view === 'HOME' ? 'dc-store-home-host' : 'mx-auto max-w-2xl px-4 py-5'}>
+        {view === 'HOME' ? <StoreHomeScreen
+          design={storeHomeDesign}
+          storeName={displayStoreName || storeName}
           logoUrl={storeLogoUrl}
           tableName={mesaTitle(tab?.tableLabel || resolution?.tableLabel)}
-          menuImageUrl={products.find(product => product.imageUrl)?.imageUrl}
           menuLabel={menuOptions.homeLabel}
           storeAppHref={resolution?.tenantSlug ? `/app/${encodeURIComponent(resolution.tenantSlug)}` : undefined}
           onStoreAppClick={openStoreApp}
-          onOpenMenu={() => setView('MENU')}
-          onCallWaiter={() => void requestWaiter()}
-          onRequestBill={() => { setBillOpen(true); void loadAccount(true); }}
-          waiterDisabled={busy || tabClosed || !sessionId || awaitingRelease}
-          billDisabled={busy || tabClosed || billRequested || !sessionId || awaitingRelease}
-          billLabel={billRequested ? billStatusLabel : 'Pedir minha conta'}
-          actionHint={tabClosed ? 'Sua conta foi encerrada. Chame a equipe para pedir novamente.' : awaitingRelease ? 'Os serviços da mesa ficam disponíveis após a liberação pela equipe.' : !sessionId ? 'Os serviços da mesa ficam disponíveis após sua entrada na conta.' : undefined}
+          visibility={homeVisibility}
+          available={homeAvailable}
+          onAction={handleStoreHomeAction}
         /> : <DineInTotemMenu
           key={`${token}:${storeTenantId}`}
           storeSlug={resolution?.tenantSlug || ''}
