@@ -48,7 +48,7 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number]['id'];
 
-export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
+export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; active?: boolean }) {
   const { securityContext, setActiveTenant } = useAuth();
   const { showToast } = useToast();
   const draft = useThemeDraft(tenant.theme);
@@ -59,10 +59,10 @@ export function ThemeEditorShell({ tenant }: { tenant: Tenant }) {
   const [confirmRestore, setConfirmRestore] = useState(false);
   const saveInFlight = useRef(false);
   const actionsRef = useRef<HTMLElement>(null);
-  useBottomActionsOffset(actionsRef);
+  useBottomActionsOffset(actionsRef, active);
   const scrollRef = useRef<HTMLElement>(null);
   // Notificações saem da coluna do celular: ficam no canto inferior esquerdo da área de conteúdo.
-  useFloatingLeftOf(scrollRef);
+  useFloatingLeftOf(scrollRef, 12, active);
   useEffect(() => {
     let active = true;
     productRepository

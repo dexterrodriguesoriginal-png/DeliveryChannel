@@ -9,11 +9,11 @@ export function setBottomActionsOffset(root: HTMLElement, px: number) {
 }
 
 /** Publica a altura da barra enquanto ela estiver montada; elementos flutuantes sobem acima dela. */
-export function useBottomActionsOffset(ref: RefObject<HTMLElement | null>) {
+export function useBottomActionsOffset(ref: RefObject<HTMLElement | null>, active = true) {
   useEffect(() => {
     const el = ref.current;
     const root = document.documentElement;
-    if (!el) return;
+    if (!el || !active) return;
     const update = () => setBottomActionsOffset(root, el.getBoundingClientRect().height);
     update();
     const RO = (window as any).ResizeObserver;
@@ -21,7 +21,7 @@ export function useBottomActionsOffset(ref: RefObject<HTMLElement | null>) {
     ro?.observe(el);
     window.addEventListener('resize', update);
     return () => { ro?.disconnect(); window.removeEventListener('resize', update); setBottomActionsOffset(root, 0); };
-  }, [ref]);
+  }, [ref, active]);
 }
 
 /** Posição do botão flutuante de notificações: 12px acima da barra de ações (ou da borda). */
@@ -48,11 +48,11 @@ export function setFloatingLeft(root: HTMLElement, px: number | null) {
 }
 
 /** Enquanto montado, move as notificações para o canto inferior ESQUERDO da área de conteúdo `ref`. */
-export function useFloatingLeftOf(ref: RefObject<HTMLElement | null>, gap = 12) {
+export function useFloatingLeftOf(ref: RefObject<HTMLElement | null>, gap = 12, active = true) {
   useEffect(() => {
     const el = ref.current;
     const root = document.documentElement;
-    if (!el) return;
+    if (!el || !active) return;
     const update = () => setFloatingLeft(root, el.getBoundingClientRect().left + gap);
     update();
     const RO = (window as any).ResizeObserver;
@@ -60,7 +60,7 @@ export function useFloatingLeftOf(ref: RefObject<HTMLElement | null>, gap = 12) 
     ro?.observe(el);
     window.addEventListener('resize', update);
     return () => { ro?.disconnect(); window.removeEventListener('resize', update); setFloatingLeft(root, null); };
-  }, [ref, gap]);
+  }, [ref, gap, active]);
 }
 
 /** Posição horizontal do botão: à esquerda quando `--dc-float-left` existe, senão 12px da borda direita. */
