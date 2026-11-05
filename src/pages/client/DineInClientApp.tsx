@@ -1258,6 +1258,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           logoUrl={storeLogoUrl}
           tableName={mesaTitle(tab?.tableLabel || resolution?.tableLabel)}
           menuImageUrl={products.find(product => product.imageUrl)?.imageUrl}
+          menuLabel={menuOptions.homeLabel}
           storeAppHref={resolution?.tenantSlug ? `/app/${encodeURIComponent(resolution.tenantSlug)}` : undefined}
           onStoreAppClick={openStoreApp}
           onOpenMenu={() => setView('MENU')}

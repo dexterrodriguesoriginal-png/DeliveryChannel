@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Monitor, Save } from 'lucide-react';
+import { Monitor, Save, Type } from 'lucide-react';
 import type { SecurityContext } from '../../../../services/securityEngine';
 import type { MenuOptions } from '../../../../types/menuOptions';
 import { menuOptionsRepository } from '../../../../repositories/menuOptionsRepository';
+import { DEFAULT_HOME_LABEL, MAX_HOME_LABEL_LENGTH, sanitizeHomeLabel } from '../../../../lib/menu/homeLabel';
 import { DEFAULT_MENU_OPTIONS, MAX_IDLE_SECONDS, MIN_IDLE_SECONDS, isValidMenuOptions } from '../../../../lib/menu/menuOptions';
 
 const same = (a: MenuOptions, b: MenuOptions) => JSON.stringify(a) === JSON.stringify(b);
@@ -31,18 +32,26 @@ export function MenuOptionsPanel({ securityContext, tenantId }: { securityContex
   }, [tenantId, securityContext.userId, securityContext.userRole, securityContext.tenantId]);
 
   const save = async () => {
-    if (loading || inFlight.current || !dirty || !isValidMenuOptions(draft)) return;
+    const clean = { ...draft, homeLabel: sanitizeHomeLabel(draft.homeLabel) };
+    if (loading || inFlight.current || !dirty || !isValidMenuOptions(clean)) return;
     inFlight.current = true; setSaving(true); setError(''); setNotice('');
     try {
-      const options = await menuOptionsRepository.save(securityContext, tenantId, draft);
-      setSaved(options); setDraft(options); setNotice('Modo totem salvo.');
+      const options = await menuOptionsRepository.save(securityContext, tenantId, clean);
+      setSaved(options); setDraft(options); setNotice('Opções do cardápio salvas.');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Não foi possível salvar. Suas alterações continuam aqui.');
     } finally { setSaving(false); inFlight.current = false; }
   };
 
-  const invalid = !isValidMenuOptions(draft);
+  const invalid = !isValidMenuOptions({ ...draft, homeLabel: sanitizeHomeLabel(draft.homeLabel) });
   return <section className="menu-design-section" data-testid="menu-options-panel">
+    <div className="menu-design-section-title"><Type size={18} /><div><h2>Nome do botão do cardápio</h2><p>Como o bloco aparece na tela inicial do QR da mesa.</p></div></div>
+    <fieldset disabled={loading || saving}>
+      <label className="menu-design-color"><span>Texto do botão (até {MAX_HOME_LABEL_LENGTH} caracteres)</span>
+        <input type="text" aria-label="Nome do botão do cardápio" maxLength={MAX_HOME_LABEL_LENGTH} placeholder={DEFAULT_HOME_LABEL} value={draft.homeLabel}
+          onChange={event => { setDraft({ ...draft, homeLabel: event.target.value }); setNotice(''); }}
+          onBlur={() => setDraft(current => ({ ...current, homeLabel: sanitizeHomeLabel(current.homeLabel) }))} /></label>
+    </fieldset>
     <div className="menu-design-section-title"><Monitor size={18} /><div><h2>Modo totem</h2><p>Tela cheia e reinício automático para tablets e celulares fixos na mesa.</p></div></div>
     {error && <div role="alert" className="menu-design-error">{error}</div>}
     <fieldset disabled={loading || saving}>
@@ -55,7 +64,7 @@ export function MenuOptionsPanel({ securityContext, tenantId }: { securityContex
     </fieldset>
     <div className="theme-action-buttons">
       <span role="status" className="theme-save-status">{notice || (dirty ? 'Alterações não salvas' : '')}</span>
-      <button type="button" className="theme-primary" disabled={!dirty || saving || loading || invalid} onClick={() => void save()}><Save size={15} />{saving ? 'Salvando…' : 'Salvar modo totem'}</button>
+      <button type="button" className="theme-primary" disabled={!dirty || saving || loading || invalid} onClick={() => void save()}><Save size={15} />{saving ? 'Salvando…' : 'Salvar opções'}</button>
     </div>
   </section>;
 }

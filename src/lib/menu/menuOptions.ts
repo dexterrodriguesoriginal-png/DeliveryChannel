@@ -1,4 +1,5 @@
 import type { MenuOptions } from '../../types/menuOptions';
+import { DEFAULT_HOME_LABEL, isValidHomeLabel, sanitizeHomeLabel } from './homeLabel';
 
 export const MIN_IDLE_SECONDS = 30;
 export const MAX_IDLE_SECONDS = 300;
@@ -7,6 +8,7 @@ export const DEFAULT_IDLE_SECONDS = 60;
 export const DEFAULT_MENU_OPTIONS: Readonly<MenuOptions> = Object.freeze({
   totemMode: false,
   idleSeconds: DEFAULT_IDLE_SECONDS,
+  homeLabel: DEFAULT_HOME_LABEL,
 });
 
 const isObject = (raw: unknown): raw is Record<string, unknown> => typeof raw === 'object' && raw !== null && !Array.isArray(raw);
@@ -19,12 +21,13 @@ export function normalizeMenuOptions(raw: unknown): MenuOptions {
   return {
     totemMode: source.totemMode === true,
     idleSeconds: isIdleSeconds(source.idleSeconds) ? source.idleSeconds : DEFAULT_IDLE_SECONDS,
+    homeLabel: sanitizeHomeLabel(source.homeLabel),
   };
 }
 
 /** Escrita não transforma configurações inválidas em um sucesso aparente. */
 export function isValidMenuOptions(raw: unknown): raw is MenuOptions {
   return isObject(raw)
-    && Object.keys(raw).every(key => ['totemMode', 'idleSeconds'].includes(key))
-    && typeof raw.totemMode === 'boolean' && isIdleSeconds(raw.idleSeconds);
+    && Object.keys(raw).every(key => ['totemMode', 'idleSeconds', 'homeLabel'].includes(key))
+    && typeof raw.totemMode === 'boolean' && isIdleSeconds(raw.idleSeconds) && isValidHomeLabel(raw.homeLabel);
 }
