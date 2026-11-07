@@ -67,7 +67,7 @@ export function MenuOptionsPanel({ securityContext, tenantId }: { securityContex
           <option value="BOTH">Ambos (pré-configuração do balcão)</option>
         </select>
       </label>
-      {draft.serviceMode !== 'TABLE' && <p role="status" className="text-xs text-amber-800">Totem de balcão exige autorização do dispositivo e integração com pagamento/senha de retirada. Este modo é salvo, mas o acesso ao balcão permanece bloqueado até a habilitação segura da flag VITE_ENABLE_COUNTER_KIOSK e homologação do checkout.</p>}
+      {draft.serviceMode !== 'TABLE' && <p role="status" className="text-xs text-amber-800">Totem de balcão exige autorização do dispositivo e integração com pagamento/senha de retirada. Esta configuração é armazenada, mas o atendimento pelo totem de balcão permanece indisponível. A flag VITE_ENABLE_COUNTER_KIOSK, quando implementada, deve exigir dispositivo autenticado, checkout e geração de senha homologados; definir a flag sozinha não libera o balcão.</p>}
       <label className="menu-design-color"><span>Produtos por fileira</span>
         <select aria-label="Produtos por fileira" value={draft.productColumns} onChange={event => setDraft({ ...draft, productColumns: Number(event.target.value) as 1 | 2 | 3 })}>
           <option value={1}>1 produto</option><option value={2}>2 produtos</option><option value={3}>3 produtos</option>
