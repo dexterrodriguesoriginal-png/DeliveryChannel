@@ -69,6 +69,8 @@ import {
 } from '../../../lib/menu/premiumTotem.model';
 
 import './dineInPremiumMenu.css';
+import { MenuOutdoorCarousel } from './MenuOutdoorCarousel';
+import type { PublicMenuOutdoorSlide } from '../../../repositories/menuOutdoorRepository';
 
 // ============================================
 // TIPAGEM
@@ -95,6 +97,7 @@ export interface DineInPremiumMenuProps {
   orderingDisabled: boolean;
   busy?: boolean;
   productColumns?: 1 | 2 | 3;
+  outdoorSlides?: PublicMenuOutdoorSlide[];
 
   /** Navegação controlada pelo app existente. */
   onGoHome: () => void;
@@ -302,6 +305,7 @@ export function DineInPremiumMenu({
   orderingDisabled,
   busy = false,
   productColumns = 3,
+  outdoorSlides = [],
 
   onGoHome,
   onOpenCart,
@@ -529,9 +533,6 @@ export function DineInPremiumMenu({
         >
           <div className="dc-kiosk-category-list">
             {catalog.categories.map(category => {
-              const Icon =
-                CATEGORY_ICONS[category.icon];
-
               const isSelected =
                 category.id === activeCategoryId;
 
@@ -578,6 +579,7 @@ export function DineInPremiumMenu({
           className="dc-kiosk-products-area"
           aria-label="Produtos do cardápio"
         >
+          <MenuOutdoorCarousel slides={outdoorSlides} onOpenProduct={id => handleProductDetails(id)} />
           <div className="dc-kiosk-category-heading">
             <div className="dc-kiosk-category-title-row">
               {activeCategory && (() => {
