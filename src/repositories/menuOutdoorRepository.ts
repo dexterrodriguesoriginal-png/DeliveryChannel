@@ -53,7 +53,7 @@ function publicSlide(row: Record<string, unknown>): PublicMenuOutdoorSlide {
     }
     return {
       id: row.id, youtubeId: row.youtube_id,
-      ...(Number.isInteger(row.image_duration_seconds) && Number(row.image_duration_seconds) >= 1 && Number(row.image_duration_seconds) <= 120 ? {imageDurationSeconds: Number(row.image_duration_seconds)} : {}),
+      ...(typeof row.image_duration_seconds === 'number' && Number.isInteger(row.image_duration_seconds) && Number(row.image_duration_seconds) >= 1 && Number(row.image_duration_seconds) <= 120 ? {imageDurationSeconds: Number(row.image_duration_seconds)} : {}),
       ...(typeof row.title === 'string' && row.title ? { title: row.title } : {}),
       ...(typeof row.product_id === 'string' && row.product_id ? { productId: row.product_id } : {}),
     };
@@ -65,7 +65,7 @@ function publicSlide(row: Record<string, unknown>): PublicMenuOutdoorSlide {
   const url = supabase.storage.from('marketing-public').getPublicUrl(row.public_path).data.publicUrl;
   return {
     id: row.id,
-    ...(Number.isInteger(row.image_duration_seconds) && Number(row.image_duration_seconds) >= 1 && Number(row.image_duration_seconds) <= 120 ? {imageDurationSeconds: Number(row.image_duration_seconds)} : {}),
+    ...(typeof row.image_duration_seconds === 'number' && Number.isInteger(row.image_duration_seconds) && Number(row.image_duration_seconds) >= 1 && Number(row.image_duration_seconds) <= 120 ? {imageDurationSeconds: Number(row.image_duration_seconds)} : {}),
     ...(row.media_type === 'VIDEO' ? { videoUrl: url } : { imageUrl: url }),
     ...(typeof row.title === 'string' && row.title ? { title: row.title } : {}),
     ...(typeof row.product_id === 'string' && row.product_id ? { productId: row.product_id } : {}),
@@ -83,7 +83,7 @@ function staffSlide(row: Record<string, unknown>): MenuOutdoorSlide {
     tenantId: String(row.tenant_id),
     assetId: typeof row.asset_id === 'string' ? row.asset_id : '',
     sortOrder: Number(row.sort_order),
-    ...(Number.isInteger(row.image_duration_seconds) && Number(row.image_duration_seconds) >= 1 && Number(row.image_duration_seconds) <= 120 ? {imageDurationSeconds: Number(row.image_duration_seconds)} : {}),
+    ...(typeof row.image_duration_seconds === 'number' && Number.isInteger(row.image_duration_seconds) && Number(row.image_duration_seconds) >= 1 && Number(row.image_duration_seconds) <= 120 ? {imageDurationSeconds: Number(row.image_duration_seconds)} : {}),
     active: row.active === true,
     startsAt: typeof row.starts_at === 'string' ? row.starts_at : null,
     endsAt: typeof row.ends_at === 'string' ? row.ends_at : null,
