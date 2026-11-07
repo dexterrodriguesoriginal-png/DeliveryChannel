@@ -55,6 +55,7 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
   const [title, setTitle] = useState('');
   const [productId, setProductId] = useState('');
   const [sortOrder, setSortOrder] = useState('0');
+  const [imageDurationSeconds, setImageDurationSeconds] = useState('6');
   const [active, setActive] = useState(true);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
@@ -85,6 +86,7 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
       : { assetId: slide.assetId, publicUrl: slide.videoUrl || slide.imageUrl || '', mediaType: slide.videoUrl ? 'VIDEO' : 'IMAGE' } : null);
     setTitle(slide?.title || ''); setProductId(slide?.productId || '');
     setSortOrder(String(slide?.sortOrder ?? (slides.length ? Math.max(...slides.map(row => row.sortOrder)) + 1 : 0)));
+    setImageDurationSeconds(String(slide?.imageDurationSeconds ?? 6));
     setActive(slide?.active ?? true);
     setStartsAt(dateInput(slide?.startsAt || null)); setEndsAt(dateInput(slide?.endsAt || null));
   };
@@ -151,6 +153,7 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
       ...(editing === 'new' ? {} : { id: editing.id }),
       ...(media.mediaType === 'YOUTUBE' ? { youtubeId: media.youtubeId } : { assetId: media.assetId }),
       title, productId, sortOrder: Number(sortOrder), active, startsAt: start, endsAt: end,
+      imageDurationSeconds: Number(imageDurationSeconds),
     });
   };
 
@@ -233,6 +236,10 @@ function MenuOutdoorEditor({ tenantId, products }: Props) {
           <div className="space-y-4">
             <label className="block text-sm font-semibold text-slate-700">Título do banner <span className="font-normal text-slate-400">(opcional)</span><input value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="Hoje é dia de experimentar algo novo" className={fieldClass} /></label>
             <label className="block text-sm font-semibold text-slate-700">Ao tocar no banner<select value={productId} onChange={e => setProductId(e.target.value)} className={fieldClass}><option value="">Só exibir o destaque</option>{catalog.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
+            {(media?.mediaType === 'IMAGE') && <label className="block text-sm font-semibold text-slate-700">Duração da imagem no Outdoor (segundos)
+              <input type="number" min="1" max="120" step="1" required aria-label="Duração da imagem em segundos" value={imageDurationSeconds} onChange={event => setImageDurationSeconds(event.target.value)} className={fieldClass} />
+              <span className="mt-1 block text-xs font-normal text-slate-500">Somente imagens têm duração manual. Vídeos reproduzem até o fim do arquivo.</span>
+            </label>}
             <label className="block text-sm font-semibold text-slate-700">Ordem de exibição<input type="number" min="0" max="9999" required value={sortOrder} onChange={e => setSortOrder(e.target.value)} className={fieldClass} /></label>
             <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700"><input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} className="h-5 w-5 accent-emerald-700" />Banner ativo</label>
           </div>
