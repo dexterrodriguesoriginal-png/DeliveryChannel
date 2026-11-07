@@ -41,6 +41,8 @@ import { storeHomeRepository } from '../../repositories/storeHomeRepository';
 
 import { DineInTotemMenu } from '../../components/client/dinein/DineInTotemMenu';
 import { DineInPremiumMenuAdapter } from '../../components/client/totem/DineInPremiumMenuAdapter';
+import { menuOutdoorRepository, type PublicMenuOutdoorSlide } from '../../repositories/menuOutdoorRepository';
+import { safeHomeImageUrl } from '../../lib/storeHome/storeHome.model';
 import { DineInDeliveryCode, DineInDeliveryNotice, DineInTracking } from '../../components/client/dinein/DineInTracking';
 import { dineInStatus, type DineInTrackedRound } from '../../lib/customer/dineInTracking';
 import { canDisputeDelivery, deliveryNoticeLabel, type DeliveryState } from '../../lib/customer/deliveryDispute';
@@ -126,6 +128,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [menuTheme, setMenuTheme] = useState<MenuTheme>();
   const [menuOptions, setMenuOptions] = useState<MenuOptions>({ ...DEFAULT_MENU_OPTIONS });
+  const [ownOutdoor, setOwnOutdoor] = useState<{slug: string; slides: PublicMenuOutdoorSlide[]}>({slug:'',slides:[]});
+  const [appOutdoorSlides, setAppOutdoorSlides] = useState<PublicMenuOutdoorSlide[]>([]);
   const [storeHomeDesign, setStoreHomeDesign] = useState<StoreHomeDesign>(DEFAULT_HOME_DESIGN);
   const [enabledModules, setEnabledModules] = useState<ReadonlySet<ModuleKey> | null>(null);
   const [storeFulfillment, setStoreFulfillment] = useState<{ delivery: boolean; pickup: boolean }>({ delivery: true, pickup: true });
@@ -140,7 +144,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [tab, setTab] = useState<MyTab | null>(null);
   const [cart, setCart] = useState<DineInCartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
-  const [view, setView] = useState<'HOME' | 'MENU'>('HOME');
+  // QR leva diretamente ao cardápio; Início só aparece após navegação explícita.
+  const [view, setView] = useState<'HOME' | 'MENU'>('MENU');
   const [cartHydratedToken, setCartHydratedToken] = useState('');
   const [checkoutPending, setCheckoutPending] = useState(false);
   const [checkoutIdentityOpen, setCheckoutIdentityOpen] = useState(false);
@@ -226,7 +231,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   useEffect(() => {
     if (previousUserRef.current && previousUserRef.current !== supabaseUser?.id) {
       identitySwitchPendingRef.current = true;
-      setView('HOME');
+      setView('MENU');
       setSessionId(''); setTab(null); setTabClosed(false); setAccountOpen(false); setBillOpen(false);
       setBusy(false); setJoinBusy(false); setInviteBusy(false); setMembersBusy(false);
       setDisputeBusyId(null);
@@ -280,6 +285,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const kioskActive = menuOptions.totemMode && view === 'MENU';
   // Apenas o modo totem de QR de mesa: nunca /app/:slug ou vitrine mobile.
   const premiumTotemActive = kioskActive && Boolean(storeTenantId);
+  const outdoorSlides = menuOptions.reuseAppBanners
+    ? appOutdoorSlides
+    : (ownOutdoor.slug === resolution?.tenantSlug ? ownOutdoor.slides : []);
   const resetKioskSession = useCallback(() => {
     upsell.clear();
     setCart([]); setCheckoutPending(false);
@@ -334,6 +342,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setResolvedToken('');
     setStoreName(''); setStoreLogoUrl(null); setStorePrimaryColor(null); setProducts([]);
     setCategories([]); setMenuTheme(undefined); setStoreTenantId('');
+    setOwnOutdoor({slug:'', slides:[]}); setAppOutdoorSlides([]);
     setQrPaused(false); setInvitePreview(null);
     setError('');
     void (async () => {
@@ -396,6 +405,18 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         setCategories(store.data.categories || []);
         setMenuTheme(store.data.menuTheme);
         setMenuOptions(store.data.menuOptions ?? { ...DEFAULT_MENU_OPTIONS });
+        // Mídia PUBLICADA da mesma loja, já autorizada pelo get_public_store.
+        const appBanners: PublicMenuOutdoorSlide[] = store.data.offers
+          .filter(offer => offer.tenantId === store.data.tenant.id && offer.isActive === true)
+          .flatMap(offer => {
+            const src = safeHomeImageUrl(offer.mediaUrl || offer.imageUrl);
+            if (!src) return [];
+            const duration = Number(offer.durationSeconds);
+            return [{ id: `app:${offer.id}`, title: offer.title,
+              ...(offer.mediaType === 'VIDEO' ? {videoUrl: src} : {imageUrl: src}),
+              imageDurationSeconds: Number.isInteger(duration) && duration >= 1 && duration <= 120 ? duration : 6 }];
+          });
+        setAppOutdoorSlides(appBanners);
         setEnabledModules(enabledModules);
         setStoreFulfillment({
           delivery: store.data.settings?.deliveryEnabled !== false,
@@ -421,6 +442,18 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     return () => { alive = false; };
   }, [token]);
 
+  // Outdoor por estabelecimento: nenhuma consulta a dados pessoais nem mídias privadas.
+  useEffect(() => {
+    const slug = resolution?.tenantSlug || '';
+    let active = true;
+    if (!slug || menuOptions.reuseAppBanners) return () => { active = false; };
+    setOwnOutdoor({slug: '', slides: []});
+    void menuOutdoorRepository.getPublicSlides(slug)
+      .then(slides => { if (active) setOwnOutdoor({slug, slides}); })
+      .catch(() => { if (active) setOwnOutdoor({slug, slides: []}); });
+    return () => { active = false; };
+  }, [resolution?.tenantSlug, menuOptions.reuseAppBanners]);
+
   // Browsing never requires login. Only IDs/options are saved, under this QR, so OAuth/e-mail
   // confirmation can return to checkout without retaining customer data or stale prices.
   useEffect(() => {
@@ -437,7 +470,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   useEffect(() => {
     deviceIdRef.current = deviceId();
-    setView('HOME');
+    setView('MENU');
     setTab(null);
     setTabClosed(false);
     setSessionId('');
@@ -571,6 +604,18 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setBusy(false);
     setJoinBusy(false);
   }, [access, accessReady, applyEntry, contextMatches, displayNameForEntry, firstName, inviteCode, resolution?.available, resolvedToken, sessionId, supabaseUser, token]);
+
+  // Entrada pelo QR: o vínculo/ocupação é criado SOMENTE pelas RPCs
+  // enterTable/open_or_join_tab depois da autenticação. Nunca por estado local.
+  // Em tablet compartilhado, o reset por inatividade encerra a identidade anterior.
+  useEffect(() => {
+    if (access && accessReady && resolvedToken === token && resolution?.available &&
+      !needsIdentity && !sessionId && !inviteCode && !identityConfirmed &&
+      !identitySwitchPendingRef.current && menuOptions.serviceMode !== 'COUNTER') {
+      setIdentityConfirmed(true);
+    }
+  }, [access, accessReady, resolvedToken, token, resolution?.available,
+      needsIdentity, sessionId, inviteCode, identityConfirmed, menuOptions.serviceMode]);
 
   // Parte E: Com conta já logada no aparelho, exige confirmação ("Entrar como <Nome>?") antes de entrar na mesa.
   useEffect(() => {
@@ -1145,6 +1190,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     return <main className="min-h-screen grid place-items-center bg-slate-50 p-6"><section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl"><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><h1 className="text-xl font-extrabold">Salão indisponível no momento</h1><p className="mt-2 text-sm text-slate-600">{error || 'Confira o QR Code ou chame um atendente.'}</p></section></main>;
   }
 
+  if (menuOptions.serviceMode === 'COUNTER') return <main className="grid min-h-screen place-items-center bg-slate-950 p-8 text-center text-white"><section className="max-w-lg"><h1 className="text-2xl font-bold">Atendimento no balcão</h1><p className="mt-3">Este QR de mesa não está disponível neste modo. Use o dispositivo de balcão autorizado ou peça ajuda à equipe.</p></section></main>;
+
   if (qrPaused && !sessionId && (!access || needsIdentity || entryDone)) {
     return <main className="min-h-screen grid place-items-center bg-slate-50 p-6" data-testid="dine-in-paused"><section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl"><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><h1 className="text-xl font-black">Pedidos pelo QR pausados</h1><p className="mt-2 text-sm text-slate-600">{storeName || 'O estabelecimento'} pausou os pedidos pelo celular por enquanto. Chame um atendente para pedir.</p></section></main>;
   }
@@ -1460,6 +1507,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           products={products}
           menuTheme={menuTheme}
           homeDesign={storeHomeDesign}
+          productColumns={menuOptions.productColumns}
+          outdoorSlides={outdoorSlides}
           cartCount={totalCartItems}
           orderingDisabled={orderingDisabled}
           busy={busy}
@@ -1468,7 +1517,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           sessionAuthorized={Boolean(access && !needsIdentity && tab?.me?.approved === true && tab.me.sessionId === sessionId)}
           tab={tab}
           authorizedTableScope={false}
-          onGoHome={resetPremiumKioskSession}
+          onGoHome={() => setView('HOME')}
           onOpenCart={() => { upsell.dismiss(); setCartOpen(true); }}
           onOpenTable={() => { if (sessionId && tab?.me?.approved === true) { setAccountOpen(true); void loadAccount(true); } }}
           onAddProduct={addItem}
@@ -1486,6 +1535,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           categories={categories}
           products={products}
           menuTheme={menuTheme}
+          productColumns={menuOptions.productColumns}
           cartCount={totalCartItems}
           orderingDisabled={orderingDisabled}
           busy={busy}
