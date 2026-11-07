@@ -135,6 +135,22 @@ describe('totem premium touch menu', () => {
     expect(p.onAddProduct).toHaveBeenCalledExactlyOnceWith(products[1]);
   });
 
+  it('opens the existing customization modal instead of directly adding products with options', () => {
+    const p = menuProps();
+    const optionsProduct = {
+      ...products[0],
+      id: 'options',
+      name: 'Cerveja Personalizada',
+      optionGroups: [{ id: 'group', active: true }] as unknown as Product['optionGroups'],
+    };
+    p.products = [optionsProduct];
+    const view = render(<DineInPremiumMenu {...p} />);
+    fireEvent.click(screen.getByTestId('kiosk-add-options'));
+    expect(p.onOpenProduct).toHaveBeenCalledExactlyOnceWith(optionsProduct);
+    expect(p.onAddProduct).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
   it('blocks disabled ordering', () => {
     const p = menuProps();
     render(<DineInPremiumMenu {...p} orderingDisabled />);
