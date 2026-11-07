@@ -5,16 +5,18 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const h = vi.hoisted(() => ({
   rpc: vi.fn(),
+  menuOptions: undefined as undefined | Record<string, unknown>,
+  offers: [] as Array<Record<string, unknown>>,
   caps: vi.fn(),
   access: { enterTable: vi.fn(), joinWithCode: vi.fn(), createInvite: vi.fn(), getInvite: vi.fn(), revokeInvite: vi.fn(), removeGuest: vi.fn(), transferResponsibility: vi.fn(), pingPending: vi.fn(), resolveInvite: vi.fn() },
   auth: { user: null as null | { id: string; is_anonymous?: boolean; email?: string; user_metadata?: Record<string, unknown> }, signUp: vi.fn(), signInWithPassword: vi.fn() },
 }));
-const product = { id: 'p1', name: 'Chopp', description: '', price: 12, imageUrl: '', isActive: true, isAvailable: true, optionGroups: [] };
+const product = { id: 'p1', tenantId: 'tn', name: 'Chopp', description: '', price: 12, imageUrl: '', isActive: true, isAvailable: true, optionGroups: [] };
 vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ supabaseUser: h.auth.user, signUp: h.auth.signUp, signInWithPassword: h.auth.signInWithPassword }) }));
 vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: { rpc: (...a: unknown[]) => h.rpc(...a), auth: { signInAnonymously: vi.fn(), signInWithOAuth: vi.fn() } } }));
 vi.mock('../../../lib/pwa/applyStoreIdentity', () => ({ applyStoreIdentity: vi.fn().mockResolvedValue({}) }));
 vi.mock('../../../repositories/menuOutdoorRepository', () => ({ menuOutdoorRepository: { getPublicSlides: async () => [] } }));
-vi.mock('../../../repositories/publicStoreRepository', () => ({ publicStoreRepository: { loadPublicStore: async () => ({ status: 'ok', data: { tenant: { id: 'tn', name: 'Loja X' }, products: [product] } }) } }));
+vi.mock('../../../repositories/publicStoreRepository', () => ({ publicStoreRepository: { loadPublicStore: async () => ({ status: 'ok', data: { tenant: { id: 'tn', name: 'Loja X' }, products: [product], menuOptions: h.menuOptions, offers: h.offers } }) } }));
 vi.mock('../../../repositories/tenantModuleRepository', () => ({ tenantModuleRepository: { getPublicEnabled: async () => new Set(['dine_in']) } }));
 vi.mock('../../../repositories/productOptionRepository', () => ({ productOptionRepository: { getPublicForProducts: async () => new Map() } }));
 vi.mock('../../../repositories/mesasQrRepository', () => ({ mesasQrRepository: { capabilities: (...a: unknown[]) => h.caps(...a) } }));
@@ -24,7 +26,10 @@ import { DineInClientApp } from '../DineInClientApp';
 import { dineInCartStorageKey } from '../../../lib/customer/dineInCartStorage';
 
 const TOKEN = 'k'.repeat(48);
-const openMenu = async () => fireEvent.click(await screen.findByRole('button', { name: 'Cardápio' }));
+const openMenu = async () => {
+  // QR opens the menu (or the identity confirmation gate) directly.
+  await waitFor(() => expect(screen.queryByTestId('dinein-premium-kiosk') || screen.queryByTestId('confirm-logged-user-gate')).toBeTruthy());
+};
 const V1 = { available: true, version: 1, qrPause: true, tabPix: true, tableAccess: false, waiterApp: false };
 const V2 = { ...V1, version: 2, tableAccess: true, waiterApp: true };
 const resolved = { available: true, tenantSlug: 'loja-x', storeName: 'Loja X', tableLabel: 'Mesa 03' };
@@ -38,7 +43,7 @@ const myTab = (role: 'RESPONSIBLE' | 'GUEST', approved = true) => ({ data: { tab
 
 beforeEach(() => {
   h.rpc.mockReset(); h.caps.mockReset(); Object.values(h.access).forEach(m => m.mockReset()); h.auth.signUp.mockReset(); h.auth.signInWithPassword.mockReset();
-  h.auth.user = null; localStorage.clear(); sessionStorage.clear();
+  h.auth.user = null; h.menuOptions = undefined; h.offers = []; localStorage.clear(); sessionStorage.clear();
   window.history.replaceState(null, '', '/app/loja-x?mesa=' + TOKEN);
 });
 afterEach(cleanup);
@@ -217,5 +222,33 @@ describe('Mesa — modelo antigo (banco sem a migração) continua igual', () =>
     expect(note.textContent).toContain('Avisamos o garçom');
     expect(h.access.enterTable).not.toHaveBeenCalled();
     expect(screen.queryByTestId('identity-gate')).toBeNull();
+  });
+});
+
+
+describe('Cardápio v2 — isolated public browsing', () => {
+  it('keeps counter-only mode blocked and never occupies a table', async () => {
+    h.caps.mockResolvedValue(V2); baseRpc(); h.auth.user = { id: 'customer' };
+    h.menuOptions = { serviceMode: 'COUNTER' };
+    render(<DineInClientApp token={TOKEN} />);
+    await screen.findByRole('heading', { name: 'Atendimento no balcão' });
+    expect(h.access.enterTable).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('dinein-premium-kiosk')).toBeNull();
+  });
+
+  it('reuses only active public banners belonging to the resolved store', async () => {
+    h.caps.mockResolvedValue(V2); baseRpc();
+    h.menuOptions = { serviceMode: 'BOTH', reuseAppBanners: true };
+    h.offers = [
+      { id: 'own', tenantId: 'tn', isActive: true, imageUrl: 'https://example.com/own.webp', title: 'Our banner' },
+      { id: 'other', tenantId: 'other', isActive: true, imageUrl: 'https://example.com/other.webp', title: 'Other store' },
+      { id: 'draft', tenantId: 'tn', isActive: false, imageUrl: 'https://example.com/draft.webp', title: 'Draft' },
+    ];
+    render(<DineInClientApp token={TOKEN} />);
+    await screen.findByRole('img', { name: 'Our banner' });
+    expect(screen.queryByRole('button', { name: /Exibir banner/ })).toBeNull();
+    expect(screen.queryByRole('img', { name: 'Other store' })).toBeNull();
+    expect(screen.queryByRole('img', { name: 'Draft' })).toBeNull();
+    expect(h.access.enterTable).not.toHaveBeenCalled();
   });
 });
