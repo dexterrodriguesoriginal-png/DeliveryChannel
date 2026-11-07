@@ -7,6 +7,10 @@ describe('TotemKioskLayer', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { cleanup(); vi.useRealTimers(); });
 
+  it('has no expand/fullscreen button in kiosk mode', () => {
+    render(<TotemKioskLayer enabled idleSeconds={30} onIdle={vi.fn()} />);
+    expect(screen.queryByTestId('totem-fullscreen-button')).toBeNull();
+  });
   it('renders nothing when disabled and never fires onIdle', () => {
     const onIdle = vi.fn();
     const { container } = render(<TotemKioskLayer enabled={false} idleSeconds={30} onIdle={onIdle} />);
