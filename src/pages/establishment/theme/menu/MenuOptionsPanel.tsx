@@ -60,6 +60,22 @@ export function MenuOptionsPanel({ securityContext, tenantId }: { securityContex
       <label className="menu-design-color"><span>Segundos sem toque até perguntar “Ainda está aí?” ({MIN_IDLE_SECONDS} a {MAX_IDLE_SECONDS})</span>
         <input type="number" aria-label="Tempo de inatividade em segundos" min={MIN_IDLE_SECONDS} max={MAX_IDLE_SECONDS} step={5} value={draft.idleSeconds} disabled={!draft.totemMode}
           onChange={event => { setDraft({ ...draft, idleSeconds: Number(event.target.value) }); setNotice(''); }} /></label>
+      <label className="menu-design-color"><span>Modo de atendimento da loja</span>
+        <select aria-label="Modo de atendimento" value={draft.serviceMode} onChange={event => setDraft({ ...draft, serviceMode: event.target.value as MenuOptions['serviceMode'] })}>
+          <option value="TABLE">Mesa (QR da mesa)</option>
+          <option value="COUNTER">Totem balcão (pré-configuração)</option>
+          <option value="BOTH">Ambos (pré-configuração do balcão)</option>
+        </select>
+      </label>
+      {draft.serviceMode !== 'TABLE' && <p role="status" className="text-xs text-amber-800">Totem de balcão exige autorização do dispositivo e integração com pagamento/senha de retirada. Este modo é salvo, mas o acesso ao balcão permanece bloqueado até a habilitação segura da flag VITE_ENABLE_COUNTER_KIOSK e homologação do checkout.</p>}
+      <label className="menu-design-color"><span>Produtos por fileira</span>
+        <select aria-label="Produtos por fileira" value={draft.productColumns} onChange={event => setDraft({ ...draft, productColumns: Number(event.target.value) as 1 | 2 | 3 })}>
+          <option value={1}>1 produto</option><option value={2}>2 produtos</option><option value={3}>3 produtos</option>
+        </select>
+      </label>
+      <label className="menu-design-color"><span>Usar os mesmos banners do app do cliente no Outdoor</span>
+        <input type="checkbox" aria-label="Usar os mesmos banners do app" checked={draft.reuseAppBanners} onChange={event => setDraft({ ...draft, reuseAppBanners: event.target.checked })} />
+      </label>
       {invalid && <div role="status" className="menu-design-contrast">Informe um tempo entre {MIN_IDLE_SECONDS} e {MAX_IDLE_SECONDS} segundos.</div>}
     </fieldset>
     <div className="theme-action-buttons">
