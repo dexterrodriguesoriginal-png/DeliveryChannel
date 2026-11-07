@@ -2,9 +2,12 @@
 -- Antes do rollback, NORMALIZAR menu_options dos estabelecimentos para remover as 3 novas chaves.
 -- Sem isso, este rollback falha, de forma segura, por CHECK existente.
 BEGIN;
+-- Rollback executado pelo dono do schema; desabilita apenas o guard de opções durante a limpeza.
+ALTER TABLE public.tenant_settings DISABLE TRIGGER menu_options_write_guard;
 UPDATE public.tenant_settings
 SET menu_options=menu_options-'serviceMode'-'productColumns'-'reuseAppBanners'
 WHERE menu_options ?| ARRAY['serviceMode','productColumns','reuseAppBanners'];
+ALTER TABLE public.tenant_settings ENABLE TRIGGER menu_options_write_guard;
 CREATE OR REPLACE FUNCTION public._menu_options_valid(p_options jsonb) RETURNS boolean
 LANGUAGE plpgsql IMMUTABLE SET search_path='' AS $body$
 BEGIN
