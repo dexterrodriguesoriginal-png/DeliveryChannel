@@ -118,6 +118,7 @@ export interface DineInPremiumMenuAdapterProps {
   cartCount: number;
   orderingDisabled: boolean;
   busy?: boolean;
+  productColumns?: 1 | 2 | 3;
 
   verifiedSessionId?: string | null;
   tabSessionId?: string | null;
@@ -172,6 +173,7 @@ export function DineInPremiumMenuAdapter({
   cartCount,
   orderingDisabled,
   busy = false,
+  productColumns = 3,
 
   verifiedSessionId,
   tabSessionId,
@@ -638,6 +640,7 @@ export function DineInPremiumMenuAdapter({
         homeDesign={homeDesign}
 
         cartCount={cartCount}
+        productColumns={productColumns}
         orderingDisabled={
           orderingDisabled || isPending
         }
