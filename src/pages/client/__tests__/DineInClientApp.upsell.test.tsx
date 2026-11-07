@@ -49,11 +49,10 @@ const products = [product('juice', 'Suco da casa', 30), product('water', 'Água 
 const offer = (ids = ['water', 'dessert', 'coffee', 'burger']) => ({ offerToken: 'offer-token', suggestions: ids.map(productId => ({ productId, reason: 'Combina com seu pedido' })) });
 const rpcCalls = (name: string) => h.rpc.mock.calls.filter(call => call[0] === name);
 const openMenu = async () => {
-  fireEvent.click(await screen.findByRole('button', { name: 'Cardápio' }));
-  return screen.findByTestId('totem-menu-view');
+  return screen.findByTestId('dinein-premium-kiosk');
 };
 const openBag = () => {
-  fireEvent.click(screen.getByTestId('totem-cart-button'));
+  fireEvent.click(screen.getByTestId('kiosk-nav-cart'));
   return screen.getByRole('dialog', { name: 'Sua sacola' });
 };
 function setup() {
@@ -89,7 +88,7 @@ describe('Leve também na mesa e no totem', () => {
     expect(rpcCalls('recommend_upsell')[0][1]).toEqual({ p_slug: 'cafe-da-praca', p_source_product_id: 'juice', p_cart_items: [{ productId: 'juice', quantity: 1 }], p_channel: 'TOTEM' });
     fireEvent.click(within(sheet).getByRole('button', { name: 'Levar Água mineral' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Leve também' })).toBeNull());
-    expect(screen.getByTestId('totem-cart-badge').textContent).toBe('2');
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toBe('2');
     expect(rpcCalls('recommend_upsell')).toHaveLength(1);
     expect(rpcCalls('record_upsell_conversion')).toHaveLength(0);
     fireEvent.click(within(openBag()).getByRole('button', { name: 'Finalizar pedido' }));
@@ -110,11 +109,11 @@ describe('Leve também na mesa e no totem', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'Levar Hambúrguer especial' }));
     const options = await screen.findByRole('dialog', { name: 'Personalizar Hambúrguer especial' });
     const add = within(options).getByRole('button', { name: 'Adicionar à rodada' });
-    expect(add.hasAttribute('disabled')).toBe(true); expect(screen.getByTestId('totem-cart-badge').textContent).toBe('1');
+    expect(add.hasAttribute('disabled')).toBe(true); expect(screen.getByTestId('dinein-bag-counter').textContent).toBe('1');
     fireEvent.click(within(options).getByRole('button', { name: 'Escolher' }));
     fireEvent.click(add);
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Personalizar Hambúrguer especial' })).toBeNull());
-    expect(screen.getByTestId('totem-cart-badge').textContent).toBe('2');
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toBe('2');
     expect(rpcCalls('recommend_upsell')).toHaveLength(1);
     expect(within(openBag()).getByText('Ponto da carne: Ao ponto')).toBeTruthy();
   });
@@ -159,7 +158,7 @@ describe('Leve também na mesa e no totem', () => {
       await waitFor(() => expect(rpcCalls('recommend_upsell')).toHaveLength(1));
       if (change === 'identity') h.user = { id: 'other-customer' };
       view.rerender(<DineInClientApp token={change === 'token' ? 'v'.repeat(48) : TOKEN} />);
-      await screen.findByTestId('dinein-home');
+      await screen.findByTestId('confirm-logged-user-gate');
       await act(async () => finish(offer()));
       expect(screen.queryByRole('dialog', { name: 'Leve também' })).toBeNull();
       expect(rpcCalls('record_upsell_impression')).toHaveLength(0);

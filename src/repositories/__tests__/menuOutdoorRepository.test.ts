@@ -34,6 +34,12 @@ describe('Outdoor do cardápio: repositório', () => {
     expect(h.from).not.toHaveBeenCalled();
     expect(h.bucket).toHaveBeenCalledWith('marketing-public');
   });
+  it('respeita a duração por imagem vinda da projeção pública', async () => {
+    h.rpc.mockResolvedValue({ data: [{ ...row, image_duration_seconds: 13 }], error: null });
+    const [slide] = await menuOutdoorRepository.getPublicSlides('loja');
+    expect(slide.imageDurationSeconds).toBe(13);
+    expect(JSON.stringify(slide)).not.toContain('segredo');
+  });
   it('mapeia vídeo sem transformá-lo em imagem', async () => {
     h.rpc.mockResolvedValue({ data: [{ ...row, public_path: path.replace('.webp', '.mp4'), media_type: 'VIDEO' }], error: null });
     const [slide] = await menuOutdoorRepository.getPublicSlides('loja');
@@ -61,7 +67,7 @@ describe('Outdoor do cardápio: repositório', () => {
     });
     expect(h.rpc).toHaveBeenCalledExactlyOnceWith('save_menu_outdoor_slide', {
       p_tenant_id: tenant, p_id: 'slide', p_asset_id: asset, p_youtube_id: null, p_title: 'Pausado', p_product_id: null,
-      p_sort_order: 4, p_active: false, p_starts_at: null, p_ends_at: null,
+      p_sort_order: 4, p_active: false, p_starts_at: null, p_ends_at: null, p_image_duration_seconds: 6,
     });
     expect(result.mediaAvailable).toBe(false); expect(result.active).toBe(false);
     expect(h.from).not.toHaveBeenCalled();

@@ -41,6 +41,8 @@ import { storeHomeRepository } from '../../repositories/storeHomeRepository';
 
 import { DineInTotemMenu } from '../../components/client/dinein/DineInTotemMenu';
 import { DineInPremiumMenuAdapter } from '../../components/client/totem/DineInPremiumMenuAdapter';
+import { menuOutdoorRepository, type PublicMenuOutdoorSlide } from '../../repositories/menuOutdoorRepository';
+import { safeHomeImageUrl } from '../../lib/storeHome/storeHome.model';
 import { DineInDeliveryCode, DineInDeliveryNotice, DineInTracking } from '../../components/client/dinein/DineInTracking';
 import { dineInStatus, type DineInTrackedRound } from '../../lib/customer/dineInTracking';
 import { canDisputeDelivery, deliveryNoticeLabel, type DeliveryState } from '../../lib/customer/deliveryDispute';
@@ -126,6 +128,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [menuTheme, setMenuTheme] = useState<MenuTheme>();
   const [menuOptions, setMenuOptions] = useState<MenuOptions>({ ...DEFAULT_MENU_OPTIONS });
+  const [ownOutdoor, setOwnOutdoor] = useState<{slug: string; slides: PublicMenuOutdoorSlide[]}>({slug:'',slides:[]});
+  const [appOutdoorSlides, setAppOutdoorSlides] = useState<PublicMenuOutdoorSlide[]>([]);
   const [storeHomeDesign, setStoreHomeDesign] = useState<StoreHomeDesign>(DEFAULT_HOME_DESIGN);
   const [enabledModules, setEnabledModules] = useState<ReadonlySet<ModuleKey> | null>(null);
   const [storeFulfillment, setStoreFulfillment] = useState<{ delivery: boolean; pickup: boolean }>({ delivery: true, pickup: true });
@@ -140,7 +144,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [tab, setTab] = useState<MyTab | null>(null);
   const [cart, setCart] = useState<DineInCartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
-  const [view, setView] = useState<'HOME' | 'MENU'>('HOME');
+  // QR leva diretamente ao cardápio; Início só aparece após navegação explícita.
+  const [view, setView] = useState<'HOME' | 'MENU'>('MENU');
   const [cartHydratedToken, setCartHydratedToken] = useState('');
   const [checkoutPending, setCheckoutPending] = useState(false);
   const [checkoutIdentityOpen, setCheckoutIdentityOpen] = useState(false);
@@ -226,7 +231,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   useEffect(() => {
     if (previousUserRef.current && previousUserRef.current !== supabaseUser?.id) {
       identitySwitchPendingRef.current = true;
-      setView('HOME');
+      setView('MENU');
       setSessionId(''); setTab(null); setTabClosed(false); setAccountOpen(false); setBillOpen(false);
       setBusy(false); setJoinBusy(false); setInviteBusy(false); setMembersBusy(false);
       setDisputeBusyId(null);
@@ -279,7 +284,12 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   // Modo totem: após a inatividade, descarta a sacola e volta ao início do QR.
   const kioskActive = menuOptions.totemMode && view === 'MENU';
   // Apenas o modo totem de QR de mesa: nunca /app/:slug ou vitrine mobile.
-  const premiumTotemActive = kioskActive && Boolean(storeTenantId);
+  // O MESMO cardápio responsivo atende QR de mesa em celular, tablet e totem;
+  // somente o wipe por inatividade depende da opção física totemMode.
+  const premiumTotemActive = view === 'MENU' && Boolean(storeTenantId);
+  const outdoorSlides = menuOptions.reuseAppBanners
+    ? appOutdoorSlides
+    : (ownOutdoor.slug === resolution?.tenantSlug ? ownOutdoor.slides : []);
   const resetKioskSession = useCallback(() => {
     upsell.clear();
     setCart([]); setCheckoutPending(false);
@@ -334,6 +344,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setResolvedToken('');
     setStoreName(''); setStoreLogoUrl(null); setStorePrimaryColor(null); setProducts([]);
     setCategories([]); setMenuTheme(undefined); setStoreTenantId('');
+    setOwnOutdoor({slug:'', slides:[]}); setAppOutdoorSlides([]);
     setQrPaused(false); setInvitePreview(null);
     setError('');
     void (async () => {
@@ -396,6 +407,18 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         setCategories(store.data.categories || []);
         setMenuTheme(store.data.menuTheme);
         setMenuOptions(store.data.menuOptions ?? { ...DEFAULT_MENU_OPTIONS });
+        // Mídia PUBLICADA da mesma loja, já autorizada pelo get_public_store.
+        const appBanners: PublicMenuOutdoorSlide[] = (store.data.offers ?? [])
+          .filter(offer => offer.tenantId === store.data.tenant.id && offer.isActive === true)
+          .flatMap(offer => {
+            const src = safeHomeImageUrl(offer.mediaUrl || offer.imageUrl);
+            if (!src) return [];
+            const duration = Number(offer.durationSeconds);
+            return [{ id: `app:${offer.id}`, title: offer.title,
+              ...(offer.mediaType === 'VIDEO' ? {videoUrl: src} : {imageUrl: src}),
+              imageDurationSeconds: Number.isInteger(duration) && duration >= 1 && duration <= 120 ? duration : 6 }];
+          });
+        setAppOutdoorSlides(appBanners);
         setEnabledModules(enabledModules);
         setStoreFulfillment({
           delivery: store.data.settings?.deliveryEnabled !== false,
@@ -421,6 +444,18 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     return () => { alive = false; };
   }, [token]);
 
+  // Outdoor por estabelecimento: nenhuma consulta a dados pessoais nem mídias privadas.
+  useEffect(() => {
+    const slug = resolution?.tenantSlug || '';
+    let active = true;
+    if (!slug || menuOptions.reuseAppBanners) return () => { active = false; };
+    setOwnOutdoor({slug: '', slides: []});
+    void menuOutdoorRepository.getPublicSlides(slug)
+      .then(slides => { if (active) setOwnOutdoor({slug, slides}); })
+      .catch(() => { if (active) setOwnOutdoor({slug, slides: []}); });
+    return () => { active = false; };
+  }, [resolution?.tenantSlug, menuOptions.reuseAppBanners]);
+
   // Browsing never requires login. Only IDs/options are saved, under this QR, so OAuth/e-mail
   // confirmation can return to checkout without retaining customer data or stale prices.
   useEffect(() => {
@@ -437,7 +472,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   useEffect(() => {
     deviceIdRef.current = deviceId();
-    setView('HOME');
+    setView('MENU');
     setTab(null);
     setTabClosed(false);
     setSessionId('');
@@ -491,7 +526,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   }, [token]);
 
   const openOrJoin = useCallback(async (overrideName?: string) => {
-    if (!supabaseUser || resolvedToken !== token || !accessReady || !resolution?.available || !deviceIdRef.current) return;
+    if (loading || menuOptions.serviceMode === 'COUNTER' || !supabaseUser || resolvedToken !== token || !accessReady || !resolution?.available || !deviceIdRef.current) return;
     if (supabaseUser.is_anonymous || sessionId) return;
     // A saved session remains the account identity after moving tables. Never
     // reopen the original QR's now-free table while restoring that session.
@@ -570,20 +605,22 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setNotice('');
     setBusy(false);
     setJoinBusy(false);
-  }, [access, accessReady, applyEntry, contextMatches, displayNameForEntry, firstName, inviteCode, resolution?.available, resolvedToken, sessionId, supabaseUser, token]);
+  }, [access, accessReady, applyEntry, contextMatches, displayNameForEntry, firstName, inviteCode, loading, menuOptions.serviceMode, resolution?.available, resolvedToken, sessionId, supabaseUser, token]);
 
+  // Opening a QR must not silently reuse the previous person's signed-in identity
+  // on a shared device. Keep explicit confirmation before creating table access.
   // Parte E: Com conta já logada no aparelho, exige confirmação ("Entrar como <Nome>?") antes de entrar na mesa.
   useEffect(() => {
     // The reset above and this effect run in the same flush. Do not reuse the
     // preceding account's confirmation before React applies its state reset.
     if (identitySwitchPendingRef.current) { identitySwitchPendingRef.current = false; return; }
-    if (!supabaseUser || supabaseUser.is_anonymous || !resolution?.available) return;
+    if (loading || menuOptions.serviceMode === 'COUNTER' || !supabaseUser || supabaseUser.is_anonymous || !resolution?.available) return;
     if (access) {
       if (!supabaseUser.is_anonymous && identityConfirmed) void openOrJoin();
       return;
     }
     if (!qrPaused) void openOrJoin();
-  }, [supabaseUser, resolution?.available, qrPaused, access, identityConfirmed, openOrJoin]);
+  }, [supabaseUser, resolution?.available, qrPaused, access, identityConfirmed, openOrJoin, loading, menuOptions.serviceMode]);
 
   // Once registration/login returns, continue with the preserved cart; never send an order
   // automatically: the customer still reviews and confirms the items.
@@ -1140,10 +1177,12 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
 
   // Restore the saved bag before exposing Add/Checkout: a first click must never
   // be overwritten by the hydration effect, including after changing table QR.
-  if (loading || (!error && resolution?.available && cartHydratedToken !== token)) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-700"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Carregando mesa e cardápio…</div>;
+  if ((previousUserRef.current && previousUserRef.current !== supabaseUser?.id) || loading || (!error && resolution?.available && cartHydratedToken !== token)) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-700"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Carregando mesa e cardápio…</div>;
   if (unavailable) {
     return <main className="min-h-screen grid place-items-center bg-slate-50 p-6"><section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl"><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><h1 className="text-xl font-extrabold">Salão indisponível no momento</h1><p className="mt-2 text-sm text-slate-600">{error || 'Confira o QR Code ou chame um atendente.'}</p></section></main>;
   }
+
+  if (menuOptions.serviceMode === 'COUNTER') return <main className="grid min-h-screen place-items-center bg-slate-950 p-8 text-center text-white"><section className="max-w-lg"><h1 className="text-2xl font-bold">Atendimento no balcão</h1><p className="mt-3">Este QR de mesa não está disponível neste modo. Use o dispositivo de balcão autorizado ou peça ajuda à equipe.</p></section></main>;
 
   if (qrPaused && !sessionId && (!access || needsIdentity || entryDone)) {
     return <main className="min-h-screen grid place-items-center bg-slate-50 p-6" data-testid="dine-in-paused"><section className="max-w-sm rounded-3xl bg-white p-7 text-center shadow-xl"><AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" /><h1 className="text-xl font-black">Pedidos pelo QR pausados</h1><p className="mt-2 text-sm text-slate-600">{storeName || 'O estabelecimento'} pausou os pedidos pelo celular por enquanto. Chame um atendente para pedir.</p></section></main>;
@@ -1314,33 +1353,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     }
   };
 
-  return (
-    <main className={view === 'MENU' ? 'dinein-menu-shell bg-slate-50' : view === 'HOME' ? 'min-h-screen bg-[#071a14]' : 'min-h-screen bg-slate-50 pb-28'} data-kiosk={kioskActive || undefined}>
-      <TotemKioskLayer enabled={kioskActive} idleSeconds={menuOptions.idleSeconds} onIdle={premiumTotemActive ? resetPremiumKioskSession : resetKioskSession} />
-      {view === 'HOME' ? (
-        <div className="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-start justify-between gap-2 p-3 sm:p-4">
-          <div className="pointer-events-none min-w-0">
-            {access && myRole && (
-              <p data-testid="role-chip" className="pointer-events-auto inline-flex items-center gap-1 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-lg backdrop-blur">
-                {myRole === 'RESPONSIBLE' ? <><Crown className="h-3.5 w-3.5 text-amber-500" />Você é o responsável pela mesa</> : <>Convidado{tab?.responsibleName ? ` de ${tab.responsibleName}` : ''}</>}
-              </p>
-            )}
-          </div>
-          <div className="flex shrink-0 gap-2">
-          <button
-            type="button"
-            onClick={() => { upsell.dismiss(); setCartOpen(true); }}
-            data-testid="dinein-bag-counter"
-            aria-label={`Sacola com ${totalCartItems} ${totalCartItems === 1 ? 'item' : 'itens'}`}
-            className={`pointer-events-auto relative flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-xs font-black text-emerald-900 shadow-lg backdrop-blur transition-transform duration-300 ${bagBounce ? 'scale-110 ring-2 ring-emerald-500 animate-bounce' : 'scale-100'}`}
-          >
-            <ShoppingBag className="h-4 w-4 text-emerald-700" />
-            <span>{totalCartItems}</span>
-          </button>
-          <button type="button" disabled={!sessionId} onClick={() => { setAccountOpen(true); void loadAccount(); }} aria-label="Ver minha conta" className="pointer-events-auto rounded-full bg-white/95 p-2 shadow-lg backdrop-blur disabled:opacity-40"><CircleUserRound className="h-6 w-6" /></button>
-          </div>
-        </div>
-      ) : !premiumTotemActive ? (
+  const tableHeader = (
       <header className="sticky top-0 z-20 border-b bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-2">
           <div>
@@ -1390,17 +1403,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           </div>
         </div>
       </header>
-      ) : null}
-      {addedToast && (
-        <div
-          aria-live="polite"
-          data-testid="added-to-bag-toast"
-          className="fixed inset-x-4 top-16 z-40 mx-auto flex max-w-sm items-center gap-2.5 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-xl transition-all"
-        >
-          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
-          <span className="truncate">Adicionado à sacola · {addedToast.quantity}× {addedToast.name}</span>
-        </div>
-      )}
+  );
+  const tableNotices = (
       <div className={view === 'MENU' ? 'dinein-menu-notices' : undefined}>
       {awaitingRelease && !qrPaused && (
         <div role="status" data-testid="awaiting-release" className="mx-auto mt-3 flex max-w-2xl items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
@@ -1435,6 +1439,55 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         </section>}
         {notice && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       </div>
+  );
+  const tableActions = (
+<nav aria-label="Ações da mesa" className="dinein-menu-actions z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
+        <div className="mx-auto grid max-w-2xl grid-cols-3 gap-2">
+          <button type="button" onClick={() => void requestWaiter()} disabled={busy || tabClosed || !sessionId} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><UserRound className="h-5 w-5" />Chamar garçom</button>
+          <button type="button" onClick={() => { setBillOpen(true); void loadAccount(true); }} disabled={busy || tabClosed || billRequested || !sessionId} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold disabled:cursor-default ${billRequested ? awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested' : 'text-slate-800 disabled:opacity-40'}`} style={billRequested ? billColors : undefined}><ReceiptText className="h-5 w-5" />{billRequested ? billStatusLabel : 'Pedir a conta'}</button>
+          <button type="button" disabled={!sessionId} onClick={() => { setAccountOpen(true); void loadAccount(); }} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><CircleUserRound className="h-5 w-5" />Minha conta</button>
+        </div>
+      </nav>
+  );
+
+  return (
+    <main className={view === 'MENU' ? 'dinein-menu-shell bg-slate-50' : view === 'HOME' ? 'min-h-screen bg-[#071a14]' : 'min-h-screen bg-slate-50 pb-28'} data-kiosk={kioskActive || undefined}>
+      <TotemKioskLayer enabled={kioskActive} idleSeconds={menuOptions.idleSeconds} onIdle={premiumTotemActive ? resetPremiumKioskSession : resetKioskSession} />
+      {view === 'HOME' ? (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-start justify-between gap-2 p-3 sm:p-4">
+          <div className="pointer-events-none min-w-0">
+            {access && myRole && (
+              <p data-testid="role-chip" className="pointer-events-auto inline-flex items-center gap-1 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-lg backdrop-blur">
+                {myRole === 'RESPONSIBLE' ? <><Crown className="h-3.5 w-3.5 text-amber-500" />Você é o responsável pela mesa</> : <>Convidado{tab?.responsibleName ? ` de ${tab.responsibleName}` : ''}</>}
+              </p>
+            )}
+          </div>
+          <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => { upsell.dismiss(); setCartOpen(true); }}
+            data-testid="dinein-bag-counter"
+            aria-label={`Sacola com ${totalCartItems} ${totalCartItems === 1 ? 'item' : 'itens'}`}
+            className={`pointer-events-auto relative flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-xs font-black text-emerald-900 shadow-lg backdrop-blur transition-transform duration-300 ${bagBounce ? 'scale-110 ring-2 ring-emerald-500 animate-bounce' : 'scale-100'}`}
+          >
+            <ShoppingBag className="h-4 w-4 text-emerald-700" />
+            <span>{totalCartItems}</span>
+          </button>
+          <button type="button" disabled={!sessionId} onClick={() => { setAccountOpen(true); void loadAccount(); }} aria-label="Ver minha conta" className="pointer-events-auto rounded-full bg-white/95 p-2 shadow-lg backdrop-blur disabled:opacity-40"><CircleUserRound className="h-6 w-6" /></button>
+          </div>
+        </div>
+      ) : !premiumTotemActive ? tableHeader : null}
+      {addedToast && (
+        <div
+          aria-live="polite"
+          data-testid="added-to-bag-toast"
+          className="fixed inset-x-4 top-16 z-40 mx-auto flex max-w-sm items-center gap-2.5 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-xl transition-all"
+        >
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+          <span className="truncate">Adicionado à sacola · {addedToast.quantity}× {addedToast.name}</span>
+        </div>
+      )}
+      {!premiumTotemActive && tableNotices}
 
       <section className={premiumTotemActive ? 'fixed inset-0 z-20 overflow-hidden' : view === 'MENU' ? 'dinein-menu-content' : view === 'HOME' ? 'dc-store-home-host' : 'mx-auto max-w-2xl px-4 py-5'}>
         {view === 'HOME' ? <StoreHomeScreen
@@ -1460,6 +1513,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           products={products}
           menuTheme={menuTheme}
           homeDesign={storeHomeDesign}
+          tableControls={<>{tableHeader}{tableNotices}{tableActions}</>}
+          productColumns={menuOptions.productColumns}
+          outdoorSlides={outdoorSlides}
           cartCount={totalCartItems}
           orderingDisabled={orderingDisabled}
           busy={busy}
@@ -1468,7 +1524,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           sessionAuthorized={Boolean(access && !needsIdentity && tab?.me?.approved === true && tab.me.sessionId === sessionId)}
           tab={tab}
           authorizedTableScope={false}
-          onGoHome={resetPremiumKioskSession}
+          onGoHome={() => setView('HOME')}
           onOpenCart={() => { upsell.dismiss(); setCartOpen(true); }}
           onOpenTable={() => { if (sessionId && tab?.me?.approved === true) { setAccountOpen(true); void loadAccount(true); } }}
           onAddProduct={addItem}
@@ -1486,6 +1542,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           categories={categories}
           products={products}
           menuTheme={menuTheme}
+          productColumns={menuOptions.productColumns}
           cartCount={totalCartItems}
           orderingDisabled={orderingDisabled}
           busy={busy}
@@ -1604,13 +1661,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         ?.filter(round => round.mine !== false || (tab.me?.approved && !!round.deliveryCode))
         .map(round => tab.me?.approved ? round : { ...round, deliveryCode: null }) || []} />
 
-      {view === 'MENU' && !premiumTotemActive && <nav aria-label="Ações da mesa" className="dinein-menu-actions z-30 border-t bg-white px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,.08)]">
-        <div className="mx-auto grid max-w-2xl grid-cols-3 gap-2">
-          <button type="button" onClick={() => void requestWaiter()} disabled={busy || tabClosed || !sessionId} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><UserRound className="h-5 w-5" />Chamar garçom</button>
-          <button type="button" onClick={() => { setBillOpen(true); void loadAccount(true); }} disabled={busy || tabClosed || billRequested || !sessionId} className={`flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold disabled:cursor-default ${billRequested ? awaitingPix ? 'dinein-bill-awaiting-pix' : 'dinein-bill-requested' : 'text-slate-800 disabled:opacity-40'}`} style={billRequested ? billColors : undefined}><ReceiptText className="h-5 w-5" />{billRequested ? billStatusLabel : 'Pedir a conta'}</button>
-          <button type="button" disabled={!sessionId} onClick={() => { setAccountOpen(true); void loadAccount(); }} className="flex flex-col items-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-800 disabled:opacity-40"><CircleUserRound className="h-5 w-5" />Minha conta</button>
-        </div>
-      </nav>}
+      {view === 'MENU' && !premiumTotemActive && tableActions}
 
       {accountOpen && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setAccountOpen(false); }}>
         <section role="dialog" aria-modal="true" aria-label="Minha conta" className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl">

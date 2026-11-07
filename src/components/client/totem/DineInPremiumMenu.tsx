@@ -69,6 +69,8 @@ import {
 } from '../../../lib/menu/premiumTotem.model';
 
 import './dineInPremiumMenu.css';
+import { MenuOutdoorCarousel } from './MenuOutdoorCarousel';
+import type { PublicMenuOutdoorSlide } from '../../../repositories/menuOutdoorRepository';
 
 // ============================================
 // TIPAGEM
@@ -94,6 +96,9 @@ export interface DineInPremiumMenuProps {
 
   orderingDisabled: boolean;
   busy?: boolean;
+  tableControls?: React.ReactNode;
+  productColumns?: 1 | 2 | 3;
+  outdoorSlides?: PublicMenuOutdoorSlide[];
 
   /** Navegação controlada pelo app existente. */
   onGoHome: () => void;
@@ -300,6 +305,9 @@ export function DineInPremiumMenu({
   cartCount,
   orderingDisabled,
   busy = false,
+  tableControls,
+  productColumns = 3,
+  outdoorSlides = [],
 
   onGoHome,
   onOpenCart,
@@ -527,9 +535,6 @@ export function DineInPremiumMenu({
         >
           <div className="dc-kiosk-category-list">
             {catalog.categories.map(category => {
-              const Icon =
-                CATEGORY_ICONS[category.icon];
-
               const isSelected =
                 category.id === activeCategoryId;
 
@@ -552,21 +557,16 @@ export function DineInPremiumMenu({
                     )
                   }
                 >
-                  <SafeImage
-                    src={category.imageUrl}
-                    alt={category.name}
-                    className="dc-kiosk-category-photo"
-                    fallback={
-                      <Icon
-                        size={34}
-                        aria-hidden={true}
-                      />
-                    }
-                  />
-
-                  <span className="dc-kiosk-category-label">
-                    {category.name}
-                  </span>
+                  {safeMenuImageUrl(category.imageUrl) ? (
+                    <SafeImage
+                      src={category.imageUrl}
+                      alt={category.name}
+                      className="dc-kiosk-category-photo"
+                      fallback={<span className="dc-kiosk-category-label">{category.name}</span>}
+                    />
+                  ) : (
+                    <span className="dc-kiosk-category-label">{category.name}</span>
+                  )}
                 </button>
               );
             })}
@@ -581,6 +581,8 @@ export function DineInPremiumMenu({
           className="dc-kiosk-products-area"
           aria-label="Produtos do cardápio"
         >
+          {tableControls}
+          <MenuOutdoorCarousel slides={outdoorSlides} onOpenProduct={id => handleProductDetails(id)} />
           <div className="dc-kiosk-category-heading">
             <div className="dc-kiosk-category-title-row">
               {activeCategory && (() => {
@@ -620,6 +622,7 @@ export function DineInPremiumMenu({
             <div
               className="dc-kiosk-products-grid"
               data-testid="kiosk-products-grid"
+              style={{ gridTemplateColumns: `repeat(${productColumns}, minmax(0, 1fr))` }}
             >
               {categoryProducts.map(product => {
                 const original =
@@ -694,6 +697,7 @@ export function DineInPremiumMenu({
                           onClick={() =>
                             handleAdd(product.id)
                           }
+                          aria-label={`Adicionar ${product.name}`}
                           data-testid={`kiosk-add-${product.id}`}
                         >
                           <Plus

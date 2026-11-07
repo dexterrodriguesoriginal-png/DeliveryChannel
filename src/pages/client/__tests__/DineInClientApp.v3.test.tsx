@@ -25,7 +25,7 @@ vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true, supabase: 
     return channel;
   }, removeChannel: (...args: unknown[]) => h.removed(...args),
 } }));
-const product = { id: 'p1', name: 'Chopp', description: '', price: 12, imageUrl: '', isActive: true, isAvailable: true, optionGroups: [] };
+const product = { id: 'p1', tenantId: 'tn', name: 'Chopp', description: '', price: 12, imageUrl: '', isActive: true, isAvailable: true, optionGroups: [] };
 vi.mock('../../../lib/pwa/applyStoreIdentity', () => ({ applyStoreIdentity: vi.fn().mockResolvedValue({}) }));
 vi.mock('../../../lib/pwa/installState', () => ({ getDeferredPrompt: () => h.installPrompt ? { prompt: h.installPrompt } : null, clearDeferredPrompt: () => h.clearInstallPrompt() }));
 vi.mock('../../../repositories/menuOutdoorRepository', () => ({ menuOutdoorRepository: { getPublicSlides: async () => [] } }));
@@ -45,7 +45,10 @@ import { DineInClientApp, SESSION_KEY_PREFIX } from '../DineInClientApp';
 import { dineInCartStorageKey } from '../../../lib/customer/dineInCartStorage';
 
 const TOKEN = 'k'.repeat(48);
-const openMenu = async () => fireEvent.click(await screen.findByRole('button', { name: 'Cardápio' }));
+const openMenu = async () => {
+  // QR opens the menu (or the identity confirmation gate) directly.
+  await waitFor(() => expect(screen.queryByTestId('dinein-premium-kiosk') || screen.queryByTestId('confirm-logged-user-gate')).toBeTruthy());
+};
 const round = (status = 'PENDING', id = 'o1') => ({ orderId: id, orderNumber: 12, roundNo: 1, status, customerName: 'Ana', mine: true, subtotal: 12, createdAt: '2026-11-03T12:00:00Z', queuePosition: 4, items: [{ name: 'Chopp', quantity: 1 }] });
 const myTab = (rounds: ReturnType<typeof round>[] = [], status = 'OPEN') => ({ tabId: 'tb', status, mode: 'TABLE', tableLabel: 'Mesa 03', serviceFeePercent: 0, serviceFeeRemoved: false, subtotal: rounds.length * 12, rounds, me: { sessionId: 's1', role: 'GUEST', approved: true, displayName: 'Ana' } });
 let account = myTab();
@@ -538,12 +541,15 @@ describe('Garçom v3 — cliente QR', () => {
 
 
 describe('Entrega 2 — início da mesa', () => {
-  it.each(['/mesa/' + TOKEN, '/app/slug-sem-autoridade?mesa=' + TOKEN])('abre Home no QR %s e usa somente a loja resolvida pelo token', async path => {
+  it.each(['/mesa/' + TOKEN, '/app/slug-sem-autoridade?mesa=' + TOKEN])('abre o cardápio no QR %s e acessa Início somente por navegação explícita', async path => {
     window.history.replaceState(null, '', path);
     render(<DineInClientApp token={TOKEN} />);
+    await screen.findByTestId('dinein-premium-kiosk');
+    expect(screen.queryByTestId('dinein-home')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Adicionar Chopp' })).toBeTruthy();
+    fireEvent.click(screen.getByTestId('kiosk-nav-home'));
     const home = await screen.findByTestId('dinein-home');
     expect(within(home).getByRole('link', { name: 'Meu app' }).getAttribute('href')).toBe('/app/loja-x');
-    expect(screen.queryByRole('button', { name: 'Adicionar Chopp' })).toBeNull();
     expect(h.enterTable).not.toHaveBeenCalled();
     fireEvent.click(within(home).getByRole('button', { name: 'Cardápio' }));
     expect(await screen.findByRole('button', { name: 'Adicionar Chopp' })).toBeTruthy();
@@ -552,10 +558,8 @@ describe('Entrega 2 — início da mesa', () => {
   it('preserva a confirmação de identidade depois do atalho para um cliente logado', async () => {
     h.user = { id: 'u1' };
     render(<DineInClientApp token={TOKEN} />);
-    const home = await screen.findByTestId('dinein-home');
-    expect(h.enterTable).not.toHaveBeenCalled();
-    fireEvent.click(within(home).getByRole('button', { name: 'Cardápio' }));
     await screen.findByTestId('confirm-identity-continue');
+    expect(screen.queryByTestId('dinein-home')).toBeNull();
     expect(h.enterTable).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('confirm-identity-continue'));
     await waitFor(() => expect(h.enterTable).toHaveBeenCalledTimes(1));
@@ -564,6 +568,7 @@ describe('Entrega 2 — início da mesa', () => {
   it('Meu app reutiliza o evento de instalação e mantém a URL da loja correta', async () => {
     h.installPrompt = vi.fn().mockResolvedValue(undefined);
     render(<DineInClientApp token={TOKEN} />);
+    fireEvent.click(await screen.findByTestId('kiosk-nav-home'));
     fireEvent.click(within(await screen.findByTestId('dinein-home')).getByRole('link', { name: 'Meu app' }));
     await waitFor(() => expect(h.clearInstallPrompt).toHaveBeenCalledOnce());
     expect(h.installPrompt).toHaveBeenCalledOnce();
@@ -574,7 +579,7 @@ describe('Entrega 2 — início da mesa', () => {
     render(<DineInClientApp token={TOKEN} />);
     await openMenu();
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar Chopp' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    fireEvent.click(screen.getByTestId('kiosk-nav-home'));
     expect(screen.getByTestId('dinein-home')).toBeTruthy();
     fireEvent.click(screen.getByTestId('dinein-bag-counter'));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Sua sacola' })).getByRole('button', { name: 'Adicionar mais itens' }));
@@ -588,7 +593,7 @@ describe('Entrega 2 — início da mesa', () => {
     sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1');
     account = myTab([round()]);
     const view = render(<React.StrictMode><DineInClientApp token={TOKEN} /><DineInClientApp token={TOKEN} /></React.StrictMode>);
-    await waitFor(() => expect(screen.getAllByTestId('dinein-home')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId('dinein-premium-kiosk')).toHaveLength(2));
     await waitFor(() => expect(h.channels.size).toBeGreaterThanOrEqual(4));
     for (const channel of h.channels.values()) expect(channel.subscribe).toHaveBeenCalledOnce();
     view.unmount();

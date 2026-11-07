@@ -40,13 +40,13 @@ describe('DineInClientApp — QR da mesa', () => {
   it('banco antigo (sem get_table_qr_status) segue o fluxo normal: falha aberta, só informativo', async () => {
     route('missing');
     render(<DineInClientApp token={TOKEN} />);
-    expect(await screen.findByRole('heading', { name: 'Cardápio' })).toBeTruthy();
+    expect(await screen.findByTestId('dinein-premium-kiosk')).toBeTruthy();
     expect(screen.queryByTestId('dine-in-paused')).toBeNull();
   });
   it('navegação inicial não cria sessão anônima nem pede cadastro', async () => {
     route(false);
     render(<DineInClientApp token={TOKEN} />);
-    await screen.findByRole('heading', { name: 'Cardápio' });
+    await screen.findByTestId('dinein-premium-kiosk');
     expect(screen.queryByTestId('identity-gate')).toBeNull();
     expect(h.signIn).not.toHaveBeenCalled();
     expect(h.rpc.mock.calls.some(call => call[0] === 'open_or_join_tab')).toBe(false);

@@ -69,8 +69,7 @@ const tab = (rounds: ReturnType<typeof round>[] = [], approved = true) => ({
 });
 let account = tab();
 const openMenu = async () => {
-  fireEvent.click(await screen.findByRole('button', { name: 'Cardápio' }));
-  return screen.findByTestId('totem-menu-view');
+  return screen.findByTestId('dinein-premium-kiosk');
 };
 const signedSession = () => {
   h.user = { id: 'customer' };
@@ -109,33 +108,33 @@ describe('QR → cardápio totem → pedido na mesa', () => {
   it.each(['/mesa/' + TOKEN, '/app/slug-sem-autoridade?mesa=' + TOKEN])('abre o totem usando somente a loja resolvida pelo token: %s', async route => {
     window.history.replaceState(null, '', route);
     render(<DineInClientApp token={TOKEN} />);
-    expect(await screen.findByTestId('dinein-home')).toBeTruthy();
-    expect(screen.queryByTestId('totem-menu-view')).toBeNull();
+    await screen.findByTestId('dinein-premium-kiosk');
+    expect(screen.queryByTestId('dinein-home')).toBeNull();
     const menu = await openMenu();
-    await screen.findByTestId('totem-outdoor-area');
+    await screen.findByTestId('cardapio-outdoor');
     expect(h.loadStore).toHaveBeenCalledWith('cafe-da-praca');
     expect(h.outdoor).toHaveBeenCalledWith('cafe-da-praca');
     expect(h.enterTable).not.toHaveBeenCalled();
-    const categories = within(menu).getByTestId('totem-categories-sidebar');
-    expect(within(categories).getByRole('tab', { name: 'Bebidas' })).toBeTruthy();
-    expect(within(categories).getByRole('tab', { name: 'Lanches' })).toBeTruthy();
-    expect(within(within(menu).getByTestId('product-card-juice')).getByRole('img', { name: 'Suco da casa' }).getAttribute('src')).toBe(products[0].imageUrl);
-    expect(menu.style.getPropertyValue('--totem-accent')).toBe('#166534');
-    expect(menu.style.getPropertyValue('--totem-radius')).toBe('24px');
-    expect(menu.style.getPropertyValue('--totem-accent')).not.toBe('#FF00FF');
+    const categories = within(menu).getByLabelText('Categorias do cardápio');
+    expect(within(categories).getByRole('button', { name: /Bebidas/ })).toBeTruthy();
+    expect(within(categories).getByRole('button', { name: /Lanches/ })).toBeTruthy();
+    expect(within(within(menu).getByTestId('kiosk-product-juice')).getByRole('img', { name: 'Suco da casa' }).getAttribute('src')).toBe(products[0].imageUrl);
+    expect(menu.style.getPropertyValue('--dc-kiosk-accent')).toBe('#166534');
+    expect(menu.style.getPropertyValue('--dc-kiosk-radius')).toBe('24px');
+    expect(menu.style.getPropertyValue('--dc-kiosk-accent')).not.toBe('#FF00FF');
   });
 
   it.each(['botão', 'outdoor'])('exige os adicionais antes de adicionar pelo %s e envia opções para a sessão da mesa', async source => {
     signedSession(); render(<DineInClientApp token={TOKEN} />); await openMenu();
-    if (source === 'outdoor') fireEvent.click(await screen.findByRole('button', { name: 'Experimente o especial' }));
-    else fireEvent.click(screen.getByRole('button', { name: 'Adicionar Hambúrguer especial' }));
+    if (source === 'outdoor') fireEvent.click(await screen.findByRole('button', { name: 'Ver produto do banner: Experimente o especial' }));
+    else { fireEvent.click(screen.getByRole('button', { name: /Lanches/ })); fireEvent.click(screen.getByRole('button', { name: 'Adicionar Hambúrguer especial' })); }
     const options = await screen.findByRole('dialog', { name: 'Personalizar Hambúrguer especial' });
     const add = within(options).getByRole('button', { name: 'Adicionar à rodada' }) as HTMLButtonElement;
     expect(add.disabled).toBe(true);
     expect(screen.getByTestId('dinein-bag-counter').textContent).toContain('0');
     fireEvent.click(within(options).getByRole('button', { name: 'Escolher' }));
     expect(add.disabled).toBe(false); fireEvent.click(add);
-    fireEvent.click(screen.getByTestId('totem-cart-button'));
+    fireEvent.click(screen.getByTestId('kiosk-nav-cart'));
     const bag = screen.getByRole('dialog', { name: 'Sua sacola' });
     expect(bag.textContent).toContain('Ao ponto');
     expect(bag.textContent).toContain('22,50');
@@ -146,42 +145,42 @@ describe('QR → cardápio totem → pedido na mesa', () => {
     await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('submit_round', expect.objectContaining({
       p_session_id: 'session-3', p_items: [{ productId: 'burger', quantity: 1, notes: '', options: [{ group_id: 'point', option_id: 'medium', qty: 1, fraction: null }] }],
     })));
-    await waitFor(() => expect(screen.getByTestId('totem-cart-badge').textContent).toBe('0'));
+    await waitFor(() => expect(screen.getByTestId('dinein-bag-counter').textContent).toBe('0'));
   });
 
   it('mantém a sacola entre totem, início e Adicionar mais itens', async () => {
     render(<DineInClientApp token={TOKEN} />); await openMenu();
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar Suco da casa' }));
-    expect(screen.getByTestId('totem-cart-badge').textContent).toBe('1');
-    fireEvent.click(screen.getByTestId('totem-cart-button'));
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toBe('1');
+    fireEvent.click(screen.getByTestId('kiosk-nav-cart'));
     const bag = screen.getByRole('dialog', { name: 'Sua sacola' });
     fireEvent.click(within(bag).getByRole('button', { name: 'Aumentar Suco da casa' }));
     fireEvent.click(within(bag).getByRole('button', { name: 'Adicionar mais itens' }));
     expect(screen.queryByRole('dialog', { name: 'Sua sacola' })).toBeNull();
-    expect(screen.getByTestId('totem-cart-badge').textContent).toBe('2');
-    fireEvent.click(screen.getByTestId('totem-back-button'));
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toBe('2');
+    fireEvent.click(screen.getByTestId('kiosk-nav-home'));
     await screen.findByTestId('dinein-home');
     fireEvent.click(screen.getByTestId('dinein-bag-counter'));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Sua sacola' })).getByRole('button', { name: 'Adicionar mais itens' }));
-    expect(await screen.findByTestId('totem-menu-view')).toBeTruthy();
-    expect(screen.getByTestId('totem-cart-badge').textContent).toBe('2');
+    expect(await screen.findByTestId('dinein-premium-kiosk')).toBeTruthy();
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toBe('2');
   });
 
   it('abre os detalhes ao tocar na foto e só adiciona o produto simples após confirmação', async () => {
     render(<DineInClientApp token={TOKEN} />); await openMenu();
-    fireEvent.click(within(screen.getByTestId('product-card-juice')).getByRole('img', { name: 'Suco da casa' }));
+    fireEvent.click(within(screen.getByTestId('kiosk-product-juice')).getByRole('img', { name: 'Suco da casa' }));
     const details = await screen.findByRole('dialog', { name: 'Detalhes de Suco da casa' });
     expect(details.textContent).toContain('Frutas frescas');
-    expect(screen.getByTestId('totem-cart-badge').textContent).toBe('0');
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toBe('0');
     fireEvent.click(within(details).getByRole('button', { name: 'Adicionar à rodada' }));
     expect(screen.queryByRole('dialog', { name: 'Detalhes de Suco da casa' })).toBeNull();
-    expect(screen.getByTestId('totem-cart-badge').textContent).toBe('1');
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toBe('1');
   });
 
   it('deixa visitante navegar e montar a sacola, pedindo identidade apenas ao finalizar', async () => {
     render(<DineInClientApp token={TOKEN} />); await openMenu();
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar Suco da casa' }));
-    fireEvent.click(screen.getByTestId('totem-cart-button'));
+    fireEvent.click(screen.getByTestId('kiosk-nav-cart'));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Sua sacola' })).getByRole('button', { name: 'Finalizar pedido' }));
     expect(await screen.findByTestId('identity-gate')).toBeTruthy();
     expect(h.enterTable).not.toHaveBeenCalled();
@@ -190,6 +189,7 @@ describe('QR → cardápio totem → pedido na mesa', () => {
 
   it('não adiciona item personalizado se a conta for pedida enquanto o modal está aberto', async () => {
     signedSession(); render(<DineInClientApp token={TOKEN} />); await openMenu();
+    fireEvent.click(screen.getByRole('button', { name: /Lanches/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar Hambúrguer especial' }));
     const options = await screen.findByRole('dialog', { name: 'Personalizar Hambúrguer especial' });
     fireEvent.click(within(options).getByRole('button', { name: 'Escolher' }));
@@ -199,7 +199,7 @@ describe('QR → cardápio totem → pedido na mesa', () => {
     const stillOpen = screen.queryByRole('dialog', { name: 'Personalizar Hambúrguer especial' });
     if (stillOpen) fireEvent.click(within(stillOpen).getByRole('button', { name: 'Adicionar à rodada' }));
     expect(screen.getByTestId('dinein-bag-counter').textContent).toContain('0');
-    expect(screen.getByTestId('totem-cart-badge').textContent).toBe('0');
+    expect(screen.getByTestId('dinein-bag-counter').textContent).toBe('0');
     expect(h.rpc.mock.calls.some(call => call[0] === 'submit_round')).toBe(false);
   });
 
@@ -215,7 +215,7 @@ describe('QR → cardápio totem → pedido na mesa', () => {
     account = tab([round('DELIVERED'), round('PENDING', 'o2', '6759')]); await refreshTracking();
     expect((await screen.findByTestId('dinein-delivery-code-o2')).textContent).toContain('6759');
     expect(screen.getByTestId('dinein-track-order').textContent).toContain('6759');
-    expect(screen.getByTestId('totem-menu-view')).toBeTruthy();
+    expect(screen.getByTestId('dinein-premium-kiosk')).toBeTruthy();
     for (const channel of h.channels.values()) expect(channel.subscribe).toHaveBeenCalledTimes(1);
   });
 
@@ -225,6 +225,6 @@ describe('QR → cardápio totem → pedido na mesa', () => {
     await screen.findByTestId('dinein-track-order');
     expect(screen.queryByTestId('dinein-delivery-code-o1')).toBeNull();
     expect(screen.getByTestId('dinein-track-order').textContent).not.toContain('7777');
-    expect(screen.getByTestId('totem-menu-view').textContent).not.toContain('7777');
+    expect(screen.getByTestId('dinein-premium-kiosk').textContent).not.toContain('7777');
   });
 });

@@ -52,9 +52,15 @@ describe('Outdoor do cardápio: gestão', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Salvar banner' }));
     await waitFor(() => expect(h.save).toHaveBeenCalledExactlyOnceWith('tenant', {
       assetId: 'asset', title: 'Lanche da tarde', productId: 'product', sortOrder: 3, active: true,
-      startsAt: '2026-11-05T13:00:00.000Z', endsAt: '2026-11-05T21:00:00.000Z',
+      startsAt: '2026-11-05T13:00:00.000Z', endsAt: '2026-11-05T21:00:00.000Z', imageDurationSeconds: 6,
     }));
     expect(await screen.findByText(/Outdoor atualizado/)).toBeTruthy();
+  });
+  it('edita segundos para imagem sem aplicar temporizador aos vídeos', async () => {
+    await openNew(); await pickLibrary();
+    fireEvent.change(screen.getByLabelText('Duração da imagem em segundos'), { target: { value: '17' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar banner' }));
+    await waitFor(() => expect(h.save).toHaveBeenCalledWith('tenant', expect.objectContaining({ imageDurationSeconds: 17 })));
   });
   it('envia arquivo pelo fluxo governado e usa apenas o asset devolvido', async () => {
     await openNew();

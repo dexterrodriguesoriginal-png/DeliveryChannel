@@ -7,6 +7,9 @@ export const DEFAULT_IDLE_SECONDS = 60;
 
 export const DEFAULT_MENU_OPTIONS: Readonly<MenuOptions> = Object.freeze({
   totemMode: false,
+  serviceMode: 'TABLE',
+  productColumns: 3,
+  reuseAppBanners: false,
   idleSeconds: DEFAULT_IDLE_SECONDS,
   homeLabel: DEFAULT_HOME_LABEL,
 });
@@ -20,6 +23,9 @@ export function normalizeMenuOptions(raw: unknown): MenuOptions {
   const source = isObject(raw) ? raw : {};
   return {
     totemMode: source.totemMode === true,
+    serviceMode: source.serviceMode === 'COUNTER' || source.serviceMode === 'BOTH' ? source.serviceMode : 'TABLE',
+    productColumns: source.productColumns === 1 || source.productColumns === 2 ? source.productColumns : 3,
+    reuseAppBanners: source.reuseAppBanners === true,
     idleSeconds: isIdleSeconds(source.idleSeconds) ? source.idleSeconds : DEFAULT_IDLE_SECONDS,
     homeLabel: sanitizeHomeLabel(source.homeLabel),
   };
@@ -28,6 +34,8 @@ export function normalizeMenuOptions(raw: unknown): MenuOptions {
 /** Escrita não transforma configurações inválidas em um sucesso aparente. */
 export function isValidMenuOptions(raw: unknown): raw is MenuOptions {
   return isObject(raw)
-    && Object.keys(raw).every(key => ['totemMode', 'idleSeconds', 'homeLabel'].includes(key))
-    && typeof raw.totemMode === 'boolean' && isIdleSeconds(raw.idleSeconds) && isValidHomeLabel(raw.homeLabel);
+    && Object.keys(raw).every(key => ['totemMode', 'idleSeconds', 'homeLabel', 'serviceMode', 'productColumns', 'reuseAppBanners'].includes(key))
+    && typeof raw.totemMode === 'boolean' && isIdleSeconds(raw.idleSeconds) && isValidHomeLabel(raw.homeLabel)
+    && ['TABLE','COUNTER','BOTH'].includes(String(raw.serviceMode))
+    && typeof raw.productColumns === 'number' && [1,2,3].includes(raw.productColumns) && typeof raw.reuseAppBanners === 'boolean';
 }
