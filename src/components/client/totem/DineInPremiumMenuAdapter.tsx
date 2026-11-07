@@ -54,6 +54,7 @@ import {
 import type {
   ExpenseTab,
 } from '../../../lib/menu/premiumTotem.model';
+import type { PublicMenuOutdoorSlide } from '../../../repositories/menuOutdoorRepository';
 
 import {
   DineInPremiumMenu,
@@ -119,6 +120,7 @@ export interface DineInPremiumMenuAdapterProps {
   orderingDisabled: boolean;
   busy?: boolean;
   productColumns?: 1 | 2 | 3;
+  outdoorSlides?: PublicMenuOutdoorSlide[];
 
   verifiedSessionId?: string | null;
   tabSessionId?: string | null;
@@ -174,6 +176,7 @@ export function DineInPremiumMenuAdapter({
   orderingDisabled,
   busy = false,
   productColumns = 3,
+  outdoorSlides = [],
 
   verifiedSessionId,
   tabSessionId,
@@ -641,6 +644,7 @@ export function DineInPremiumMenuAdapter({
 
         cartCount={cartCount}
         productColumns={productColumns}
+        outdoorSlides={outdoorSlides}
         orderingDisabled={
           orderingDisabled || isPending
         }
