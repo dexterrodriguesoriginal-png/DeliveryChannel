@@ -291,13 +291,13 @@ IMPORTANTE:
   background:
     linear-gradient(
       180deg,
-      rgba(198, 124, 49, 0.07),
+      rgba(0, 0, 0, 0.04),
       transparent 55%
     ),
     var(--dc-kiosk-bg);
 
   border-right: 1px solid
-    rgba(127, 89, 57, 0.17);
+    rgba(0, 0, 0, 0.12);
 
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
@@ -330,7 +330,7 @@ IMPORTANTE:
 
   border-radius: 18px;
 
-  border: 1px solid rgba(110, 83, 63, 0.18);
+  border: 1px solid rgba(0, 0, 0, 0.12);
 
   background: var(--dc-kiosk-surface);
   color: var(--dc-kiosk-text);
@@ -338,7 +338,7 @@ IMPORTANTE:
   text-align: left;
 
   box-shadow:
-    0 3px 9px rgba(48, 26, 12, 0.07);
+    0 3px 9px rgba(0, 0, 0, 0.07);
 
   cursor: pointer;
 
@@ -352,7 +352,7 @@ IMPORTANTE:
   transform: translateY(-1px);
 
   box-shadow:
-    0 6px 16px rgba(48, 26, 12, 0.12);
+    0 6px 16px rgba(0, 0, 0, 0.12);
 }
 
 .dc-kiosk-category:active {
@@ -522,10 +522,10 @@ IMPORTANTE:
   border-radius: var(--dc-kiosk-radius);
 
   border: 1px solid
-    rgba(100, 73, 50, 0.14);
+    rgba(0, 0, 0, 0.10);
 
   box-shadow:
-    0 3px 12px rgba(62, 38, 21, 0.08);
+    0 3px 12px rgba(0, 0, 0, 0.08);
 }
 
 /* Foto clic-vel */
@@ -1131,7 +1131,7 @@ IMPORTANTE:
 
     border-right: 0;
     border-bottom:
-      1px solid rgba(127, 89, 57, 0.17);
+      1px solid rgba(0, 0, 0, 0.12);
   }
 
   .dc-kiosk-category-list {
