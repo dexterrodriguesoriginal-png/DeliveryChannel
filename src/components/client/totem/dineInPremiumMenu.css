@@ -1564,3 +1564,45 @@ IMPORTANTE:
   .dc-kiosk-nav-icon svg { width: 21px; height: 21px; }
   .dc-kiosk-actions-panel { top: calc(var(--dc-kiosk-header-height) - 2px); }
 }
+
+/* Mesa chrome: slim compatibility actions under notices (theme tokens only) */
+.dc-kiosk-mesa-chrome {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.dc-kiosk-mesa-chrome-btn {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--dc-kiosk-surface);
+  color: var(--dc-kiosk-text);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.dc-kiosk-mesa-chrome-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.dc-kiosk-role-strip {
+  margin: 0 0 10px;
+}
+.dc-kiosk-mesa-line {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--dc-kiosk-text);
+}
+.dc-kiosk-role-chip {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dc-kiosk-text);
+  opacity: 0.78;
+}
+.dc-kiosk-cart-count {
+  /* keep badge readable even at 0 for counter contract */
+  min-width: 1.1em;
+}

@@ -137,6 +137,11 @@ export interface DineInPremiumMenuAdapterProps {
   onOpenCart: () => void;
   onOpenTable: () => void;
   onOpenBill?: () => void;
+  billActionLabel?: string;
+  onMoveTable?: () => void;
+  canMoveTable?: boolean;
+  roleChip?: React.ReactNode;
+  canRequestBill?: boolean;
   onOpenKioskMenu?: () => void;
 
   onAddProduct: (product: Product) => void;
@@ -193,6 +198,11 @@ export function DineInPremiumMenuAdapter({
   onOpenCart,
   onOpenTable,
   onOpenBill,
+  billActionLabel = 'Pedir a conta',
+  onMoveTable,
+  canMoveTable = false,
+  roleChip,
+  canRequestBill: canRequestBillProp,
   onOpenKioskMenu,
 
   onAddProduct,
@@ -660,9 +670,13 @@ export function DineInPremiumMenuAdapter({
         onOpenTable={openTable}
         onOpenAccount={openTable}
         onOpenBill={() => { if (authorized && !isPending && tab?.status === 'OPEN') onOpenBill?.(); }}
+        billActionLabel={billActionLabel}
+        onMoveTable={onMoveTable}
+        canMoveTable={canMoveTable}
+        roleChip={roleChip}
         onCallWaiter={callWaiter}
         canOpenAccount={authorized && !isPending}
-        canRequestBill={authorized && !isPending && tab?.status === 'OPEN' && Boolean(onOpenBill)}
+        canRequestBill={canRequestBillProp ?? (authorized && !isPending && tab?.status === 'OPEN' && Boolean(onOpenBill) && billActionLabel === 'Pedir a conta')}
         canCallWaiter={authorized && !isPending && tab?.status !== 'CLOSED'}
         onOpenExpenses={() => {
           void openExpenses();

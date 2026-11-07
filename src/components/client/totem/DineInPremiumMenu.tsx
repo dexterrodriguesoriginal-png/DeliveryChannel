@@ -114,6 +114,10 @@ export interface DineInPremiumMenuProps {
   canOpenAccount?: boolean;
   canRequestBill?: boolean;
   canCallWaiter?: boolean;
+  billActionLabel?: string;
+  onMoveTable?: () => void;
+  canMoveTable?: boolean;
+  roleChip?: React.ReactNode;
 
   /** Opcional: menu de ações do totem. */
   onOpenKioskMenu?: () => void;
@@ -243,7 +247,7 @@ function BottomNavigation({
     },
     {
       id: 'account',
-      label: 'Minha Conta',
+      label: 'Minha conta',
       icon: CircleUserRound,
       onClick: onOpenAccount,
     },
@@ -271,10 +275,10 @@ function BottomNavigation({
                 aria-hidden={true}
               />
 
-              {item.id === 'cart' &&
-                cartCount > 0 && (
+              {item.id === 'cart' && (
                   <span
                     className="dc-kiosk-cart-count"
+                    data-testid="dinein-bag-counter"
                     aria-label={`${cartCount} itens`}
                   >
                     {cartCount > 99
@@ -328,6 +332,10 @@ export function DineInPremiumMenu({
   canOpenAccount = true,
   canRequestBill = true,
   canCallWaiter = true,
+  billActionLabel = 'Pedir a conta',
+  onMoveTable,
+  canMoveTable = false,
+  roleChip,
   onOpenKioskMenu,
 
   onAddProduct,
@@ -571,7 +579,7 @@ export function DineInPremiumMenu({
             <button type="button" className="dc-kiosk-action-row"
               onClick={() => runMenuAction(onOpenBill)} disabled={!onOpenBill || !canRequestBill}
               data-testid="kiosk-action-bill">
-              <ReceiptText size={23} aria-hidden={true} /> Pedir a conta
+              <ReceiptText size={23} aria-hidden={true} /> {billActionLabel}
             </button>
             <button type="button" className="dc-kiosk-action-row"
               onClick={() => runMenuAction(openAccount)} disabled={!canOpenAccount}
@@ -646,6 +654,39 @@ export function DineInPremiumMenu({
           className="dc-kiosk-products-area"
           aria-label="Produtos do cardápio"
         >
+          {roleChip}
+          {(onMoveTable || onOpenBill) && (
+            <div className="dc-kiosk-mesa-chrome" aria-label="Status da mesa">
+              {onMoveTable && (
+                <button
+                  type="button"
+                  data-testid="dinein-move-table-btn"
+                  disabled={!canMoveTable || busy}
+                  onClick={onMoveTable}
+                  className="dc-kiosk-mesa-chrome-btn"
+                >
+                  Mudar de mesa
+                </button>
+              )}
+              {onOpenBill && (
+                <button
+                  type="button"
+                  disabled={!canRequestBill || busy}
+                  onClick={() => onOpenBill()}
+                  className={
+                    'dc-kiosk-mesa-chrome-btn'
+                    + (billActionLabel === 'Aguardando PIX'
+                      ? ' dinein-bill-awaiting-pix'
+                      : billActionLabel === 'Conta pedida'
+                        ? ' dinein-bill-requested'
+                        : '')
+                  }
+                >
+                  {billActionLabel}
+                </button>
+              )}
+            </div>
+          )}
           {tableControls}
           <MenuOutdoorCarousel slides={outdoorSlides} onOpenProduct={id => handleProductDetails(id)} />
           <div className="dc-kiosk-category-heading">

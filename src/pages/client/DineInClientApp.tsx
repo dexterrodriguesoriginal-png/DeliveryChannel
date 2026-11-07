@@ -1528,6 +1528,20 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           onOpenCart={() => { upsell.dismiss(); setCartOpen(true); }}
           onOpenTable={() => { if (sessionId && tab?.me?.approved === true) { setAccountOpen(true); void loadAccount(true); } }}
           onOpenBill={() => { if (sessionId && tab?.me?.approved === true && !busy && !billRequested && !tabClosed && !awaitingRelease) { setBillOpen(true); void loadAccount(true); } }}
+          billActionLabel={billRequested ? billStatusLabel : 'Pedir a conta'}
+          canRequestBill={Boolean(sessionId && tab?.me?.approved === true && !busy && !billRequested && !tabClosed && !awaitingRelease)}
+          onMoveTable={() => { if (sessionId && !tabClosed) void openMoveTableModal(); }}
+          canMoveTable={Boolean(sessionId && !tabClosed && !busy && !billRequested && !awaitingRelease && moveRequest?.status !== 'PENDING')}
+          roleChip={(
+            <div className="dc-kiosk-role-strip">
+              <p className="dc-kiosk-mesa-line">Você está na {mesaTitle(tab?.tableLabel || resolution?.tableLabel)}{tab?.joinedTables?.length ? ` + ${tab.joinedTables.map(jt => jt.label).join(' + ')}` : ''} · {storeName}</p>
+              {access && myRole && (
+                <p data-testid="role-chip" className="dc-kiosk-role-chip">
+                  {myRole === 'RESPONSIBLE' ? <>Você é o responsável pela mesa</> : <>Convidado{tab?.responsibleName ? ` de ${tab.responsibleName}` : ''}</>}
+                </p>
+              )}
+            </div>
+          )}
           onAddProduct={addItem}
           onOpenProduct={product => { if (!orderingDisabled && !busy) { optionsFromUpsell.current = false; setOptionsProduct(product); setOptionChoices([]); } }}
           onRequestBill={requestPremiumBill}

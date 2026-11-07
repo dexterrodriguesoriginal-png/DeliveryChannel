@@ -119,7 +119,7 @@ describe('totem premium touch menu', () => {
     render(<DineInPremiumMenu {...menuProps()} />);
     expect(screen.getByRole('heading', { name: 'Loja' })).toBeTruthy();
     expect(screen.getByText('Cerveja A')).toBeTruthy();
-    expect(screen.getByTestId('kiosk-nav-account').textContent).toContain('Minha Conta');
+    expect(screen.getByTestId('kiosk-nav-account').textContent).toContain('Minha conta');
     expect(screen.getByTestId('kiosk-hamburger')).toBeTruthy();
     expect(screen.queryByTestId('kiosk-nav-expenses')).toBeNull();
     expect(screen.getByLabelText('3 itens')).toBeTruthy();
