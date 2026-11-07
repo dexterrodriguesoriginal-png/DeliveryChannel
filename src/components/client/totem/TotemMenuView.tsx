@@ -35,6 +35,7 @@ export interface TotemMenuViewProps {
   categories: Category[];
   products: Product[];
   outdoorSlides: TotemOutdoorSlide[];
+  productColumns?: 1 | 2 | 3;
   theme: TotemTheme;
   cartCount: number;
   onAddProduct(product: Product): void;
@@ -99,6 +100,7 @@ export default function TotemMenuView({
   categories,
   products,
   outdoorSlides,
+  productColumns = 3,
   theme = DEFAULT_TOTEM_THEME,
   cartCount,
   onAddProduct,
@@ -393,19 +395,11 @@ export default function TotemMenuView({
                 )}
 
                 {cat.imageUrl ? (
-                  <img
-                    src={cat.imageUrl}
-                    alt=""
-                    className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg object-cover"
-                    aria-hidden="true"
-                  />
+                  <img src={cat.imageUrl} alt={cat.name}
+                    className="w-full max-h-20 rounded-lg object-contain" />
                 ) : (
-                  <Utensils className="w-5 h-5 sm:w-6 sm:h-6 opacity-60" aria-hidden="true" />
+                  <span className="text-[11px] sm:text-xs md:text-sm font-bold leading-tight line-clamp-3">{cat.name}</span>
                 )}
-
-                <span className="text-[11px] sm:text-xs md:text-sm font-bold leading-tight line-clamp-2">
-                  {cat.name}
-                </span>
               </button>
             );
           })}
@@ -448,7 +442,7 @@ export default function TotemMenuView({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4 md:gap-5">
+                  <div className="grid gap-3.5 sm:gap-4 md:gap-5" style={{ gridTemplateColumns: `repeat(${productColumns}, minmax(0, 1fr))` }}>
                     {catProducts.map(product => {
                       const hasPromo = typeof product.promotionalPrice === 'number' &&
                         product.promotionalPrice > 0 &&
