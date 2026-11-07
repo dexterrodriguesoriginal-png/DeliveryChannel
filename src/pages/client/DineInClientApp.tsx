@@ -284,7 +284,9 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   // Modo totem: após a inatividade, descarta a sacola e volta ao início do QR.
   const kioskActive = menuOptions.totemMode && view === 'MENU';
   // Apenas o modo totem de QR de mesa: nunca /app/:slug ou vitrine mobile.
-  const premiumTotemActive = kioskActive && Boolean(storeTenantId);
+  // O MESMO cardápio responsivo atende QR de mesa em celular, tablet e totem;
+  // somente o wipe por inatividade depende da opção física totemMode.
+  const premiumTotemActive = view === 'MENU' && Boolean(storeTenantId);
   const outdoorSlides = menuOptions.reuseAppBanners
     ? appOutdoorSlides
     : (ownOutdoor.slug === resolution?.tenantSlug ? ownOutdoor.slides : []);
