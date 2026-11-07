@@ -37,5 +37,5 @@ export function isValidMenuOptions(raw: unknown): raw is MenuOptions {
     && Object.keys(raw).every(key => ['totemMode', 'idleSeconds', 'homeLabel', 'serviceMode', 'productColumns', 'reuseAppBanners'].includes(key))
     && typeof raw.totemMode === 'boolean' && isIdleSeconds(raw.idleSeconds) && isValidHomeLabel(raw.homeLabel)
     && ['TABLE','COUNTER','BOTH'].includes(String(raw.serviceMode))
-    && [1,2,3].includes(Number(raw.productColumns)) && typeof raw.reuseAppBanners === 'boolean';
+    && typeof raw.productColumns === 'number' && [1,2,3].includes(raw.productColumns) && typeof raw.reuseAppBanners === 'boolean';
 }

@@ -23,6 +23,8 @@ describe('menuOptions', () => {
     });
     expect(isValidMenuOptions({ ...DEFAULT_MENU_OPTIONS, serviceMode: 'BOTH', productColumns: 1 })).toBe(true);
     expect(isValidMenuOptions({ ...DEFAULT_MENU_OPTIONS, productColumns: 7 })).toBe(false);
+    expect(isValidMenuOptions({ ...DEFAULT_MENU_OPTIONS, productColumns: '2' })).toBe(false);
+    expect(isValidMenuOptions({ ...DEFAULT_MENU_OPTIONS, productColumns: true })).toBe(false);
     expect(isValidMenuOptions({ ...DEFAULT_MENU_OPTIONS, reuseAppBanners: 'yes' })).toBe(false);
   });
   it('validates writes strictly', () => {
