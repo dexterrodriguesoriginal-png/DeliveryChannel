@@ -413,7 +413,7 @@ export const CategoriesPage: React.FC = () => {
 
           <ImageUploader
             label="Imagem da Categoria (Opcional)"
-            description="Envie um arquivo JPG, PNG ou informe uma URL externa para a categoria"
+            description="Envie uma arte pronta (ícone e nome já desenhados) em JPG, PNG ou WEBP; ou deixe sem imagem para aparecer só o texto. O cardápio não cria nem edita a arte."
             value={formData.imageUrl}
             onChange={url => setFormData({ ...formData, imageUrl: url })}
             tenantId={activeTenant.id}
