@@ -7,6 +7,8 @@ import { isYouTubeId } from '../lib/youtube';
 export interface PublicMenuOutdoorSlide {
   id: string;
   imageUrl?: string;
+  /** Duração em segundos definida pelo estabelecimento para imagens. */
+  imageDurationSeconds?: number;
   videoUrl?: string;
   /** Somente o id validado (11 caracteres); o embed é montado no render. */
   youtubeId?: string;
@@ -35,6 +37,7 @@ export interface MenuOutdoorSlideDraft {
   productId?: string;
   sortOrder: number;
   active: boolean;
+  imageDurationSeconds?: number;
   startsAt?: string | null;
   endsAt?: string | null;
 }
@@ -50,6 +53,7 @@ function publicSlide(row: Record<string, unknown>): PublicMenuOutdoorSlide {
     }
     return {
       id: row.id, youtubeId: row.youtube_id,
+      imageDurationSeconds: Number(row.image_duration_seconds) || 6,
       ...(typeof row.title === 'string' && row.title ? { title: row.title } : {}),
       ...(typeof row.product_id === 'string' && row.product_id ? { productId: row.product_id } : {}),
     };
@@ -61,6 +65,7 @@ function publicSlide(row: Record<string, unknown>): PublicMenuOutdoorSlide {
   const url = supabase.storage.from('marketing-public').getPublicUrl(row.public_path).data.publicUrl;
   return {
     id: row.id,
+    imageDurationSeconds: Number(row.image_duration_seconds) || 6,
     ...(row.media_type === 'VIDEO' ? { videoUrl: url } : { imageUrl: url }),
     ...(typeof row.title === 'string' && row.title ? { title: row.title } : {}),
     ...(typeof row.product_id === 'string' && row.product_id ? { productId: row.product_id } : {}),
@@ -78,6 +83,7 @@ function staffSlide(row: Record<string, unknown>): MenuOutdoorSlide {
     tenantId: String(row.tenant_id),
     assetId: typeof row.asset_id === 'string' ? row.asset_id : '',
     sortOrder: Number(row.sort_order),
+    imageDurationSeconds: Number(row.image_duration_seconds) || 6,
     active: row.active === true,
     startsAt: typeof row.starts_at === 'string' ? row.starts_at : null,
     endsAt: typeof row.ends_at === 'string' ? row.ends_at : null,
@@ -127,6 +133,10 @@ export const menuOutdoorRepository = {
     if ((youtubeId === null) === !draft.assetId) {
       throw new BackendError('MEDIA_INVALID', 'Escolha uma foto, um vídeo ou um link do YouTube.');
     }
+    const duration = draft.imageDurationSeconds ?? 6;
+    if (!Number.isInteger(duration) || duration < 1 || duration > 120) {
+      throw new BackendError('IMAGE_DURATION_INVALID', 'A duração deve ter entre 1 e 120 segundos.');
+    }
     const { data, error } = await supabase.rpc('save_menu_outdoor_slide', {
       p_tenant_id: tenantId,
       p_id: draft.id ?? null,
@@ -138,6 +148,7 @@ export const menuOutdoorRepository = {
       p_active: draft.active,
       p_starts_at: draft.startsAt || null,
       p_ends_at: draft.endsAt || null,
+      p_image_duration_seconds: duration,
     });
     if (error) throw toBackendError(error, 'Não foi possível salvar o banner.');
     return staffSlide(data);
