@@ -18,6 +18,7 @@ export interface DineInTotemMenuProps {
   products: Product[];
   menuTheme?: MenuTheme;
   cartCount: number;
+  productColumns?: 1 | 2 | 3;
   orderingDisabled: boolean;
   busy?: boolean;
   onAddProduct(product: Product): void;
@@ -64,7 +65,7 @@ type OutdoorState = { slug: string; slides: PublicMenuOutdoorSlide[]; failed: bo
 /** Connects public catalog/design/outdoor to the existing table cart callbacks. */
 export function DineInTotemMenu({
   storeSlug, storeTenantId, storeName, logoUrl, categories, products, menuTheme,
-  cartCount, orderingDisabled, busy = false, onAddProduct, onOpenProduct, onOpenCart, onBack,
+  cartCount, productColumns = 3, orderingDisabled, busy = false, onAddProduct, onOpenProduct, onOpenCart, onBack,
 }: DineInTotemMenuProps) {
   const [outdoor, setOutdoor] = useState<OutdoorState>({ slug: '', slides: [], failed: false });
   const [retry, setRetry] = useState(0);
@@ -100,6 +101,7 @@ export function DineInTotemMenu({
   // Account polling and cart updates must not restart the presenter's carousel.
   const outdoorSlides = useMemo(() => outdoor.slug === storeSlug ? outdoor.slides.map(slide => ({
     id: slide.id, imageUrl: slide.imageUrl, videoUrl: slide.videoUrl, youtubeId: slide.youtubeId, title: slide.title,
+    imageDurationSeconds: slide.imageDurationSeconds,
     productId: slide.productId && catalog.originals.has(slide.productId) ? slide.productId : undefined,
   })) : [], [outdoor, storeSlug, catalog.originals]);
   const selectProduct = (candidate: Product, callback: (product: Product) => void) => {
@@ -125,7 +127,7 @@ export function DineInTotemMenu({
     {orderingDisabled && <p className="dinein-totem-ordering-notice" role="status">Pedidos indisponíveis no momento. Você pode continuar consultando o cardápio e sua sacola.</p>}
     <TotemMenuView key={storeSlug} storeName={storeName} logoUrl={logoUrl || undefined}
       categories={catalog.categories} products={catalog.products} outdoorSlides={outdoorSlides}
-      theme={theme} cartCount={cartCount} onAddProduct={product => selectProduct(product, onAddProduct)}
+      theme={theme} cartCount={cartCount} productColumns={productColumns} onAddProduct={product => selectProduct(product, onAddProduct)}
       onOpenProduct={product => selectProduct(product, onOpenProduct)} onOpenCart={onOpenCart} onBack={onBack} />
   </div>;
 }
