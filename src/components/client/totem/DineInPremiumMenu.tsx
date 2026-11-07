@@ -41,7 +41,10 @@ import {
   Armchair,
   ReceiptText,
   Menu,
-  Plus,
+  CircleUserRound,
+  UserRound,
+  ChevronDown,
+  X,
   Store,
 } from 'lucide-react';
 
@@ -105,6 +108,13 @@ export interface DineInPremiumMenuProps {
   onOpenCart: () => void;
   onOpenTable: () => void;
   onOpenExpenses: () => void;
+  /** Ações existentes da mesa, exibidas no menu compacto. */
+  onOpenAccount?: () => void;
+  onOpenBill?: () => void;
+  onCallWaiter?: () => void | Promise<void>;
+  canOpenAccount?: boolean;
+  canRequestBill?: boolean;
+  canCallWaiter?: boolean;
 
   /** Opcional: menu de ações do totem. */
   onOpenKioskMenu?: () => void;
@@ -203,7 +213,7 @@ interface BottomNavigationProps {
   onGoHome: () => void;
   onOpenCart: () => void;
   onOpenTable: () => void;
-  onOpenExpenses: () => void;
+  onOpenAccount: () => void;
 }
 
 function BottomNavigation({
@@ -211,7 +221,7 @@ function BottomNavigation({
   onGoHome,
   onOpenCart,
   onOpenTable,
-  onOpenExpenses,
+  onOpenAccount,
 }: BottomNavigationProps) {
   const items = [
     {
@@ -233,10 +243,10 @@ function BottomNavigation({
       onClick: onOpenTable,
     },
     {
-      id: 'expenses',
-      label: 'Meus gastos',
-      icon: ReceiptText,
-      onClick: onOpenExpenses,
+      id: 'account',
+      label: 'Minha Conta',
+      icon: CircleUserRound,
+      onClick: onOpenAccount,
     },
   ];
 
@@ -313,6 +323,12 @@ export function DineInPremiumMenu({
   onOpenCart,
   onOpenTable,
   onOpenExpenses,
+  onOpenAccount,
+  onOpenBill,
+  onCallWaiter,
+  canOpenAccount = true,
+  canRequestBill = true,
+  canCallWaiter = true,
   onOpenKioskMenu,
 
   onAddProduct,
@@ -341,6 +357,8 @@ export function DineInPremiumMenu({
 
   const [selectedCategoryId, setSelectedCategoryId] =
     useState('');
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+  const [actionsMenuError, setActionsMenuError] = useState('');
 
   // Seleção inicial e troca de estabelecimento.
   useEffect(() => {
@@ -429,6 +447,21 @@ export function DineInPremiumMenu({
     }
   }
 
+  const openAccount = onOpenAccount ?? onOpenTable;
+
+  function runMenuAction(action?: () => void | Promise<void>) {
+    setActionsMenuOpen(false);
+    setActionsMenuError('');
+    if (!action) return;
+    try {
+      void Promise.resolve(action()).catch(() => {
+        setActionsMenuError('Não foi possível realizar esta ação. Tente novamente.');
+      });
+    } catch {
+      setActionsMenuError('Não foi possível realizar esta ação. Tente novamente.');
+    }
+  }
+
   const safeCartCount = Math.max(
     0,
     Math.trunc(Number(cartCount) || 0),
@@ -506,21 +539,58 @@ export function DineInPremiumMenu({
             </button>
           )}
 
-          {onOpenKioskMenu && (
-            <button
-              type="button"
-              className="dc-kiosk-menu-button"
-              aria-label="Abrir opções do totem"
-              onClick={onOpenKioskMenu}
-            >
-              <Menu
-                size={30}
-                aria-hidden={true}
-              />
-            </button>
-          )}
+          <button
+            type="button"
+            className="dc-kiosk-menu-button"
+            aria-label={actionsMenuOpen ? 'Fechar menu' : 'Abrir menu'}
+            aria-expanded={actionsMenuOpen}
+            aria-controls="dc-kiosk-actions-menu"
+            onClick={() => {
+              setActionsMenuOpen(open => !open);
+              setActionsMenuError('');
+              onOpenKioskMenu?.();
+            }}
+            data-testid="kiosk-hamburger"
+          >
+            {actionsMenuOpen
+              ? <X size={30} aria-hidden={true} />
+              : <Menu size={30} aria-hidden={true} />}
+          </button>
         </div>
       </header>
+
+      {actionsMenuOpen && (
+        <div className="dc-kiosk-actions-backdrop" onClick={() => setActionsMenuOpen(false)}>
+          <nav
+            id="dc-kiosk-actions-menu"
+            aria-label="Ações do cardápio"
+            className="dc-kiosk-actions-panel"
+            onClick={event => event.stopPropagation()}
+          >
+            <button type="button" className="dc-kiosk-action-row"
+              onClick={() => runMenuAction(onCallWaiter)} disabled={!onCallWaiter || !canCallWaiter}
+              data-testid="kiosk-action-waiter">
+              <UserRound size={23} aria-hidden={true} /> Chamar garçom
+            </button>
+            <button type="button" className="dc-kiosk-action-row"
+              onClick={() => runMenuAction(onOpenBill)} disabled={!onOpenBill || !canRequestBill}
+              data-testid="kiosk-action-bill">
+              <ReceiptText size={23} aria-hidden={true} /> Pedir a conta
+            </button>
+            <button type="button" className="dc-kiosk-action-row"
+              onClick={() => runMenuAction(openAccount)} disabled={!canOpenAccount}
+              data-testid="kiosk-action-account">
+              <CircleUserRound size={23} aria-hidden={true} /> Minha conta
+            </button>
+            <button type="button" className="dc-kiosk-action-row"
+              onClick={() => runMenuAction(onOpenExpenses)}
+              data-testid="kiosk-action-expenses">
+              <ReceiptText size={23} aria-hidden={true} /> Meus gastos
+            </button>
+          </nav>
+        </div>
+      )}
+      {actionsMenuError && <p role="alert" className="dc-kiosk-action-error">{actionsMenuError}</p>}
 
       {/* =================================
           CONTEÚDO PRINCIPAL
@@ -557,16 +627,15 @@ export function DineInPremiumMenu({
                     )
                   }
                 >
-                  {safeMenuImageUrl(category.imageUrl) ? (
+                  {safeMenuImageUrl(category.imageUrl) && (
                     <SafeImage
                       src={category.imageUrl}
-                      alt={category.name}
+                      alt=""
                       className="dc-kiosk-category-photo"
-                      fallback={<span className="dc-kiosk-category-label">{category.name}</span>}
+                      fallback={null}
                     />
-                  ) : (
-                    <span className="dc-kiosk-category-label">{category.name}</span>
                   )}
+                  <span className="dc-kiosk-category-label">{category.name}</span>
                 </button>
               );
             })}
@@ -627,11 +696,6 @@ export function DineInPremiumMenu({
               {categoryProducts.map(product => {
                 const original =
                   originalProducts.get(product.id);
-
-                const hasOptions =
-                  original?.optionGroups?.some(
-                    group => group.active,
-                  ) ?? false;
 
                 return (
                   <article
@@ -700,16 +764,8 @@ export function DineInPremiumMenu({
                           aria-label={`Adicionar ${product.name}`}
                           data-testid={`kiosk-add-${product.id}`}
                         >
-                          <Plus
-                            size={24}
-                            aria-hidden={true}
-                          />
-
-                          <span>
-                            {hasOptions
-                              ? 'Escolher opções'
-                              : 'Adicionar'}
-                          </span>
+                          <ShoppingCart size={24} aria-hidden={true} />
+                          <span>Adicionar</span>
                         </button>
                       </div>
                     </div>
@@ -746,7 +802,9 @@ export function DineInPremiumMenu({
         onGoHome={onGoHome}
         onOpenCart={onOpenCart}
         onOpenTable={onOpenTable}
-        onOpenExpenses={onOpenExpenses}
+        onOpenAccount={() => {
+          if (canOpenAccount) openAccount();
+        }}
       />
     </div>
   );
