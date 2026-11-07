@@ -119,6 +119,7 @@ export interface DineInPremiumMenuAdapterProps {
   cartCount: number;
   orderingDisabled: boolean;
   busy?: boolean;
+  tableControls?: React.ReactNode;
   productColumns?: 1 | 2 | 3;
   outdoorSlides?: PublicMenuOutdoorSlide[];
 
@@ -175,6 +176,7 @@ export function DineInPremiumMenuAdapter({
   cartCount,
   orderingDisabled,
   busy = false,
+  tableControls,
   productColumns = 3,
   outdoorSlides = [],
 
@@ -643,6 +645,7 @@ export function DineInPremiumMenuAdapter({
         homeDesign={homeDesign}
 
         cartCount={cartCount}
+        tableControls={tableControls}
         productColumns={productColumns}
         outdoorSlides={outdoorSlides}
         orderingDisabled={

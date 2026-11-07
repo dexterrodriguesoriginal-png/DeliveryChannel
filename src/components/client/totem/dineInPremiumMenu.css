@@ -1344,3 +1344,8 @@ IMPORTANTE:
  .dc-kiosk-products-area { min-width: 0; overflow-y: auto; }
 }
 .dc-kiosk-category-photo { width: 100%; max-height: 96px; object-fit: contain; }
+
+/* Keep the mobile sidebar and products in the same full-height grid row. */
+@media (max-width: 640px) {
+  .dc-kiosk-main { grid-template-rows: minmax(0, 1fr) !important; }
+}

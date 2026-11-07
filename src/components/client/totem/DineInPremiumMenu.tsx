@@ -96,6 +96,7 @@ export interface DineInPremiumMenuProps {
 
   orderingDisabled: boolean;
   busy?: boolean;
+  tableControls?: React.ReactNode;
   productColumns?: 1 | 2 | 3;
   outdoorSlides?: PublicMenuOutdoorSlide[];
 
@@ -304,6 +305,7 @@ export function DineInPremiumMenu({
   cartCount,
   orderingDisabled,
   busy = false,
+  tableControls,
   productColumns = 3,
   outdoorSlides = [],
 
@@ -579,6 +581,7 @@ export function DineInPremiumMenu({
           className="dc-kiosk-products-area"
           aria-label="Produtos do cardápio"
         >
+          {tableControls}
           <MenuOutdoorCarousel slides={outdoorSlides} onOpenProduct={id => handleProductDetails(id)} />
           <div className="dc-kiosk-category-heading">
             <div className="dc-kiosk-category-title-row">
@@ -694,6 +697,7 @@ export function DineInPremiumMenu({
                           onClick={() =>
                             handleAdd(product.id)
                           }
+                          aria-label={`Adicionar ${product.name}`}
                           data-testid={`kiosk-add-${product.id}`}
                         >
                           <Plus
