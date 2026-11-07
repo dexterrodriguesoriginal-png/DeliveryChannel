@@ -1513,7 +1513,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           products={products}
           menuTheme={menuTheme}
           homeDesign={storeHomeDesign}
-          tableControls={<>{tableHeader}{tableNotices}{tableActions}</>}
+          tableControls={tableNotices}
           productColumns={menuOptions.productColumns}
           outdoorSlides={outdoorSlides}
           cartCount={totalCartItems}
@@ -1527,6 +1527,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           onGoHome={() => setView('HOME')}
           onOpenCart={() => { upsell.dismiss(); setCartOpen(true); }}
           onOpenTable={() => { if (sessionId && tab?.me?.approved === true) { setAccountOpen(true); void loadAccount(true); } }}
+          onOpenBill={() => { if (sessionId && tab?.me?.approved === true && !busy && !billRequested && !tabClosed && !awaitingRelease) { setBillOpen(true); void loadAccount(true); } }}
           onAddProduct={addItem}
           onOpenProduct={product => { if (!orderingDisabled && !busy) { optionsFromUpsell.current = false; setOptionsProduct(product); setOptionChoices([]); } }}
           onRequestBill={requestPremiumBill}
