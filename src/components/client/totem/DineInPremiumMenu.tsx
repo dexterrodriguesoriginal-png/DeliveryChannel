@@ -43,7 +43,6 @@ import {
   Menu,
   CircleUserRound,
   UserRound,
-  ChevronDown,
   X,
   Store,
 } from 'lucide-react';
@@ -515,10 +514,7 @@ export function DineInPremiumMenu({
               {storeName}
             </h1>
 
-            <p className="dc-kiosk-store-tagline">
-              {storeTagline ||
-                'Bem-vindo ao nosso cardápio'}
-            </p>
+
           </div>
         </div>
 
