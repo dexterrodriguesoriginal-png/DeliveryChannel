@@ -23,6 +23,7 @@ export interface TotemOutdoorSlide {
   youtubeId?: string;
   title?: string;
   productId?: string;
+  imageDurationSeconds?: number;
 }
 
 /** Fotos ficam 5,5 s; YouTube (sem evento de fim) fica 60 s; vídeo enviado avança ao terminar. */
@@ -157,7 +158,9 @@ export default function TotemMenuView({
   }, [slideCount]);
   useEffect(() => {
     if (slideCount <= 1 || currentKind === 'video') return;
-    const timer = setTimeout(advanceSlide, currentKind === 'youtube' ? OUTDOOR_YOUTUBE_MS : OUTDOOR_IMAGE_MS);
+    const duration = outdoorSlides[currentSlideIndex % slideCount]?.imageDurationSeconds;
+    const imageMilliseconds = Number.isInteger(duration) && Number(duration) >= 1 && Number(duration) <= 120 ? Number(duration) * 1000 : OUTDOOR_IMAGE_MS;
+    const timer = setTimeout(advanceSlide, currentKind === 'youtube' ? OUTDOOR_YOUTUBE_MS : imageMilliseconds);
     return () => clearTimeout(timer);
   }, [outdoorSlides, slideCount, currentSlideIndex, currentKind, advanceSlide]);
 
@@ -274,6 +277,7 @@ export default function TotemMenuView({
                 autoPlay
                 loop={slideCount <= 1}
                 onEnded={advanceSlide}
+                onError={advanceSlide}
                 muted
                 playsInline
                 className="w-full h-full object-cover"
