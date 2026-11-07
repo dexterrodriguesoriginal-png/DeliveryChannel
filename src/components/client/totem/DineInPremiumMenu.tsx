@@ -94,6 +94,7 @@ export interface DineInPremiumMenuProps {
 
   orderingDisabled: boolean;
   busy?: boolean;
+  productColumns?: 1 | 2 | 3;
 
   /** Navegação controlada pelo app existente. */
   onGoHome: () => void;
@@ -300,6 +301,7 @@ export function DineInPremiumMenu({
   cartCount,
   orderingDisabled,
   busy = false,
+  productColumns = 3,
 
   onGoHome,
   onOpenCart,
@@ -552,21 +554,16 @@ export function DineInPremiumMenu({
                     )
                   }
                 >
-                  <SafeImage
-                    src={category.imageUrl}
-                    alt={category.name}
-                    className="dc-kiosk-category-photo"
-                    fallback={
-                      <Icon
-                        size={34}
-                        aria-hidden={true}
-                      />
-                    }
-                  />
-
-                  <span className="dc-kiosk-category-label">
-                    {category.name}
-                  </span>
+                  {safeMenuImageUrl(category.imageUrl) ? (
+                    <SafeImage
+                      src={category.imageUrl}
+                      alt={category.name}
+                      className="dc-kiosk-category-photo"
+                      fallback={<span className="dc-kiosk-category-label">{category.name}</span>}
+                    />
+                  ) : (
+                    <span className="dc-kiosk-category-label">{category.name}</span>
+                  )}
                 </button>
               );
             })}
@@ -620,6 +617,7 @@ export function DineInPremiumMenu({
             <div
               className="dc-kiosk-products-grid"
               data-testid="kiosk-products-grid"
+              style={{ gridTemplateColumns: `repeat(${productColumns}, minmax(0, 1fr))` }}
             >
               {categoryProducts.map(product => {
                 const original =
