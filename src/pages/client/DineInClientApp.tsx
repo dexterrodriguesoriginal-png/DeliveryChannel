@@ -524,7 +524,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   }, [token]);
 
   const openOrJoin = useCallback(async (overrideName?: string) => {
-    if (!supabaseUser || resolvedToken !== token || !accessReady || !resolution?.available || !deviceIdRef.current) return;
+    if (loading || menuOptions.serviceMode === 'COUNTER' || !supabaseUser || resolvedToken !== token || !accessReady || !resolution?.available || !deviceIdRef.current) return;
     if (supabaseUser.is_anonymous || sessionId) return;
     // A saved session remains the account identity after moving tables. Never
     // reopen the original QR's now-free table while restoring that session.
@@ -603,7 +603,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setNotice('');
     setBusy(false);
     setJoinBusy(false);
-  }, [access, accessReady, applyEntry, contextMatches, displayNameForEntry, firstName, inviteCode, resolution?.available, resolvedToken, sessionId, supabaseUser, token]);
+  }, [access, accessReady, applyEntry, contextMatches, displayNameForEntry, firstName, inviteCode, loading, menuOptions.serviceMode, resolution?.available, resolvedToken, sessionId, supabaseUser, token]);
 
   // Entrada pelo QR: o vínculo/ocupação é criado SOMENTE pelas RPCs
   // enterTable/open_or_join_tab depois da autenticação. Nunca por estado local.
@@ -622,13 +622,13 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     // The reset above and this effect run in the same flush. Do not reuse the
     // preceding account's confirmation before React applies its state reset.
     if (identitySwitchPendingRef.current) { identitySwitchPendingRef.current = false; return; }
-    if (!supabaseUser || supabaseUser.is_anonymous || !resolution?.available) return;
+    if (loading || menuOptions.serviceMode === 'COUNTER' || !supabaseUser || supabaseUser.is_anonymous || !resolution?.available) return;
     if (access) {
       if (!supabaseUser.is_anonymous && identityConfirmed) void openOrJoin();
       return;
     }
     if (!qrPaused) void openOrJoin();
-  }, [supabaseUser, resolution?.available, qrPaused, access, identityConfirmed, openOrJoin]);
+  }, [supabaseUser, resolution?.available, qrPaused, access, identityConfirmed, openOrJoin, loading, menuOptions.serviceMode]);
 
   // Once registration/login returns, continue with the preserved cart; never send an order
   // automatically: the customer still reviews and confirms the items.
