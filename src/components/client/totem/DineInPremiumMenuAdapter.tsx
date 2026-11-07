@@ -136,6 +136,7 @@ export interface DineInPremiumMenuAdapterProps {
   onGoHome: () => void;
   onOpenCart: () => void;
   onOpenTable: () => void;
+  onOpenBill?: () => void;
   onOpenKioskMenu?: () => void;
 
   onAddProduct: (product: Product) => void;
@@ -191,6 +192,7 @@ export function DineInPremiumMenuAdapter({
   onGoHome,
   onOpenCart,
   onOpenTable,
+  onOpenBill,
   onOpenKioskMenu,
 
   onAddProduct,
@@ -656,6 +658,12 @@ export function DineInPremiumMenuAdapter({
         onGoHome={goHome}
         onOpenCart={onOpenCart}
         onOpenTable={openTable}
+        onOpenAccount={openTable}
+        onOpenBill={() => { if (authorized && !isPending && tab?.status === 'OPEN') onOpenBill?.(); }}
+        onCallWaiter={callWaiter}
+        canOpenAccount={authorized && !isPending}
+        canRequestBill={authorized && !isPending && tab?.status === 'OPEN' && Boolean(onOpenBill)}
+        canCallWaiter={authorized && !isPending && tab?.status !== 'CLOSED'}
         onOpenExpenses={() => {
           void openExpenses();
         }}
