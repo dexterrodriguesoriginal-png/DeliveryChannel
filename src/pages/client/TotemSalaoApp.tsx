@@ -23,8 +23,8 @@ import { safeHomeImageUrl } from '../../lib/storeHome/storeHome.model';
 import { TotemCapaScreen } from '../../components/client/totem/TotemCapaScreen';
 import { DineInPremiumMenu } from '../../components/client/totem/DineInPremiumMenu';
 import { TotemKioskLayer } from '../../components/client/totem/TotemKioskLayer';
+import { requestTotemFullscreenOnce } from '../../lib/menu/fullscreen';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
-import { useAutoFullscreen } from '../../hooks/useAutoFullscreen';
 import {
   addDineInCartLine,
   changeDineInCartLineQuantity,
@@ -57,7 +57,6 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
   const [optionChoices, setOptionChoices] = useState<SelectedProductOption[]>([]);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
-  useAutoFullscreen(true);
 
   useEffect(() => {
     let alive = true;
@@ -207,7 +206,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
           buttonBackground={buttonColors.background}
           buttonColor={buttonColors.color}
           backdrop={menuTheme.background}
-          onStart={() => setView('MENU')}
+          onStart={() => { void requestTotemFullscreenOnce(); setView('MENU'); }}
         />
       )}
 

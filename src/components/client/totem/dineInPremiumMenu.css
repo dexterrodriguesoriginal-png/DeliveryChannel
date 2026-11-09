@@ -2085,12 +2085,17 @@ IMPORTANTE:
   --dc-kiosk-footer-height: 18vh;
   --dc-kiosk-sidebar-width: 22vw;
   --dc-kiosk-card-gap: clamp(10px, 1.1vw, 16px);
-  /* banner (auto=0 se vazio) + cardápio + painel do pedido */
-  grid-template-rows: auto minmax(0, 1fr) 18vh !important;
+  /* banner (auto=0 se vazio) + cardápio + painel (0 se o carrinho estiver vazio) */
+  grid-template-rows: auto minmax(0, 1fr) 0 !important;
   grid-template-areas:
     "banner"
     "main"
     "footer";
+  transition: grid-template-rows 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+.dc-kiosk[data-variant="totem"][data-order="true"] {
+  grid-template-rows: auto minmax(0, 1fr) 18vh !important;
 }
 
 .dc-kiosk[data-variant="totem"] .dc-kiosk-totem-banner {
@@ -2107,6 +2112,28 @@ IMPORTANTE:
 
 .dc-kiosk[data-variant="totem"] .dc-kiosk-order-panel {
   grid-area: footer;
+  min-height: 0;
+  transition:
+    transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.28s ease,
+    min-height 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    max-height 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    padding 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+.dc-kiosk[data-variant="totem"]:not([data-order="true"]) .dc-kiosk-order-panel {
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+  height: 0 !important;
+  max-height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+  overflow: hidden;
 }
 
 .dc-kiosk[data-variant="totem"] .dc-kiosk-main {
@@ -2581,6 +2608,9 @@ IMPORTANTE:
   .dc-kiosk[data-variant="totem"] {
     --dc-kiosk-sidebar-width: 26vw;
     --dc-kiosk-footer-height: auto;
+    grid-template-rows: auto minmax(0, 1fr) 0 !important;
+  }
+  .dc-kiosk[data-variant="totem"][data-order="true"] {
     grid-template-rows: auto minmax(0, 1fr) auto !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-main {
@@ -2654,4 +2684,11 @@ IMPORTANTE:
     font-size: 1.15rem !important;
   }
   .dc-kiosk-order-qty button { width: 28px; height: 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-kiosk[data-variant="totem"],
+  .dc-kiosk[data-variant="totem"] .dc-kiosk-order-panel {
+    transition: none !important;
+  }
 }

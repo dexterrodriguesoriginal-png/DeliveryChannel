@@ -34,3 +34,39 @@ export async function requestFullscreen(doc: Document = document): Promise<boole
   } catch { /* iOS Safari e permissões recusam sem quebrar o cardápio */ }
   return isFullscreenActive(doc);
 }
+
+export type StandaloneNav = Navigator & { standalone?: boolean };
+
+/** App instalado (PWA fullscreen/standalone ou iOS navigator.standalone), já em tela cheia sem o aviso do Chrome. */
+export function isInstalledDisplayMode(win: Window = window): boolean {
+  const nav = win.navigator as StandaloneNav;
+  if (nav.standalone === true) return true;
+  if (typeof win.matchMedia !== 'function') return false;
+  return win.matchMedia('(display-mode: fullscreen)').matches
+    || win.matchMedia('(display-mode: standalone)').matches;
+}
+
+let totemFullscreenRequestedThisSession = false;
+
+/** Só para testes: zera o controle "uma vez por sessão". */
+export function resetTotemFullscreenSession(): void {
+  totemFullscreenRequestedThisSession = false;
+}
+
+/**
+ * Totem em aba comum: pede tela cheia no máximo uma vez por sessão (no toque do CTA da capa).
+ * Não chama a API se já estiver em PWA/kiosk (display-mode fullscreen/standalone), para não
+ * mostrar o aviso do Chrome Android. Nunca re-pede ao sair da tela cheia.
+ */
+export async function requestTotemFullscreenOnce(
+  doc: Document = document,
+  win: Window = window,
+): Promise<boolean> {
+  if (typeof win !== 'undefined' && isInstalledDisplayMode(win)) {
+    return isFullscreenActive(doc);
+  }
+  if (totemFullscreenRequestedThisSession) return isFullscreenActive(doc);
+  totemFullscreenRequestedThisSession = true;
+  if (isFullscreenActive(doc) || !isFullscreenSupported(doc)) return isFullscreenActive(doc);
+  return requestFullscreen(doc);
+}

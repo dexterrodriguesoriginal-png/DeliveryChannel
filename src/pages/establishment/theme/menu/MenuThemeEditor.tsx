@@ -112,7 +112,7 @@ export function MenuThemeEditor({ tenant, active = true }: { tenant: Tenant; act
         </>}
         {!loading && <MenuHeaderPanel securityContext={securityContext} tenantId={tenant.id} />}
         {!loading && <MenuOptionsPanel securityContext={securityContext} tenantId={tenant.id} />}
-        {!loading && <TotemWelcomePanel securityContext={securityContext} tenantId={tenant.id} theme={draft} />}
+        {!loading && <TotemWelcomePanel securityContext={securityContext} tenantId={tenant.id} theme={draft} slug={tenant.slug} storeName={tenant.theme.storeName || tenant.name} />}
       </main>
       <aside className="menu-design-live" aria-label="Prévia ao vivo do cardápio"><div className="menu-design-preview-toolbar"><div><span className="theme-eyebrow">PRÉVIA AO VIVO</span><h2>Comer com os olhos</h2></div><div className="menu-design-device-toggle" role="group" aria-label="Formato da prévia"><button type="button" aria-label="Prévia no celular" aria-pressed={device === 'phone'} onClick={() => setDevice('phone')}><Smartphone size={17} /></button><button type="button" aria-label="Prévia no tablet" aria-pressed={device === 'tablet'} onClick={() => setDevice('tablet')}><Tablet size={17} /></button></div></div><MenuThemePreview theme={draft} storeName={tenant.theme.storeName || tenant.name} categories={categories.map(category => category.name)} products={previewProducts} device={device} /><p className="menu-design-preview-caption">{products.length ? 'Prévia com produtos do seu catálogo.' : 'Produtos ilustrativos. Seu catálogo continua o mesmo.'} As alterações aparecem aqui antes de salvar.</p></aside>
     </div>

@@ -10,7 +10,6 @@ import type { MenuTheme } from '../../types/menuTheme';
 import type { MenuOptions } from '../../types/menuOptions';
 import { DEFAULT_MENU_OPTIONS } from '../../lib/menu/menuOptions';
 import { TotemKioskLayer } from '../../components/client/totem/TotemKioskLayer';
-import { useAutoFullscreen } from '../../hooks/useAutoFullscreen';
 import { productToPricingLine } from '../../lib/pricing/fulfillmentPricing';
 import { useSmartUpsell } from '../../hooks/useSmartUpsell';
 import { UpsellSheet } from '../../components/client/customer/UpsellSheet';
@@ -122,8 +121,6 @@ const paymentChoices: Array<{ value: DineInPaymentMethod; label: string }> = [
 
 export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const { supabaseUser, signOut } = useAuth();
-  // Tela cheia no primeiro toque; iOS Safari recusa em silêncio.
-  useAutoFullscreen(true);
   const [resolution, setResolution] = useState<TableResolution | null>(null);
   const [resolvedToken, setResolvedToken] = useState('');
   const [storeName, setStoreName] = useState('');
