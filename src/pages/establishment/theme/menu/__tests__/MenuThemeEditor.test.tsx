@@ -15,6 +15,7 @@ vi.mock('../../../../../repositories/menuThemeRepository', async importOriginal 
 }));
 vi.mock('../../../../../repositories/menuOptionsRepository', () => ({ menuOptionsRepository: { load: vi.fn().mockResolvedValue({ totemMode: false, idleSeconds: 60 }), save: vi.fn() } }));
 vi.mock('../../../../../repositories/menuHeaderRepository', () => ({ menuHeaderRepository: { load: vi.fn().mockResolvedValue({ coverUrl: null, categoryMenuMode: 'ICON' }), save: vi.fn(), uploadCover: vi.fn() } }));
+vi.mock('../../../../../repositories/totemWelcomeRepository', () => ({ totemWelcomeRepository: { load: vi.fn().mockResolvedValue({ slides: [], imageSeconds: 6, buttonText: 'Toque para começar', buttonStyle: 'BAR', buttonBg: null, buttonFg: null, idleSeconds: 90 }), save: vi.fn(), uploadSlide: vi.fn() } }));
 vi.mock('../../../../../repositories/productRepository', () => ({ productRepository: { getProducts: mocks.product } }));
 vi.mock('../../../../../repositories/categoryRepository', () => ({ categoryRepository: { getCategories: mocks.category } }));
 vi.mock('../../../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: true }));

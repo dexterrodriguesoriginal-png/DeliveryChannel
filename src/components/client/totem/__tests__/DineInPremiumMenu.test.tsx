@@ -282,3 +282,45 @@ describe('totem premium authorized expenses', () => {
     expect(screen.queryByRole('button', { name: /Reabrir comanda/i })).toBeNull();
   });
 });
+
+describe('totem do salão variant', () => {
+  it('hides the cover, mesa pill and app nav, and shows the fixed order panel', () => {
+    const onChange = vi.fn();
+    const onCheckout = vi.fn();
+    render(
+      <DineInPremiumMenu
+        {...menuProps()}
+        variant="TOTEM"
+        coverUrl="https://example.com/capa.jpg"
+        tableLabel="Mesa 04"
+        roleChip={<span>Você está na Mesa 04</span>}
+        orderLines={[
+          { key: 'a', name: 'Cerveja A', quantity: 2, unitPriceCents: 1000 },
+        ]}
+        orderSubtotalCents={2000}
+        onChangeOrderQuantity={onChange}
+        onCheckoutOrder={onCheckout}
+      />,
+    );
+    const root = screen.getByTestId('dinein-premium-kiosk');
+    expect(root.getAttribute('data-variant')).toBe('totem');
+    expect(screen.queryByTestId('kiosk-header')).toBeNull();
+    expect(screen.queryByTestId('kiosk-cover-image')).toBeNull();
+    expect(screen.queryByTestId('kiosk-hamburger')).toBeNull();
+    expect(screen.queryByText('Mesa 04')).toBeNull();
+    expect(screen.queryByText('Você está na Mesa')).toBeNull();
+    expect(screen.queryByTestId('kiosk-nav-home')).toBeNull();
+    expect(screen.queryByTestId('kiosk-nav-cart')).toBeNull();
+    expect(screen.queryByTestId('kiosk-nav-table')).toBeNull();
+    expect(screen.queryByTestId('kiosk-nav-account')).toBeNull();
+    expect(screen.getByLabelText('Categorias do cardápio')).toBeTruthy();
+    expect(screen.getByTestId('totem-order-panel')).toBeTruthy();
+    expect(screen.getByText('Seu pedido')).toBeTruthy();
+    expect(screen.getByTestId('totem-counter-chip').textContent).toBe('Pague e retire no balcão');
+    expect(screen.getByTestId('totem-order-subtotal').textContent).toMatch(/20/);
+    fireEvent.click(screen.getByLabelText('Aumentar Cerveja A'));
+    expect(onChange).toHaveBeenCalledWith('a', 1);
+    fireEvent.click(screen.getByTestId('totem-order-checkout'));
+    expect(onCheckout).toHaveBeenCalledOnce();
+  });
+});

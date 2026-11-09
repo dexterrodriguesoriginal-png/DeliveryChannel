@@ -1,0 +1,73 @@
+.totem-welcome-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: 20px;
+  align-items: start;
+}
+.totem-welcome-settings h3 {
+  margin: 1.1rem 0 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+.totem-welcome-hint { margin: 0 0 0.7rem; font-size: 0.82rem; opacity: 0.8; }
+.totem-welcome-slides { list-style: none; margin: 0 0 0.7rem; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.totem-welcome-empty { font-size: 0.85rem; opacity: 0.75; }
+.totem-welcome-slide {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 12px;
+}
+.totem-welcome-slide img,
+.totem-welcome-slide video {
+  width: 64px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #111;
+}
+.totem-welcome-slide-actions { display: flex; gap: 4px; }
+.totem-welcome-slide-actions button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+  cursor: pointer;
+}
+.totem-welcome-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; margin: 0.5rem 0; }
+.totem-welcome-field input[type="number"],
+.totem-welcome-field input[type="text"] {
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  font: inherit;
+}
+.totem-welcome-check { flex-direction: row; align-items: center; gap: 8px; font-weight: 700; }
+.totem-welcome-presets,
+.totem-welcome-styles { display: flex; flex-direction: column; gap: 6px; border: 0; margin: 0.4rem 0; padding: 0; }
+.totem-welcome-styles label,
+.totem-welcome-presets label { display: flex; align-items: baseline; gap: 8px; font-size: 0.9rem; }
+.totem-welcome-styles small { opacity: 0.7; }
+.totem-welcome-colors { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.totem-welcome-preview-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 8px solid #1e1e1e;
+  background: #111;
+  box-shadow: 0 16px 40px rgba(0,0,0,.2);
+}
+.totem-welcome-preview-frame .dc-totem-capa { height: 100%; }
+.totem-welcome-preview-frame .dc-totem-capa-button { min-height: 44px; font-size: 0.85rem; padding: 8px 12px; gap: 6px; }
+@media (max-width: 900px) {
+  .totem-welcome-layout { grid-template-columns: 1fr; }
+  .totem-welcome-preview-frame { max-width: 260px; }
+}

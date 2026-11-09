@@ -23,3 +23,14 @@ export async function toggleFullscreen(doc: Document = document): Promise<boolea
   } catch { /* o navegador pode negar a tela cheia; o cardápio segue funcionando */ }
   return isFullscreenActive(doc);
 }
+
+/** Entra em tela cheia a partir de um gesto do usuário. Falha silenciosa (ex.: iOS Safari). */
+export async function requestFullscreen(doc: Document = document): Promise<boolean> {
+  if (isFullscreenActive(doc) || !isFullscreenSupported(doc)) return isFullscreenActive(doc);
+  const el = doc.documentElement as FullscreenEl;
+  try {
+    if (el.requestFullscreen) await el.requestFullscreen();
+    else await el.webkitRequestFullscreen?.();
+  } catch { /* iOS Safari e permissões recusam sem quebrar o cardápio */ }
+  return isFullscreenActive(doc);
+}

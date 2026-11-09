@@ -12,6 +12,7 @@ import path from 'node:path';
 import type { Request, Response, Router } from 'express';
 import express from 'express';
 import { buildStoreManifest, FALLBACK_THEME_COLOR, ManifestIcon, safeColor, storeDisplayName, storeIconVersion, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
+import { buildTotemManifest } from '../../src/lib/pwa/totemManifest';
 import { ICON_VARIANTS, IconVariant, renderInitialsPng, renderLogoPng } from './icons';
 import { fetchPublicImage } from './safeFetch';
 import { isValidSlug, StoreResolver } from './storeSource';
@@ -153,6 +154,18 @@ export function serverManifest(store: StoreIdentityInput) {
   return buildStoreManifest(store, '', icons);
 }
 
+export function serverTotemManifest(store: StoreIdentityInput) {
+  const base = `/app/${encodeURIComponent(store.slug)}/icons`;
+  const v = iconVersion(store);
+  const icons: ManifestIcon[] = [
+    { src: `${base}/icon-192.png?v=${v}`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: `${base}/icon-512.png?v=${v}`, sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: `${base}/maskable-512.png?v=${v}`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+  ];
+  const manifest = buildTotemManifest(store, '');
+  return { ...manifest, icons };
+}
+
 export type PwaRouter = Router & { lookupStore: (slug: string) => Promise<StoreIdentityInput | null> };
 
 interface CachedLogoEntry {
@@ -276,6 +289,15 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     res.set('Cache-Control', 'no-cache');
     res.set('X-Content-Type-Options', 'nosniff');
     res.send(JSON.stringify(serverManifest(store)));
+  });
+
+  router.get('/totem/:slug/manifest.webmanifest', async (req, res) => {
+    const store = await guard(req, res);
+    if (!store) return;
+    res.set('Content-Type', 'application/manifest+json; charset=utf-8');
+    res.set('Cache-Control', 'no-cache');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.send(JSON.stringify(serverTotemManifest(store)));
   });
 
   router.get('/app/:slug/icons/:variant.png', async (req, res) => {

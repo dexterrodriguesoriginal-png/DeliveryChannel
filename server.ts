@@ -17,6 +17,7 @@ import path from 'node:path';
 import { createPwaRouter, staticAssetCacheControl } from './server/pwa/routes';
 import fs from 'node:fs/promises';
 import { injectStoreHead, storeSlugFromPath, withTimeout } from './server/pwa/storeHtml';
+import { injectTotemHead, isTotemRoute, totemSlugFromPath } from './src/lib/pwa/totemManifest';
 import { demoResolver, StoreResolver, supabaseEnvFrom, supabaseResolver } from './server/pwa/storeSource';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -87,6 +88,17 @@ async function start() {
         res.type('html').send(await storeHtml(req, raw, slug));
       } catch (e) { next(e); }
     });
+    app.get(['/totem', '/totem/*'], async (req, res, next) => {
+      const slug = totemSlugFromPath(req.path);
+      if (!slug || !isHtmlNav(req)) return next();
+      try {
+        const raw = await vite.transformIndexHtml(req.originalUrl, await fs.readFile(path.resolve(process.cwd(), 'index.html'), 'utf8'));
+        const store = await withTimeout(pwa.lookupStore(slug), 1500, null);
+        const title = store ? `${store.theme?.storeName || store.name} — Totem` : 'Totem do salão';
+        res.setHeader('Cache-Control', 'no-cache');
+        res.type('html').send(injectTotemHead(raw, slug, title));
+      } catch (e) { next(e); }
+    });
     app.use(vite.middlewares);
   } else {
     let indexHtml: Promise<string> | undefined;
@@ -108,6 +120,17 @@ async function start() {
       if (isWaiterRoute(req.path)) {
         indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
         indexHtml.then(raw => res.set('Cache-Control', 'no-cache').type('html').send(injectWaiterHead(raw)), next);
+        return;
+      }
+      if (isTotemRoute(req.path)) {
+        const totemSlug = totemSlugFromPath(req.path);
+        indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
+        if (!totemSlug) { res.sendFile(path.join(distDir, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } }); return; }
+        indexHtml.then(async (raw) => {
+          const store = await withTimeout(pwa.lookupStore(totemSlug), 1500, null);
+          const title = store ? `${store.theme?.storeName || store.name} — Totem` : 'Totem do salão';
+          return injectTotemHead(raw, totemSlug, title);
+        }).then((h) => res.set('Cache-Control', 'no-cache').type('html').send(h), next);
         return;
       }
       if (!slug) { res.sendFile(path.join(distDir, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } }); return; }

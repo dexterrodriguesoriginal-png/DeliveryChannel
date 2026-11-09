@@ -2073,3 +2073,183 @@ IMPORTANTE:
 @media (min-width: 700px) {
   .dc-kiosk .dc-kiosk-product-photo-button { aspect-ratio: 4 / 3 !important; }
 }
+
+/* =========================================================
+   TOTEM DO SALÃO (balcão, sem mesa): sem capa/logo/nav de app
+   Painel fixo do pedido no rodapé. Cores só do tema.
+   ========================================================= */
+
+.dc-kiosk[data-variant="totem"] {
+  --dc-kiosk-header-height: 0px;
+  --dc-kiosk-footer-height: auto;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.dc-kiosk[data-variant="totem"] .dc-kiosk-main {
+  min-height: 0;
+}
+
+.dc-kiosk-order-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--dc-kiosk-surface);
+  color: var(--dc-kiosk-text);
+  border-top: var(--dc-kiosk-card-border, 1px solid color-mix(in srgb, var(--dc-kiosk-text) 14%, transparent));
+  box-shadow: 0 -8px 24px color-mix(in srgb, var(--dc-kiosk-text) 8%, transparent);
+  max-height: min(42vh, 420px);
+}
+
+.dc-kiosk-order-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 0;
+}
+
+.dc-kiosk-order-title {
+  margin: 0;
+  font-size: clamp(1.05rem, 2.2vw, 1.35rem);
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.dc-kiosk-order-chip {
+  margin: 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dc-kiosk-accent) 16%, var(--dc-kiosk-surface));
+  color: var(--dc-kiosk-text);
+  font-size: clamp(0.7rem, 1.5vw, 0.85rem);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dc-kiosk-order-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  min-height: 2.2rem;
+  max-height: 16vh;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dc-kiosk-order-empty {
+  opacity: 0.7;
+  font-size: 0.9rem;
+  padding: 4px 0;
+}
+
+.dc-kiosk-order-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+
+.dc-kiosk-order-line-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dc-kiosk-order-line-copy strong {
+  font-size: 0.92rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dc-kiosk-order-line-detail {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dc-kiosk-order-qty {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--dc-kiosk-text) 18%, transparent);
+  border-radius: 999px;
+  padding: 2px;
+}
+
+.dc-kiosk-order-qty button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dc-kiosk-text) 8%, transparent);
+  color: inherit;
+  cursor: pointer;
+}
+
+.dc-kiosk-order-qty span {
+  min-width: 1.25rem;
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.dc-kiosk-order-line-price {
+  font-size: 0.95rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.dc-kiosk-order-subtotal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding-top: 2px;
+}
+
+.dc-kiosk-order-subtotal strong {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.dc-kiosk-order-checkout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 58px;
+  margin: 0;
+  border: 0;
+  border-radius: calc(var(--dc-kiosk-radius, 20px) * 0.7);
+  background: var(--dc-kiosk-accent);
+  color: var(--dc-kiosk-accent-text);
+  font-size: clamp(1.05rem, 2.6vw, 1.35rem);
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--dc-kiosk-accent) 35%, transparent);
+}
+
+.dc-kiosk-order-checkout:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+@media (max-width: 699px) {
+  .dc-kiosk-order-panel { padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px)); gap: 6px; }
+  .dc-kiosk-order-chip { font-size: 0.68rem; padding: 4px 8px; }
+  .dc-kiosk-order-lines { max-height: 18vh; }
+  .dc-kiosk-order-checkout { min-height: 54px; }
+  .dc-kiosk[data-variant="totem"] { --dc-kiosk-sidebar-width: 86px; }
+}
