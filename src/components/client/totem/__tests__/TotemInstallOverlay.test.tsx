@@ -117,10 +117,16 @@ describe('TotemInstallOverlay', () => {
     await waitFor(() => expect(openInstalledApp).toHaveBeenCalled());
     expect(screen.getByTestId('totem-install-overlay').getAttribute('data-phase')).toBe('opening');
     expect(screen.getByText(/Pronto! Abrindo o totem/)).toBeTruthy();
+    const openLink = screen.getByTestId('totem-install-open');
+    expect(openLink.tagName).toBe('A');
+    expect(openLink.getAttribute('target')).toBe('_blank');
+    expect(openLink.getAttribute('href')).toBeTruthy();
+    expect(openLink.textContent).toContain('Abrir totem');
+    expect(screen.getByTestId('totem-install-open-hint').textContent).toMatch(/Abra o app Totem na tela inicial/);
     const opts = openInstalledApp.mock.calls[0]?.[1] as { onStillVisible?: () => void } | undefined;
     act(() => { opts?.onStillVisible?.(); });
     expect(screen.getByTestId('totem-install-overlay').getAttribute('data-phase')).toBe('done');
     expect(screen.getByTestId('totem-install-open').textContent).toContain('Abrir totem');
-    expect(screen.getByTestId('totem-install-open-hint').textContent).toMatch(/ícone/);
+    expect(screen.getByTestId('totem-install-open-hint').textContent).toMatch(/Abra o app Totem na tela inicial/);
   });
 });

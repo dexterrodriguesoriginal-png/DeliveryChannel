@@ -70,6 +70,8 @@
   font-size: 1.15rem;
   font-weight: 800;
   cursor: pointer;
+  text-decoration: none;
+  box-sizing: border-box;
 }
 .dc-totem-install-cta:active,
 .dc-totem-install-open:active { transform: scale(0.98); }

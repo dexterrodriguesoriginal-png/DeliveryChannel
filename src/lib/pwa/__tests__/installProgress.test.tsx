@@ -133,11 +133,12 @@ describe('InstallProgress — componente reutilizável com fake timers', () => {
     expect(query('open-installed-app')?.textContent).toBe(OPEN_APP_BUTTON_LABEL);
     expect(container.textContent).not.toMatch(/Instalando/i);
 
-    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
-    await act(() => {
-      query('open-installed-app')!.click();
-    });
-    expect(assign).toHaveBeenCalledWith(`${window.location.origin}/cozinha`);
+    const openBtn = query('open-installed-app')!;
+    expect(openBtn.tagName).toBe('A');
+    expect(openBtn.getAttribute('target')).toBe('_blank');
+    expect(openBtn.getAttribute('rel')).toMatch(/noopener/);
+    expect(openBtn.getAttribute('href')).toBe(`${window.location.origin}/cozinha`);
+    expect(query('open-app-hint')?.textContent).toMatch(/Abra o app Cozinha na tela inicial/);
   });
 
   it('respeita prefers-reduced-motion (sem transição suave, mas mantendo 60 s)', async () => {

@@ -1,12 +1,12 @@
 /**
- * "Abrir app": tenta abrir o app instalado (WebAPK) em vez do navegador.
- * Nenhum site consegue FORÇAR isso; estratégia em camadas:
- *  1) Android: intent:// com action VIEW + BROWSABLE para a URL da loja (sem package, pois o
- *     pacote do WebAPK é gerado pelo Chrome e desconhecido). O Android resolve para o app que
- *     declara o escopo (o WebAPK); se não houver, cai em S.browser_fallback_url.
- *  2) Se a página continuar visível após ~1,6 s, navega para start_url normalmente (o Chrome pode
- *     capturar o link para o app — handle_links/launch_handler no manifesto — ou abre no navegador).
- * Nunca afirma que abriu.
+ * "Abrir app": uma aba não consegue lançar de forma confiável um PWA instalado.
+ * Estratégia em camadas — nunca um botão morto:
+ *  1) window.open(start_url, '_blank') — o Chrome pode capturar o link para o app
+ *     (handle_links / launch_handler no manifesto) ou abrir uma nova aba no escopo.
+ *  2) Android: se o popup for bloqueado, tenta intent:// VIEW + BROWSABLE (sem package,
+ *     pois o WebAPK é gerado pelo Chrome). Não usa location.assign na mesma aba:
+ *     se já estamos no start_url, isso não faz nada.
+ *  3) Sempre deixe a UI mostrar: "Abra o app Totem na tela inicial", com um <a target=_blank>.
  */
 export function buildOpenAppIntent(absoluteUrl: string): string | null {
   let u: URL;
@@ -23,28 +23,34 @@ interface OpenEnv {
   document: { visibilityState: string };
   userAgent: string;
   setTimeout: (fn: () => void, ms: number) => unknown;
+  open?: (url: string, target?: string, features?: string) => { closed?: boolean } | null;
   onStillVisible?: () => void;
 }
 
 export function openInstalledApp(startPath: string, env: OpenEnv = {
-  location: window.location, document, userAgent: navigator.userAgent, setTimeout: (f, ms) => window.setTimeout(f, ms),
-}): 'intent' | 'navigate' {
+  location: window.location, document, userAgent: navigator.userAgent,
+  setTimeout: (f, ms) => window.setTimeout(f, ms),
+  open: (url, target, features) => window.open(url, target, features),
+}): 'popup' | 'intent' | 'navigate' {
   const abs = new URL(startPath, env.location.origin).href;
+  const openFn = env.open ?? ((url: string, target?: string, features?: string) => {
+    try { return window.open(url, target, features); } catch { return null; }
+  });
+  const popup = openFn(abs, '_blank', 'noopener,noreferrer');
+  if (popup) return 'popup';
+
   const intent = /Android/i.test(env.userAgent) ? buildOpenAppIntent(abs) : null;
-  const check = () => env.setTimeout(() => {
-    if (env.document.visibilityState === 'visible') {
-      env.onStillVisible?.();
-      if (intent) env.location.assign(abs);
-    }
-  }, OPEN_APP_FALLBACK_MS);
-  if (!intent) {
-    env.location.assign(abs);
+  if (intent) {
+    const check = () => env.setTimeout(() => {
+      if (env.document.visibilityState === 'visible') env.onStillVisible?.();
+    }, OPEN_APP_FALLBACK_MS);
+    env.location.href = intent;
     check();
-    return 'navigate';
+    return 'intent';
   }
-  env.location.href = intent;
-  check();
-  return 'intent';
+
+  env.onStillVisible?.();
+  return 'navigate';
 }
 
 /** Detecta o app instalado via getInstalledRelatedApps (Chrome Android, mesma origem/escopo). */

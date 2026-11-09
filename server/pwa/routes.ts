@@ -11,9 +11,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Request, Response, Router } from 'express';
 import express from 'express';
-import { buildStoreManifest, FALLBACK_THEME_COLOR, ManifestIcon, safeColor, storeDisplayName, storeIconVersion, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
+import { buildStoreManifest, ManifestIcon, iconFallbackColor, storeDisplayName, storeIconVersion, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
 import { buildTotemManifest } from '../../src/lib/pwa/totemManifest';
-import { ICON_VARIANTS, IconVariant, renderInitialsPng, renderLogoPng } from './icons';
+import { ICON_VARIANTS, IconVariant, isNearlyFlatPng, renderInitialsPng, renderStoreIconPng } from './icons';
 import { fetchPublicImage } from './safeFetch';
 import { isValidSlug, StoreResolver } from './storeSource';
 
@@ -313,8 +313,13 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       const logo = await loadLogo(store.id, store.theme?.logoUrl);
       if (logo) {
         try {
-          png = renderLogoPng(logo.bytes, logo.contentType, variant);
-          usedRealLogo = true;
+          png = await renderStoreIconPng(logo.bytes, logo.contentType, variant);
+          if (await isNearlyFlatPng(png)) {
+            png = undefined;
+            usedRealLogo = false;
+          } else {
+            usedRealLogo = true;
+          }
         } catch {
           png = undefined;
           usedRealLogo = false;
@@ -324,7 +329,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
         iconCache.set(key, png);
         if (iconCache.size > 600) iconCache.delete(iconCache.keys().next().value as string);
       } else {
-        png = renderInitialsPng(storeDisplayName(store), safeColor(store.theme?.primaryColor, FALLBACK_THEME_COLOR), variant);
+        png = renderInitialsPng(storeDisplayName(store), iconFallbackColor(store.theme), variant);
       }
     }
     const reqV = typeof req.query.v === 'string' ? req.query.v : '';

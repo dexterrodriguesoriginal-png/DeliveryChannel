@@ -111,9 +111,11 @@ describe('instalação compartilhada do entregador e do cliente', () => {
     expect(percent()).toBe(100);
     expect(query('install-progress')?.dataset.phase).toBe('done');
     expect(query('open-installed-app')?.textContent).toBe('Abrir o app');
-    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
-    await act(() => { query('open-installed-app')!.click(); });
-    expect(assign).toHaveBeenCalledWith(`${window.location.origin}/entregador`);
+    const openBtn = query('open-installed-app')!;
+    expect(openBtn.tagName).toBe('A');
+    expect(openBtn.getAttribute('target')).toBe('_blank');
+    expect(openBtn.getAttribute('href')).toBe(`${window.location.origin}/entregador`);
+    expect(query('open-app-hint')?.textContent).toMatch(/Abra o app /);
     expect(document.querySelector('link[rel="manifest"]')?.getAttribute('href')).toBe('/driver.webmanifest');
   });
 

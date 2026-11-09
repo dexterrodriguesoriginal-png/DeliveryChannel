@@ -2,10 +2,17 @@ import { describe, it, expect, vi } from 'vitest';
 import { consumeOpenAttempt, rememberOpenAttempt, buildOpenAppIntent, openInstalledApp, detectInstalledApp, OPEN_APP_FALLBACK_MS } from '../openInstalledApp';
 import { buildStoreManifest } from '../storeManifest';
 
-const mkEnv = (ua: string, vis = 'visible') => {
+const mkEnv = (ua: string, vis = 'visible', popup: { closed?: boolean } | null = { closed: false }) => {
   const timers: (() => void)[] = [];
-  const env = { location: { href: '', origin: 'https://deliverychannel.ai.studio', assign: vi.fn() }, document: { visibilityState: vis }, userAgent: ua, setTimeout: (f: () => void, ms: number) => { expect(ms).toBe(OPEN_APP_FALLBACK_MS); timers.push(f); } };
-  return { env, timers };
+  const open = vi.fn(() => popup);
+  const env = {
+    location: { href: '', origin: 'https://deliverychannel.ai.studio', assign: vi.fn() },
+    document: { visibilityState: vis },
+    userAgent: ua,
+    setTimeout: (f: () => void, ms: number) => { expect(ms).toBe(OPEN_APP_FALLBACK_MS); timers.push(f); },
+    open,
+  };
+  return { env, timers, open };
 };
 
 describe('openInstalledApp', () => {
@@ -14,36 +21,41 @@ describe('openInstalledApp', () => {
     expect(i).toBe('intent://x.ai.studio/app/bar/?source=pwa#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=https%3A%2F%2Fx.ai.studio%2Fapp%2Fbar%2F%3Fsource%3Dpwa;end');
     expect(buildOpenAppIntent('http://localhost/app/x/')).toBeNull();
   });
-  it('Android: tenta intent e, se a página continuar visível, abre start_url', () => {
-    const { env, timers } = mkEnv('Mozilla/5.0 (Linux; Android 14) Chrome/130');
-    expect(openInstalledApp('/app/bar/?source=pwa', env)).toBe('intent');
-    expect(env.location.href.startsWith('intent://deliverychannel.ai.studio/app/bar/')).toBe(true);
-    timers[0]();
-    expect(env.location.assign).toHaveBeenCalledWith('https://deliverychannel.ai.studio/app/bar/?source=pwa');
-  });
-  it('Android: não navega de novo se o app abriu (página oculta)', () => {
-    const { env, timers } = mkEnv('Android', 'hidden');
-    openInstalledApp('/app/bar/', env); timers[0]();
+  it('com popup liberado, abre start_url em _blank e não mexe na aba atual', () => {
+    const { env, open } = mkEnv('Mozilla/5.0 (Linux; Android 14) Chrome/130');
+    expect(openInstalledApp('/app/bar/?source=pwa', env)).toBe('popup');
+    expect(open).toHaveBeenCalledWith('https://deliverychannel.ai.studio/app/bar/?source=pwa', '_blank', 'noopener,noreferrer');
+    expect(env.location.href).toBe('');
     expect(env.location.assign).not.toHaveBeenCalled();
   });
-  it('fora do Android: navega para start_url', () => {
-    const { env } = mkEnv('iPhone');
-    expect(openInstalledApp('/app/bar/', env)).toBe('navigate');
-  });
-  it.each(['Android', 'iPhone', 'Desktop'])('página visível em %s mostra instrução e tenta o fallback', ua => {
-    const { env, timers } = mkEnv(ua);
+  it('Android com popup bloqueado tenta intent; se a página continuar visível, mostra a orientação (sem assign)', () => {
+    const { env, timers, open } = mkEnv('Mozilla/5.0 (Linux; Android 14) Chrome/130', 'visible', null);
+    expect(openInstalledApp('/app/bar/?source=pwa', env)).toBe('intent');
+    expect(open).toHaveBeenCalled();
+    expect(env.location.href.startsWith('intent://deliverychannel.ai.studio/app/bar/')).toBe(true);
     const onStillVisible = vi.fn();
-    openInstalledApp('/entregador', { ...env, onStillVisible });
-    expect(onStillVisible).not.toHaveBeenCalled();
-    timers[0]();
+    const blocked = mkEnv('Android', 'visible', null);
+    openInstalledApp('/app/bar/', { ...blocked.env, onStillVisible });
+    blocked.timers[0]();
     expect(onStillVisible).toHaveBeenCalledOnce();
-    expect(env.location.assign).toHaveBeenCalledWith('https://deliverychannel.ai.studio/entregador');
+    expect(blocked.env.location.assign).not.toHaveBeenCalled();
+    void timers;
   });
-  it('página oculta não mostra orientação de falha', () => {
-    const { env, timers } = mkEnv('Android', 'hidden');
+  it('Android: não mostra orientação se o app abriu (página oculta)', () => {
+    const { env, timers } = mkEnv('Android', 'hidden', null);
     const onStillVisible = vi.fn();
-    openInstalledApp('/entregador', { ...env, onStillVisible }); timers[0]();
+    openInstalledApp('/app/bar/', { ...env, onStillVisible });
+    timers[0]();
     expect(onStillVisible).not.toHaveBeenCalled();
+    expect(env.location.assign).not.toHaveBeenCalled();
+  });
+  it('fora do Android, com popup bloqueado, mostra a orientação e não faz assign (botão morto)', () => {
+    const { env, open } = mkEnv('iPhone', 'visible', null);
+    const onStillVisible = vi.fn();
+    expect(openInstalledApp('/app/bar/', { ...env, onStillVisible })).toBe('navigate');
+    expect(open).toHaveBeenCalledWith('https://deliverychannel.ai.studio/app/bar/', '_blank', 'noopener,noreferrer');
+    expect(onStillVisible).toHaveBeenCalledOnce();
+    expect(env.location.assign).not.toHaveBeenCalled();
   });
   it('orientação sobrevive ao fallback, só na mesma aba/app e por poucos segundos', () => {
     const m = new Map<string, string>();

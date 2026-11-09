@@ -88,7 +88,7 @@ export function DesignTotemEditor({ tenant, active = true }: { tenant: Tenant; a
         </div>
         <span className="menu-design-independent"><CheckCheck size={15} /> Independente do app</span>
       </header>
-      <div className="menu-design-layout">
+      <div className="menu-design-layout totem-design-layout">
         <main className="menu-design-controls" aria-label="Design do totem">
           {!loading && (
             <TotemWelcomePanel
@@ -97,10 +97,9 @@ export function DesignTotemEditor({ tenant, active = true }: { tenant: Tenant; a
               theme={tenant.theme ? { ...DEFAULT_MENU_THEME, background: draft.colors.pageBg, accent: draft.colors.addButtonBg, accentText: draft.colors.addButtonText, text: draft.colors.productCardText, surface: draft.colors.productCardBg } : DEFAULT_MENU_THEME}
               slug={tenant.slug}
               storeName={tenant.theme?.storeName || tenant.name}
+              afterAccess={<TotemUsersPanel securityContext={securityContext} tenantId={tenant.id} />}
             />
           )}
-
-          {!loading && <TotemUsersPanel securityContext={securityContext} tenantId={tenant.id} />}
 
           <section className="menu-design-section" data-testid="totem-design-themes">
             <div className="menu-design-section-title">
