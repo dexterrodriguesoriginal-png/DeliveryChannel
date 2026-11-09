@@ -37,7 +37,7 @@ afterEach(() => cleanup());
 
 const origin = 'https://deliverychannel.example';
 const slug = 'adegasshow';
-const url = `${origin}/totem/${slug}`;
+const url = `${origin}/totem/${slug}/?install=1`;
 
 describe('TotemAccessCard', () => {
   it('shows the totem link, QR, copy, download, print, open and install guide', () => {
@@ -58,15 +58,14 @@ describe('TotemAccessCard', () => {
     expect(open.getAttribute('target')).toBe('_blank');
     expect(open.textContent).toContain('Abrir totem neste aparelho');
 
+    const install = screen.getByTestId('instalar-totem');
+    expect(install.getAttribute('href')).toBe(url);
+    expect(install.textContent).toContain('Instalar totem');
+
     const guide = screen.getByTestId('totem-access-guide');
-    expect(guide.textContent).toMatch(/Recomendado/);
-    expect(guide.textContent).toMatch(/Instalar como app \(tela cheia\)/);
-    expect(guide.textContent).toMatch(/sem o aviso do Chrome/);
-    expect(guide.textContent).toMatch(/Android \(Chrome\)/);
-    expect(guide.textContent).toMatch(/iPhone e iPad \(Safari\)/);
+    expect(guide.textContent).toMatch(/Mais opções/);
     expect(guide.textContent).toMatch(/Fixar app/);
     expect(guide.textContent).toMatch(/Screen pinning/);
-    expect(guide.textContent).toMatch(/Configurações/);
     expect(guide.textContent).toMatch(/chrome --kiosk/);
     expect(guide.textContent).toMatch(/volta sozinho para a capa/);
   });

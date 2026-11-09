@@ -2,7 +2,9 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Copy, Download, ExternalLink, MonitorSmartphone, Printer, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { downloadBlob, qrPngBlob } from '../../../../lib/salon/qrImage';
-import { printTotemQr, totemPublicUrl, totemQrFileName } from '../../../../lib/menu/totemAccess';
+import { printTotemQr, totemInstallUrl, totemPublicUrl, totemQrFileName } from '../../../../lib/menu/totemAccess';
+import { InstalarTotemButton } from '../../../../components/establishment/InstalarTotemButton';
+import '../../../../components/establishment/instalarTotemButton.css';
 import './totemAccessCard.css';
 
 export function TotemAccessCard({
@@ -19,7 +21,8 @@ export function TotemAccessCard({
   const toastTimer = useRef<number>(0);
   const [notice, setNotice] = useState('');
   const currentOrigin = origin ?? (typeof window !== 'undefined' ? window.location.origin : '');
-  const url = useMemo(() => totemPublicUrl(currentOrigin, slug), [currentOrigin, slug]);
+  const url = useMemo(() => totemInstallUrl(currentOrigin, slug), [currentOrigin, slug]);
+  const kioskUrl = useMemo(() => totemPublicUrl(currentOrigin, slug), [currentOrigin, slug]);
 
   const flash = useCallback((text: string) => {
     setNotice(text);
@@ -75,9 +78,11 @@ export function TotemAccessCard({
         <QrCode size={18} aria-hidden="true" />
         <div>
           <h3>Acessar o totem</h3>
-          <p>Abra no aparelho do balcão, copie o link ou imprima o QR.</p>
+          <p>No aparelho do balcão, instale o totem como app — ele abre em tela cheia, como o app do cliente.</p>
         </div>
       </div>
+
+      <InstalarTotemButton slug={slug} origin={currentOrigin} className="theme-primary totem-access-install" />
 
       <label className="totem-access-link-label" htmlFor="totem-access-url">Link do totem</label>
       <div className="totem-access-link-row">
@@ -121,17 +126,11 @@ export function TotemAccessCard({
         <ExternalLink size={16} aria-hidden="true" />Abrir totem neste aparelho
       </a>
 
-      <section className="totem-access-guide" data-testid="totem-access-guide">
-        <p className="totem-access-recommended">Recomendado</p>
-        <h4>
+      <details className="totem-access-guide" data-testid="totem-access-guide">
+        <summary>
           <MonitorSmartphone size={16} aria-hidden="true" />
-          Instalar como app (tela cheia)
-        </h4>
-        <p className="totem-access-guide-lead">
-          Este é o caminho recomendado: o app instalado abre em tela cheia, sem o aviso do Chrome.
-        </p>
-        <details>
-          <summary>Como instalar e fixar o totem</summary>
+          Mais opções
+        </summary>
           <ul>
             <li><strong>Android (Chrome):</strong> no menu de três pontos, toque em <em>Instalar app</em> ou <em>Adicionar à tela inicial</em>.</li>
             <li><strong>iPhone e iPad (Safari):</strong> toque em <em>Compartilhar</em> e depois em <em>Adicionar à Tela de Início</em>.</li>
@@ -141,14 +140,13 @@ export function TotemAccessCard({
             </li>
             <li>
               <strong>Windows ou PC do totem (Chrome kiosk):</strong> feche as outras janelas e inicie o Chrome assim:
-              <code>chrome --kiosk {url}</code>
+              <code>chrome --kiosk {kioskUrl}</code>
             </li>
           </ul>
           <p className="totem-access-guide-note">
-            Se o totem estiver em uma aba comum do Chrome, a tela cheia é pedida só uma vez, no toque do botão da capa — o aviso do navegador, se aparecer, surge no máximo uma vez. Depois de um tempo sem uso, o totem volta sozinho para a capa e limpa o pedido.
+            O caminho recomendado é Instalar totem. No app instalado, ele abre em tela cheia, sem o aviso do Chrome. Depois de um tempo sem uso, volta sozinho para a capa e limpa o pedido.
           </p>
-        </details>
-      </section>
+      </details>
     </aside>
   );
 }

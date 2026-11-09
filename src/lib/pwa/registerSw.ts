@@ -59,7 +59,7 @@ export function resolvePwaScope(pathname: string): string {
 }
 
 export function extractStoreSlugFromPath(pathname: string): string | null {
-  const m = /^\/app\/([^/]+)/.exec(pathname);
+  const m = /^\/(?:app|totem)\/([^/]+)/.exec(pathname);
   if (!m) return null;
   try {
     return decodeURIComponent(m[1]);

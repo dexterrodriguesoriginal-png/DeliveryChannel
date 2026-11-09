@@ -21,6 +21,12 @@ export function totemPublicUrl(origin: string, slug: string): string {
   }
 }
 
+/** Link de instalação: a capa do totem abre com o convite nativo. */
+export function totemInstallUrl(origin: string, slug: string): string {
+  const base = totemPublicUrl(origin, slug);
+  return base ? `${base}/?install=1` : '';
+}
+
 export function totemQrFileName(slug: string): string {
   const clean = normalizeTotemSlug(slug);
   return SLUG.test(clean) ? `totem-${clean}.png` : 'totem.png';

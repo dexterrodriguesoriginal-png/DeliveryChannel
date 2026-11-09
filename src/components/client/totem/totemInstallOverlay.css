@@ -1,0 +1,109 @@
+.dc-totem-install {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 4vw, 48px);
+  background: color-mix(in srgb, #05080a 78%, transparent);
+  backdrop-filter: blur(10px);
+}
+.dc-totem-install-card {
+  width: min(100%, 560px);
+  border-radius: 28px;
+  padding: clamp(24px, 4vw, 40px);
+  background: #2b2b2e;
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.dc-totem-install-logo {
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 12px;
+  border-radius: 22px;
+  object-fit: cover;
+  background: #111;
+}
+.dc-totem-install-logo--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.dc-totem-install-logo--fallback svg { width: 42px; height: 42px; }
+.dc-totem-install-kicker {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+.dc-totem-install-card h1 {
+  margin: 6px 0 10px;
+  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  font-weight: 800;
+  line-height: 1.1;
+}
+.dc-totem-install-lead {
+  margin: 0 0 22px;
+  font-size: 0.98rem;
+  line-height: 1.45;
+  color: #d4d4d8;
+}
+.dc-totem-install-cta,
+.dc-totem-install-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 64px;
+  border: 0;
+  border-radius: 16px;
+  padding: 0 20px;
+  background: #176444;
+  color: #fff;
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.dc-totem-install-cta:active,
+.dc-totem-install-open:active { transform: scale(0.98); }
+.dc-totem-install-continue {
+  display: inline-block;
+  margin-top: 18px;
+  border: 0;
+  background: none;
+  color: #a1a1aa;
+  font: inherit;
+  font-size: 0.92rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.dc-totem-install-hint,
+.dc-totem-install-ios {
+  margin: 14px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #d4d4d8;
+}
+.dc-totem-install-ios {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+}
+.dc-totem-install-ios svg { flex: 0 0 auto; margin-top: 2px; }
+.dc-totem-install-progress { margin-top: 8px; text-align: left; }
+.dc-totem-install-progress .dc-totem-install-open { margin-top: 16px; }
+
+.dc-totem-install-progress [role="progressbar"] {
+  height: 10px;
+}
+.dc-totem-install-progress [data-testid="install-progress-bar"] {
+  min-height: 10px;
+}

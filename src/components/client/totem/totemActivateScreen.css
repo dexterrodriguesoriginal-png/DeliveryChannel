@@ -1,0 +1,51 @@
+.dc-totem-activate {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 4vw, 48px);
+  background: #0b0f14;
+  color: #fff;
+}
+.dc-totem-activate-card {
+  width: min(100%, 520px);
+  border-radius: 28px;
+  padding: clamp(24px, 4vw, 36px);
+  background: #2b2b2e;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0,0,0,.45);
+}
+.dc-totem-activate-logo {
+  width: 88px; height: 88px; margin: 0 auto 12px; border-radius: 22px; object-fit: cover; background: #111;
+}
+.dc-totem-activate-logo--fallback {
+  display: flex; align-items: center; justify-content: center; background: var(--dc-totem-accent, #176444);
+}
+.dc-totem-activate-kicker { margin: 0; font-size: .85rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .75; }
+.dc-totem-activate-card h1 { margin: 6px 0 10px; font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 800; }
+.dc-totem-activate-lead, .dc-totem-activate-hint { margin: 0 0 18px; color: #d4d4d8; line-height: 1.45; }
+.dc-totem-activate-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.dc-totem-activate-tabs button {
+  flex: 1; min-height: 44px; border: 0; border-radius: 12px; background: #3f3f46; color: #e4e4e7;
+  font: inherit; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.dc-totem-activate-tabs button[aria-selected="true"] { background: var(--dc-totem-accent, #176444); color: #fff; }
+.dc-totem-activate-form { display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.dc-totem-activate-form label { font-size: .8rem; font-weight: 700; color: #d4d4d8; display: flex; flex-direction: column; gap: 4px; }
+.dc-totem-activate-form input {
+  min-height: 46px; border-radius: 12px; border: 1px solid #52525b; background: #18181b; color: #fff;
+  padding: 0 12px; font: inherit;
+}
+.dc-totem-activate-submit {
+  min-height: 56px; border: 0; border-radius: 16px; background: var(--dc-totem-accent, #176444); color: #fff;
+  font: inherit; font-size: 1.05rem; font-weight: 800; cursor: pointer; margin-top: 6px;
+}
+.dc-totem-activate-submit:disabled { opacity: .6; cursor: default; }
+.dc-totem-activate-error { margin: 12px 0 0; color: #fecaca; font-weight: 700; }
+.dc-totem-activate-warn {
+  padding: 12px; border-radius: 12px; background: #3b2a12; color: #fde68a; font-size: .9rem; line-height: 1.4;
+}
+.dc-totem-activate-warn button {
+  display: block; width: 100%; margin-top: 10px; min-height: 44px; border: 0; border-radius: 10px;
+  background: #b45309; color: #fff; font: inherit; font-weight: 800; cursor: pointer;
+}

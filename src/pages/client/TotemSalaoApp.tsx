@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
+import { totemAccessRepository } from '../../repositories/totemAccessRepository';
+import type { TotemLoginInfo } from '../../repositories/totemAccessRepository';
 import { totemWelcomeRepository } from '../../repositories/totemWelcomeRepository';
 import { menuHeaderRepository } from '../../repositories/menuHeaderRepository';
 import { menuOutdoorRepository, type PublicMenuOutdoorSlide } from '../../repositories/menuOutdoorRepository';
@@ -23,6 +25,11 @@ import { safeHomeImageUrl } from '../../lib/storeHome/storeHome.model';
 import { TotemCapaScreen } from '../../components/client/totem/TotemCapaScreen';
 import { DineInPremiumMenu } from '../../components/client/totem/DineInPremiumMenu';
 import { TotemKioskLayer } from '../../components/client/totem/TotemKioskLayer';
+import { TotemInstallOverlay } from '../../components/client/totem/TotemInstallOverlay';
+import { TotemActivateScreen } from '../../components/client/totem/TotemActivateScreen';
+import { DEFAULT_TOTEM_DESIGN, type TotemDesign } from '../../lib/menu/totemDesign';
+import { newIdempotencyKey } from '../../lib/backend';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import { requestTotemFullscreenOnce } from '../../lib/menu/fullscreen';
 import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
 import {
@@ -43,7 +50,15 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [storeName, setStoreName] = useState('');
+  const [storeLogoUrl, setStoreLogoUrl] = useState<string | undefined>(undefined);
   const [tenantId, setTenantId] = useState('');
+  const [needsActivation, setNeedsActivation] = useState(false);
+  const [loginInfo, setLoginInfo] = useState<TotemLoginInfo | null>(null);
+  const [totemDesign, setTotemDesign] = useState<TotemDesign>(DEFAULT_TOTEM_DESIGN);
+  const [deviceToken, setDeviceToken] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [orderError, setOrderError] = useState('');
+  const [orderBusy, setOrderBusy] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [menuTheme, setMenuTheme] = useState<MenuTheme>(DEFAULT_MENU_THEME);
@@ -62,19 +77,95 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
     let alive = true;
     setLoading(true);
     setError('');
+    setNeedsActivation(false);
     (async () => {
       try {
-        const store = await publicStoreRepository.loadPublicStore(slug);
+        const login = await totemAccessRepository.loadLogin(slug).catch(() => null);
         if (!alive) return;
-        if (store.status === 'not_found') {
-          setError('Esta loja não está disponível.');
+        if (login) {
+          setLoginInfo(login);
+          setStoreName(login.name);
+          setStoreLogoUrl(login.logoUrl);
+          if (login.tenantId) setTenantId(login.tenantId);
+        }
+        const session = totemAccessRepository.readSession(slug);
+        if (!session) {
+          if (!isSupabaseConfigured) {
+            // Demonstração local, sem backend: o catálogo público permanece só para o dev/testes.
+            const store = await publicStoreRepository.loadPublicStore(slug);
+            if (!alive) return;
+            if (store.status === 'not_found') { setError('Esta loja não está disponível.'); return; }
+            if (store.status !== 'ok') { setError('Não foi possível carregar o totem. Tente novamente.'); return; }
+            const data = store.data;
+            const enabledModules = await tenantModuleRepository.getPublicEnabled(data.tenant.id);
+            if (!alive) return;
+            const optionGroups = isModuleEnabled(enabledModules, 'addons')
+              ? await productOptionRepository.getPublicForProducts(data.tenant.id, data.products.map(product => product.id))
+              : new Map();
+            if (!alive) return;
+            setTenantId(data.tenant.id);
+            setStoreName(data.theme?.storeName || data.tenant.name);
+            setStoreLogoUrl(data.theme?.logoUrl || undefined);
+            setMenuTheme(data.menuTheme ?? DEFAULT_MENU_THEME);
+            setMenuOptions(data.menuOptions ?? { ...DEFAULT_MENU_OPTIONS });
+            setCategories(data.categories || []);
+            setProducts(
+              data.products
+                .filter(product => product.isActive && product.isAvailable)
+                .map(product => ({ ...product, optionGroups: optionGroups.get(product.id) || [] })),
+            );
+            const [header, capa, ownOutdoor] = await Promise.all([
+              menuHeaderRepository.loadPublic(slug).catch(() => ({ ...DEFAULT_MENU_HEADER })),
+              totemWelcomeRepository.loadPublic(slug).catch(() => ({ ...DEFAULT_TOTEM_WELCOME, slides: [] })),
+              menuOutdoorRepository.getPublicSlides(slug).catch(() => [] as PublicMenuOutdoorSlide[]),
+            ]);
+            if (!alive) return;
+            setMenuHeader(header);
+            setWelcome(normalizeTotemWelcome(capa));
+            const reuse = (data.menuOptions ?? DEFAULT_MENU_OPTIONS).reuseAppBanners;
+            if (reuse) {
+              const appBanners: PublicMenuOutdoorSlide[] = (data.offers ?? [])
+                .filter(offer => offer.tenantId === data.tenant.id && offer.isActive === true)
+                .flatMap(offer => {
+                  const src = safeHomeImageUrl(offer.mediaUrl || offer.imageUrl);
+                  if (!src) return [];
+                  const duration = Number(offer.durationSeconds);
+                  return [{
+                    id: `app:${offer.id}`,
+                    title: offer.title,
+                    ...(offer.mediaType === 'VIDEO' ? { videoUrl: src } : { imageUrl: src }),
+                    imageDurationSeconds: Number.isInteger(duration) && duration >= 1 && duration <= 120 ? duration : 6,
+                  }];
+                });
+              setOutdoorSlides(appBanners);
+            } else {
+              setOutdoorSlides(ownOutdoor);
+            }
+            return;
+          }
+          if (!login) {
+            setError('Esta loja não está disponível.');
+            return;
+          }
+          setNeedsActivation(true);
           return;
         }
-        if (store.status !== 'ok') {
-          setError('Não foi possível carregar o totem. Tente novamente.');
+        const loaded = await totemAccessRepository.loadStore(session.token);
+        if (!alive) return;
+        if (loaded.status === 'invalid') {
+          totemAccessRepository.clearSession(slug);
+          setDeviceToken(null);
+          setNeedsActivation(true);
           return;
         }
-        const data = store.data;
+        if (loaded.status !== 'ok') {
+          setError(loaded.message || 'Não foi possível carregar o totem. Tente novamente.');
+          return;
+        }
+        setDeviceToken(session.token);
+        setTotemDesign(loaded.store.design);
+        setWelcome(normalizeTotemWelcome(loaded.store.welcome));
+        const data = loaded.store.data;
         const enabledModules = await tenantModuleRepository.getPublicEnabled(data.tenant.id);
         if (!alive) return;
         const optionGroups = isModuleEnabled(enabledModules, 'addons')
@@ -83,6 +174,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
         if (!alive) return;
         setTenantId(data.tenant.id);
         setStoreName(data.theme?.storeName || data.tenant.name);
+        setStoreLogoUrl(data.theme?.logoUrl || undefined);
         setMenuTheme(data.menuTheme ?? DEFAULT_MENU_THEME);
         setMenuOptions(data.menuOptions ?? { ...DEFAULT_MENU_OPTIONS });
         setCategories(data.categories || []);
@@ -125,7 +217,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
       }
     })();
     return () => { alive = false; };
-  }, [slug]);
+  }, [slug, reloadKey]);
 
   const buttonColors = useMemo(
     () => resolvedTotemButtonColors(welcome, menuTheme),
@@ -156,11 +248,32 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
     setView('CAPA');
   }, []);
 
-  const finishOrder = useCallback(() => {
+  const finishOrder = useCallback(async () => {
+    if (orderBusy) return;
+    setOrderError('');
+    if (deviceToken) {
+      setOrderBusy(true);
+      try {
+        await totemAccessRepository.createOrder(
+          deviceToken,
+          cart.map(line => ({
+            productId: line.product.id,
+            quantity: line.quantity,
+            notes: line.notes,
+          })),
+          newIdempotencyKey(),
+        );
+      } catch (reason) {
+        setOrderError(reason instanceof Error ? reason.message : 'Não foi possível registrar o pedido.');
+        setOrderBusy(false);
+        return;
+      }
+      setOrderBusy(false);
+    }
     setCheckoutOpen(false);
     setCart([]);
     setView('DONE');
-  }, []);
+  }, [cart, deviceToken, orderBusy]);
 
   const addProduct = useCallback((product: Product, options: SelectedProductOption[] = []) => {
     setCart(current => addDineInCartLine(current, product, options));
@@ -189,6 +302,30 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
     );
   }
 
+  if (needsActivation) {
+    return (
+      <div className="dc-totem-app" data-testid="totem-salao-app" data-view="activate">
+        <TotemInstallOverlay
+          slug={slug}
+          tenantId={loginInfo?.tenantId || tenantId}
+          storeName={loginInfo?.name || storeName || 'Totem'}
+          logoUrl={loginInfo?.logoUrl || storeLogoUrl}
+          accent={loginInfo?.accent || menuTheme.accent}
+        />
+        <TotemActivateScreen
+          slug={slug}
+          login={loginInfo}
+          onActivated={session => {
+            totemAccessRepository.saveSession(slug, session);
+            setDeviceToken(session.token);
+            setNeedsActivation(false);
+            setReloadKey(key => key + 1);
+          }}
+        />
+      </div>
+    );
+  }
+
   if (error || !tenantId) {
     return (
       <main className="dc-totem-app dc-totem-app--center" data-testid="totem-salao-error" role="alert">
@@ -200,6 +337,15 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
 
   return (
     <div className="dc-totem-app" data-testid="totem-salao-app" data-view={view}>
+      {!loading && !error && (
+        <TotemInstallOverlay
+          slug={slug}
+          tenantId={tenantId}
+          storeName={storeName || 'Totem'}
+          logoUrl={storeLogoUrl}
+          accent={menuTheme.accent}
+        />
+      )}
       {view === 'CAPA' && (
         <TotemCapaScreen
           settings={welcome}
@@ -223,6 +369,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
           outdoorSlides={outdoorSlides}
           categoryMenuMode={menuHeader.categoryMenuMode}
           variant="TOTEM"
+          totemDesign={totemDesign}
           orderLines={orderLines}
           orderSubtotalCents={subtotalCents}
           onChangeOrderQuantity={(key, delta) => setCart(current => changeDineInCartLineQuantity(current, key, delta))}
@@ -310,14 +457,16 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
               <span>Subtotal</span>
               <strong>{formatMenuMoney(subtotalCents)}</strong>
             </p>
+            {orderError && <p role="alert" data-testid="totem-order-error">{orderError}</p>}
             <button
               type="button"
               className="dc-totem-modal-confirm"
               data-testid="totem-checkout-confirm"
               style={{ background: menuTheme.accent, color: menuTheme.accentText }}
-              onClick={finishOrder}
+              onClick={() => void finishOrder()}
+              disabled={orderBusy}
             >
-              Confirmar e ir ao balcão
+              {orderBusy ? 'Registrando…' : 'Confirmar e ir ao balcão'}
             </button>
           </section>
         </div>

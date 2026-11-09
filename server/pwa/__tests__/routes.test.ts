@@ -57,6 +57,25 @@ describe('rotas PWA por loja', () => {
     expect(a.icons[0].src).not.toBe(b.icons[0].src);
   });
 
+  it('manifesto do totem é um app separado, fullscreen, com ícones 192 e 512', async () => {
+    const r = await fetch(`${base}/totem/adega-premium/manifest.webmanifest`);
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toMatch(/application\/manifest\+json/);
+    expect(r.headers.get('cache-control')).toBe('no-cache');
+    const m = await r.json();
+    expect(m.id).toBe('/totem-id/tenant-adega-01');
+    expect(m.start_url).toBe('/totem/adega-premium/?source=pwa');
+    expect(m.scope).toBe('/totem/adega-premium/');
+    expect(m.display).toBe('fullscreen');
+    expect(m.name).toBe('Adega Premium Jardins — Totem');
+    expect(m.short_name).toBe('Totem');
+    expect(m.icons.map((i: { sizes: string; purpose: string }) => `${i.sizes}/${i.purpose}`)).toEqual(['192x192/any', '512x512/any', '512x512/maskable']);
+    expect(m.related_applications).toEqual([{ platform: 'webapp', url: '/totem/adega-premium/manifest.webmanifest' }]);
+    const app = await (await fetch(`${base}/app/adega-premium/manifest.webmanifest`)).json();
+    expect(m.id).not.toBe(app.id);
+    expect(m.start_url).not.toBe(app.start_url);
+  });
+
   it('ícones PNG válidos com dimensões corretas (fallback de iniciais nunca usa cache immutable)', async () => {
     const adegaStore = (stores['adega-premium'] as { status: 'ok'; store: any }).store;
     const currentVer = iconVersion(adegaStore);

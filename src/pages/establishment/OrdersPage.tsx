@@ -1672,6 +1672,7 @@ const OrdersPageContent: React.FC<OrdersPageProps> = ({ activeTab: requestedTab,
         <PDVModal
           isOpen={isPDVOpen}
           tenantId={activeTenant?.id || ''}
+          slug={activeTenant?.slug}
           products={storeProducts}
           addonsEnabled={isModuleEnabled('addons')}
           onClose={() => setIsPDVOpen(false)}

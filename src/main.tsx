@@ -8,6 +8,7 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { detachGlobalManifestForStoreRoute } from './lib/pwa/applyStoreIdentity';
+import { isTotemRoute } from './lib/pwa/totemManifest';
 import { captureInstallEvents } from './lib/pwa/installState';
 import { registerPwaServiceWorker } from './lib/pwa/registerSw';
 import { PwaUpdateToast } from './components/pwa/PwaUpdateToast';
@@ -39,6 +40,9 @@ captureInstallEvents(window);
 
 // Rotas de loja (/app/<slug>) nunca herdam o manifesto global da plataforma.
 detachGlobalManifestForStoreRoute(window.location.pathname);
+if (isTotemRoute(window.location.pathname)) {
+  document.head.querySelectorAll('link[rel="manifest"]:not([data-totem])').forEach(l => l.remove());
+}
 
 // Registra o Service Worker mínimo com escopo isolado por app e checa versão ao abrir.
 void registerPwaServiceWorker();

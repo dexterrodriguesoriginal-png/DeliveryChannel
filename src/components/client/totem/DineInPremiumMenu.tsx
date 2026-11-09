@@ -25,6 +25,7 @@ import React, {
   useState,
   type CSSProperties,
 } from 'react';
+import { totemDesignCssVars, type TotemDesign } from '../../../lib/menu/totemDesign';
 
 import {
   Beer,
@@ -126,6 +127,7 @@ export interface DineInPremiumMenuProps {
   orderSubtotalCents?: number;
   onChangeOrderQuantity?: (key: string, delta: number) => void;
   onCheckoutOrder?: () => void;
+  totemDesign?: TotemDesign | null;
 
   /** Navegação controlada pelo app existente. */
   onGoHome: () => void;
@@ -359,6 +361,7 @@ export function DineInPremiumMenu({
   orderSubtotalCents = 0,
   onChangeOrderQuantity,
   onCheckoutOrder,
+  totemDesign,
 
   onGoHome,
   onOpenCart,
@@ -541,6 +544,7 @@ export function DineInPremiumMenu({
     '--dc-kiosk-header-gradient':
       theme.headerGradient,
     fontFamily: theme.fontFamily,
+    ...(isTotem && totemDesign ? totemDesignCssVars(totemDesign) : {}),
   } as CSSProperties;
 
   return (
