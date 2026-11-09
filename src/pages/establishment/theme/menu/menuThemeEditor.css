@@ -654,3 +654,17 @@
     transition:none;
   }
 }
+
+/* Capa da loja (painel do dono) */
+.menu-design-cover-size { margin: 4px 0 10px; font-size: 13px; }
+.menu-design-cover-preview {
+  display: grid; place-items: center;
+  width: 100%; aspect-ratio: 16 / 5;
+  overflow: hidden; border-radius: 12px;
+  border: 1px dashed #cbd5e1; background: #f8fafc;
+  color: #64748b; font-size: 13px; text-align: center; padding: 0;
+}
+.menu-design-cover-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.menu-design-cover-preview span { padding: 12px; }
+.menu-design-cover-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 18px; border: 0; padding: 0; }
+.menu-design-cover-actions .theme-secondary { display: inline-flex; align-items: center; gap: 6px; }

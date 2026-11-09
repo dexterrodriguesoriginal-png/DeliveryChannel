@@ -87,6 +87,9 @@ export type CategoryIcon =
   | 'pizza'
   | 'sandwich'
   | 'dessert'
+  | 'snack'
+  | 'soda'
+  | 'promo'
   | 'shopping-basket';
 
 export interface MenuCategoryView {
@@ -237,15 +240,25 @@ export function resolveCategoryIcon(
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 
-  if (/cerveja|chopp/.test(normalized)) {
+  // Ordem importa: "promoção de cerveja" é promoção;
+  // "bebida sem álcool" nunca cai em destilados.
+  if (/promo|oferta|combo/.test(normalized)) {
+    return 'promo';
+  }
+
+  if (/sem alcool|refrigerante|refri\b|suco|agua|soda|energetico/.test(normalized)) {
+    return 'soda';
+  }
+
+  if (/cerveja|chopp|chope|beer/.test(normalized)) {
     return 'beer';
   }
 
-  if (/vinho|espumante/.test(normalized)) {
+  if (/vinho|espumante|champagne/.test(normalized)) {
     return 'wine';
   }
 
-  if (/destilado|drink|coquetel/.test(normalized)) {
+  if (/destilado|whisk|vodka|gin\b|cachaca|drink|coquetel|dose/.test(normalized)) {
     return 'martini';
   }
 
@@ -253,19 +266,23 @@ export function resolveCategoryIcon(
     return 'pizza';
   }
 
-  if (/hamburguer|lanche|sanduiche/.test(normalized)) {
+  if (/hamburguer|burger|lanche|sanduiche|hot dog|cachorro/.test(normalized)) {
     return 'sandwich';
   }
 
-  if (/doce|sobremesa|bolo/.test(normalized)) {
+  if (/doce|sobremesa|bolo|sorvete|acai/.test(normalized)) {
     return 'dessert';
   }
 
-  if (/cafe|bebida sem alcool|suco/.test(normalized)) {
+  if (/cafe|cha\b/.test(normalized)) {
     return 'coffee';
   }
 
-  if (/porcao|petisco|refeicao|prato/.test(normalized)) {
+  if (/petisco|aperitivo|tira.?gosto|frita/.test(normalized)) {
+    return 'snack';
+  }
+
+  if (/porc(ao|oes)|refeic|prato|executivo|almoco|jantar/.test(normalized)) {
     return 'utensils';
   }
 

@@ -495,6 +495,25 @@ describe('Identidade visual', () => {
       .toBe('sandwich');
   });
 
+  it('escolhe o ícone padrão pelas palavras do nome da categoria', () => {
+    const cases: Array<[string, string]> = [
+      ['Cervejas & Chopp', 'beer'], ['Chopp artesanal', 'beer'],
+      ['Vinhos & Espumantes', 'wine'], ['Espumantes', 'wine'],
+      ['Destilados & Whiskies', 'martini'], ['Whisky', 'martini'],
+      ['Petiscos & Aperitivos', 'snack'], ['Aperitivos', 'snack'],
+      ['Porções', 'utensils'],
+      ['Bebidas sem Álcool', 'soda'], ['Refrigerantes', 'soda'], ['Sucos naturais', 'soda'],
+      ['Lanches', 'sandwich'], ['Burgers', 'sandwich'],
+      ['Pizzas', 'pizza'],
+      ['Doces', 'dessert'], ['Sobremesas', 'dessert'],
+      ['Promoções', 'promo'], ['Promoção de cerveja', 'promo'],
+      ['Outros', 'shopping-basket'], ['', 'shopping-basket'],
+    ];
+    for (const [name, icon] of cases) {
+      expect(resolveCategoryIcon(name), name).toBe(icon);
+    }
+  });
+
   it('utiliza o tema do cardápio', () => {
     const result = resolveMenuVisualTheme(
       DEFAULT_MENU_THEME,

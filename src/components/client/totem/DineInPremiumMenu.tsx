@@ -45,6 +45,11 @@ import {
   UserRound,
   X,
   Store,
+  ChevronDown,
+  ArrowLeftRight,
+  Drumstick,
+  CupSoda,
+  Gift,
 } from 'lucide-react';
 
 import type {
@@ -69,6 +74,8 @@ import {
   safeMenuImageUrl,
   type CategoryIcon,
 } from '../../../lib/menu/premiumTotem.model';
+
+import type { CategoryMenuMode } from '../../../lib/menu/menuHeader';
 
 import './dineInPremiumMenu.css';
 import { MenuOutdoorCarousel } from './MenuOutdoorCarousel';
@@ -102,6 +109,10 @@ export interface DineInPremiumMenuProps {
   productColumns?: 1 | 2 | 3;
   outdoorSlides?: PublicMenuOutdoorSlide[];
 
+  /** Capa larga da loja (1600x500). Sem capa = cabeçalho padrão. */
+  coverUrl?: string | null;
+  /** Menu lateral: ícone padrão (ICON) ou imagem própria da categoria (IMAGE). */
+  categoryMenuMode?: CategoryMenuMode;
   /** Navegação controlada pelo app existente. */
   onGoHome: () => void;
   onOpenCart: () => void;
@@ -147,6 +158,9 @@ const CATEGORY_ICONS = {
   pizza: Pizza,
   sandwich: Sandwich,
   dessert: CakeSlice,
+  snack: Drumstick,
+  soda: CupSoda,
+  promo: Gift,
   'shopping-basket': ShoppingBasket,
 } satisfies Record<
   CategoryIcon,
@@ -321,6 +335,8 @@ export function DineInPremiumMenu({
   tableControls,
   productColumns = 3,
   outdoorSlides = [],
+  coverUrl,
+  categoryMenuMode = 'ICON',
 
   onGoHome,
   onOpenCart,
@@ -469,6 +485,17 @@ export function DineInPremiumMenu({
     }
   }
 
+  function toggleActionsMenu() {
+    setActionsMenuOpen(open => !open);
+    setActionsMenuError('');
+    onOpenKioskMenu?.();
+  }
+
+  const safeCoverUrl = safeMenuImageUrl(coverUrl);
+  const [coverFailed, setCoverFailed] = useState(false);
+  useEffect(() => { setCoverFailed(false); }, [safeCoverUrl]);
+  const showCover = Boolean(safeCoverUrl) && !coverFailed;
+
   const safeCartCount = Math.max(
     0,
     Math.trunc(Number(cartCount) || 0),
@@ -497,13 +524,38 @@ export function DineInPremiumMenu({
       data-testid="dinein-premium-kiosk"
       data-tenant-id={tenantId}
       data-layout={theme.layout}
+      data-cover={showCover ? 'true' : 'false'}
       style={rootStyle}
     >
       {/* =================================
           CABEÇALHO PREMIUM
       ================================= */}
 
-      <header className="dc-kiosk-header">
+      <header
+        className={[
+          'dc-kiosk-header',
+          showCover ? 'dc-kiosk-header--cover' : '',
+        ].join(' ')}
+        data-testid="kiosk-header"
+        data-cover={showCover ? 'true' : 'false'}
+      >
+        {showCover && (
+          <>
+            <img
+              src={safeCoverUrl}
+              alt=""
+              aria-hidden={true}
+              className="dc-kiosk-cover-image"
+              data-testid="kiosk-cover-image"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              draggable={false}
+              onError={() => setCoverFailed(true)}
+            />
+            <span className="dc-kiosk-cover-shade" aria-hidden={true} />
+          </>
+        )}
+
         <div className="dc-kiosk-brand">
           <SafeImage
             src={storeLogoUrl}
@@ -522,44 +574,53 @@ export function DineInPremiumMenu({
               {storeName}
             </h1>
 
-
+            {showCover && storeTagline && (
+              <p className="dc-kiosk-store-tagline">
+                {storeTagline}
+              </p>
+            )}
           </div>
         </div>
 
         <div className="dc-kiosk-header-actions">
-          {tableLabel && (
+          {tableLabel ? (
             <button
               type="button"
               className="dc-kiosk-table-selector"
-              onClick={onOpenTable}
-              aria-label={`Informações da ${tableLabel}`}
+              aria-label={`${tableLabel}: ${actionsMenuOpen ? 'fechar menu' : 'abrir menu'}`}
+              aria-expanded={actionsMenuOpen}
+              aria-controls="dc-kiosk-actions-menu"
+              onClick={toggleActionsMenu}
+              data-testid="kiosk-hamburger"
             >
               <Armchair
-                size={27}
+                size={24}
                 aria-hidden={true}
               />
 
               <span>{tableLabel}</span>
+
+              <ChevronDown
+                size={20}
+                aria-hidden={true}
+                className="dc-kiosk-table-chevron"
+              />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="dc-kiosk-menu-button"
+              aria-label={actionsMenuOpen ? 'Fechar menu' : 'Abrir menu'}
+              aria-expanded={actionsMenuOpen}
+              aria-controls="dc-kiosk-actions-menu"
+              onClick={toggleActionsMenu}
+              data-testid="kiosk-hamburger"
+            >
+              {actionsMenuOpen
+                ? <X size={30} aria-hidden={true} />
+                : <Menu size={30} aria-hidden={true} />}
             </button>
           )}
-
-          <button
-            type="button"
-            className="dc-kiosk-menu-button"
-            aria-label={actionsMenuOpen ? 'Fechar menu' : 'Abrir menu'}
-            aria-expanded={actionsMenuOpen}
-            aria-controls="dc-kiosk-actions-menu"
-            onClick={() => {
-              setActionsMenuOpen(open => !open);
-              setActionsMenuError('');
-              onOpenKioskMenu?.();
-            }}
-            data-testid="kiosk-hamburger"
-          >
-            {actionsMenuOpen
-              ? <X size={30} aria-hidden={true} />
-              : <Menu size={30} aria-hidden={true} />}
-          </button>
         </div>
       </header>
 
@@ -611,6 +672,11 @@ export function DineInPremiumMenu({
             {catalog.categories.map(category => {
               const isSelected =
                 category.id === activeCategoryId;
+              const Icon = CATEGORY_ICONS[category.icon];
+              const ownImage =
+                categoryMenuMode === 'IMAGE'
+                  ? safeMenuImageUrl(category.imageUrl)
+                  : '';
 
               return (
                 <button
@@ -625,20 +691,30 @@ export function DineInPremiumMenu({
                   aria-current={
                     isSelected ? 'true' : undefined
                   }
+                  data-testid={`kiosk-category-${category.id}`}
+                  data-visual={ownImage ? 'image' : 'icon'}
                   onClick={() =>
                     setSelectedCategoryId(
                       category.id,
                     )
                   }
                 >
-                  {safeMenuImageUrl(category.imageUrl) && (
-                    <SafeImage
-                      src={category.imageUrl}
-                      alt=""
-                      className="dc-kiosk-category-photo"
-                      fallback={null}
-                    />
-                  )}
+                  <span className="dc-kiosk-category-visual" aria-hidden={true}>
+                    {ownImage ? (
+                      <SafeImage
+                        src={ownImage}
+                        alt=""
+                        className="dc-kiosk-category-photo"
+                        fallback={<Icon size={34} aria-hidden={true} />}
+                      />
+                    ) : (
+                      <Icon
+                        size={34}
+                        className="dc-kiosk-category-icon"
+                        aria-hidden={true}
+                      />
+                    )}
+                  </span>
                   <span className="dc-kiosk-category-label">{category.name}</span>
                 </button>
               );
@@ -654,37 +730,40 @@ export function DineInPremiumMenu({
           className="dc-kiosk-products-area"
           aria-label="Produtos do cardápio"
         >
-          {roleChip}
-          {(onMoveTable || onOpenBill) && (
-            <div className="dc-kiosk-mesa-chrome" aria-label="Status da mesa">
-              {onMoveTable && (
-                <button
-                  type="button"
-                  data-testid="dinein-move-table-btn"
-                  disabled={!canMoveTable || busy}
-                  onClick={onMoveTable}
-                  className="dc-kiosk-mesa-chrome-btn"
-                >
-                  Mudar de mesa
-                </button>
-              )}
-              {onOpenBill && (
-                <button
-                  type="button"
-                  disabled={!canRequestBill || busy}
-                  onClick={() => onOpenBill()}
-                  className={
-                    'dc-kiosk-mesa-chrome-btn'
-                    + (billActionLabel === 'Aguardando PIX'
-                      ? ' dinein-bill-awaiting-pix'
-                      : billActionLabel === 'Conta pedida'
-                        ? ' dinein-bill-requested'
-                        : '')
-                  }
-                >
-                  {billActionLabel}
-                </button>
-              )}
+          {(roleChip || onMoveTable || (onOpenBill && billActionLabel !== 'Pedir a conta')) && (
+            <div className="dc-kiosk-mesa-row" aria-label="Status da mesa">
+              <div className="dc-kiosk-mesa-status">{roleChip}</div>
+              <div className="dc-kiosk-mesa-chrome">
+                {onOpenBill && billActionLabel !== 'Pedir a conta' && (
+                  <button
+                    type="button"
+                    disabled={!canRequestBill || busy}
+                    onClick={() => onOpenBill()}
+                    className={
+                      'dc-kiosk-mesa-chrome-btn'
+                      + (billActionLabel === 'Aguardando PIX'
+                        ? ' dinein-bill-awaiting-pix'
+                        : billActionLabel === 'Conta pedida'
+                          ? ' dinein-bill-requested'
+                          : '')
+                    }
+                  >
+                    {billActionLabel}
+                  </button>
+                )}
+                {onMoveTable && (
+                  <button
+                    type="button"
+                    data-testid="dinein-move-table-btn"
+                    disabled={!canMoveTable || busy}
+                    onClick={onMoveTable}
+                    className="dc-kiosk-mesa-chrome-btn dc-kiosk-move-table"
+                  >
+                    <ArrowLeftRight size={16} aria-hidden={true} />
+                    <span>Mudar de mesa</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {tableControls}
@@ -728,6 +807,7 @@ export function DineInPremiumMenu({
             <div
               className="dc-kiosk-products-grid"
               data-testid="kiosk-products-grid"
+              data-columns={productColumns}
               style={{ gridTemplateColumns: `repeat(${productColumns}, minmax(0, 1fr))` }}
             >
               {categoryProducts.map(product => {

@@ -38,6 +38,8 @@ import { StoreHomeScreen } from '../../components/client/storeHome/StoreHomeScre
 import { DEFAULT_HOME_DESIGN, type HomeAction, type StoreHomeDesign } from '../../lib/storeHome/storeHome.model';
 import { homeActionAvailability, type HomeVisibilityContext } from '../../lib/storeHome/storeHomeVisibility';
 import { storeHomeRepository } from '../../repositories/storeHomeRepository';
+import { menuHeaderRepository } from '../../repositories/menuHeaderRepository';
+import { DEFAULT_MENU_HEADER, type MenuHeaderSettings } from '../../lib/menu/menuHeader';
 
 import { DineInTotemMenu } from '../../components/client/dinein/DineInTotemMenu';
 import { DineInPremiumMenuAdapter } from '../../components/client/totem/DineInPremiumMenuAdapter';
@@ -131,6 +133,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [ownOutdoor, setOwnOutdoor] = useState<{slug: string; slides: PublicMenuOutdoorSlide[]}>({slug:'',slides:[]});
   const [appOutdoorSlides, setAppOutdoorSlides] = useState<PublicMenuOutdoorSlide[]>([]);
   const [storeHomeDesign, setStoreHomeDesign] = useState<StoreHomeDesign>(DEFAULT_HOME_DESIGN);
+  const [menuHeader, setMenuHeader] = useState<MenuHeaderSettings>({ ...DEFAULT_MENU_HEADER });
   const [enabledModules, setEnabledModules] = useState<ReadonlySet<ModuleKey> | null>(null);
   const [storeFulfillment, setStoreFulfillment] = useState<{ delivery: boolean; pickup: boolean }>({ delivery: true, pickup: true });
 
@@ -427,6 +430,10 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
         void storeHomeRepository.loadPublic(result.tenantSlug).then(design => {
           if (alive) setStoreHomeDesign(design ?? DEFAULT_HOME_DESIGN);
         }).catch(() => { if (alive) setStoreHomeDesign(DEFAULT_HOME_DESIGN); });
+        setMenuHeader({ ...DEFAULT_MENU_HEADER });
+        void Promise.resolve().then(() => menuHeaderRepository.loadPublic(result.tenantSlug || '')).then(header => {
+          if (alive) setMenuHeader(header);
+        }).catch(() => { if (alive) setMenuHeader({ ...DEFAULT_MENU_HEADER }); });
 
         if (store.data.theme?.logoUrl) setStoreLogoUrl(store.data.theme.logoUrl);
         if (store.data.theme?.primaryColor) setStorePrimaryColor(store.data.theme.primaryColor);
@@ -1516,6 +1523,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           tableControls={tableNotices}
           productColumns={menuOptions.productColumns}
           outdoorSlides={outdoorSlides}
+          coverUrl={menuHeader.coverUrl}
+          categoryMenuMode={menuHeader.categoryMenuMode}
           cartCount={totalCartItems}
           orderingDisabled={orderingDisabled}
           busy={busy}
@@ -1534,12 +1543,13 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           canMoveTable={Boolean(sessionId && !tabClosed && !busy && !billRequested && !awaitingRelease && moveRequest?.status !== 'PENDING')}
           roleChip={(
             <div className="dc-kiosk-role-strip">
-              <p className="dc-kiosk-mesa-line">Você está na {mesaTitle(tab?.tableLabel || resolution?.tableLabel)}{tab?.joinedTables?.length ? ` + ${tab.joinedTables.map(jt => jt.label).join(' + ')}` : ''} · {storeName}</p>
+              <p className="dc-kiosk-mesa-line" data-testid="dinein-mesa-line">Você está na <strong className="dc-kiosk-mesa-name">{mesaTitle(tab?.tableLabel || resolution?.tableLabel)}{tab?.joinedTables?.length ? ` + ${tab.joinedTables.map(jt => jt.label).join(' + ')}` : ''}</strong></p>
               {access && myRole && (
                 <p data-testid="role-chip" className="dc-kiosk-role-chip">
                   {myRole === 'RESPONSIBLE' ? <>Você é o responsável pela mesa</> : <>Convidado{tab?.responsibleName ? ` de ${tab.responsibleName}` : ''}</>}
                 </p>
               )}
+              {!(access && myRole) && <p className="dc-kiosk-role-chip">Faça seu pedido por aqui</p>}
             </div>
           )}
           onAddProduct={addItem}

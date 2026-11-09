@@ -1606,3 +1606,248 @@ IMPORTANTE:
   /* keep badge readable even at 0 for counter contract */
   min-width: 1.1em;
 }
+
+/* =========================================================
+   CAPA DA LOJA + MENU LATERAL EM CARTÕES (padrão de todas as lojas)
+   Estrutura da referência do dono; cores SEMPRE dos tokens do tema.
+   Única exceção: texto branco e sombra escura sobre a FOTO da capa,
+   necessários para leitura em qualquer imagem enviada.
+========================================================= */
+
+/* ---------- Capa ---------- */
+.dc-kiosk[data-cover="true"] { --dc-kiosk-header-height: clamp(150px, 15.6vw, 230px); }
+.dc-kiosk-header.dc-kiosk-header--cover {
+  overflow: hidden;
+  background: var(--dc-kiosk-bg);
+  color: #fff;
+  border-bottom: 0;
+  box-shadow: 0 6px 16px rgba(0,0,0,.45);
+  padding: clamp(10px, 1.6vw, 26px) clamp(14px, 2.2vw, 34px);
+  align-items: center;
+}
+.dc-kiosk-header.dc-kiosk-header--cover::before { display: none; }
+.dc-kiosk-cover-image {
+  position: absolute; inset: 0; z-index: 0;
+  width: 100%; height: 100%;
+  object-fit: cover; object-position: center;
+  pointer-events: none; user-select: none;
+}
+.dc-kiosk-cover-shade {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  /* Escuro só à esquerda (atrás da logo e do nome); a foto aparece no resto. */
+  background:
+    linear-gradient(90deg, rgba(0,0,0,.62) 0%, rgba(0,0,0,.38) 34%, rgba(0,0,0,.08) 62%, rgba(0,0,0,0) 100%),
+    linear-gradient(180deg, rgba(0,0,0,0) 70%, rgba(0,0,0,.35) 100%);
+}
+.dc-kiosk-header--cover .dc-kiosk-brand,
+.dc-kiosk-header--cover .dc-kiosk-header-actions { position: relative; z-index: 2; }
+.dc-kiosk-header--cover .dc-kiosk-brand { gap: clamp(10px, 1.4vw, 22px); min-width: 0; }
+.dc-kiosk-header--cover .dc-kiosk-brand-logo {
+  width: clamp(64px, 8.5vw, 140px);
+  height: clamp(64px, 8.5vw, 140px);
+  object-fit: contain;
+  border-radius: 14px;
+  background: transparent;
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,.55));
+}
+.dc-kiosk-header--cover .dc-kiosk-brand-logo.dc-kiosk-image-fallback {
+  background: color-mix(in srgb, var(--dc-kiosk-surface) 85%, transparent);
+  color: var(--dc-kiosk-accent);
+}
+.dc-kiosk-header--cover .dc-kiosk-brand-copy { min-width: 0; }
+.dc-kiosk-header--cover .dc-kiosk-store-name {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(22px, 3.4vw, 52px);
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -.01em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 10px rgba(0,0,0,.6);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dc-kiosk-header--cover .dc-kiosk-store-tagline {
+  margin: 4px 0 0;
+  color: #fff; opacity: .92;
+  font-size: clamp(9px, 1vw, 15px);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 6px rgba(0,0,0,.7);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: none;
+}
+.dc-kiosk-header--cover .dc-kiosk-table-selector,
+.dc-kiosk-header--cover .dc-kiosk-menu-button {
+  color: #fff;
+  background: rgba(0,0,0,.6);
+  border: 2px solid var(--dc-kiosk-accent);
+  backdrop-filter: blur(4px);
+}
+
+/* Seletor de mesa em pílula com seta (com ou sem capa). */
+.dc-kiosk .dc-kiosk-table-selector {
+  display: inline-flex; align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 6px 14px 6px 14px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: clamp(13px, 1.5vw, 22px);
+  white-space: nowrap;
+}
+.dc-kiosk-table-chevron { flex: 0 0 auto; opacity: .9; }
+
+/* ---------- Menu lateral em cartões ---------- */
+.dc-kiosk {
+  --dc-kiosk-sidebar-width: clamp(150px, 17vw, 240px);
+}
+.dc-kiosk .dc-kiosk-sidebar {
+  padding: 12px 10px 16px;
+  background: var(--dc-kiosk-bg);
+  border-right: 1px solid color-mix(in srgb, var(--dc-kiosk-text) 14%, transparent);
+}
+.dc-kiosk .dc-kiosk-category-list { gap: 10px; }
+.dc-kiosk .dc-kiosk-category {
+  display: flex;
+  flex-direction: column !important;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: clamp(84px, 10vw, 128px);
+  padding: 10px 6px !important;
+  text-align: center !important;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--dc-kiosk-text) 20%, transparent);
+  background: var(--dc-kiosk-surface);
+  color: var(--dc-kiosk-text);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--dc-kiosk-text) 8%, transparent);
+}
+.dc-kiosk .dc-kiosk-category--active,
+.dc-kiosk .dc-kiosk-category--active:hover {
+  background: var(--dc-kiosk-category-active);
+  border-color: var(--dc-kiosk-category-active);
+  color: var(--dc-kiosk-accent-text);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--dc-kiosk-category-active) 40%, transparent);
+}
+.dc-kiosk-category-visual {
+  display: grid; place-items: center;
+  width: clamp(34px, 4.4vw, 64px);
+  height: clamp(34px, 4.4vw, 64px);
+  flex: 0 0 auto;
+}
+.dc-kiosk-category-icon {
+  width: 100%; height: 100%;
+  color: var(--dc-kiosk-accent);
+  stroke-width: 1.8;
+}
+.dc-kiosk-category--active .dc-kiosk-category-icon { color: var(--dc-kiosk-accent-text); }
+.dc-kiosk .dc-kiosk-category-visual .dc-kiosk-category-photo {
+  width: 100% !important; height: 100% !important;
+  max-height: none;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.dc-kiosk .dc-kiosk-category-visual .dc-kiosk-image-fallback {
+  display: grid; place-items: center; background: transparent; color: var(--dc-kiosk-accent);
+}
+.dc-kiosk .dc-kiosk-category-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  font-size: clamp(10.5px, 1.15vw, 17px);
+  font-weight: 900;
+  line-height: 1.18;
+  text-transform: uppercase;
+  text-align: center;
+  word-break: normal;
+  overflow-wrap: normal;
+  hyphens: none;
+}
+
+/* ---------- Linha da mesa ---------- */
+.dc-kiosk-mesa-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  margin: 2px 0 12px;
+}
+.dc-kiosk-mesa-status { min-width: 0; }
+.dc-kiosk-mesa-row .dc-kiosk-role-strip { margin: 0; }
+.dc-kiosk-mesa-row .dc-kiosk-mesa-line { font-size: clamp(15px, 1.7vw, 24px); font-weight: 800; line-height: 1.2; }
+.dc-kiosk-mesa-name { color: var(--dc-kiosk-accent); font-weight: 900; white-space: nowrap; }
+.dc-kiosk-mesa-row .dc-kiosk-role-chip { margin-top: 2px; font-size: clamp(11px, 1.15vw, 16px); }
+.dc-kiosk-mesa-row .dc-kiosk-mesa-chrome { margin: 0; flex: 0 0 auto; flex-wrap: nowrap; }
+.dc-kiosk .dc-kiosk-move-table {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1.5px solid var(--dc-kiosk-accent);
+  background: transparent;
+  color: var(--dc-kiosk-text);
+  font-size: clamp(11px, 1.15vw, 16px);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.dc-kiosk .dc-kiosk-move-table svg { color: var(--dc-kiosk-accent); }
+
+/* Celular */
+@media (max-width: 699px) {
+  .dc-kiosk[data-cover="true"] { --dc-kiosk-header-height: clamp(104px, 28vw, 124px); }
+  .dc-kiosk { --dc-kiosk-sidebar-width: clamp(100px, 27vw, 140px); }
+  .dc-kiosk .dc-kiosk-main { grid-template-columns: var(--dc-kiosk-sidebar-width) minmax(0, 1fr) !important; }
+  .dc-kiosk-header.dc-kiosk-header--cover { padding: 8px 10px 10px 8px; }
+  .dc-kiosk-header--cover .dc-kiosk-brand { gap: 8px; }
+  .dc-kiosk-header--cover .dc-kiosk-brand-logo { width: clamp(64px, 18vw, 80px); height: clamp(64px, 18vw, 80px); }
+  .dc-kiosk-header--cover .dc-kiosk-brand { flex: 1 1 auto; }
+  .dc-kiosk-header--cover .dc-kiosk-store-name { font-size: clamp(16px, 4.7vw, 24px); }
+  .dc-kiosk-header--cover .dc-kiosk-store-tagline { font-size: clamp(7.5px, 2.1vw, 9.5px); letter-spacing: .02em; margin-top: 3px; }
+  .dc-kiosk .dc-kiosk-table-selector { min-height: 34px; padding: 4px 8px; gap: 4px; font-size: 13px; flex: 0 0 auto; }
+  .dc-kiosk .dc-kiosk-table-selector svg:first-child { width: 18px; height: 18px; }
+  .dc-kiosk .dc-kiosk-sidebar { padding: 10px 5px 14px !important; border-right: 1px solid color-mix(in srgb, var(--dc-kiosk-text) 14%, transparent) !important; }
+  .dc-kiosk .dc-kiosk-category-list { gap: 7px !important; }
+  .dc-kiosk .dc-kiosk-category { min-height: 74px; padding: 7px 3px !important; gap: 4px; border-radius: 12px; }
+  .dc-kiosk-category-visual { width: clamp(34px, 9.5vw, 42px); height: clamp(34px, 9.5vw, 42px); }
+  .dc-kiosk .dc-kiosk-category-label { font-size: clamp(10px, 2.75vw, 12px); line-height: 1.15; letter-spacing: -.01em; }
+  .dc-kiosk-mesa-row { gap: 6px; margin-bottom: 10px; }
+  .dc-kiosk-mesa-row .dc-kiosk-mesa-line { font-size: clamp(12px, 3.3vw, 15px); white-space: nowrap; }
+  .dc-kiosk-mesa-row .dc-kiosk-role-chip { font-size: 11px; }
+  .dc-kiosk .dc-kiosk-move-table { min-height: 30px; padding: 4px 8px; font-size: 10.5px; gap: 4px; }
+  .dc-kiosk .dc-kiosk-move-table svg { width: 14px; height: 14px; }
+}
+
+/* ---------- Cartões de produto: mais baixos e quase quadrados ----------
+   Foto 4:3 (1:1 no celular), nome em até 2 linhas, descrição em 1 linha,
+   preço em uma linha e "Adicionar" sem quebrar. Cores continuam do tema. */
+.dc-kiosk .dc-kiosk-product-photo-button {
+  height: auto !important;
+  aspect-ratio: 4 / 3;
+}
+.dc-kiosk .dc-kiosk-product-name { min-height: 0; }
+.dc-kiosk .dc-kiosk-product-description {
+  display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1; line-clamp: 1; overflow: hidden;
+}
+.dc-kiosk .dc-kiosk-product-price { white-space: nowrap; line-height: 1.1; }
+.dc-kiosk .dc-kiosk-add-button { white-space: nowrap; }
+.dc-kiosk .dc-kiosk-product-bottom { padding-top: 6px; gap: 6px; }
+@media (max-width: 699px) {
+  .dc-kiosk .dc-kiosk-product-photo-button { aspect-ratio: 1 / 1; }
+  .dc-kiosk .dc-kiosk-product-info { padding: 6px 6px 7px; gap: 1px; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name { font-size: clamp(10.5px, 2.9vw, 13px); line-height: 1.15; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description { font-size: clamp(9px, 2.4vw, 11px); }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price { font-size: clamp(12px, 3.6vw, 17px); }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-original-price { font-size: 9px; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button {
+    min-height: 30px; padding: 4px 3px; gap: 3px;
+    font-size: clamp(9px, 2.5vw, 11.5px); letter-spacing: -.01em;
+  }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button svg { width: 13px; height: 13px; flex: 0 0 auto; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="2"] .dc-kiosk-add-button { min-height: 36px; font-size: 13px; }
+}
