@@ -49,6 +49,10 @@ const openMenu = async () => {
   // QR opens the menu (or the identity confirmation gate) directly.
   await waitFor(() => expect(screen.queryByTestId('dinein-premium-kiosk') || screen.queryByTestId('confirm-logged-user-gate')).toBeTruthy());
 };
+// "Pedir a conta" fica no menu da pílula da mesa (cabeçalho), não no corpo do cardápio.
+const openActions = async () => { fireEvent.click(await screen.findByTestId('kiosk-hamburger')); };
+const billAction = async () => { await openActions(); return screen.findByRole('button', { name: 'Pedir a conta' }); };
+const mesaLine = () => screen.getByTestId('dinein-mesa-line').textContent || '';
 const round = (status = 'PENDING', id = 'o1') => ({ orderId: id, orderNumber: 12, roundNo: 1, status, customerName: 'Ana', mine: true, subtotal: 12, createdAt: '2026-11-03T12:00:00Z', queuePosition: 4, items: [{ name: 'Chopp', quantity: 1 }] });
 const myTab = (rounds: ReturnType<typeof round>[] = [], status = 'OPEN') => ({ tabId: 'tb', status, mode: 'TABLE', tableLabel: 'Mesa 03', serviceFeePercent: 0, serviceFeeRemoved: false, subtotal: rounds.length * 12, rounds, me: { sessionId: 's1', role: 'GUEST', approved: true, displayName: 'Ana' } });
 let account = myTab();
@@ -128,7 +132,7 @@ describe('Garçom v3 — cliente QR', () => {
       ? new Promise(resolve => { finishOldBill = resolve; }) : originalRpc(name, args));
     const view = render(<DineInClientApp token={TOKEN} />);
     await openMenu();
-    fireEvent.click(await screen.findByRole('button', { name: 'Pedir a conta' }));
+    fireEvent.click(await billAction());
     fireEvent.click(screen.getByRole('button', { name: 'Chamar garçom para fechar a conta' }));
     await waitFor(() => expect(finishOldBill).toBeTypeOf('function'));
     const nextToken = 'n'.repeat(48);
@@ -136,7 +140,7 @@ describe('Garçom v3 — cliente QR', () => {
     view.rerender(<DineInClientApp token={nextToken} />);
     await openMenu();
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
-    await screen.findByRole('button', { name: 'Pedir a conta' });
+    await billAction();
     await act(async () => finishOldBill({ data: null, error: null }));
     expect(screen.queryByRole('button', { name: 'Conta pedida' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Pedir a conta' }).hasAttribute('disabled')).toBe(false);
@@ -215,7 +219,7 @@ describe('Garçom v3 — cliente QR', () => {
     h.user = { id: 'u1' }; sessionStorage.setItem(SESSION_KEY_PREFIX + TOKEN, 's1'); account = myTab([round('DELIVERED'), round('CANCELLED', 'o2')]);
     render(<DineInClientApp token={TOKEN} />);
     await openMenu();
-    fireEvent.click(await screen.findByRole('button', { name: 'Pedir a conta' }));
+    fireEvent.click(await billAction());
     fireEvent.click(screen.getByRole('button', { name: 'Chamar garçom para fechar a conta' }));
     const pending = await screen.findByRole('button', { name: 'Conta pedida' });
     expect(pending.hasAttribute('disabled')).toBe(true); expect(pending.className).toContain('dinein-bill-requested');
@@ -246,7 +250,7 @@ describe('Garçom v3 — cliente QR', () => {
     await screen.findByText('Comanda reaberta. Você já pode pedir mais; a equipe foi avisada.');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Adicionar Chopp' }).hasAttribute('disabled')).toBe(false));
     expect(screen.queryByRole('button', { name: 'Pedir mais' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Pedir a conta' }).hasAttribute('disabled')).toBe(false);
+    expect((await billAction()).hasAttribute('disabled')).toBe(false);
   });
 
   it.each([
@@ -398,8 +402,8 @@ describe('Garçom v3 — cliente QR', () => {
 
     await waitFor(() => expect(h.moveTable).toHaveBeenCalledWith('s1', { tableId: 't7' }));
     expect(await screen.findByText('Mudança de mesa aguardando autorização. Sua conta continua na mesa atual.')).toBeTruthy();
-    expect(screen.getByText(/Você está na Mesa 03/)).toBeTruthy();
-    expect(screen.queryByText(/Você está na Mesa 07/)).toBeNull();
+    expect(mesaLine()).toContain('Você está na Mesa 03');
+    expect(mesaLine()).not.toContain('Mesa 07');
     expect(screen.getByTestId('dinein-move-table-btn').hasAttribute('disabled')).toBe(true);
     expect(sessionStorage.getItem(SESSION_KEY_PREFIX + TOKEN)).toBe('s1');
     // A resposta da equipe muda a conta no servidor; só então o cliente muda de mesa.
@@ -407,7 +411,7 @@ describe('Garçom v3 — cliente QR', () => {
     moveRequests = [{ ...moveRequests[0], status: 'APPROVED' }];
     await act(async () => h.subscriptions.find(item => item.table === 'dining_tracking_revisions')!.callback());
     expect(await screen.findByText('Mudança de mesa autorizada. Sua conta, pedidos e valores acompanham a nova mesa.')).toBeTruthy();
-    expect(screen.getByText(/Você está na Mesa 07/)).toBeTruthy();
+    expect(mesaLine()).toContain('Você está na Mesa 07');
 
     // Em Minha conta, exibe o histórico de mesas
     fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
@@ -440,7 +444,7 @@ describe('Garçom v3 — cliente QR', () => {
     moveRequests = [{ ...moveRequests[0], status: 'REJECTED' }];
     await act(async () => h.subscriptions.find(item => item.table === 'dining_tracking_revisions')!.callback());
     await screen.findByText('Solicitação de mudança de mesa recusada. Sua conta continua na mesa atual.');
-    expect(screen.getByText(/Você está na Mesa 03/)).toBeTruthy();
+    expect(mesaLine()).toContain('Você está na Mesa 03');
     expect(screen.getByTestId('dinein-move-table-btn').hasAttribute('disabled')).toBe(false);
     expect(sessionStorage.getItem(SESSION_KEY_PREFIX + TOKEN)).toBe('s1');
   });

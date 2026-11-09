@@ -60,16 +60,68 @@ describe('totem premium touch menu', () => {
     }
   });
 
-  it('places uploaded category photo and name SIDE BY SIDE, and falls back to only name', () => {
+  it('renders each category as a card with visual ON TOP and name BELOW (default icon mode)', () => {
     const withPhoto = {...categories[0], imageUrl: 'https://example.com/beer.webp'};
-    const p = menuProps();
-    const view = render(<DineInPremiumMenu {...p} categories={[withPhoto, categories[1]]} />);
-    const beer = screen.getByRole('button', {name: /Cervejas/});
-    expect(beer.querySelector('img')?.getAttribute('src')).toBe(withPhoto.imageUrl);
+    const view = render(<DineInPremiumMenu {...menuProps()} categories={[withPhoto, categories[1]]} />);
+    const beer = screen.getByTestId('kiosk-category-beer');
+    const children = Array.from(beer.children).map(child => child.className);
+    expect(children).toEqual(['dc-kiosk-category-visual', 'dc-kiosk-category-label']);
+    expect(beer.getAttribute('data-visual')).toBe('icon');
+    expect(beer.querySelector('img')).toBeNull();
+    expect(beer.querySelector('svg')).toBeTruthy();
     expect(beer.querySelector('.dc-kiosk-category-label')?.textContent).toBe('Cervejas');
-    const wine = screen.getByRole('button', {name: /Vinhos/});
+    expect(beer.getAttribute('aria-current')).toBe('true');
+    expect(screen.getByTestId('kiosk-category-wine').className).not.toContain('dc-kiosk-category--active');
+    view.unmount();
+  });
+
+  it('uses the owner category image in IMAGE mode and falls back to the default icon without one', () => {
+    const withPhoto = {...categories[0], imageUrl: 'https://example.com/beer.webp'};
+    const view = render(<DineInPremiumMenu {...menuProps()} categoryMenuMode="IMAGE" categories={[withPhoto, categories[1]]} />);
+    const beer = screen.getByTestId('kiosk-category-beer');
+    expect(beer.querySelector('.dc-kiosk-category-visual img')?.getAttribute('src')).toBe(withPhoto.imageUrl);
+    expect(beer.querySelector('.dc-kiosk-category-label')?.textContent).toBe('Cervejas');
+    const wine = screen.getByTestId('kiosk-category-wine');
+    expect(wine.getAttribute('data-visual')).toBe('icon');
     expect(wine.querySelector('img')).toBeNull();
     expect(wine.querySelector('.dc-kiosk-category-label')?.textContent).toBe('Vinhos');
+    view.unmount();
+  });
+
+  it('shows the cover behind logo/name/table and falls back to the standard header without it', () => {
+    const view = render(<DineInPremiumMenu {...menuProps()} storeTagline="Adega • Chopp" coverUrl="https://example.com/capa.jpg" />);
+    const header = screen.getByTestId('kiosk-header');
+    expect(header.getAttribute('data-cover')).toBe('true');
+    expect(header.className).toContain('dc-kiosk-header--cover');
+    expect(screen.getByTestId('kiosk-cover-image').getAttribute('src')).toBe('https://example.com/capa.jpg');
+    expect(screen.getByText('Adega • Chopp')).toBeTruthy();
+    expect(screen.getByTestId('kiosk-hamburger').textContent).toContain('Mesa 04');
+    view.unmount();
+    for (const cover of [null, 'http://example.com/inseguro.jpg', 'javascript:alert(1)']) {
+      const plain = render(<DineInPremiumMenu {...menuProps()} storeTagline="Adega • Chopp" coverUrl={cover} />);
+      expect(screen.getByTestId('kiosk-header').getAttribute('data-cover')).toBe('false');
+      expect(screen.queryByTestId('kiosk-cover-image')).toBeNull();
+      expect(screen.queryByText('Adega • Chopp')).toBeNull();
+      plain.unmount();
+    }
+  });
+
+  it('cover image that fails to load falls back to the standard header', () => {
+    const view = render(<DineInPremiumMenu {...menuProps()} coverUrl="https://example.com/quebrada.jpg" />);
+    fireEvent.error(screen.getByTestId('kiosk-cover-image'));
+    expect(screen.getByTestId('kiosk-header').getAttribute('data-cover')).toBe('false');
+    view.unmount();
+  });
+
+  it('keeps only status + "Mudar de mesa" in the body; "Pedir a conta" lives in the table menu', () => {
+    const onOpenBill = vi.fn();
+    const view = render(<DineInPremiumMenu {...menuProps()} onOpenBill={onOpenBill} onMoveTable={vi.fn()} canMoveTable
+      roleChip={<p>Você está na Mesa 04</p>} />);
+    expect(screen.getByTestId('dinein-move-table-btn').textContent).toContain('Mudar de mesa');
+    expect(screen.queryByRole('button', { name: 'Pedir a conta' })).toBeNull();
+    fireEvent.click(screen.getByTestId('kiosk-hamburger'));
+    fireEvent.click(screen.getByRole('button', { name: 'Pedir a conta' }));
+    expect(onOpenBill).toHaveBeenCalledOnce();
     view.unmount();
   });
 

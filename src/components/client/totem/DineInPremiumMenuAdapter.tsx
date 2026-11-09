@@ -54,6 +54,7 @@ import {
 import type {
   ExpenseTab,
 } from '../../../lib/menu/premiumTotem.model';
+import type { CategoryMenuMode } from '../../../lib/menu/menuHeader';
 import type { PublicMenuOutdoorSlide } from '../../../repositories/menuOutdoorRepository';
 
 import {
@@ -122,6 +123,8 @@ export interface DineInPremiumMenuAdapterProps {
   tableControls?: React.ReactNode;
   productColumns?: 1 | 2 | 3;
   outdoorSlides?: PublicMenuOutdoorSlide[];
+  coverUrl?: string | null;
+  categoryMenuMode?: CategoryMenuMode;
 
   verifiedSessionId?: string | null;
   tabSessionId?: string | null;
@@ -185,6 +188,8 @@ export function DineInPremiumMenuAdapter({
   tableControls,
   productColumns = 3,
   outdoorSlides = [],
+  coverUrl,
+  categoryMenuMode,
 
   verifiedSessionId,
   tabSessionId,
@@ -660,6 +665,8 @@ export function DineInPremiumMenuAdapter({
         tableControls={tableControls}
         productColumns={productColumns}
         outdoorSlides={outdoorSlides}
+        coverUrl={coverUrl}
+        categoryMenuMode={categoryMenuMode}
         orderingDisabled={
           orderingDisabled || isPending
         }

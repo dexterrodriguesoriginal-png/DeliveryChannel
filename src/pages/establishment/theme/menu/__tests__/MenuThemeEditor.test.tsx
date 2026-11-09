@@ -14,6 +14,7 @@ vi.mock('../../../../../repositories/menuThemeRepository', async importOriginal 
   menuThemeRepository: { load: mocks.load, save: mocks.save },
 }));
 vi.mock('../../../../../repositories/menuOptionsRepository', () => ({ menuOptionsRepository: { load: vi.fn().mockResolvedValue({ totemMode: false, idleSeconds: 60 }), save: vi.fn() } }));
+vi.mock('../../../../../repositories/menuHeaderRepository', () => ({ menuHeaderRepository: { load: vi.fn().mockResolvedValue({ coverUrl: null, categoryMenuMode: 'ICON' }), save: vi.fn(), uploadCover: vi.fn() } }));
 vi.mock('../../../../../repositories/productRepository', () => ({ productRepository: { getProducts: mocks.product } }));
 vi.mock('../../../../../repositories/categoryRepository', () => ({ categoryRepository: { getCategories: mocks.category } }));
 vi.mock('../../../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: true }));
