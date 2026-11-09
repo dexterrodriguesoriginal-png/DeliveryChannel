@@ -324,4 +324,31 @@ describe('totem do salão variant', () => {
     fireEvent.click(screen.getByTestId('totem-order-checkout'));
     expect(onCheckout).toHaveBeenCalledOnce();
   });
+
+  it('places the promo banner full width above the sidebar, not inside the products column', () => {
+    const slides = [{ id: 's1', imageUrl: 'https://example.com/promo.jpg', title: 'Cerveja gelada' }];
+    const view = render(
+      <DineInPremiumMenu {...menuProps()} variant="TOTEM" outdoorSlides={slides} />,
+    );
+    const root = screen.getByTestId('dinein-premium-kiosk');
+    const banner = screen.getByTestId('totem-fullwidth-banner');
+    const main = root.querySelector('.dc-kiosk-main') as HTMLElement;
+    const outdoor = screen.getByTestId('cardapio-outdoor');
+    expect(banner.contains(outdoor)).toBe(true);
+    expect(main.contains(outdoor)).toBe(false);
+    expect(root.getAttribute('data-banner')).toBe('true');
+    expect(banner.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    view.unmount();
+
+    render(<DineInPremiumMenu {...menuProps()} outdoorSlides={slides} />);
+    expect(screen.queryByTestId('totem-fullwidth-banner')).toBeNull();
+    expect(screen.getByTestId('dinein-premium-kiosk').querySelector('.dc-kiosk-products-area')?.contains(screen.getByTestId('cardapio-outdoor'))).toBe(true);
+  });
+
+  it('does not reserve a banner row when the totem has no outdoor slides', () => {
+    render(<DineInPremiumMenu {...menuProps()} variant="TOTEM" outdoorSlides={[]} />);
+    const banner = screen.getByTestId('totem-fullwidth-banner');
+    expect(banner.hasAttribute('hidden') || banner.getAttribute('data-empty') === 'true').toBe(true);
+    expect(screen.queryByTestId('cardapio-outdoor')).toBeNull();
+  });
 });

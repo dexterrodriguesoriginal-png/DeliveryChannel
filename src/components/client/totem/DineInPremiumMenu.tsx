@@ -549,6 +549,7 @@ export function DineInPremiumMenu({
       data-tenant-id={tenantId}
       data-layout={theme.layout}
       data-variant={isTotem ? 'totem' : 'mesa'}
+      data-banner={isTotem && outdoorSlides.length > 0 ? 'true' : 'false'}
       data-cover={!isTotem && showCover ? 'true' : 'false'}
       style={rootStyle}
     >
@@ -681,6 +682,17 @@ export function DineInPremiumMenu({
           CONTEÚDO PRINCIPAL
       ================================= */}
 
+      {isTotem && (
+        <div
+          className="dc-kiosk-totem-banner"
+          data-testid="totem-fullwidth-banner"
+          data-empty={outdoorSlides.length === 0 ? 'true' : 'false'}
+          hidden={outdoorSlides.length === 0}
+        >
+          <MenuOutdoorCarousel slides={outdoorSlides} onOpenProduct={id => handleProductDetails(id)} />
+        </div>
+      )}
+
       <div className="dc-kiosk-main">
         {/* MENU LATERAL DE CATEGORIAS */}
 
@@ -787,7 +799,9 @@ export function DineInPremiumMenu({
             </div>
           )}
           {!isTotem && tableControls}
-          <MenuOutdoorCarousel slides={outdoorSlides} onOpenProduct={id => handleProductDetails(id)} />
+          {!isTotem && (
+            <MenuOutdoorCarousel slides={outdoorSlides} onOpenProduct={id => handleProductDetails(id)} />
+          )}
           <div className="dc-kiosk-category-heading">
             <div className="dc-kiosk-category-title-row">
               {activeCategory && (() => {

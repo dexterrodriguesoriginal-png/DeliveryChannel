@@ -2085,10 +2085,32 @@ IMPORTANTE:
   --dc-kiosk-footer-height: 18vh;
   --dc-kiosk-sidebar-width: 22vw;
   --dc-kiosk-card-gap: clamp(10px, 1.1vw, 16px);
-  grid-template-rows: minmax(0, 1fr) 18vh !important;
+  /* banner (auto=0 se vazio) + cardápio + painel do pedido */
+  grid-template-rows: auto minmax(0, 1fr) 18vh !important;
+  grid-template-areas:
+    "banner"
+    "main"
+    "footer";
+}
+
+.dc-kiosk[data-variant="totem"] .dc-kiosk-totem-banner {
+  grid-area: banner;
+  min-height: 0;
+}
+
+.dc-kiosk[data-variant="totem"] .dc-kiosk-totem-banner[hidden],
+.dc-kiosk[data-variant="totem"] .dc-kiosk-totem-banner[data-empty="true"] {
+  display: none !important;
+  margin: 0 !important;
+  height: 0 !important;
+}
+
+.dc-kiosk[data-variant="totem"] .dc-kiosk-order-panel {
+  grid-area: footer;
 }
 
 .dc-kiosk[data-variant="totem"] .dc-kiosk-main {
+  grid-area: main;
   min-height: 0;
   grid-template-columns: 22vw minmax(0, 1fr) !important;
 }
@@ -2167,12 +2189,19 @@ IMPORTANTE:
   text-align: center !important;
 }
 
-/* ----- Banner ~18% da altura, cantos arredondados ----- */
+/* ----- Banner em largura total no topo, acima da lateral e dos produtos ----- */
+.dc-kiosk[data-variant="totem"] .dc-kiosk-totem-banner {
+  margin: clamp(8px, 1vw, 14px);
+  margin-bottom: 0;
+}
+
+.dc-kiosk[data-variant="totem"] .dc-kiosk-totem-banner .dc-outdoor,
 .dc-kiosk[data-variant="totem"] .dc-outdoor {
   height: 18vh !important;
   min-height: 18vh !important;
   max-height: 18vh !important;
-  margin: 0 0 clamp(8px, 1vw, 14px) !important;
+  width: 100%;
+  margin: 0 !important;
   border-radius: clamp(12px, 1.4vw, 20px) !important;
   overflow: hidden;
 }
@@ -2552,7 +2581,7 @@ IMPORTANTE:
   .dc-kiosk[data-variant="totem"] {
     --dc-kiosk-sidebar-width: 26vw;
     --dc-kiosk-footer-height: auto;
-    grid-template-rows: minmax(0, 1fr) auto !important;
+    grid-template-rows: auto minmax(0, 1fr) auto !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-main {
     grid-template-columns: 26vw minmax(0, 1fr) !important;
