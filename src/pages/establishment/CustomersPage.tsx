@@ -2126,6 +2126,7 @@ export const CustomersPage: React.FC = () => {
         <PDVModal
           isOpen={isPDVOpen}
           tenantId={activeTenant.id}
+          slug={activeTenant.slug}
           products={pdvProducts}
           addonsEnabled={false}
           initialCustomerName={pdvCustomer?.name}

@@ -1,0 +1,110 @@
+.totem-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.totem-theme-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 110px;
+  padding: 12px;
+  border: 2px solid transparent;
+  border-radius: 16px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.totem-theme-swatch[aria-pressed="true"] { border-color: #176444; }
+.totem-theme-swatch > span { width: 28px; height: 8px; border-radius: 99px; }
+.totem-theme-swatch strong { font-size: .9rem; }
+.totem-theme-swatch em { font-size: .72rem; font-style: normal; opacity: .8; }
+.totem-radius { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; font-weight: 700; font-size: .85rem; }
+.totem-restore { margin-top: 14px; }
+.totem-design-preview {
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  background: var(--dc-kiosk-bg, #0B0F14);
+  color: var(--dc-kiosk-text, #fff);
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+.totem-preview-page { display: grid; grid-template-columns: 92px 1fr; flex: 1; min-height: 280px; }
+.totem-preview-sidebar {
+  background: var(--dc-totem-sidebar-bg);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.totem-preview-sidebar span {
+  background: var(--dc-totem-sidebar-card-bg);
+  color: var(--dc-totem-sidebar-card-text);
+  border-radius: 10px;
+  padding: 8px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+.totem-preview-sidebar span.is-active {
+  background: var(--dc-totem-sidebar-active-bg);
+  color: var(--dc-totem-sidebar-active-text);
+}
+.totem-preview-main { padding: 10px; }
+.totem-preview-banner {
+  height: 64px;
+  border-radius: var(--dc-kiosk-radius, 16px);
+  background: linear-gradient(90deg, var(--dc-totem-sidebar-active-bg), var(--dc-kiosk-accent));
+  margin-bottom: 10px;
+}
+.totem-preview-product {
+  background: var(--dc-kiosk-surface);
+  color: var(--dc-kiosk-text);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.totem-preview-photo { height: 80px; background: #9ca3af; }
+.totem-preview-product div { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.totem-preview-product b { color: var(--dc-totem-price); }
+.totem-preview-product button {
+  border: 0; border-radius: 10px; min-height: 32px;
+  background: var(--dc-kiosk-accent); color: var(--dc-kiosk-accent-text); font: inherit; font-weight: 800;
+}
+.totem-preview-order {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--dc-totem-order-bg);
+  color: var(--dc-totem-order-text);
+}
+.totem-preview-order button {
+  border: 0; border-radius: 12px; min-height: 36px; padding: 0 12px;
+  background: var(--dc-totem-checkout-bg); color: var(--dc-totem-checkout-text);
+  font: inherit; font-weight: 800;
+}
+.totem-user-create, .totem-user-actions form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+.totem-user-create label, .totem-user-actions form input { font-size: .8rem; font-weight: 700; }
+.totem-user-create input, .totem-user-actions input {
+  min-height: 40px; width: 100%; border-radius: 10px; border: 1px solid #d1d5db; padding: 0 10px; font: inherit;
+}
+.totem-user-list, .totem-device-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.totem-user-list li, .totem-device-list li {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 12px; border-radius: 14px; background: color-mix(in srgb, currentColor 4%, transparent);
+}
+.totem-user-list strong, .totem-device-list strong { display: block; }
+.totem-user-list span, .totem-device-list span, .totem-user-list em { display: block; font-size: .8rem; opacity: .8; font-style: normal; }
+.totem-user-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.totem-device-heading { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; font-size: 1rem; }
+.totem-device-revoked { font-size: .8rem; opacity: .7; }
+.totem-admin-notice { color: #176444; font-weight: 700; }
+.totem-admin-error { color: #b91c1c; font-weight: 700; }
+.totem-user-empty { opacity: .7; font-size: .9rem; }

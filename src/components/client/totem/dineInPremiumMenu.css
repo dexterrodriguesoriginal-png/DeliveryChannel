@@ -2692,3 +2692,51 @@ IMPORTANTE:
     transition: none !important;
   }
 }
+
+/* Design do Totem: cores por elemento (só no fluxo /totem, quando as variáveis existem). */
+.dc-kiosk[data-variant="totem"] {
+  background: var(--dc-totem-page-bg, var(--dc-kiosk-bg));
+}
+.dc-kiosk[data-variant="totem"] .dc-kiosk-sidebar {
+  background: var(--dc-totem-sidebar-bg, var(--dc-kiosk-bg));
+}
+.dc-kiosk[data-variant="totem"] .dc-kiosk-category {
+  background: var(--dc-totem-sidebar-card-bg, var(--dc-kiosk-surface));
+  color: var(--dc-totem-sidebar-card-text, var(--dc-kiosk-text));
+}
+.dc-kiosk[data-variant="totem"] .dc-kiosk-category-label {
+  color: inherit;
+}
+.dc-kiosk[data-variant="totem"] .dc-kiosk-category--active,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-category--active:hover {
+  background: var(--dc-totem-sidebar-active-bg, var(--dc-kiosk-category-active)) !important;
+  color: var(--dc-totem-sidebar-active-text, var(--dc-kiosk-accent-text)) !important;
+  border-color: var(--dc-totem-sidebar-active-bg, var(--dc-kiosk-category-active)) !important;
+}
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-card {
+  background: var(--dc-kiosk-surface);
+  color: var(--dc-kiosk-text);
+}
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-name,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-description {
+  color: var(--dc-kiosk-text);
+}
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-price {
+  color: var(--dc-totem-price, var(--dc-kiosk-accent));
+}
+.dc-kiosk[data-variant="totem"] .dc-kiosk-add-button {
+  background: var(--dc-kiosk-accent);
+  color: var(--dc-kiosk-accent-text);
+}
+.dc-kiosk[data-variant="totem"] .dc-kiosk-totem-banner,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-totem-banner .dc-outdoor {
+  border-radius: var(--dc-kiosk-radius);
+}
+.dc-kiosk[data-variant="totem"] .dc-kiosk-order-panel {
+  background: var(--dc-totem-order-bg, var(--dc-kiosk-surface));
+  color: var(--dc-totem-order-text, var(--dc-kiosk-text));
+}
+.dc-kiosk[data-variant="totem"] .dc-kiosk-order-checkout {
+  background: var(--dc-totem-checkout-bg, var(--dc-kiosk-accent));
+  color: var(--dc-totem-checkout-text, var(--dc-kiosk-accent-text));
+}

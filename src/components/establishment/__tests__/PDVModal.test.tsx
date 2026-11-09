@@ -61,6 +61,7 @@ describe('PDVModal — Frente de Caixa Balcão', () => {
       <PDVModal
         isOpen={true}
         tenantId="tenant-123"
+        slug="adegasshow"
         products={sampleProducts}
         addonsEnabled={false}
         onClose={() => {}}
@@ -71,6 +72,8 @@ describe('PDVModal — Frente de Caixa Balcão', () => {
     );
 
     expect(html).toContain('Frente de Caixa (PDV Balcão)');
+    expect(html).toContain('Instalar totem');
+    expect(html).toContain('/totem/adegasshow/?install=1');
     expect(html).toContain('Vinho Tinto Reserva');
     expect(html).toContain('Cerveja Artesanal IPA');
     expect(html).toContain('Maria Silva');

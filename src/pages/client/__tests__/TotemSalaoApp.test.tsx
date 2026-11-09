@@ -65,6 +65,7 @@ function stubDisplayMode(standalone = false, fullscreen = false) {
 beforeEach(() => {
   resetTotemFullscreenSession();
   stubDisplayMode(false);
+  try { sessionStorage.setItem('dc_totem_continue_browser_cafe-da-praca', '1'); } catch { /* ignore */ }
   h.loadStore.mockReset(); h.loadWelcome.mockReset(); h.loadHeader.mockReset();
   h.outdoor.mockReset(); h.modules.mockReset(); h.options.mockReset();
   h.modules.mockResolvedValue(new Set());

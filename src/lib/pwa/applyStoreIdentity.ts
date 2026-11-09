@@ -79,7 +79,7 @@ function meta(name: string, content: string) {
 
 /** Remove o vínculo com o manifesto global o mais cedo possível em rotas de loja. */
 export function detachGlobalManifestForStoreRoute(pathname: string) {
-  if (!pathname.startsWith('/app/')) return;
+  if (!pathname.startsWith('/app/') && !pathname.startsWith('/totem/')) return;
   document.head.querySelectorAll(`link[rel="manifest"][href="${GLOBAL_MANIFEST_HREF}"]`).forEach(l => l.remove());
 }
 

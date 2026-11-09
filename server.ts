@@ -96,7 +96,7 @@ async function start() {
         const store = await withTimeout(pwa.lookupStore(slug), 1500, null);
         const title = store ? `${store.theme?.storeName || store.name} — Totem` : 'Totem do salão';
         res.setHeader('Cache-Control', 'no-cache');
-        res.type('html').send(injectTotemHead(raw, slug, title));
+        res.type('html').send(injectTotemHead(raw, slug, title, store));
       } catch (e) { next(e); }
     });
     app.use(vite.middlewares);
@@ -129,7 +129,7 @@ async function start() {
         indexHtml.then(async (raw) => {
           const store = await withTimeout(pwa.lookupStore(totemSlug), 1500, null);
           const title = store ? `${store.theme?.storeName || store.name} — Totem` : 'Totem do salão';
-          return injectTotemHead(raw, totemSlug, title);
+          return injectTotemHead(raw, totemSlug, title, store);
         }).then((h) => res.set('Cache-Control', 'no-cache').type('html').send(h), next);
         return;
       }

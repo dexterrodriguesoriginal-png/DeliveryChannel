@@ -9,11 +9,15 @@ import { ProductOptionsSelector } from '../client/customer/ProductOptionsSelecto
 import { productOptionRepository } from '../../repositories/productOptionRepository';
 import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { rpcErrorMessage } from '../../lib/rpcErrors';
+import { InstalarTotemButton } from './InstalarTotemButton';
+import './instalarTotemButton.css';
 
 interface PDVModalProps {
   isOpen: boolean;
   /** Loja ativa — cupom é validado no servidor (validate_coupon_pos). */
   tenantId: string;
+  /** Slug da loja — usado no botão Instalar totem. */
+  slug?: string;
   products: Product[];
   addonsEnabled: boolean;
   onClose: () => void;
@@ -33,6 +37,7 @@ interface PDVModalProps {
 export const PDVModal: React.FC<PDVModalProps> = ({
   isOpen,
   tenantId,
+  slug,
   products,
   addonsEnabled,
   onClose,
@@ -224,12 +229,15 @@ export const PDVModal: React.FC<PDVModalProps> = ({
               <p className="text-xs text-gray-500">Venda rápida presencial com baixa automática em estoque</p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <InstalarTotemButton slug={slug} />
+            <button 
+              onClick={onClose}
+              className="p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Corpo do PDV */}

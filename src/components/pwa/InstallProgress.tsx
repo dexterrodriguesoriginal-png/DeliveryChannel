@@ -19,6 +19,12 @@ export interface InstallProgressProps {
   forceElapsedMs?: number | null;
   logo?: React.ReactNode;
   subtitle?: string;
+  /** Título durante o progresso. Padrão: "Tempo estimado de instalação". */
+  title?: string;
+  /** Texto ao concluir. Padrão: "Pronto! O app {appName} está na sua tela inicial". */
+  doneTitle?: string;
+  /** Rótulo do botão ao concluir. Padrão: "Abrir o app". */
+  openLabel?: string;
   onClose?: () => void;
   onComplete?: () => void;
   variant?: 'floating' | 'inline';
@@ -38,6 +44,9 @@ export const InstallProgress: React.FC<InstallProgressProps> = ({
   forceElapsedMs,
   logo,
   subtitle,
+  title = INSTALL_PROGRESS_TITLE,
+  doneTitle,
+  openLabel = OPEN_APP_BUTTON_LABEL,
   onClose,
   onComplete,
   variant = 'floating',
@@ -131,13 +140,13 @@ export const InstallProgress: React.FC<InstallProgressProps> = ({
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[15px] font-semibold leading-tight break-words">{INSTALL_PROGRESS_TITLE}</p>
+            <p className="text-[15px] font-semibold leading-tight break-words">{isDone ? (doneTitle || title) : title}</p>
             <span data-testid="install-countdown" className="shrink-0 text-xs font-semibold tabular-nums text-neutral-300">
               {countdown}
             </span>
           </div>
           <p className="text-xs text-neutral-400 leading-tight mt-0.5">
-            {isDone ? `Pronto! O app ${appName} está na sua tela inicial` : subtitle || appName}
+            {isDone ? (doneTitle ? '' : `Pronto! O app ${appName} está na sua tela inicial`) : subtitle || appName}
           </p>
         </div>
         {isDone && (
@@ -147,7 +156,7 @@ export const InstallProgress: React.FC<InstallProgressProps> = ({
             data-testid="open-installed-app"
             className="shrink-0 rounded-full bg-[#a8c7fa] px-4 py-1.5 text-sm font-semibold text-[#062e6f] transition active:scale-95 active:brightness-90 hover:brightness-105"
           >
-            {OPEN_APP_BUTTON_LABEL}
+            {openLabel}
           </button>
         )}
         {isDone && onClose && (

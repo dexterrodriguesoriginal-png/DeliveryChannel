@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { totemPublicUrl, totemQrFileName, normalizeTotemSlug } from '../totemAccess';
+import { totemPublicUrl, totemInstallUrl, totemQrFileName, normalizeTotemSlug } from '../totemAccess';
 
 describe('totemPublicUrl', () => {
   it('builds the totem link from the current origin and store slug', () => {
@@ -15,6 +15,13 @@ describe('totemPublicUrl', () => {
     expect(totemPublicUrl('https://loja.exemplo.com.br/app', 'adegasshow')).toBe(
       'https://loja.exemplo.com.br/totem/adegasshow',
     );
+  });
+
+  it('builds the install link with ?install=1', () => {
+    expect(totemInstallUrl('https://deliverychannel.example', 'adegasshow')).toBe(
+      'https://deliverychannel.example/totem/adegasshow/?install=1',
+    );
+    expect(totemInstallUrl('', 'adegasshow')).toBe('');
   });
 
   it('returns an empty string for an invalid slug or origin', () => {

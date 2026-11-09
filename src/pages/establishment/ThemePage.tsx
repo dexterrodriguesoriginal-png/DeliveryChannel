@@ -1,35 +1,33 @@
 import React, { useId, useState } from 'react';
-import { House, Smartphone, UtensilsCrossed } from 'lucide-react';
+import { MonitorPlay, Smartphone, UtensilsCrossed } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { canManageMenuTheme } from '../../repositories/menuThemeRepository';
-import { canManageStoreHome } from '../../repositories/storeHomeRepository';
 import { ThemeEditorShell } from './theme/ThemeEditorShell';
 import { MenuThemeEditor } from './theme/menu/MenuThemeEditor';
-import { StoreHomeEditor } from './theme/home/StoreHomeEditor';
+import { DesignTotemEditor } from './theme/totem/DesignTotemEditor';
 import type { Tenant } from '../../types';
 import './theme/menu/menuThemeEditor.css';
 
-type DesignTab = 'app' | 'menu' | 'home';
+type DesignTab = 'app' | 'menu' | 'totem';
 
 function DesignWorkspace({ tenant }: { tenant: Tenant }) {
   const { securityContext } = useAuth();
   const [tab, setTab] = useState<DesignTab>('app');
   const [openedMenu, setOpenedMenu] = useState(false);
-  const [openedHome, setOpenedHome] = useState(false);
+  const [openedTotem, setOpenedTotem] = useState(false);
   const id = useId();
   const canEditMenu = canManageMenuTheme(securityContext, tenant.id);
-  const canEditHome = canManageStoreHome(securityContext, tenant.id);
 
   const tabs: DesignTab[] = [
     'app',
     ...(canEditMenu ? (['menu'] as const) : []),
-    ...(canEditHome ? (['home'] as const) : []),
+    ...(canEditMenu ? (['totem'] as const) : []),
   ];
 
   function selectTab(next: DesignTab) {
     setTab(next);
     if (next === 'menu') setOpenedMenu(true);
-    if (next === 'home') setOpenedHome(true);
+    if (next === 'totem') setOpenedTotem(true);
   }
 
   function onTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
@@ -59,10 +57,10 @@ function DesignWorkspace({ tenant }: { tenant: Tenant }) {
             <UtensilsCrossed size={16} /> Design do Cardápio
           </button>
         )}
-        {canEditHome && (
-          <button type="button" id={`${id}-home-tab`} role="tab" tabIndex={tab === 'home' ? 0 : -1}
-            aria-selected={tab === 'home'} aria-controls={`${id}-home-panel`} onClick={() => selectTab('home')}>
-            <House size={16} /> Tela Inicial
+        {canEditMenu && (
+          <button type="button" id={`${id}-totem-tab`} role="tab" tabIndex={tab === 'totem' ? 0 : -1}
+            aria-selected={tab === 'totem'} aria-controls={`${id}-totem-panel`} onClick={() => selectTab('totem')}>
+            <MonitorPlay size={16} /> Design do Totem
           </button>
         )}
       </div>
@@ -74,9 +72,9 @@ function DesignWorkspace({ tenant }: { tenant: Tenant }) {
           <MenuThemeEditor tenant={tenant} active={tab === 'menu'} />
         </div>
       )}
-      {openedHome && canEditHome && (
-        <div className="theme-design-panel" id={`${id}-home-panel`} role="tabpanel" aria-labelledby={`${id}-home-tab`} hidden={tab !== 'home'}>
-          <StoreHomeEditor tenant={tenant} active={tab === 'home'} />
+      {openedTotem && canEditMenu && (
+        <div className="theme-design-panel" id={`${id}-totem-panel`} role="tabpanel" aria-labelledby={`${id}-totem-tab`} hidden={tab !== 'totem'}>
+          <DesignTotemEditor tenant={tenant} active={tab === 'totem'} />
         </div>
       )}
     </div>

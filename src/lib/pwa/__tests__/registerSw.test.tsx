@@ -52,6 +52,8 @@ describe('escopos isolados por app (loja, garçom, entregador, cozinha)', () => 
     expect(resolvePwaScope('/cozinha')).toBe('/cozinha');
     expect(resolvePwaScope('/cozinha/parear')).toBe('/cozinha');
     expect(resolvePwaScope('/')).toBe('/');
+    expect(resolvePwaScope('/totem/adegasshow')).toBe('/');
+    expect(resolvePwaScope('/totem/adegasshow/?install=1')).toBe('/');
   });
 });
 

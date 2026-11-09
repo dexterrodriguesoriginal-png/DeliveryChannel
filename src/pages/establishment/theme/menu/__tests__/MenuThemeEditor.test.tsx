@@ -16,6 +16,13 @@ vi.mock('../../../../../repositories/menuThemeRepository', async importOriginal 
 vi.mock('../../../../../repositories/menuOptionsRepository', () => ({ menuOptionsRepository: { load: vi.fn().mockResolvedValue({ totemMode: false, idleSeconds: 60 }), save: vi.fn() } }));
 vi.mock('../../../../../repositories/menuHeaderRepository', () => ({ menuHeaderRepository: { load: vi.fn().mockResolvedValue({ coverUrl: null, categoryMenuMode: 'ICON' }), save: vi.fn(), uploadCover: vi.fn() } }));
 vi.mock('../../../../../repositories/totemWelcomeRepository', () => ({ totemWelcomeRepository: { load: vi.fn().mockResolvedValue({ slides: [], imageSeconds: 6, buttonText: 'Toque para começar', buttonStyle: 'BAR', buttonBg: null, buttonFg: null, idleSeconds: 90 }), save: vi.fn(), uploadSlide: vi.fn() } }));
+vi.mock('../../../../../repositories/totemDesignRepository', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../../repositories/totemDesignRepository')>(),
+  totemDesignRepository: { canManage: () => mocks.context.userRole === 'OWNER' || mocks.context.userRole === 'MANAGER', load: vi.fn().mockResolvedValue(null), save: vi.fn() },
+}));
+vi.mock('../../../../../repositories/totemAccessRepository', () => ({
+  totemAccessRepository: { listUsers: vi.fn().mockResolvedValue([]), listDevices: vi.fn().mockResolvedValue([]), createUser: vi.fn(), setUserPassword: vi.fn(), setUserActive: vi.fn(), revokeDevice: vi.fn() },
+}));
 vi.mock('../../../../../repositories/productRepository', () => ({ productRepository: { getProducts: mocks.product } }));
 vi.mock('../../../../../repositories/categoryRepository', () => ({ categoryRepository: { getCategories: mocks.category } }));
 vi.mock('../../../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: true }));
@@ -139,5 +146,11 @@ describe('editor independente do cardápio', () => {
   it('oculta a aba do cardápio quando o contexto não pertence à loja', () => {
     mocks.context = { ...mocks.context, tenantId: 'store-b' }; render(<ThemePage />);
     expect(screen.queryByRole('tab', { name: 'Design do Cardápio' })).toBeNull(); expect(mocks.load).not.toHaveBeenCalled();
+  });
+  it('oferece Design do Totem e esconde a Tela inicial', () => {
+    render(<ThemePage />);
+    const tabs = screen.getByRole('tablist', { name: 'Qual design editar' });
+    expect(within(tabs).getByRole('tab', { name: 'Design do Totem' })).toBeTruthy();
+    expect(within(tabs).queryByRole('tab', { name: 'Tela Inicial' })).toBeNull();
   });
 });
