@@ -142,6 +142,11 @@ const ord = await expectOk('create order', `select public.create_totem_order($1,
 ok('order total is server price 25.80', ord?.rows?.[0]?.j?.ok && Number(ord.rows[0].j.total) === 25.8);
 const again = await expectOk('idempotent order', `select public.create_totem_order($1,$2::jsonb,$3::uuid) j`, [tok2.token, items, key1]);
 ok('same key returns same order', again?.rows?.[0]?.j?.idempotent === true && again.rows[0].j.orderId === ord.rows[0].j.orderId);
+const ordRow = await expectOk('order row fields', `select fulfillment_type, payment_status, status, totem_device_id::text, idempotency_key::text, total_amount::text, origin from public.orders where id = $1`, [ord.rows[0].j.orderId]);
+const orow = ordRow?.rows?.[0];
+ok('order is pickup totem with server total and key', orow && orow.fulfillment_type === 'PICKUP' && orow.payment_status === 'PAYMENT_ON_DELIVERY' && orow.status === 'CONFIRMED' && orow.origin === 'direct' && Number(orow.total_amount) === 25.8 && orow.idempotency_key === key1 && orow.totem_device_id);
+const itemRow = await expectOk('order items', `select quantity, unit_price::text, total_price::text from public.order_items where order_id = $1`, [ord.rows[0].j.orderId]);
+ok('item uses server price 12.90 x 2', itemRow?.rows?.length === 1 && Number(itemRow.rows[0].quantity) === 2 && Number(itemRow.rows[0].unit_price) === 12.9 && Number(itemRow.rows[0].total_price) === 25.8);
 await expectErr('inactive product', `select public.create_totem_order($1,$2::jsonb,$3::uuid)`, [tok2.token, JSON.stringify([{productId:PINACTIVE,quantity:1}]), 'c0000000-0000-0000-0000-000000000002'], 'INVÁLID_TOTEM_ORDER'.replace('Á','A') && 'INVALID_TOTEM_ORDER');
 await expectErr('foreign product', `select public.create_totem_order($1,$2::jsonb,$3::uuid)`, [tok2.token, JSON.stringify([{productId:POTHER,quantity:1}]), 'c0000000-0000-0000-0000-000000000003'], 'INVALID_TOTEM_ORDER');
 await expectErr('order without token', `select public.create_totem_order($1,$2::jsonb,$3::uuid)`, ['not-a-token', JSON.stringify([{productId:P1,quantity:1}]), 'c0000000-0000-0000-0000-000000000004'], 'TOTEM_DEVICE_INVALID');

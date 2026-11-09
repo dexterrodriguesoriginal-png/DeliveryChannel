@@ -622,21 +622,30 @@ BEGIN
     v_subtotal := v_subtotal + (v_price * v_qty);
   END LOOP;
 
-  INSERT INTO public.orders (
-    tenant_id, customer_name, customer_phone, delivery_address,
-    subtotal, delivery_fee, discount, total_amount,
-    payment_method, payment_status, fulfillment_type, status, notes, origin, totem_device_id
-  ) VALUES (
-    v_tenant, v_label, '-', 'Totem do salão',
-    v_subtotal, 0, 0, v_subtotal,
-    'CASH', 'PAYMENT_ON_DELIVERY', 'PICKUP', 'CONFIRMED', 'Pedido do totem do salão', 'direct', v_device
-  ) RETURNING id INTO v_order;
-
+  -- idempotency_key is immutable after insert (_orders_protect_columns). Set it here, never UPDATE.
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name='orders' AND column_name='idempotency_key'
   ) THEN
-    EXECUTE 'UPDATE public.orders SET idempotency_key = $2 WHERE id = $1' USING v_order, p_idempotency_key;
+    INSERT INTO public.orders (
+      tenant_id, customer_name, customer_phone, delivery_address,
+      subtotal, delivery_fee, discount, total_amount,
+      payment_method, payment_status, fulfillment_type, status, notes, origin, totem_device_id, idempotency_key
+    ) VALUES (
+      v_tenant, v_label, '-', 'Totem do salão',
+      v_subtotal, 0, 0, v_subtotal,
+      'CASH', 'PAYMENT_ON_DELIVERY', 'PICKUP', 'CONFIRMED', 'Pedido do totem do salão', 'direct', v_device, p_idempotency_key
+    ) RETURNING id INTO v_order;
+  ELSE
+    INSERT INTO public.orders (
+      tenant_id, customer_name, customer_phone, delivery_address,
+      subtotal, delivery_fee, discount, total_amount,
+      payment_method, payment_status, fulfillment_type, status, notes, origin, totem_device_id
+    ) VALUES (
+      v_tenant, v_label, '-', 'Totem do salão',
+      v_subtotal, 0, 0, v_subtotal,
+      'CASH', 'PAYMENT_ON_DELIVERY', 'PICKUP', 'CONFIRMED', 'Pedido do totem do salão', 'direct', v_device
+    ) RETURNING id INTO v_order;
   END IF;
 
   INSERT INTO public.order_items (order_id, product_id, product_name, quantity, unit_price, total_price, notes)

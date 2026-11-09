@@ -122,3 +122,80 @@ LANGUAGE sql STABLE SET search_path='' AS $$
   WHERE t.slug = lower(p_slug) AND t.status = 'ACTIVE'
   LIMIT 1;
 $$;
+
+-- Mirrors production immutability guards so tests catch post-insert updates
+-- of protected order fields (e.g. idempotency_key).
+CREATE OR REPLACE FUNCTION public._orders_protect_columns() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public', 'pg_temp'
+AS $$
+DECLARE
+    v_mutable TEXT[] := ARRAY['status','payment_status','driver_id','notes','updated_at','driver_accepted_at','picked_up_at','delivered_at','archived_at','archived_by'];
+    v_nullable_refs TEXT[] := ARRAY['customer_id','coupon_id','campaign_id','card_id','offer_id'];
+    v_old JSONB := to_jsonb(OLD) - v_mutable;
+    v_new JSONB := to_jsonb(NEW) - v_mutable;
+    v_key TEXT;
+BEGIN
+    FOREACH v_key IN ARRAY v_nullable_refs LOOP
+        IF v_new ? v_key AND (v_new -> v_key) = 'null'::jsonb THEN
+            v_old := v_old - v_key;
+            v_new := v_new - v_key;
+        END IF;
+    END LOOP;
+    IF v_old IS DISTINCT FROM v_new THEN
+        SELECT k INTO v_key FROM jsonb_object_keys(v_old || v_new) k
+        WHERE (v_old -> k) IS DISTINCT FROM (v_new -> k) LIMIT 1;
+        RAISE EXCEPTION 'ORDER_FIELD_IMMUTABLE: o campo "%" do pedido é protegido e não pode ser alterado após a criação.', v_key
+            USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_orders_protect_columns ON public.orders;
+CREATE TRIGGER trg_orders_protect_columns
+    BEFORE UPDATE ON public.orders
+    FOR EACH ROW EXECUTE FUNCTION public._orders_protect_columns();
+
+CREATE OR REPLACE FUNCTION public._order_items_protect() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public', 'pg_temp'
+AS $$
+DECLARE
+    v_old JSONB := to_jsonb(OLD);
+    v_new JSONB := to_jsonb(NEW);
+    v_key TEXT;
+BEGIN
+    FOREACH v_key IN ARRAY ARRAY['offer_id','card_id'] LOOP
+        IF v_new ? v_key AND (v_new -> v_key) = 'null'::jsonb THEN
+            v_old := v_old - v_key;
+            v_new := v_new - v_key;
+        END IF;
+    END LOOP;
+    IF v_old IS DISTINCT FROM v_new THEN
+        RAISE EXCEPTION 'ORDER_ITEM_IMMUTABLE: itens de pedido não podem ser alterados após a criação.' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_order_items_protect ON public.order_items;
+CREATE TRIGGER trg_order_items_protect
+    BEFORE UPDATE ON public.order_items
+    FOR EACH ROW EXECUTE FUNCTION public._order_items_protect();
+
+CREATE OR REPLACE FUNCTION public._orders_total_consistency_check() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public', 'pg_temp'
+AS $$
+BEGIN
+    IF NEW.total_amount <> NEW.subtotal - NEW.discount + NEW.delivery_fee
+       OR NEW.total_amount < 0 OR NEW.discount < 0 OR NEW.subtotal < 0 OR NEW.delivery_fee < 0 THEN
+        RAISE EXCEPTION 'ORDER_TOTAL_INCONSISTENT: total % <> subtotal % - desconto % + entrega %',
+            NEW.total_amount, NEW.subtotal, NEW.discount, NEW.delivery_fee;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_orders_total_consistency ON public.orders;
+CREATE TRIGGER trg_orders_total_consistency
+    BEFORE INSERT ON public.orders
+    FOR EACH ROW EXECUTE FUNCTION public._orders_total_consistency_check();
