@@ -807,6 +807,7 @@ export function DineInPremiumMenu({
             <div
               className="dc-kiosk-products-grid"
               data-testid="kiosk-products-grid"
+              data-columns={productColumns}
               style={{ gridTemplateColumns: `repeat(${productColumns}, minmax(0, 1fr))` }}
             >
               {categoryProducts.map(product => {

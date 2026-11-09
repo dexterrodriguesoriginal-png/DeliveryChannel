@@ -1621,7 +1621,7 @@ IMPORTANTE:
   background: var(--dc-kiosk-bg);
   color: #fff;
   border-bottom: 0;
-  box-shadow: none;
+  box-shadow: 0 6px 16px rgba(0,0,0,.45);
   padding: clamp(10px, 1.6vw, 26px) clamp(14px, 2.2vw, 34px);
   align-items: center;
 }
@@ -1634,9 +1634,10 @@ IMPORTANTE:
 }
 .dc-kiosk-cover-shade {
   position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  /* Escuro só à esquerda (atrás da logo e do nome); a foto aparece no resto. */
   background:
-    linear-gradient(90deg, rgba(0,0,0,.78) 0%, rgba(0,0,0,.45) 48%, rgba(0,0,0,.18) 100%),
-    linear-gradient(180deg, rgba(0,0,0,.05) 55%, rgba(0,0,0,.55) 100%);
+    linear-gradient(90deg, rgba(0,0,0,.62) 0%, rgba(0,0,0,.38) 34%, rgba(0,0,0,.08) 62%, rgba(0,0,0,0) 100%),
+    linear-gradient(180deg, rgba(0,0,0,0) 70%, rgba(0,0,0,.35) 100%);
 }
 .dc-kiosk-header--cover .dc-kiosk-brand,
 .dc-kiosk-header--cover .dc-kiosk-header-actions { position: relative; z-index: 2; }
@@ -1679,8 +1680,8 @@ IMPORTANTE:
 .dc-kiosk-header--cover .dc-kiosk-table-selector,
 .dc-kiosk-header--cover .dc-kiosk-menu-button {
   color: #fff;
-  background: rgba(0,0,0,.55);
-  border: 1.5px solid rgba(255,255,255,.7);
+  background: rgba(0,0,0,.6);
+  border: 2px solid var(--dc-kiosk-accent);
   backdrop-filter: blur(4px);
 }
 
@@ -1798,23 +1799,55 @@ IMPORTANTE:
 
 /* Celular */
 @media (max-width: 699px) {
-  .dc-kiosk[data-cover="true"] { --dc-kiosk-header-height: 98px; }
-  .dc-kiosk { --dc-kiosk-sidebar-width: clamp(94px, 25vw, 132px); }
-  .dc-kiosk-header.dc-kiosk-header--cover { padding: 8px 10px; }
+  .dc-kiosk[data-cover="true"] { --dc-kiosk-header-height: clamp(104px, 28vw, 124px); }
+  .dc-kiosk { --dc-kiosk-sidebar-width: clamp(100px, 27vw, 140px); }
+  .dc-kiosk .dc-kiosk-main { grid-template-columns: var(--dc-kiosk-sidebar-width) minmax(0, 1fr) !important; }
+  .dc-kiosk-header.dc-kiosk-header--cover { padding: 8px 10px 10px 8px; }
   .dc-kiosk-header--cover .dc-kiosk-brand { gap: 8px; }
-  .dc-kiosk-header--cover .dc-kiosk-brand-logo { width: 62px; height: 62px; }
-  .dc-kiosk-header--cover .dc-kiosk-store-name { font-size: clamp(16px, 5vw, 22px); }
-  .dc-kiosk-header--cover .dc-kiosk-store-tagline { font-size: 8px; letter-spacing: .02em; }
-  .dc-kiosk .dc-kiosk-table-selector { min-height: 36px; padding: 4px 10px; gap: 5px; font-size: 14px; }
+  .dc-kiosk-header--cover .dc-kiosk-brand-logo { width: clamp(64px, 18vw, 80px); height: clamp(64px, 18vw, 80px); }
+  .dc-kiosk-header--cover .dc-kiosk-brand { flex: 1 1 auto; }
+  .dc-kiosk-header--cover .dc-kiosk-store-name { font-size: clamp(16px, 4.7vw, 24px); }
+  .dc-kiosk-header--cover .dc-kiosk-store-tagline { font-size: clamp(7.5px, 2.1vw, 9.5px); letter-spacing: .02em; margin-top: 3px; }
+  .dc-kiosk .dc-kiosk-table-selector { min-height: 34px; padding: 4px 8px; gap: 4px; font-size: 13px; flex: 0 0 auto; }
   .dc-kiosk .dc-kiosk-table-selector svg:first-child { width: 18px; height: 18px; }
   .dc-kiosk .dc-kiosk-sidebar { padding: 10px 5px 14px !important; border-right: 1px solid color-mix(in srgb, var(--dc-kiosk-text) 14%, transparent) !important; }
   .dc-kiosk .dc-kiosk-category-list { gap: 7px !important; }
-  .dc-kiosk .dc-kiosk-category { min-height: 70px; padding: 7px 2px !important; gap: 4px; border-radius: 12px; }
-  .dc-kiosk-category-visual { width: 32px; height: 32px; }
-  .dc-kiosk .dc-kiosk-category-label { font-size: clamp(9.5px, 2.45vw, 11px); line-height: 1.15; letter-spacing: -.01em; }
+  .dc-kiosk .dc-kiosk-category { min-height: 74px; padding: 7px 3px !important; gap: 4px; border-radius: 12px; }
+  .dc-kiosk-category-visual { width: clamp(34px, 9.5vw, 42px); height: clamp(34px, 9.5vw, 42px); }
+  .dc-kiosk .dc-kiosk-category-label { font-size: clamp(10px, 2.75vw, 12px); line-height: 1.15; letter-spacing: -.01em; }
   .dc-kiosk-mesa-row { gap: 6px; margin-bottom: 10px; }
-  .dc-kiosk-mesa-row .dc-kiosk-mesa-line { font-size: clamp(12.5px, 3.5vw, 15px); }
+  .dc-kiosk-mesa-row .dc-kiosk-mesa-line { font-size: clamp(12px, 3.3vw, 15px); white-space: nowrap; }
   .dc-kiosk-mesa-row .dc-kiosk-role-chip { font-size: 11px; }
   .dc-kiosk .dc-kiosk-move-table { min-height: 30px; padding: 4px 8px; font-size: 10.5px; gap: 4px; }
   .dc-kiosk .dc-kiosk-move-table svg { width: 14px; height: 14px; }
+}
+
+/* ---------- Cartões de produto: mais baixos e quase quadrados ----------
+   Foto 4:3 (1:1 no celular), nome em até 2 linhas, descrição em 1 linha,
+   preço em uma linha e "Adicionar" sem quebrar. Cores continuam do tema. */
+.dc-kiosk .dc-kiosk-product-photo-button {
+  height: auto !important;
+  aspect-ratio: 4 / 3;
+}
+.dc-kiosk .dc-kiosk-product-name { min-height: 0; }
+.dc-kiosk .dc-kiosk-product-description {
+  display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1; line-clamp: 1; overflow: hidden;
+}
+.dc-kiosk .dc-kiosk-product-price { white-space: nowrap; line-height: 1.1; }
+.dc-kiosk .dc-kiosk-add-button { white-space: nowrap; }
+.dc-kiosk .dc-kiosk-product-bottom { padding-top: 6px; gap: 6px; }
+@media (max-width: 699px) {
+  .dc-kiosk .dc-kiosk-product-photo-button { aspect-ratio: 1 / 1; }
+  .dc-kiosk .dc-kiosk-product-info { padding: 6px 6px 7px; gap: 1px; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name { font-size: clamp(10.5px, 2.9vw, 13px); line-height: 1.15; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description { font-size: clamp(9px, 2.4vw, 11px); }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price { font-size: clamp(12px, 3.6vw, 17px); }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-original-price { font-size: 9px; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button {
+    min-height: 30px; padding: 4px 3px; gap: 3px;
+    font-size: clamp(9px, 2.5vw, 11.5px); letter-spacing: -.01em;
+  }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button svg { width: 13px; height: 13px; flex: 0 0 auto; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="2"] .dc-kiosk-add-button { min-height: 36px; font-size: 13px; }
 }
