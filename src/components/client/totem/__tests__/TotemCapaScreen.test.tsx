@@ -2,7 +2,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { TotemCapaScreen } from '../TotemCapaScreen';
+import { TotemCapaScreen, splitCtaLines } from '../TotemCapaScreen';
 import { DEFAULT_TOTEM_WELCOME, type TotemWelcomeSettings } from '../../../../lib/menu/totemWelcome';
 
 const imgA = 'https://cdn.example/a.jpg';
@@ -17,6 +17,11 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('TotemCapaScreen', () => {
+  it('splits long CTA labels into two lines without changing the words', () => {
+    expect(splitCtaLines('Toque para começar')).toEqual(['Toque para', 'começar']);
+    expect(splitCtaLines('Peça agora')).toEqual(['Peça agora']);
+  });
+
   it('shows the CTA without store name or logo over the media', () => {
     render(
       <TotemCapaScreen

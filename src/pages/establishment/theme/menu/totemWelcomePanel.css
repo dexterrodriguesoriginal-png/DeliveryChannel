@@ -66,7 +66,22 @@
   box-shadow: 0 16px 40px rgba(0,0,0,.2);
 }
 .totem-welcome-preview-frame .dc-totem-capa { height: 100%; }
-.totem-welcome-preview-frame .dc-totem-capa-button { min-height: 44px; font-size: 0.85rem; padding: 8px 12px; gap: 6px; }
+.totem-welcome-preview-frame .dc-totem-capa-button--bar {
+  height: 12% !important; min-height: 36px !important;
+  font-size: 11px !important; padding: 0 8px !important; border-radius: 10px 10px 0 0 !important;
+  animation: none; box-shadow: none;
+}
+.totem-welcome-preview-frame .dc-totem-capa-button--bar .dc-totem-capa-button-icon { min-width: 28px !important; }
+.totem-welcome-preview-frame .dc-totem-capa-button--pill,
+.totem-welcome-preview-frame .dc-totem-capa-button--outline {
+  width: 84% !important; height: 14% !important; min-height: 44px !important;
+  font-size: 11px !important; padding: 0 10px 0 12px !important;
+  animation: none;
+}
+.totem-welcome-preview-frame .dc-totem-capa-button-icon--ripple::before,
+.totem-welcome-preview-frame .dc-totem-capa-button-icon--ripple::after { animation: none; inset: -4px; border-width: 1px; }
+.totem-welcome-preview-frame .dc-totem-capa-dots { bottom: 6px; }
+.totem-welcome-preview-frame .dc-totem-capa-dots button { width: 6px; height: 6px; }
 @media (max-width: 900px) {
   .totem-welcome-layout { grid-template-columns: 1fr; }
   .totem-welcome-preview-frame { max-width: 260px; }

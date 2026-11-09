@@ -41,71 +41,231 @@
   place-items: center;
   background: #111;
   color: #fff;
-  font-weight: 700;
+  font-weight: 800;
+}
+
+.dc-totem-capa-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 16px;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.dc-totem-capa-dots button {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+}
+
+.dc-totem-capa-dots button.is-active,
+.dc-totem-capa-dots button[aria-current="true"] {
+  width: 28px;
+  background: #fff;
 }
 
 .dc-totem-capa-cta {
   flex: 0 0 auto;
   display: flex;
   justify-content: center;
-  padding: 18px 22px calc(22px + env(safe-area-inset-bottom, 0px));
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.55), transparent);
+  align-items: stretch;
+  background: transparent;
+}
+
+.dc-totem-capa[data-style="BAR"] .dc-totem-capa-cta {
+  padding: 0;
+}
+
+.dc-totem-capa[data-style="PILL"] .dc-totem-capa-cta,
+.dc-totem-capa[data-style="OUTLINE"] .dc-totem-capa-cta {
+  padding: 18px 0 calc(18px + env(safe-area-inset-bottom, 0px));
 }
 
 .dc-totem-capa-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  min-height: 72px;
-  padding: 16px 28px;
+  gap: 0;
   border: 0;
-  font: inherit;
-  font-size: clamp(1.15rem, 3.2vw, 1.7rem);
-  font-weight: 800;
-  letter-spacing: 0.01em;
+  font-family: inherit;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   cursor: pointer;
   touch-action: manipulation;
+  line-height: 0.95;
 }
 
-.dc-totem-capa-button svg {
+.dc-totem-capa-button-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.dc-totem-capa-button-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
   flex: 0 0 auto;
-  width: 1.25em;
-  height: 1.25em;
 }
 
+.dc-totem-capa-button-icon svg {
+  width: 1em;
+  height: 1em;
+  stroke-width: 2.2;
+}
+
+/* Barra: 100% da largura, ~10% da altura, ícone + divisor + texto */
 .dc-totem-capa-button--bar {
-  width: min(100%, 720px);
-  border-radius: 18px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  width: 100%;
+  height: 10vh;
+  height: 10dvh;
+  min-height: 72px;
+  padding: 0 2.4vw;
+  border-radius: 18px 18px 0 0;
+  gap: 0;
+  font-size: clamp(1.35rem, 4.45vw, 3rem);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.28);
+  animation: dc-totem-cta-pulse 2.4s ease-in-out infinite;
+}
+
+.dc-totem-capa-button--bar .dc-totem-capa-button-icon {
+  width: 0.16em;
+  min-width: 96px;
+  height: 100%;
+  font-size: 1.45em;
+}
+
+.dc-totem-capa-button--bar .dc-totem-capa-button-divider {
+  width: 3px;
+  height: 58%;
+  margin: 0 1.6vw;
+  background: currentColor;
+  opacity: 0.35;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.dc-totem-capa-button--bar .dc-totem-capa-button-text {
+  flex: 1;
+  text-align: left;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Pílula e contorno: ~80% da largura, ~12% da altura, texto em 2 linhas, ícone à direita */
+.dc-totem-capa-button--pill,
+.dc-totem-capa-button--outline {
+  width: 80%;
+  height: 12vh;
+  height: 12dvh;
+  min-height: 88px;
+  padding: 0 3vw 0 4vw;
+  border-radius: 999px;
+  justify-content: space-between;
+  gap: 2vw;
+  font-size: clamp(1.35rem, 4.45vw, 3rem);
+  animation: dc-totem-cta-pulse 2.4s ease-in-out infinite;
 }
 
 .dc-totem-capa-button--pill {
-  width: min(92%, 560px);
-  min-height: 76px;
-  border-radius: 999px;
-  padding-inline: 36px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.32),
+    0 0 36px color-mix(in srgb, currentColor 28%, transparent);
 }
 
 .dc-totem-capa-button--outline {
-  width: min(92%, 560px);
-  min-height: 76px;
-  border-radius: 999px;
-  border: 3px solid currentColor;
+  border: 6px solid currentColor;
   background: transparent;
-  box-shadow: none;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+}
+
+.dc-totem-capa-button--pill .dc-totem-capa-button-text,
+.dc-totem-capa-button--outline .dc-totem-capa-button-text {
+  flex: 1;
+  align-items: flex-start;
+  text-align: left;
+  font-weight: 900;
+}
+
+.dc-totem-capa-button--pill .dc-totem-capa-button-icon,
+.dc-totem-capa-button--outline .dc-totem-capa-button-icon {
+  width: 1.35em;
+  height: 1.35em;
+  margin-right: 0.4em;
+  font-size: 1em;
+}
+
+.dc-totem-capa-button-icon--ripple::before,
+.dc-totem-capa-button-icon--ripple::after {
+  content: "";
+  position: absolute;
+  border: 3px solid currentColor;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.dc-totem-capa-button-icon--ripple::before {
+  inset: -10px;
+  opacity: 0.45;
+  animation: dc-totem-ripple 2s ease-out infinite;
+}
+
+.dc-totem-capa-button-icon--ripple::after {
+  inset: -20px;
+  opacity: 0.25;
+  animation: dc-totem-ripple 2s ease-out 0.7s infinite;
 }
 
 .dc-totem-capa-button:focus-visible {
-  outline: 3px solid #fff;
-  outline-offset: 4px;
+  outline: 4px solid #fff;
+  outline-offset: 5px;
+}
+
+@keyframes dc-totem-cta-pulse {
+  0%, 100% { filter: brightness(1); transform: scale(1); }
+  50% { filter: brightness(1.08); transform: scale(1.015); }
+}
+
+@keyframes dc-totem-ripple {
+  0% { transform: scale(0.85); opacity: 0.5; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-totem-capa-button,
+  .dc-totem-capa-button-icon--ripple::before,
+  .dc-totem-capa-button-icon--ripple::after {
+    animation: none;
+  }
 }
 
 @media (max-width: 699px) {
-  .dc-totem-capa-button {
+  .dc-totem-capa-button--bar {
     min-height: 64px;
-    font-size: clamp(1.05rem, 4.6vw, 1.35rem);
+    font-size: clamp(1.05rem, 6.2vw, 1.5rem);
+    border-radius: 14px 14px 0 0;
   }
-  .dc-totem-capa-cta { padding: 14px 14px calc(16px + env(safe-area-inset-bottom, 0px)); }
+  .dc-totem-capa-button--bar .dc-totem-capa-button-icon { min-width: 52px; }
+  .dc-totem-capa-button--pill,
+  .dc-totem-capa-button--outline {
+    width: 88%;
+    min-height: 76px;
+    font-size: clamp(1.05rem, 6.2vw, 1.45rem);
+    padding: 0 16px 0 22px;
+  }
+  .dc-totem-capa-button--outline { border-width: 4px; }
+  .dc-totem-capa-button-icon--ripple::before { inset: -6px; border-width: 2px; }
+  .dc-totem-capa-button-icon--ripple::after { inset: -12px; border-width: 2px; }
 }

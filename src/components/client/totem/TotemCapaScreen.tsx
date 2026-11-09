@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Hand, Pointer, Sparkles } from 'lucide-react';
+import { Hand, Pointer } from 'lucide-react';
 import { safeHomeImageUrl } from '../../../lib/storeHome/storeHome.model';
 import {
   DEFAULT_TOTEM_IMAGE_SECONDS,
@@ -22,6 +22,25 @@ export function totemImageDurationMs(seconds: number): number {
   const n = Number.isInteger(seconds) ? seconds : DEFAULT_TOTEM_IMAGE_SECONDS;
   const clamped = Math.min(120, Math.max(2, n));
   return clamped * 1000;
+}
+
+/** Quebra o texto do CTA em até duas linhas, no espaço mais equilibrado. */
+export function splitCtaLines(text: string): string[] {
+  const value = text.trim();
+  const words = value.split(/\s+/).filter(Boolean);
+  if (words.length <= 1 || value.length <= 12) return [value];
+  let best = 1;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < words.length; i++) {
+    const left = words.slice(0, i).join(' ');
+    const right = words.slice(i).join(' ');
+    const score = Math.abs(left.length - right.length);
+    if (score < bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  return [words.slice(0, best).join(' '), words.slice(best).join(' ')];
 }
 
 function SlideMedia({
@@ -68,9 +87,8 @@ function SlideMedia({
 }
 
 function CtaIcon({ style }: { style: TotemButtonStyle }) {
-  if (style === 'PILL') return <Pointer size={28} aria-hidden={true} />;
-  if (style === 'OUTLINE') return <Sparkles size={26} aria-hidden={true} />;
-  return <Hand size={28} aria-hidden={true} />;
+  if (style === 'PILL' || style === 'OUTLINE') return <Pointer aria-hidden={true} />;
+  return <Hand aria-hidden={true} />;
 }
 
 export function TotemCapaScreen({
@@ -99,11 +117,14 @@ export function TotemCapaScreen({
   const styleName = settings.buttonStyle === 'PILL' || settings.buttonStyle === 'OUTLINE'
     ? settings.buttonStyle
     : 'BAR';
+  const lines = splitCtaLines(settings.buttonText);
+  const isBar = styleName === 'BAR';
 
   return (
     <div
       className="dc-totem-capa"
       data-testid="totem-capa"
+      data-style={styleName}
       style={{ background: backdrop }}
     >
       <div className="dc-totem-capa-stage" aria-hidden={Boolean(active)}>
@@ -111,6 +132,20 @@ export function TotemCapaScreen({
           <SlideMedia slide={active} onEnded={next} loop={count === 1} />
         ) : (
           <div className="dc-totem-capa-empty" data-testid="totem-capa-empty" />
+        )}
+        {count > 1 && (
+          <div className="dc-totem-capa-dots" data-testid="totem-capa-dots">
+            {slides.map((slide, i) => (
+              <button
+                key={`${slide.url}-${i}`}
+                type="button"
+                aria-label={`Exibir mídia ${i + 1}`}
+                aria-current={i === index % count}
+                className={i === index % count ? 'is-active' : undefined}
+                onClick={() => setIndex(i)}
+              />
+            ))}
+          </div>
         )}
       </div>
       <div className="dc-totem-capa-cta">
@@ -126,8 +161,23 @@ export function TotemCapaScreen({
           }
           onClick={onStart}
         >
-          <CtaIcon style={styleName} />
-          <span>{settings.buttonText}</span>
+          {isBar && (
+            <>
+              <span className="dc-totem-capa-button-icon"><CtaIcon style={styleName} /></span>
+              <span className="dc-totem-capa-button-divider" aria-hidden={true} />
+              <span className="dc-totem-capa-button-text">{settings.buttonText}</span>
+            </>
+          )}
+          {!isBar && (
+            <>
+              <span className="dc-totem-capa-button-text">
+                {lines.map(line => <span key={line}>{line}</span>)}
+              </span>
+              <span className="dc-totem-capa-button-icon dc-totem-capa-button-icon--ripple">
+                <CtaIcon style={styleName} />
+              </span>
+            </>
+          )}
         </button>
       </div>
     </div>

@@ -315,6 +315,7 @@ describe('totem do salão variant', () => {
     expect(screen.queryByTestId('kiosk-nav-account')).toBeNull();
     expect(screen.getByLabelText('Categorias do cardápio')).toBeTruthy();
     expect(screen.getByTestId('totem-order-panel')).toBeTruthy();
+    expect(screen.getByText('Gelada')).toBeTruthy();
     expect(screen.getByText('Seu pedido')).toBeTruthy();
     expect(screen.getByTestId('totem-counter-chip').textContent).toBe('Pague e retire no balcão');
     expect(screen.getByTestId('totem-order-subtotal').textContent).toMatch(/20/);
