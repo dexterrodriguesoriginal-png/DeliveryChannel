@@ -35,13 +35,36 @@ vi.mock('../../../repositories/productOptionRepository', () => ({
 }));
 
 import { TotemSalaoApp } from '../TotemSalaoApp';
+import { resetTotemFullscreenSession } from '../../../lib/menu/fullscreen';
+
 
 const products: Product[] = [
   { id: 'juice', tenantId: 'tn', categoryId: 'drinks', name: 'Suco da casa', description: 'Frutas', price: 12,
     imageUrl: 'https://example.com/suco.webp', isActive: true, isAvailable: true, stockQuantity: 0, unit: 'copo' },
 ];
 
+function stubDisplayMode(standalone = false, fullscreen = false) {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches:
+        (standalone && query.includes('display-mode: standalone'))
+        || (fullscreen && query.includes('display-mode: fullscreen')),
+      media: query,
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent() { return false; },
+    }),
+  });
+}
+
 beforeEach(() => {
+  resetTotemFullscreenSession();
+  stubDisplayMode(false);
   h.loadStore.mockReset(); h.loadWelcome.mockReset(); h.loadHeader.mockReset();
   h.outdoor.mockReset(); h.modules.mockReset(); h.options.mockReset();
   h.modules.mockResolvedValue(new Set());
@@ -86,7 +109,8 @@ describe('TotemSalaoApp', () => {
     expect(screen.queryByTestId('kiosk-nav-table')).toBeNull();
     expect(screen.queryByTestId('kiosk-nav-account')).toBeNull();
     expect(screen.queryByTestId('kiosk-header')).toBeNull();
-    expect(screen.getByTestId('totem-order-panel')).toBeTruthy();
+    expect(menu.getAttribute('data-order')).toBe('false');
+    expect(screen.getByTestId('totem-order-panel').getAttribute('data-visible')).toBe('false');
     expect(h.loadStore).toHaveBeenCalledWith('cafe-da-praca');
     expect(h.loadWelcome).toHaveBeenCalledWith('cafe-da-praca');
   });
@@ -100,14 +124,16 @@ describe('TotemSalaoApp', () => {
       fireEvent.click(screen.getByTestId('totem-capa-cta'));
       expect(screen.getByTestId('dinein-premium-kiosk')).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Adicionar Suco da casa' }));
+      expect(screen.getByTestId('dinein-premium-kiosk').getAttribute('data-order')).toBe('true');
+      expect(screen.getByTestId('totem-order-panel').getAttribute('data-visible')).toBe('true');
       expect(screen.getByTestId('totem-order-subtotal').textContent).toMatch(/12/);
       act(() => { vi.advanceTimersByTime(30000); });
       expect(screen.getByText('Ainda está aí?')).toBeTruthy();
       act(() => { vi.advanceTimersByTime(10000); });
       expect(screen.getByTestId('totem-capa')).toBeTruthy();
       fireEvent.click(screen.getByTestId('totem-capa-cta'));
-      expect(screen.getByTestId('totem-order-panel')).toBeTruthy();
-      expect(screen.getByTestId('totem-order-empty')).toBeTruthy();
+      expect(screen.getByTestId('dinein-premium-kiosk').getAttribute('data-order')).toBe('false');
+      expect(screen.getByTestId('totem-order-panel').getAttribute('data-visible')).toBe('false');
     } finally {
       vi.useRealTimers();
     }
@@ -129,5 +155,30 @@ describe('TotemSalaoApp', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+  it('requests fullscreen only once on the capa CTA in a browser tab', async () => {
+    const request = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: request });
+    render(<TotemSalaoApp slug="cafe-da-praca" />);
+    await screen.findByTestId('totem-capa');
+    fireEvent.click(screen.getByTestId('totem-capa-cta'));
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(new Event('pointerdown'));
+    window.dispatchEvent(new Event('touchstart'));
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not request fullscreen when the totem already runs as an installed PWA', async () => {
+    const request = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: request });
+    stubDisplayMode(true);
+    render(<TotemSalaoApp slug="cafe-da-praca" />);
+    await screen.findByTestId('totem-capa');
+    fireEvent.click(screen.getByTestId('totem-capa-cta'));
+    await Promise.resolve();
+    expect(request).not.toHaveBeenCalled();
+    expect(screen.getByTestId('dinein-premium-kiosk')).toBeTruthy();
   });
 });

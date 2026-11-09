@@ -38,3 +38,21 @@ export function downloadBlob(blob: Blob, fileName: string): void {
   document.body.appendChild(link); link.click(); link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
+
+/** QR only (white square PNG). Used by the totem access card; the mesa poster stays in qrPosterBlob. */
+export async function qrPngBlob(svg: SVGElement, size = 1024): Promise<Blob> {
+  const image = await loadImage(svgToDataUrl(svg));
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Seu navegador não permite gerar a imagem.');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+  const pad = Math.round(size * 0.06);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(image, pad, pad, size - pad * 2, size - pad * 2);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('Falha ao gerar o PNG.'))), 'image/png'),
+  );
+}

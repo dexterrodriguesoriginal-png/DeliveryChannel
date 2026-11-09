@@ -16,6 +16,8 @@ export interface TotemOrderPanelProps {
   onChangeQuantity(key: string, delta: number): void;
   onCheckout(): void;
   checkoutDisabled?: boolean;
+  /** false = painel recolhido (carrinho vazio). Continua no DOM para a animação de subida. */
+  visible?: boolean;
 }
 
 export function TotemOrderPanel({
@@ -24,13 +26,17 @@ export function TotemOrderPanel({
   onChangeQuantity,
   onCheckout,
   checkoutDisabled = false,
+  visible = true,
 }: TotemOrderPanelProps) {
   const empty = lines.length === 0;
   return (
     <aside
       className="dc-kiosk-order-panel"
       data-testid="totem-order-panel"
+      data-visible={visible ? 'true' : 'false'}
       aria-label="Seu pedido"
+      aria-hidden={visible ? undefined : true}
+      inert={visible ? undefined : true}
     >
       <div className="dc-kiosk-order-left">
         <div className="dc-kiosk-order-head">

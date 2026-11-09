@@ -19,6 +19,7 @@ import {
 } from '../../../../lib/menu/totemWelcome';
 import { MIN_IDLE_TIMEOUT_SECONDS, MAX_IDLE_TIMEOUT_SECONDS } from '../../../../hooks/useIdleTimer';
 import { TotemCapaScreen } from '../../../../components/client/totem/TotemCapaScreen';
+import { TotemAccessCard } from './TotemAccessCard';
 import type { MenuTheme } from '../../../../types/menuTheme';
 import { DEFAULT_MENU_THEME } from '../../../../lib/theme/menuTheme';
 import './totemWelcomePanel.css';
@@ -30,10 +31,14 @@ export function TotemWelcomePanel({
   securityContext,
   tenantId,
   theme = DEFAULT_MENU_THEME,
+  slug = '',
+  storeName = '',
 }: {
   securityContext: SecurityContext;
   tenantId: string;
   theme?: MenuTheme;
+  slug?: string;
+  storeName?: string;
 }) {
   const [saved, setSaved] = useState<TotemWelcomeSettings>({ ...DEFAULT_TOTEM_WELCOME, slides: [] });
   const [draft, setDraft] = useState<TotemWelcomeSettings>({ ...DEFAULT_TOTEM_WELCOME, slides: [] });
@@ -125,6 +130,8 @@ export function TotemWelcomePanel({
         </div>
       </div>
       {error && <div role="alert" className="menu-design-error">{error}</div>}
+
+      <TotemAccessCard slug={slug} storeName={storeName} />
 
       <div className="totem-welcome-layout">
         <div className="totem-welcome-settings">

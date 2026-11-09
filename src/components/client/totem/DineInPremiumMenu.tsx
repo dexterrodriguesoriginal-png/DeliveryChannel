@@ -524,6 +524,7 @@ export function DineInPremiumMenu({
   );
 
   const isTotem = variant === 'TOTEM';
+  const totemOrderVisible = isTotem && orderLines.some(line => Number(line.quantity) > 0);
 
   // Todas as cores vêm de configurações
   // normalizadas do Design do Cardápio.
@@ -550,6 +551,7 @@ export function DineInPremiumMenu({
       data-layout={theme.layout}
       data-variant={isTotem ? 'totem' : 'mesa'}
       data-banner={isTotem && outdoorSlides.length > 0 ? 'true' : 'false'}
+      data-order={isTotem ? (totemOrderVisible ? 'true' : 'false') : undefined}
       data-cover={!isTotem && showCover ? 'true' : 'false'}
       style={rootStyle}
     >
@@ -955,6 +957,7 @@ export function DineInPremiumMenu({
           onChangeQuantity={onChangeOrderQuantity ?? (() => undefined)}
           onCheckout={onCheckoutOrder ?? (() => undefined)}
           checkoutDisabled={orderingDisabled || busy}
+          visible={totemOrderVisible}
         />
       ) : (
         <BottomNavigation

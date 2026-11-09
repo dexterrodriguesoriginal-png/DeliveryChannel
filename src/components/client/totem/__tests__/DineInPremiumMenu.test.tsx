@@ -314,7 +314,8 @@ describe('totem do salão variant', () => {
     expect(screen.queryByTestId('kiosk-nav-table')).toBeNull();
     expect(screen.queryByTestId('kiosk-nav-account')).toBeNull();
     expect(screen.getByLabelText('Categorias do cardápio')).toBeTruthy();
-    expect(screen.getByTestId('totem-order-panel')).toBeTruthy();
+    expect(root.getAttribute('data-order')).toBe('true');
+    expect(screen.getByTestId('totem-order-panel').getAttribute('data-visible')).toBe('true');
     expect(screen.getByText('Gelada')).toBeTruthy();
     expect(screen.getByText('Seu pedido')).toBeTruthy();
     expect(screen.getByTestId('totem-counter-chip').textContent).toBe('Pague e retire no balcão');
@@ -350,5 +351,32 @@ describe('totem do salão variant', () => {
     const banner = screen.getByTestId('totem-fullwidth-banner');
     expect(banner.hasAttribute('hidden') || banner.getAttribute('data-empty') === 'true').toBe(true);
     expect(screen.queryByTestId('cardapio-outdoor')).toBeNull();
+  });
+
+  it('hides the Seu pedido panel while the cart is empty and shows it after the first item', () => {
+    const props = menuProps();
+    const view = render(<DineInPremiumMenu {...props} variant="TOTEM" orderLines={[]} />);
+    const root = screen.getByTestId('dinein-premium-kiosk');
+    expect(root.getAttribute('data-order')).toBe('false');
+    const panel = screen.getByTestId('totem-order-panel');
+    expect(panel.getAttribute('data-visible')).toBe('false');
+    expect(panel.getAttribute('aria-hidden')).toBe('true');
+
+    view.rerender(
+      <DineInPremiumMenu
+        {...props}
+        variant="TOTEM"
+        orderLines={[{ key: 'a', name: 'Cerveja A', quantity: 1, unitPriceCents: 1000 }]}
+        orderSubtotalCents={1000}
+      />,
+    );
+    expect(root.getAttribute('data-order')).toBe('true');
+    expect(screen.getByTestId('totem-order-panel').getAttribute('data-visible')).toBe('true');
+    expect(screen.getByTestId('totem-order-panel').hasAttribute('aria-hidden')).toBe(false);
+    expect(screen.getByText('Seu pedido')).toBeTruthy();
+
+    view.rerender(<DineInPremiumMenu {...props} variant="TOTEM" orderLines={[]} orderSubtotalCents={0} />);
+    expect(root.getAttribute('data-order')).toBe('false');
+    expect(screen.getByTestId('totem-order-panel').getAttribute('data-visible')).toBe('false');
   });
 });
