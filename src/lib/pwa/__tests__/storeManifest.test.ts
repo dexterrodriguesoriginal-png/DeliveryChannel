@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildStoreManifest, cartStorageKey, deriveShortName, manifestDataUrl, storeInitials } from '../storeManifest';
+import { buildStoreManifest, cartStorageKey, deriveShortName, iconFallbackColor, ICON_FALLBACK_COLOR, isWeakIconColor, manifestDataUrl, storeInitials } from '../storeManifest';
 
 const O = 'https://exemplo.app';
 const adega = { id: 'tenant-adega-01', slug: 'adega-premium', name: 'Adega Premium Jardins', theme: { storeName: 'Adega Premium Jardins', primaryColor: '#15803d', backgroundColor: '#f8fafc', logoUrl: 'https://x/logo.png' } };
@@ -72,3 +72,14 @@ describe('isolamento do carrinho por loja', () => {
   });
 });
 
+
+describe('iconFallbackColor', () => {
+  it('rejeita cinza e branco e prefere a cor do cabeçalho', () => {
+    expect(isWeakIconColor('#717179')).toBe(true);
+    expect(isWeakIconColor('#ffffff')).toBe(true);
+    expect(isWeakIconColor('#eee')).toBe(true);
+    expect(isWeakIconColor('#a7360f')).toBe(false);
+    expect(iconFallbackColor({ primaryColor: '#717179', headerColor: '#a7360f' })).toBe('#a7360f');
+    expect(iconFallbackColor({ primaryColor: '#717179' })).toBe(ICON_FALLBACK_COLOR);
+  });
+});

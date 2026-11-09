@@ -235,15 +235,23 @@ export function TotemInstallOverlay({
               title={progressTitle}
               doneTitle={activePhase === 'opening' ? 'Pronto! Abrindo o totem…' : 'Pronto! O totem está na tela inicial'}
               openLabel="Abrir totem"
+              openHint="Abra o app Totem na tela inicial"
               variant="inline"
             />
-            {(activePhase === 'done' || openHelp) && (
+            {(activePhase === 'done' || activePhase === 'opening' || openHelp) && (
               <>
-                <button type="button" className="dc-totem-install-open" data-testid="totem-install-open" onClick={openTotem}>
+                <a
+                  className="dc-totem-install-open"
+                  data-testid="totem-install-open"
+                  href={startPath}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => { if (typeof sessionStorage !== 'undefined') rememberOpenAttempt(sessionStorage, appId); }}
+                >
                   <Smartphone aria-hidden="true" />Abrir totem
-                </button>
+                </a>
                 <p className="dc-totem-install-hint" data-testid="totem-install-open-hint">
-                  Se não abrir sozinho, toque no novo ícone <strong>Totem</strong> na tela inicial.
+                  Abra o app Totem na tela inicial
                 </p>
               </>
             )}

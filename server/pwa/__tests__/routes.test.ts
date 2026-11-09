@@ -259,3 +259,71 @@ describe('proteção SSRF do logotipo', () => {
   });
 });
 
+
+
+describe('ícone do totem a partir do logo WebP e fallback colorido', () => {
+  it('serve PNG com o logo WebP, não um quadrado branco; sem logo e primária cinza usa a cor do cabeçalho', async () => {
+    const sharp = (await import('sharp')).default;
+    const mark = await sharp({ create: { width: 60, height: 60, channels: 3, background: '#102a8f' } }).png().toBuffer();
+    const webp = await sharp({ create: { width: 120, height: 120, channels: 3, background: '#eeeeee' } })
+      .composite([{ input: mark, left: 30, top: 30 }]).webp().toBuffer();
+
+    const logoStore = {
+      id: 'tenant-webp-01',
+      slug: 'loja-webp',
+      name: 'ADEGASSHOW',
+      theme: { storeName: 'ADEGASSHOW', primaryColor: '#717179', headerColor: '#a7360f', logoUrl: 'https://cdn.example/logo.webp' },
+    };
+    const noLogoStore = {
+      id: 'tenant-nologo-01',
+      slug: 'loja-cinza',
+      name: 'ADEGASSHOW',
+      theme: { storeName: 'ADEGASSHOW', primaryColor: '#717179', headerColor: '#a7360f' },
+    };
+
+    const app = express();
+    app.use(createPwaRouter({
+      resolveStore: async (slug) => {
+        if (slug === 'loja-webp') return { status: 'ok', store: logoStore };
+        if (slug === 'loja-cinza') return { status: 'ok', store: noLogoStore };
+        return { status: 'not_found' };
+      },
+      publicDir: '/nonexistent',
+      fetchLogo: async () => ({ bytes: webp, contentType: 'image/webp' }),
+    }));
+    const srv = await new Promise<Server>((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+    try {
+      const b = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+      const iconRes = await fetch(`${b}/app/loja-webp/icons/icon-192.png`);
+      expect(iconRes.status).toBe(200);
+      expect(iconRes.headers.get('content-type')).toBe('image/png');
+      const icon = Buffer.from(await iconRes.arrayBuffer());
+      expect(pngSize(icon)).toEqual({ width: 192, height: 192 });
+      const { isNearlyFlatPng } = await import('../icons');
+      expect(await isNearlyFlatPng(icon)).toBe(false);
+      const { data, info } = await sharp(icon).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      let foundBlue = false;
+      for (let i = 0; i < info.width * info.height; i++) {
+        const r = data[i * info.channels], g = data[i * info.channels + 1], bl = data[i * info.channels + 2];
+        if (r < 40 && g < 60 && bl > 100) foundBlue = true;
+      }
+      expect(foundBlue).toBe(true);
+
+      const fallbackRes = await fetch(`${b}/app/loja-cinza/icons/icon-192.png`);
+      const fallback = Buffer.from(await fallbackRes.arrayBuffer());
+      expect(pngSize(fallback)).toEqual({ width: 192, height: 192 });
+      const fb = await sharp(fallback).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      let foundHeader = false;
+      let foundGrey = 0;
+      for (let i = 0; i < fb.info.width * fb.info.height; i++) {
+        const r = fb.data[i * fb.info.channels], g = fb.data[i * fb.info.channels + 1], bl = fb.data[i * fb.info.channels + 2];
+        if (Math.abs(r - 0xa7) < 24 && Math.abs(g - 0x36) < 24 && Math.abs(bl - 0x0f) < 24) foundHeader = true;
+        if (Math.abs(r - 0x71) < 8 && Math.abs(g - 0x71) < 8 && Math.abs(bl - 0x79) < 8) foundGrey++;
+      }
+      expect(foundHeader).toBe(true);
+      expect(foundGrey).toBe(0);
+    } finally {
+      await new Promise<void>((r) => srv.close(() => r()));
+    }
+  });
+});

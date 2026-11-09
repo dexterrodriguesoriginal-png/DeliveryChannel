@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ImagePlus, MonitorPlay, Save, Trash2 } from 'lucide-react';
 import type { SecurityContext } from '../../../../services/securityEngine';
 import { totemWelcomeRepository, totemMediaFileError } from '../../../../repositories/totemWelcomeRepository';
@@ -33,12 +33,14 @@ export function TotemWelcomePanel({
   theme = DEFAULT_MENU_THEME,
   slug = '',
   storeName = '',
+  afterAccess,
 }: {
   securityContext: SecurityContext;
   tenantId: string;
   theme?: MenuTheme;
   slug?: string;
   storeName?: string;
+  afterAccess?: ReactNode;
 }) {
   const [saved, setSaved] = useState<TotemWelcomeSettings>({ ...DEFAULT_TOTEM_WELCOME, slides: [] });
   const [draft, setDraft] = useState<TotemWelcomeSettings>({ ...DEFAULT_TOTEM_WELCOME, slides: [] });
@@ -132,6 +134,7 @@ export function TotemWelcomePanel({
       {error && <div role="alert" className="menu-design-error">{error}</div>}
 
       <TotemAccessCard slug={slug} storeName={storeName} />
+      {afterAccess}
 
       <div className="totem-welcome-layout">
         <div className="totem-welcome-settings">

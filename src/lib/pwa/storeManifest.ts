@@ -64,6 +64,46 @@ export function safeColor(c: string | undefined, fallback: string): string {
   return c && HEX.test(c.trim()) ? c.trim() : fallback;
 }
 
+/** Fundo de iniciais quando o logo não pode ser usado — nunca cinza, branco ou inválido. */
+export const ICON_FALLBACK_COLOR = '#0f766e';
+
+export function colorRgb(hex: string): { r: number; g: number; b: number } | null {
+  const c = safeColor(hex, '');
+  if (!c) return null;
+  const h = c.slice(1);
+  const full = h.length === 3 ? h.split('').map(ch => ch + ch).join('') : h;
+  return { r: parseInt(full.slice(0, 2), 16), g: parseInt(full.slice(2, 4), 16), b: parseInt(full.slice(4, 6), 16) };
+}
+
+/** Cinza, quase branco ou cor inválida — não serve de fundo para o ícone com iniciais. */
+export function isWeakIconColor(hex: string | undefined): boolean {
+  if (!hex) return true;
+  const rgb = colorRgb(hex);
+  if (!rgb) return true;
+  const { r, g, b } = rgb;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  if (max - min < 28) return true;
+  if (luma > 230) return true;
+  return false;
+}
+
+/** Prefere a cor do cabeçalho/tema; se a primária for cinza (ex.: #717179), usa a próxima cor viva. */
+export function iconFallbackColor(theme?: StoreIdentityInput['theme']): string {
+  const candidates = [
+    theme?.headerColor,
+    theme?.statusBarColor,
+    theme?.primaryColor,
+    theme?.navBarColor,
+    theme?.backgroundColor,
+  ];
+  for (const c of candidates) {
+    if (c && !isWeakIconColor(c)) return c.trim();
+  }
+  return ICON_FALLBACK_COLOR;
+}
+
 export function storeDisplayName(s: StoreIdentityInput): string {
   const n = (s.theme?.storeName || s.name || '').trim();
   return n || s.slug;

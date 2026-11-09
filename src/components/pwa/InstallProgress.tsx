@@ -9,7 +9,7 @@ import {
   prefersReducedMotion,
   progressAt,
 } from '../../lib/pwa/installProgress';
-import { openInstalledApp, rememberOpenAttempt } from '../../lib/pwa/openInstalledApp';
+import { rememberOpenAttempt } from '../../lib/pwa/openInstalledApp';
 
 export interface InstallProgressProps {
   appId: string;
@@ -25,6 +25,8 @@ export interface InstallProgressProps {
   doneTitle?: string;
   /** Rótulo do botão ao concluir. Padrão: "Abrir o app". */
   openLabel?: string;
+  /** Instrução visível após instalar. Nunca deixe só um botão morto. */
+  openHint?: string;
   onClose?: () => void;
   onComplete?: () => void;
   variant?: 'floating' | 'inline';
@@ -47,6 +49,7 @@ export const InstallProgress: React.FC<InstallProgressProps> = ({
   title = INSTALL_PROGRESS_TITLE,
   doneTitle,
   openLabel = OPEN_APP_BUTTON_LABEL,
+  openHint,
   onClose,
   onComplete,
   variant = 'floating',
@@ -58,7 +61,6 @@ export const InstallProgress: React.FC<InstallProgressProps> = ({
     return persistInstallStart(storage, appId, startedAt ?? Date.now());
   });
   const [, setTick] = useState(0);
-  const [openHelp, setOpenHelp] = useState(false);
   const completedRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
@@ -114,15 +116,12 @@ export const InstallProgress: React.FC<InstallProgressProps> = ({
     };
   }, [startMs, forceElapsedMs]);
 
+  const startHref = typeof window !== 'undefined' ? new URL(startPath, window.location.origin).href : startPath;
+  const resolvedOpenHint = openHint || `Abra o app ${appName} na tela inicial`;
+
   const handleOpenApp = () => {
+    // O <a target=_blank> abre o start_url no escopo (launch_handler / capture_links).
     if (typeof sessionStorage !== 'undefined') rememberOpenAttempt(sessionStorage, appId);
-    openInstalledApp(startPath, {
-      location: window.location,
-      document,
-      userAgent: navigator.userAgent,
-      setTimeout: (fn, ms) => window.setTimeout(fn, ms),
-      onStillVisible: () => setOpenHelp(true),
-    });
   };
 
   const phase = isDone ? 'done' : 'installing';
@@ -150,14 +149,16 @@ export const InstallProgress: React.FC<InstallProgressProps> = ({
           </p>
         </div>
         {isDone && (
-          <button
-            type="button"
+          <a
+            href={startHref}
+            target="_blank"
+            rel="noopener noreferrer"
             onClick={handleOpenApp}
             data-testid="open-installed-app"
             className="shrink-0 rounded-full bg-[#a8c7fa] px-4 py-1.5 text-sm font-semibold text-[#062e6f] transition active:scale-95 active:brightness-90 hover:brightness-105"
           >
             {openLabel}
-          </button>
+          </a>
         )}
         {isDone && onClose && (
           <button
@@ -170,9 +171,9 @@ export const InstallProgress: React.FC<InstallProgressProps> = ({
           </button>
         )}
       </div>
-      {openHelp && (
+      {isDone && (
         <p data-testid="open-app-hint" role="status" className="mt-1.5 text-xs text-neutral-400 leading-snug">
-          Abra pelo ícone {appName} na tela inicial do celular
+          {resolvedOpenHint}
         </p>
       )}
       <div className="mt-2.5 flex items-center gap-2" data-testid="install-percent" data-percent={pct}>

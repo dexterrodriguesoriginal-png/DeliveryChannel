@@ -32,6 +32,7 @@
 .theme-design-panel {
   flex:1;
   min-height:0;
+  overflow:hidden;
 }
 .theme-design-panel[hidden] {
   display:none;

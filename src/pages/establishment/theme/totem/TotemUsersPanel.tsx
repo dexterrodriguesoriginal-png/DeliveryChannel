@@ -23,6 +23,7 @@ export function TotemUsersPanel({
   const [label, setLabel] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordFor, setPasswordFor] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
 
@@ -54,22 +55,30 @@ export function TotemUsersPanel({
       <div className="menu-design-section-title">
         <UserPlus size={18} />
         <div>
-          <h2>Usuários e dispositivos do totem</h2>
+          <h2>Usuários do totem</h2>
           <p>Cada usuário do totem pode estar ativo em só um aparelho. A senha nunca é exibida.</p>
         </div>
       </div>
+      <p className="totem-users-hint" data-testid="totem-users-hint">
+        Para ativar o aparelho, crie um usuário do totem abaixo.
+      </p>
+      {error && <p className="totem-admin-error" role="alert" data-testid="totem-users-error">{error}</p>}
 
       <form className="totem-user-create" data-testid="totem-user-create" onSubmit={event => {
         event.preventDefault();
         void run(async () => {
+          if (password !== confirmPassword) {
+            throw new Error('As senhas não coincidem.');
+          }
           await totemAccessRepository.createUser(securityContext, tenantId, { label, username, password });
-          setLabel(''); setUsername(''); setPassword('');
+          setLabel(''); setUsername(''); setPassword(''); setConfirmPassword('');
           setNotice('Usuário do totem criado.');
         });
       }}>
         <label>Rótulo<input value={label} onChange={e => setLabel(e.target.value)} maxLength={40} required placeholder="Caixa 1" /></label>
         <label>Usuário<input value={username} onChange={e => setUsername(e.target.value)} required placeholder="totem01" autoComplete="off" /></label>
         <label>Senha<input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} autoComplete="new-password" /></label>
+        <label>Confirmar<input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={8} autoComplete="new-password" data-testid="totem-user-confirm" /></label>
         <button type="submit" className="theme-primary" disabled={busy} data-testid="totem-user-create-submit">
           <Plus size={16} /> Criar usuário
         </button>
@@ -104,7 +113,7 @@ export function TotemUsersPanel({
                 await totemAccessRepository.setUserActive(securityContext, tenantId, user.id, !user.isActive);
                 setNotice(user.isActive ? 'Usuário desativado e dispositivo revogado.' : 'Usuário reativado.');
               })}>
-                {user.isActive ? 'Desativar usuário' : 'Reativar usuário'}
+                {user.isActive ? 'Desativar' : 'Reativar'}
               </button>
             </div>
           </li>
@@ -134,7 +143,6 @@ export function TotemUsersPanel({
         {devices.length === 0 && <li className="totem-user-empty">Nenhum dispositivo ativado ainda.</li>}
       </ul>
       {notice && <p className="totem-admin-notice" role="status">{notice}</p>}
-      {error && <p className="totem-admin-error" role="alert">{error}</p>}
     </section>
   );
 }
