@@ -227,6 +227,7 @@ function SafeImage({
 
 interface BottomNavigationProps {
   cartCount: number;
+  activeId?: string;
   onGoHome: () => void;
   onOpenCart: () => void;
   onOpenTable: () => void;
@@ -235,6 +236,7 @@ interface BottomNavigationProps {
 
 function BottomNavigation({
   cartCount,
+  activeId = 'home',
   onGoHome,
   onOpenCart,
   onOpenTable,
@@ -279,7 +281,8 @@ function BottomNavigation({
           <button
             key={item.id}
             type="button"
-            className="dc-kiosk-nav-item"
+            className={item.id === activeId ? 'dc-kiosk-nav-item dc-kiosk-nav-item--active' : 'dc-kiosk-nav-item'}
+            aria-current={item.id === activeId ? 'page' : undefined}
             onClick={item.onClick}
             data-testid={`kiosk-nav-${item.id}`}
           >
@@ -569,16 +572,11 @@ export function DineInPremiumMenu({
             }
           />
 
-          <div className="dc-kiosk-brand-copy">
+          {/* Com capa: só a logo aparece; o nome fica apenas para leitores de tela. */}
+          <div className={showCover ? 'dc-kiosk-brand-copy dc-kiosk-sr-only' : 'dc-kiosk-brand-copy'}>
             <h1 className="dc-kiosk-store-name">
               {storeName}
             </h1>
-
-            {showCover && storeTagline && (
-              <p className="dc-kiosk-store-tagline">
-                {storeTagline}
-              </p>
-            )}
           </div>
         </div>
 

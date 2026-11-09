@@ -94,7 +94,9 @@ describe('totem premium touch menu', () => {
     expect(header.getAttribute('data-cover')).toBe('true');
     expect(header.className).toContain('dc-kiosk-header--cover');
     expect(screen.getByTestId('kiosk-cover-image').getAttribute('src')).toBe('https://example.com/capa.jpg');
-    expect(screen.getByText('Adega • Chopp')).toBeTruthy();
+    // Com capa só a logo aparece: nome fica apenas para leitores de tela e o slogan sai.
+    expect(screen.getByRole('heading', { name: 'Loja' }).parentElement?.className).toContain('dc-kiosk-sr-only');
+    expect(screen.queryByText('Adega • Chopp')).toBeNull();
     expect(screen.getByTestId('kiosk-hamburger').textContent).toContain('Mesa 04');
     view.unmount();
     for (const cover of [null, 'http://example.com/inseguro.jpg', 'javascript:alert(1)']) {
@@ -102,6 +104,7 @@ describe('totem premium touch menu', () => {
       expect(screen.getByTestId('kiosk-header').getAttribute('data-cover')).toBe('false');
       expect(screen.queryByTestId('kiosk-cover-image')).toBeNull();
       expect(screen.queryByText('Adega • Chopp')).toBeNull();
+      expect(screen.getByRole('heading', { name: 'Loja' }).parentElement?.className).not.toContain('dc-kiosk-sr-only');
       plain.unmount();
     }
   });
@@ -175,6 +178,8 @@ describe('totem premium touch menu', () => {
     expect(screen.getByTestId('kiosk-hamburger')).toBeTruthy();
     expect(screen.queryByTestId('kiosk-nav-expenses')).toBeNull();
     expect(screen.getByLabelText('3 itens')).toBeTruthy();
+    expect(screen.getByTestId('kiosk-nav-home').getAttribute('aria-current')).toBe('page');
+    expect(screen.getByTestId('kiosk-nav-cart').getAttribute('aria-current')).toBeNull();
   });
 
   it('switches category and forwards original product to existing cart', () => {
