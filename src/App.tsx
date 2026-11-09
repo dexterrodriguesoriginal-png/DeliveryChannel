@@ -60,6 +60,7 @@ import { ModuleDisabledScreen } from './components/establishment/ModuleDisabledS
 // Mobile / Apps
 import { ClientApp } from './pages/client/ClientApp';
 import { DineInClientApp } from './pages/client/DineInClientApp';
+import { TotemSalaoApp } from './pages/client/TotemSalaoApp';
 import { WaiterApp } from './pages/waiter/WaiterApp';
 import { PendingMesaBanner } from './components/client/dinein/PendingMesaBanner';
 import { isWaiterRoute } from './lib/pwa/waiterManifest';
@@ -228,6 +229,12 @@ function AppContent() {
   // Rotas públicas ou dedicadas verificadas antes do gate administrativo
   const pathname = window.location.pathname;
   if (waiterTarget) return <WaiterPanelRedirect target={waiterTarget} />;
+
+  // Totem do salão (balcão, sem mesa): /totem/:slug
+  const totemSlug = pathname.match(/^\/totem\/([^/]+)\/?$/)?.[1];
+  if (totemSlug) {
+    return <TotemSalaoApp slug={decodeURIComponent(totemSlug)} />;
+  }
 
   // QR Code da mesa: /mesa/:token
   const tableToken = pathname.match(/^\/mesa\/([^/]+)\/?$/)?.[1];

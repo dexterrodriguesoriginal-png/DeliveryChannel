@@ -80,6 +80,9 @@ import type { CategoryMenuMode } from '../../../lib/menu/menuHeader';
 import './dineInPremiumMenu.css';
 import { MenuOutdoorCarousel } from './MenuOutdoorCarousel';
 import type { PublicMenuOutdoorSlide } from '../../../repositories/menuOutdoorRepository';
+import { TotemOrderPanel, type TotemOrderLine } from './TotemOrderPanel';
+
+export type DineInMenuVariant = 'MESA' | 'TOTEM';
 
 // ============================================
 // TIPAGEM
@@ -113,6 +116,17 @@ export interface DineInPremiumMenuProps {
   coverUrl?: string | null;
   /** Menu lateral: ícone padrão (ICON) ou imagem própria da categoria (IMAGE). */
   categoryMenuMode?: CategoryMenuMode;
+  /**
+   * MESA (padrão): capa, pílula da mesa e nav Início/Carrinho/Mesa/Minha conta.
+   * TOTEM: sem capa/logo/mesa/nav de app; painel fixo “Seu pedido” no rodapé.
+   */
+  variant?: DineInMenuVariant;
+  /** Itens compactos do painel do totem (ignorados no modo mesa). */
+  orderLines?: TotemOrderLine[];
+  orderSubtotalCents?: number;
+  onChangeOrderQuantity?: (key: string, delta: number) => void;
+  onCheckoutOrder?: () => void;
+
   /** Navegação controlada pelo app existente. */
   onGoHome: () => void;
   onOpenCart: () => void;
@@ -340,6 +354,11 @@ export function DineInPremiumMenu({
   outdoorSlides = [],
   coverUrl,
   categoryMenuMode = 'ICON',
+  variant = 'MESA',
+  orderLines = [],
+  orderSubtotalCents = 0,
+  onChangeOrderQuantity,
+  onCheckoutOrder,
 
   onGoHome,
   onOpenCart,
@@ -504,6 +523,8 @@ export function DineInPremiumMenu({
     Math.trunc(Number(cartCount) || 0),
   );
 
+  const isTotem = variant === 'TOTEM';
+
   // Todas as cores vêm de configurações
   // normalizadas do Design do Cardápio.
   const rootStyle = {
@@ -527,14 +548,16 @@ export function DineInPremiumMenu({
       data-testid="dinein-premium-kiosk"
       data-tenant-id={tenantId}
       data-layout={theme.layout}
-      data-cover={showCover ? 'true' : 'false'}
+      data-variant={isTotem ? 'totem' : 'mesa'}
+      data-banner={isTotem && outdoorSlides.length > 0 ? 'true' : 'false'}
+      data-cover={!isTotem && showCover ? 'true' : 'false'}
       style={rootStyle}
     >
       {/* =================================
-          CABEÇALHO PREMIUM
+          CABEÇALHO PREMIUM (somente QR de mesa)
       ================================= */}
 
-      <header
+      {!isTotem && <header
         className={[
           'dc-kiosk-header',
           showCover ? 'dc-kiosk-header--cover' : '',
@@ -620,9 +643,9 @@ export function DineInPremiumMenu({
             </button>
           )}
         </div>
-      </header>
+      </header>}
 
-      {actionsMenuOpen && (
+      {!isTotem && actionsMenuOpen && (
         <div className="dc-kiosk-actions-backdrop" onClick={() => setActionsMenuOpen(false)}>
           <nav
             id="dc-kiosk-actions-menu"
@@ -653,11 +676,22 @@ export function DineInPremiumMenu({
           </nav>
         </div>
       )}
-      {actionsMenuError && <p role="alert" className="dc-kiosk-action-error">{actionsMenuError}</p>}
+      {!isTotem && actionsMenuError && <p role="alert" className="dc-kiosk-action-error">{actionsMenuError}</p>}
 
       {/* =================================
           CONTEÚDO PRINCIPAL
       ================================= */}
+
+      {isTotem && (
+        <div
+          className="dc-kiosk-totem-banner"
+          data-testid="totem-fullwidth-banner"
+          data-empty={outdoorSlides.length === 0 ? 'true' : 'false'}
+          hidden={outdoorSlides.length === 0}
+        >
+          <MenuOutdoorCarousel slides={outdoorSlides} onOpenProduct={id => handleProductDetails(id)} />
+        </div>
+      )}
 
       <div className="dc-kiosk-main">
         {/* MENU LATERAL DE CATEGORIAS */}
@@ -728,7 +762,7 @@ export function DineInPremiumMenu({
           className="dc-kiosk-products-area"
           aria-label="Produtos do cardápio"
         >
-          {(roleChip || onMoveTable || (onOpenBill && billActionLabel !== 'Pedir a conta')) && (
+          {!isTotem && (roleChip || onMoveTable || (onOpenBill && billActionLabel !== 'Pedir a conta')) && (
             <div className="dc-kiosk-mesa-row" aria-label="Status da mesa">
               <div className="dc-kiosk-mesa-status">{roleChip}</div>
               <div className="dc-kiosk-mesa-chrome">
@@ -764,8 +798,10 @@ export function DineInPremiumMenu({
               </div>
             </div>
           )}
-          {tableControls}
-          <MenuOutdoorCarousel slides={outdoorSlides} onOpenProduct={id => handleProductDetails(id)} />
+          {!isTotem && tableControls}
+          {!isTotem && (
+            <MenuOutdoorCarousel slides={outdoorSlides} onOpenProduct={id => handleProductDetails(id)} />
+          )}
           <div className="dc-kiosk-category-heading">
             <div className="dc-kiosk-category-title-row">
               {activeCategory && (() => {
@@ -912,15 +948,25 @@ export function DineInPremiumMenu({
           MENU INFERIOR FIXO
       ================================= */}
 
-      <BottomNavigation
-        cartCount={safeCartCount}
-        onGoHome={onGoHome}
-        onOpenCart={onOpenCart}
-        onOpenTable={onOpenTable}
-        onOpenAccount={() => {
-          if (canOpenAccount) openAccount();
-        }}
-      />
+      {isTotem ? (
+        <TotemOrderPanel
+          lines={orderLines}
+          subtotalCents={Math.max(0, Math.trunc(Number(orderSubtotalCents) || 0))}
+          onChangeQuantity={onChangeOrderQuantity ?? (() => undefined)}
+          onCheckout={onCheckoutOrder ?? (() => undefined)}
+          checkoutDisabled={orderingDisabled || busy}
+        />
+      ) : (
+        <BottomNavigation
+          cartCount={safeCartCount}
+          onGoHome={onGoHome}
+          onOpenCart={onOpenCart}
+          onOpenTable={onOpenTable}
+          onOpenAccount={() => {
+            if (canOpenAccount) openAccount();
+          }}
+        />
+      )}
     </div>
   );
 }
