@@ -1851,3 +1851,225 @@ IMPORTANTE:
   .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button svg { width: 13px; height: 13px; flex: 0 0 auto; }
   .dc-kiosk .dc-kiosk-products-grid[data-columns="2"] .dc-kiosk-add-button { min-height: 36px; font-size: 13px; }
 }
+
+/* =========================================================
+   AJUSTE v4 — referência do dono (capa só com logo, lateral sem
+   sobreposição, cartões de produto compactos, barra inferior escura).
+   Lateral e produtos usam o MESMO raio, borda, superfície e espaçamento.
+   Cores sempre dos tokens do tema.
+========================================================= */
+.dc-kiosk {
+  --dc-kiosk-card-radius: min(var(--dc-kiosk-radius), 12px);
+  --dc-kiosk-card-border: 1px solid color-mix(in srgb, var(--dc-kiosk-text) 16%, transparent);
+  --dc-kiosk-card-gap: clamp(8px, 1vw, 14px);
+}
+.dc-kiosk-sr-only {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------- Capa: só a logo à esquerda e a pílula da mesa à direita ---------- */
+.dc-kiosk-header.dc-kiosk-header--cover { justify-content: space-between; }
+.dc-kiosk-header--cover .dc-kiosk-brand { flex: 0 0 auto; }
+
+/* ---------- Lateral: visual em cima com tamanho fixo, nome embaixo no fluxo ---------- */
+.dc-kiosk .dc-kiosk-category-list { gap: var(--dc-kiosk-card-gap) !important; }
+.dc-kiosk .dc-kiosk-category {
+  position: relative;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: hidden;
+  border-radius: var(--dc-kiosk-card-radius);
+  border: var(--dc-kiosk-card-border);
+  background: var(--dc-kiosk-surface);
+}
+.dc-kiosk .dc-kiosk-category--active,
+.dc-kiosk .dc-kiosk-category--active:hover {
+  background: var(--dc-kiosk-category-active);
+  border-color: var(--dc-kiosk-category-active);
+}
+.dc-kiosk .dc-kiosk-category-visual {
+  position: relative;
+  display: block;
+  flex: 0 0 auto !important;
+  width: clamp(40px, 4.6vw, 64px);
+  height: clamp(40px, 4.6vw, 64px);
+  overflow: hidden;
+  border-radius: calc(var(--dc-kiosk-card-radius) * .66);
+}
+.dc-kiosk .dc-kiosk-category-visual > * {
+  position: static !important;
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none; max-height: none;
+  margin: 0;
+}
+.dc-kiosk .dc-kiosk-category-visual img.dc-kiosk-category-photo { object-fit: cover; border-radius: inherit; }
+.dc-kiosk .dc-kiosk-category-visual .dc-kiosk-image-fallback { display: grid !important; place-items: center; }
+.dc-kiosk .dc-kiosk-category-label {
+  position: static !important;
+  flex: 0 0 auto !important;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; line-clamp: 2;
+  overflow: hidden;
+  width: 100%;
+  margin: 0;
+  text-align: center;
+}
+
+/* ---------- Cartões de produto (iguais ao close-up) ---------- */
+.dc-kiosk .dc-kiosk-products-grid {
+  column-gap: var(--dc-kiosk-card-gap) !important;
+  row-gap: var(--dc-kiosk-card-gap) !important;
+  align-items: stretch;
+}
+.dc-kiosk .dc-kiosk-product-card {
+  display: flex; flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--dc-kiosk-card-radius) !important;
+  border: var(--dc-kiosk-card-border) !important;
+  background: var(--dc-kiosk-surface);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--dc-kiosk-text) 6%, transparent);
+}
+.dc-kiosk .dc-kiosk-product-photo-button {
+  flex: 0 0 auto;
+  width: 100%;
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+  border-radius: var(--dc-kiosk-card-radius) var(--dc-kiosk-card-radius) 0 0;
+  overflow: hidden;
+}
+.dc-kiosk .dc-kiosk-product-info {
+  flex: 1 1 auto;
+  display: flex; flex-direction: column;
+  gap: 0 !important;
+  padding: clamp(6px, .8vw, 12px) clamp(6px, .8vw, 12px) clamp(7px, .9vw, 12px) !important;
+}
+.dc-kiosk .dc-kiosk-product-name {
+  min-height: 0 !important;
+  margin: 0;
+  font-size: clamp(11.5px, 1.35vw, 20px) !important;
+  font-weight: 800;
+  line-height: 1.18 !important;
+  -webkit-line-clamp: 2; line-clamp: 2;
+}
+.dc-kiosk .dc-kiosk-product-description {
+  margin: 1px 0 0 !important;
+  font-size: clamp(9.5px, 1.05vw, 15px) !important;
+  line-height: 1.25;
+  opacity: .72;
+  -webkit-line-clamp: 1 !important; line-clamp: 1 !important;
+  white-space: nowrap; text-overflow: ellipsis; display: block !important; overflow: hidden;
+}
+.dc-kiosk .dc-kiosk-product-bottom {
+  margin-top: auto !important;
+  padding-top: clamp(4px, .6vw, 10px) !important;
+  gap: clamp(4px, .6vw, 9px) !important;
+}
+.dc-kiosk .dc-kiosk-product-price {
+  font-size: clamp(15.5px, 1.85vw, 27px) !important;
+  font-weight: 900;
+  line-height: 1.1;
+  white-space: nowrap;
+  color: var(--dc-kiosk-accent);
+}
+.dc-kiosk .dc-kiosk-add-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 100%;
+  min-height: clamp(30px, 3.4vw, 46px) !important;
+  padding: 3px 6px !important;
+  gap: 5px !important;
+  border-radius: 999px !important;
+  font-size: clamp(11px, 1.25vw, 17px) !important;
+  font-weight: 800;
+  white-space: nowrap;
+  background: var(--dc-kiosk-accent);
+  color: var(--dc-kiosk-accent-text);
+}
+.dc-kiosk .dc-kiosk-add-button svg { width: 1.25em !important; height: 1.25em !important; flex: 0 0 auto; }
+
+/* ---------- Barra inferior: superfície escura do tema, aba ativa em destaque ---------- */
+.dc-kiosk .dc-kiosk-bottom-nav {
+  background: var(--dc-kiosk-surface) !important;
+  color: var(--dc-kiosk-text) !important;
+  border-top: var(--dc-kiosk-card-border) !important;
+  border-radius: calc(var(--dc-kiosk-card-radius) * 1.4) calc(var(--dc-kiosk-card-radius) * 1.4) 0 0;
+}
+.dc-kiosk .dc-kiosk-nav-item,
+.dc-kiosk .dc-kiosk-nav-item .dc-kiosk-nav-icon svg { color: var(--dc-kiosk-text) !important; }
+.dc-kiosk .dc-kiosk-nav-item { position: relative; }
+.dc-kiosk .dc-kiosk-nav-item:not(:last-child)::after {
+  background: color-mix(in srgb, var(--dc-kiosk-text) 18%, transparent) !important; opacity: 1 !important;
+}
+.dc-kiosk .dc-kiosk-nav-item--active,
+.dc-kiosk .dc-kiosk-nav-item--active .dc-kiosk-nav-icon svg { color: var(--dc-kiosk-accent) !important; }
+.dc-kiosk .dc-kiosk-nav-item--active .dc-kiosk-nav-label {
+  font-weight: 800;
+  box-shadow: inset 0 -3px 0 var(--dc-kiosk-accent);
+  padding: 0 14px 5px;
+  border-radius: 0;
+}
+.dc-kiosk .dc-kiosk-cart-count {
+  background: var(--dc-kiosk-accent) !important;
+  color: var(--dc-kiosk-accent-text) !important;
+  border-color: var(--dc-kiosk-surface) !important;
+}
+
+@media (max-width: 699px) {
+  .dc-kiosk { --dc-kiosk-card-gap: 8px; }
+  .dc-kiosk[data-cover="true"] { --dc-kiosk-header-height: clamp(96px, 25vw, 116px); }
+  .dc-kiosk-header--cover .dc-kiosk-brand-logo { width: clamp(68px, 19vw, 84px); height: clamp(68px, 19vw, 84px); }
+  .dc-kiosk .dc-kiosk-sidebar { padding: 10px 7px 14px !important; }
+  .dc-kiosk .dc-kiosk-category { padding: 9px 4px 8px !important; gap: 5px !important; }
+  .dc-kiosk .dc-kiosk-category-visual { width: 40px; height: 40px; }
+  .dc-kiosk .dc-kiosk-category-label { font-size: clamp(9.5px, 2.65vw, 11.5px) !important; line-height: 1.15 !important; }
+  .dc-kiosk .dc-kiosk-products-area { padding: 8px 8px 14px !important; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name { font-size: clamp(10.5px, 2.85vw, 12.5px) !important; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description { font-size: clamp(8.5px, 2.3vw, 10.5px) !important; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price { font-size: clamp(14px, 3.85vw, 17px) !important; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button {
+    min-height: 28px !important; padding: 2px 4px !important; gap: 3px !important;
+    font-size: clamp(9.5px, 2.6vw, 11.5px) !important;
+  }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-info { padding: 6px 6px 7px !important; }
+  .dc-kiosk .dc-kiosk-nav-item--active .dc-kiosk-nav-label { padding: 0 8px 4px; }
+}
+
+/* Título da categoria alinhado à esquerda, como na referência. */
+.dc-kiosk .dc-kiosk-category-heading { padding: 10px 2px 12px !important; }
+.dc-kiosk .dc-kiosk-category-title-row { justify-content: flex-start !important; gap: 10px !important; }
+.dc-kiosk .dc-kiosk-category-title {
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-size: clamp(18px, 2.4vw, 34px) !important;
+  font-weight: 800 !important;
+}
+.dc-kiosk .dc-kiosk-category-subtitle { margin-top: 2px !important; font-size: clamp(10.5px, 1.1vw, 14px) !important; }
+.dc-kiosk .dc-kiosk-heading-icon { width: clamp(30px, 3.4vw, 46px) !important; height: clamp(30px, 3.4vw, 46px) !important; }
+.dc-kiosk .dc-kiosk-title-decoration {
+  margin: 6px 0 0 calc(clamp(30px, 3.4vw, 46px) + 10px) !important;
+  width: clamp(90px, 14vw, 220px) !important;
+  height: 3px !important;
+  border-radius: 999px;
+  background: var(--dc-kiosk-accent) !important;
+}
+.dc-kiosk .dc-kiosk-nav-label { white-space: nowrap; overflow-wrap: normal; }
+@media (max-width: 699px) {
+  .dc-kiosk .dc-kiosk-category { padding: 8px 4px 7px !important; gap: 4px !important; }
+  .dc-kiosk .dc-kiosk-category-visual { width: 34px; height: 34px; }
+  .dc-kiosk .dc-kiosk-nav-label { font-size: clamp(10.5px, 3vw, 12.5px) !important; }
+  .dc-kiosk .dc-kiosk-nav-icon svg { width: 22px !important; height: 22px !important; }
+}
+@media (max-width: 699px) {
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-bottom { padding-top: 8px !important; gap: 6px !important; }
+}
+@media (min-width: 700px) {
+  .dc-kiosk .dc-kiosk-product-photo-button { aspect-ratio: 4 / 3 !important; }
+}
