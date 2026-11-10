@@ -1840,16 +1840,16 @@ IMPORTANTE:
 @media (max-width: 699px) {
   .dc-kiosk .dc-kiosk-product-photo-button { aspect-ratio: 1 / 1; }
   .dc-kiosk .dc-kiosk-product-info { padding: 6px 6px 7px; gap: 1px; }
-  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name { font-size: clamp(10.5px, 2.9vw, 13px); line-height: 1.15; }
-  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description { font-size: clamp(9px, 2.4vw, 11px); }
-  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price { font-size: clamp(12px, 3.6vw, 17px); }
-  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-original-price { font-size: 9px; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name { font-size: clamp(14px, 3.4vw, 16px); line-height: 1.2; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description { font-size: clamp(11px, 2.6vw, 13px); }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price { font-size: clamp(16px, 4vw, 20px); }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-original-price { font-size: 11px; }
   .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button {
-    min-height: 30px; padding: 4px 3px; gap: 3px;
-    font-size: clamp(9px, 2.5vw, 11.5px); letter-spacing: -.01em;
+    min-height: 42px; padding: 7px 8px; gap: 5px;
+    font-size: clamp(12px, 3vw, 14px); letter-spacing: 0;
   }
-  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button svg { width: 13px; height: 13px; flex: 0 0 auto; }
-  .dc-kiosk .dc-kiosk-products-grid[data-columns="2"] .dc-kiosk-add-button { min-height: 36px; font-size: 13px; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button svg { width: 16px; height: 16px; flex: 0 0 auto; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="2"] .dc-kiosk-add-button { min-height: 44px; font-size: 13px; }
 }
 
 /* =========================================================
@@ -2031,14 +2031,14 @@ IMPORTANTE:
   .dc-kiosk .dc-kiosk-category-visual { width: 40px; height: 40px; }
   .dc-kiosk .dc-kiosk-category-label { font-size: clamp(9.5px, 2.65vw, 11.5px) !important; line-height: 1.15 !important; }
   .dc-kiosk .dc-kiosk-products-area { padding: 8px 8px 14px !important; }
-  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name { font-size: clamp(10.5px, 2.85vw, 12.5px) !important; }
-  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description { font-size: clamp(8.5px, 2.3vw, 10.5px) !important; }
-  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price { font-size: clamp(14px, 3.85vw, 17px) !important; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name { font-size: clamp(14px, 3.4vw, 16px) !important; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description { font-size: clamp(11px, 2.6vw, 13px) !important; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price { font-size: clamp(16px, 4vw, 20px) !important; }
   .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button {
-    min-height: 28px !important; padding: 2px 4px !important; gap: 3px !important;
-    font-size: clamp(9.5px, 2.6vw, 11.5px) !important;
+    min-height: 42px !important; padding: 7px 8px !important; gap: 5px !important;
+    font-size: clamp(12px, 3vw, 14px) !important;
   }
-  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-info { padding: 6px 6px 7px !important; }
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-info { padding: 8px 8px 10px !important; }
   .dc-kiosk .dc-kiosk-nav-item--active .dc-kiosk-nav-label { padding: 0 8px 4px; }
 }
 
@@ -2269,7 +2269,7 @@ IMPORTANTE:
   background: var(--dc-kiosk-accent) !important;
 }
 
-/* ----- Grade de produtos: 3 colunas, 2 fileiras ocupam a área ----- */
+/* ----- Grade de produtos: colunas fluídas (≥150px), altura pelo conteúdo ----- */
 .dc-kiosk[data-variant="totem"] .dc-kiosk-products-area {
   display: flex;
   flex-direction: column;
@@ -2278,38 +2278,39 @@ IMPORTANTE:
   padding: clamp(10px, 1.2vw, 18px) !important;
 }
 
-.dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid {
-  flex: 1 1 auto;
-  height: 0; /* ocupa o espaço restante e torna 100% resolvível */
+.dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="1"],
+.dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="2"],
+.dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] {
+  flex: 0 0 auto;
+  height: auto !important;
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
   display: grid !important;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  grid-auto-rows: calc((100% - var(--dc-kiosk-card-gap)) / 2);
+  /* colunas: style inline de kioskProductGridColumns() — sem forçar 3 */
+  grid-auto-rows: auto !important;
   align-content: start;
+  align-items: stretch;
   gap: var(--dc-kiosk-card-gap) !important;
   column-gap: var(--dc-kiosk-card-gap) !important;
   row-gap: var(--dc-kiosk-card-gap) !important;
-}
-
-.dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] {
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 }
 
 .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-card,
 .dc-kiosk[data-variant="totem"] .dc-kiosk-product-card {
   display: flex !important;
   flex-direction: column !important;
-  height: 100%;
+  height: auto !important;
   min-height: 0;
+  overflow: hidden; /* só arredonda a foto; o conteúdo define a altura */
 }
 
 .dc-kiosk[data-variant="totem"] .dc-kiosk-product-photo-button {
-  flex: 0 0 45% !important;
+  flex: 0 0 auto !important;
   width: 100% !important;
-  height: 45% !important;
-  min-height: 45% !important;
-  aspect-ratio: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  aspect-ratio: 4 / 3 !important;
   border-radius: var(--dc-kiosk-card-radius) var(--dc-kiosk-card-radius) 0 0;
   overflow: hidden;
 }
@@ -2324,11 +2325,17 @@ IMPORTANTE:
 
 .dc-kiosk[data-variant="totem"] .dc-kiosk-product-name,
 .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name {
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
+  overflow: hidden !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
   font-size: clamp(16px, 2.22vw, 24px) !important;
   font-weight: 800 !important;
-  line-height: 1.15 !important;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  line-height: 1.2 !important;
   min-height: 0 !important;
 }
 
@@ -2356,18 +2363,22 @@ IMPORTANTE:
 
 .dc-kiosk[data-variant="totem"] .dc-kiosk-product-price,
 .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price {
+  flex-shrink: 0;
+  overflow: visible !important;
+  text-overflow: unset !important;
   font-size: clamp(20px, 2.78vw, 30px) !important;
   font-weight: 800 !important;
-  line-height: 1.1 !important;
-  color: var(--dc-kiosk-accent) !important;
+  line-height: 1.15 !important;
+  color: var(--dc-totem-price, var(--dc-kiosk-accent)) !important;
 }
 
 .dc-kiosk[data-variant="totem"] .dc-kiosk-add-button,
 .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button {
+  flex-shrink: 0 !important;
   width: 100% !important;
   min-height: clamp(44px, 5.2vw, 56px) !important;
-  height: clamp(44px, 5.2vw, 56px) !important;
-  padding: 0 12px !important;
+  height: auto !important;
+  padding: 10px 12px !important;
   gap: 10px !important;
   border-radius: clamp(10px, 1.2vw, 16px) !important;
   font-size: clamp(15px, 1.85vw, 20px) !important;
@@ -2635,25 +2646,26 @@ IMPORTANTE:
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-product-name,
   .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name {
-    font-size: clamp(12px, 3.4vw, 15px) !important;
+    font-size: clamp(15px, 3.6vw, 18px) !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-product-description,
   .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description {
-    font-size: clamp(10px, 2.6vw, 12px) !important;
-    -webkit-line-clamp: 2 !important;
-    line-clamp: 2 !important;
+    font-size: clamp(12px, 2.8vw, 14px) !important;
+    -webkit-line-clamp: 3 !important;
+    line-clamp: 3 !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-product-price,
   .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price {
-    font-size: clamp(14px, 4vw, 18px) !important;
+    font-size: clamp(18px, 4.4vw, 22px) !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-add-button,
   .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button {
-    min-height: 36px !important;
-    height: 36px !important;
-    font-size: clamp(11px, 3vw, 13px) !important;
+    min-height: 44px !important;
+    height: auto !important;
+    font-size: clamp(13px, 3.2vw, 15px) !important;
     border-radius: 10px !important;
-    gap: 4px !important;
+    gap: 6px !important;
+    padding: 8px 10px !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-order-panel,
   .dc-kiosk-order-panel {
@@ -2739,4 +2751,38 @@ IMPORTANTE:
 .dc-kiosk[data-variant="totem"] .dc-kiosk-order-checkout {
   background: var(--dc-totem-checkout-bg, var(--dc-kiosk-accent));
   color: var(--dc-totem-checkout-text, var(--dc-kiosk-accent-text));
+}
+
+/* =========================================================
+   Cards do cardápio (totem e mesa): nada de nome/preço/botão cortado.
+   Colunas vêm de kioskProductGridColumns() (≥150px, no máx. as do dono).
+   ========================================================= */
+.dc-kiosk .dc-kiosk-product-name {
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+  -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
+}
+.dc-kiosk .dc-kiosk-product-description {
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 3 !important;
+  line-clamp: 3 !important;
+  white-space: normal !important;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.dc-kiosk .dc-kiosk-product-bottom {
+  flex-shrink: 0;
+  margin-top: auto !important;
+}
+.dc-kiosk .dc-kiosk-product-price,
+.dc-kiosk .dc-kiosk-original-price {
+  overflow: visible !important;
+  flex-shrink: 0;
+}
+.dc-kiosk .dc-kiosk-add-button {
+  flex-shrink: 0;
+  height: auto !important;
 }

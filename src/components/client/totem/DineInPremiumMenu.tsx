@@ -77,6 +77,7 @@ import {
 } from '../../../lib/menu/premiumTotem.model';
 
 import type { CategoryMenuMode } from '../../../lib/menu/menuHeader';
+import { kioskProductGridColumns } from '../../../lib/menu/kioskProductGrid';
 
 import './dineInPremiumMenu.css';
 import { MenuOutdoorCarousel } from './MenuOutdoorCarousel';
@@ -848,7 +849,7 @@ export function DineInPremiumMenu({
               className="dc-kiosk-products-grid"
               data-testid="kiosk-products-grid"
               data-columns={productColumns}
-              style={{ gridTemplateColumns: `repeat(${productColumns}, minmax(0, 1fr))` }}
+              style={{ gridTemplateColumns: kioskProductGridColumns(productColumns) }}
             >
               {categoryProducts.map(product => {
                 const original =
