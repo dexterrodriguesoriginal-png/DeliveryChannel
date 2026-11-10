@@ -97,4 +97,11 @@ describe('dine-in cart options', () => {
       options: [{ group_id: 'extras', option_id: 'cheese', qty: 1, fraction: null }],
     });
   });
+
+  it('adds a chosen quantity in a single call', () => {
+    const cart = addDineInCartLine([], product, [], 3);
+    expect(cart[0].quantity).toBe(3);
+    const again = addDineInCartLine(cart, product, [], 2);
+    expect(again[0].quantity).toBe(5);
+  });
 });

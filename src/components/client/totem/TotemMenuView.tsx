@@ -488,11 +488,6 @@ export default function TotemMenuView({
                               <h3 className="font-bold text-base sm:text-lg leading-snug line-clamp-2">
                                 {product.name}
                               </h3>
-                              {product.description && (
-                                <p className="mt-1 text-xs sm:text-sm opacity-70 line-clamp-2 leading-relaxed">
-                                  {product.description}
-                                </p>
-                              )}
                             </div>
 
                             <div className="pt-2 border-t border-white/5 flex flex-col gap-3">

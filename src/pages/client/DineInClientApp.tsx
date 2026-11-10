@@ -10,7 +10,6 @@ import type { MenuTheme } from '../../types/menuTheme';
 import type { MenuOptions } from '../../types/menuOptions';
 import { DEFAULT_MENU_OPTIONS } from '../../lib/menu/menuOptions';
 import { TotemKioskLayer } from '../../components/client/totem/TotemKioskLayer';
-import { productToPricingLine } from '../../lib/pricing/fulfillmentPricing';
 import { useSmartUpsell } from '../../hooks/useSmartUpsell';
 import { UpsellSheet } from '../../components/client/customer/UpsellSheet';
 import type { UpsellCartItem } from '../../types/upsell';
@@ -31,8 +30,9 @@ import {
   type TabInvite, type TabMember,
 } from '../../lib/customer/tableAccess';
 import { ConfirmLoggedUserGate, IdentityGate, InvitePanel, InviteWelcomeScreen, MembersPanel, TableInUseScreen } from '../../components/client/dinein/TableAccessPanels';
-import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
-import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
+import { validateOptionSelection } from '../../lib/addons';
+import { KioskProductSheet } from '../../components/client/totem/KioskProductSheet';
+import { DEFAULT_MENU_THEME } from '../../lib/theme/menuTheme';
 import { DineInCartSheet } from '../../components/client/dinein/DineInCartSheet';
 import { StoreHomeScreen } from '../../components/client/storeHome/StoreHomeScreen';
 import { DEFAULT_HOME_DESIGN, type HomeAction, type StoreHomeDesign } from '../../lib/storeHome/storeHome.model';
@@ -864,23 +864,24 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     setCart(next);
     triggerAddedFeedback(product.name, 1);
   };
-  const addConfiguredItem = () => {
+  const addConfiguredItem = (quantity = 1, options: SelectedProductOption[] = optionChoices) => {
     if (!optionsProduct || orderingDisabled || busy || !products.some(item => item.id === optionsProduct.id)) return;
     const groups = optionsProduct.optionGroups?.filter(group => group.active) || [];
-    const validation = validateOptionSelection(groups, optionChoices);
+    const validation = validateOptionSelection(groups, options);
     if (!validation.valid) {
       setNotice(validation.messages[0] || 'Confira os adicionais selecionados.');
       return;
     }
     const addedName = optionsProduct.name;
-    const next = addDineInCartLine(cart, optionsProduct, optionChoices);
+    const addQty = Math.max(1, Math.trunc(Number(quantity) || 1));
+    const next = addDineInCartLine(cart, optionsProduct, options, addQty);
     if (!optionsFromUpsell.current) pendingUpsellAdd.current = { product: optionsProduct, items: next.map(line => ({ productId: line.product.id, quantity: line.quantity })) };
     optionsFromUpsell.current = false;
     setCart(next);
     setOptionsProduct(null);
     setOptionChoices([]);
     setNotice('');
-    triggerAddedFeedback(addedName, 1);
+    triggerAddedFeedback(addedName, addQty);
   };
   const changeLineQuantity = (key: string, delta: number) => {
     if (delta > 0) {
@@ -1653,32 +1654,23 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             </section>
           </div>
         )}
-        {optionsProduct && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOptionsProduct(null); }}>
-          <section role="dialog" aria-modal="true" aria-label={`${optionsProduct.optionGroups?.some(group => group.active) ? 'Personalizar' : 'Detalhes de'} ${optionsProduct.name}`} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div><h2 className="text-lg font-black">{optionsProduct.optionGroups?.some(group => group.active) ? `Personalizar ${optionsProduct.name}` : optionsProduct.name}</h2>{optionsProduct.optionGroups?.some(group => group.active) && <p className="text-sm text-slate-500">Escolha os adicionais para este item.</p>}</div>
-              <button type="button" onClick={() => { setOptionsProduct(null); setOptionChoices([]); }} aria-label="Fechar personalização"><X className="h-5 w-5" /></button>
-            </div>
-            {optionsProduct.imageUrl && <img src={optionsProduct.imageUrl} alt={optionsProduct.name} className="mb-4 aspect-[4/3] w-full rounded-2xl object-cover" />}
-            {optionsProduct.description && <p className="mb-4 text-sm text-slate-600">{optionsProduct.description}</p>}
-            <ProductOptionsSelector
-              groups={optionsProduct.optionGroups || []}
-              selections={optionChoices}
-              onChange={setOptionChoices}
-            />
-            <p className="mt-3 text-right text-base font-black">
-              {formatBRL((Math.round(productToPricingLine(optionsProduct, 1).unitPrice * 100) + optionPriceCents(optionsProduct.optionGroups || [], optionChoices)) / 100)}
-            </p>
-            <button
-              type="button"
-              onClick={addConfiguredItem}
-              disabled={orderingDisabled || busy || !validateOptionSelection(optionsProduct.optionGroups || [], optionChoices).valid}
-              className="mt-4 w-full rounded-xl bg-emerald-700 p-3 font-bold text-white disabled:opacity-50"
-            >
-              Adicionar à rodada
-            </button>
-          </section>
-        </div>}
+        {optionsProduct && (
+          <KioskProductSheet
+            product={optionsProduct}
+            layout={premiumTotemActive ? 'modal' : 'sheet'}
+            colors={{
+              surface: (menuTheme || DEFAULT_MENU_THEME).surface,
+              text: (menuTheme || DEFAULT_MENU_THEME).text,
+              accent: (menuTheme || DEFAULT_MENU_THEME).accent,
+              accentText: (menuTheme || DEFAULT_MENU_THEME).accentText,
+            }}
+            confirmLabel="Adicionar à rodada"
+            closeLabel="Fechar personalização"
+            disabled={orderingDisabled || busy}
+            onClose={() => { setOptionsProduct(null); setOptionChoices([]); }}
+            onConfirm={(quantity, options) => addConfiguredItem(quantity, options)}
+          />
+        )}
       </section>
 
       {cartOpen && <DineInCartSheet cart={cart} busy={busy} disabled={orderingDisabled} onClose={() => setCartOpen(false)} onContinueShopping={() => { setCartOpen(false); setView('MENU'); }} onCheckout={handleRequestOrder} onQuantity={changeLineQuantity} onNotes={changeLineNotes} />}

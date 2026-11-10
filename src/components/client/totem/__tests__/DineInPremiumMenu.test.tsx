@@ -136,6 +136,20 @@ describe('totem premium touch menu', () => {
     view.unmount();
   });
 
+  it('keeps only photo, name, price and Adicionar on the card, and opens details from the photo or name', () => {
+    const p = menuProps();
+    render(<DineInPremiumMenu {...p} />);
+    const card = screen.getByTestId('kiosk-product-a');
+    expect(card.querySelector('.dc-kiosk-product-description')).toBeNull();
+    expect(card.textContent).not.toMatch(/Gelada/);
+    expect(card.textContent).toMatch(/Cerveja A/);
+    expect(card.textContent).toMatch(/Adicionar/);
+    fireEvent.click(screen.getByTestId('kiosk-product-name-a'));
+    expect(p.onOpenProduct).toHaveBeenCalledWith(p.products[0]);
+    fireEvent.click(screen.getByLabelText('Ver detalhes de Cerveja A'));
+    expect(p.onOpenProduct).toHaveBeenCalledTimes(2);
+  });
+
   it('moves waiter, bill, expenses, account into the hamburger and triggers original callbacks', () => {
     const p = menuProps();
     const onOpenBill = vi.fn(), onCallWaiter = vi.fn(), onOpenAccount = vi.fn();
@@ -316,7 +330,8 @@ describe('totem do salão variant', () => {
     expect(screen.getByLabelText('Categorias do cardápio')).toBeTruthy();
     expect(root.getAttribute('data-order')).toBe('true');
     expect(screen.getByTestId('totem-order-panel').getAttribute('data-visible')).toBe('true');
-    expect(screen.getByText('Gelada')).toBeTruthy();
+    expect(screen.queryByText('Gelada')).toBeNull();
+    expect(screen.getByTestId('kiosk-product-name-a').textContent).toBe('Cerveja A');
     expect(screen.getByText('Seu pedido')).toBeTruthy();
     expect(screen.getByTestId('totem-counter-chip').textContent).toBe('Pague e retire no balcão');
     expect(screen.getByTestId('totem-order-subtotal').textContent).toMatch(/20/);

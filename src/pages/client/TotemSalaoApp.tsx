@@ -32,7 +32,7 @@ import { pickVividAccent } from '../../lib/pwa/storeManifest';
 import { newIdempotencyKey } from '../../lib/backend';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { requestTotemFullscreenOnce } from '../../lib/menu/fullscreen';
-import { ProductOptionsSelector } from '../../components/client/customer/ProductOptionsSelector';
+import { KioskProductSheet } from '../../components/client/totem/KioskProductSheet';
 import {
   addDineInCartLine,
   changeDineInCartLineQuantity,
@@ -70,7 +70,6 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
   const [view, setView] = useState<TotemView>('CAPA');
   const [cart, setCart] = useState<DineInCartLine[]>([]);
   const [optionsProduct, setOptionsProduct] = useState<Product | null>(null);
-  const [optionChoices, setOptionChoices] = useState<SelectedProductOption[]>([]);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
 
@@ -238,13 +237,11 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
     [orderLines],
   );
 
-  const checkoutInProgress = checkoutOpen || Boolean(optionsProduct);
-  const idleEnabled = view === 'MENU' && !checkoutInProgress;
+  const idleEnabled = view === 'MENU' && !checkoutOpen;
 
   const returnToCapa = useCallback(() => {
     setCart([]);
     setOptionsProduct(null);
-    setOptionChoices([]);
     setCheckoutOpen(false);
     setView('CAPA');
   }, []);
@@ -276,23 +273,21 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
     setView('DONE');
   }, [cart, deviceToken, orderBusy]);
 
-  const addProduct = useCallback((product: Product, options: SelectedProductOption[] = []) => {
-    setCart(current => addDineInCartLine(current, product, options));
+  const addProduct = useCallback((product: Product, options: SelectedProductOption[] = [], quantity = 1) => {
+    setCart(current => addDineInCartLine(current, product, options, quantity));
   }, []);
 
   const openProduct = useCallback((product: Product) => {
     setOptionsProduct(product);
-    setOptionChoices([]);
   }, []);
 
-  const confirmOptions = useCallback(() => {
+  const confirmProduct = useCallback((quantity: number, options: SelectedProductOption[]) => {
     if (!optionsProduct) return;
     const groups = optionsProduct.optionGroups?.filter(group => group.active) || [];
-    if (groups.length && !validateOptionSelection(groups, optionChoices).valid) return;
-    addProduct(optionsProduct, optionChoices);
+    if (groups.length && !validateOptionSelection(groups, options).valid) return;
+    addProduct(optionsProduct, options, quantity);
     setOptionsProduct(null);
-    setOptionChoices([]);
-  }, [addProduct, optionChoices, optionsProduct]);
+  }, [addProduct, optionsProduct]);
 
   if (loading) {
     return (
@@ -400,35 +395,20 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
       )}
 
       {optionsProduct && (
-        <div className="dc-totem-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOptionsProduct(null); }}>
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${optionsProduct.optionGroups?.some(group => group.active) ? 'Personalizar' : 'Detalhes de'} ${optionsProduct.name}`}
-            className="dc-totem-modal"
-            style={{ background: menuTheme.surface, color: menuTheme.text }}
-          >
-            <header>
-              <h2>{optionsProduct.optionGroups?.some(group => group.active) ? `Personalizar ${optionsProduct.name}` : optionsProduct.name}</h2>
-              <button type="button" aria-label="Fechar" onClick={() => setOptionsProduct(null)}><X size={22} /></button>
-            </header>
-            {optionsProduct.description && <p className="dc-totem-modal-desc">{optionsProduct.description}</p>}
-            <ProductOptionsSelector
-              groups={optionsProduct.optionGroups || []}
-              selections={optionChoices}
-              onChange={setOptionChoices}
-            />
-            <button
-              type="button"
-              className="dc-totem-modal-confirm"
-              style={{ background: menuTheme.accent, color: menuTheme.accentText }}
-              disabled={Boolean(optionsProduct.optionGroups?.some(group => group.active)) && !validateOptionSelection(optionsProduct.optionGroups || [], optionChoices).valid}
-              onClick={confirmOptions}
-            >
-              Adicionar
-            </button>
-          </section>
-        </div>
+        <KioskProductSheet
+          product={optionsProduct}
+          layout="modal"
+          colors={{
+            surface: menuTheme.surface,
+            text: menuTheme.text,
+            accent: menuTheme.accent,
+            accentText: menuTheme.accentText,
+          }}
+          confirmLabel="Adicionar"
+          closeLabel="Fechar"
+          onClose={() => setOptionsProduct(null)}
+          onConfirm={confirmProduct}
+        />
       )}
 
       {checkoutOpen && cart.length > 0 && (
