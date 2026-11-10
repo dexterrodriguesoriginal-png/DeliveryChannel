@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import { Printer, X } from 'lucide-react';
 import { Order } from '../../types';
 import { paymentMethodLabel } from '../../lib/orders/labels';
@@ -16,13 +17,32 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   storeName,
   onClose,
 }) => {
+  const [resolvedCode, setResolvedCode] = useState('');
+  const [codeLoaded, setCodeLoaded] = useState(false);
+  useEffect(() => {
+    if (!order || order.paymentStatus !== 'PAID' || order.fulfillmentType !== 'PICKUP') {
+      setResolvedCode(''); setCodeLoaded(true); return;
+    }
+    let active = true;
+    setCodeLoaded(false);
+    void supabase.from('pickup_arrivals').select('pickup_code').eq('order_id', order.id).is('closed_at', null).maybeSingle()
+      .then(({ data }) => {
+        if (active) {
+          setResolvedCode(typeof data?.pickup_code === 'string' ? data.pickup_code : '');
+          setCodeLoaded(true);
+        }
+      });
+    return () => { active = false; };
+  }, [order?.id, order?.paymentStatus, order?.fulfillmentType]);
   if (!order) return null;
   const totals = orderMoneyBreakdown(order);
-  const isTotem = Boolean((order as Order & { totemDeviceId?: string }).totemDeviceId);
-  const pickupCode = (order as Order & { pickupCode?: string }).pickupCode;
+  const isTotem = Boolean((order as Order & { totemDeviceId?: string }).totemDeviceId) || (order.customerName === 'Totem' && order.fulfillmentType === 'PICKUP');
+  const pickupCode = resolvedCode || (order as Order & { pickupCode?: string }).pickupCode;
   const hasApprovedCode = order.paymentStatus === 'PAID' && /^\\d{3,4}$/.test(pickupCode || '');
+  if (isTotem && order.paymentStatus !== 'PAID') return null;
 
   const handlePrint = () => {
+    if (isTotem && (!codeLoaded || !hasApprovedCode)) return;
     window.print();
   };
 
