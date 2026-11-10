@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { TotemPaymentSettings } from './TotemPaymentSettings';
 import { KeyRound, MonitorSmartphone, Plus, ShieldOff, UserPlus } from 'lucide-react';
 import type { SecurityContext } from '../../../../services/securityEngine';
 import { totemAccessRepository, type TotemDeviceRow, type TotemUserRow } from '../../../../repositories/totemAccessRepository';
@@ -142,6 +143,7 @@ export function TotemUsersPanel({
         ))}
         {devices.length === 0 && <li className="totem-user-empty">Nenhum dispositivo ativado ainda.</li>}
       </ul>
+      <TotemPaymentSettings tenantId={tenantId} />
       {notice && <p className="totem-admin-notice" role="status">{notice}</p>}
     </section>
   );

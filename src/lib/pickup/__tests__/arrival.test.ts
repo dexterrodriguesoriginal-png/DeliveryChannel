@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chegadaCodeFromPath, callLabel, tvLabel, ARRIVAL_BASE_URL, parseStoreToken, isArrivalFeatureMissing, arrivalQueue, arrivalLine, calledCodes, arrivalErrorMessage, arrivalQrUrl } from '../arrival';
+import { chegadaCodeFromPath, callLabel, tvLabel, ARRIVAL_BASE_URL, parseStoreToken, isArrivalFeatureMissing, arrivalQueue, arrivalLine, calledCodes, readyTotemCodes, arrivalErrorMessage, arrivalQrUrl } from '../arrival';
 
 describe('fila de chegada', () => {
   it('lê o token do QR ou do código digitado', () => {
@@ -33,6 +33,22 @@ describe('fila de chegada', () => {
       { order_id: '2', pickup_code: '123', arrived_at: null, called_at: '2026-10-19T10:38:00Z' },
       { order_id: '3', pickup_code: '999', arrived_at: null, called_at: '2026-10-19T09:00:00Z' },
     ], now)).toEqual(['123', '568']);
+  });
+  it('TV: só prontas e pagas, sem código de cancelado nem em preparo', () => {
+    const arrivals = [
+      { order_id: 'a', pickup_code: '123', arrived_at: null, called_at: null },
+      { order_id: 'b', pickup_code: '456', arrived_at: null, called_at: null },
+      { order_id: 'c', pickup_code: '789', arrived_at: null, called_at: null },
+      { order_id: 'd', pickup_code: '321', arrived_at: null, called_at: null, closed_at: '2026-11-10T12:00:00Z' },
+    ];
+    const orders = [
+      { id: 'a', status: 'READY', payment_status: 'PAID', totem_device_id: 'terminal' },
+      { id: 'b', status: 'READY', payment_status: 'PENDING', totem_device_id: 'terminal' },
+      { id: 'c', status: 'PREPARING', payment_status: 'PAID', totem_device_id: 'terminal' },
+      { id: 'd', status: 'READY', payment_status: 'PAID', totem_device_id: 'terminal' },
+    ];
+    expect(readyTotemCodes(arrivals, orders)).toEqual(['123']);
+    expect(calledCodes(arrivals)).toEqual([]);
   });
   it('mensagens', () => {
     expect(arrivalErrorMessage({ message: 'WRONG_STORE: x' })).toMatch(/não é da loja/);

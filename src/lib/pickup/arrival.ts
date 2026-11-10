@@ -84,3 +84,14 @@ export function calledCodes(rows: ArrivalRow[], now = Date.now(), windowMin = 30
     .sort((a, b) => (a.called_at! < b.called_at! ? 1 : -1))
     .map(r => r.pickup_code);
 }
+
+/** A TV mostra apenas a senha de retirada de totens pagos e prontos. */
+export function readyTotemCodes(
+  arrivals: ArrivalRow[],
+  orders: Array<{ id: string; status: string; payment_status: string; totem_device_id?: string | null }>,
+): string[] {
+  const paidReady = new Set(orders.filter(o =>
+    Boolean(o.totem_device_id) && o.status === 'READY' && o.payment_status === 'PAID',
+  ).map(o => o.id));
+  return arrivals.filter(a => !a.closed_at && paidReady.has(a.order_id)).map(a => a.pickup_code);
+}

@@ -6,7 +6,8 @@ import { supabase } from '../../lib/supabase';
 /** /chamada: tela cheia para TV/tablet com os códigos chamados (sem nomes). */
 export const CallScreen: React.FC<{ tenantId: string; storeName: string }> = ({ tenantId, storeName }) => {
   const [rows, setRows] = useState<ArrivalRow[] | null>([]);
-  const load = useCallback(() => arrivalRepository.listOpen(tenantId).then(setRows).catch(() => {}), [tenantId]);
+  const [ready, setReady] = useState<string[]>([]);
+  const load = useCallback(() => { void Promise.all([arrivalRepository.listOpen(tenantId), arrivalRepository.listReadyTotem(tenantId)]).then(([open, codes]) => { setRows(open); setReady(codes); }).catch(() => {}); }, [tenantId]);
   useEffect(() => {
     load(); const off = arrivalRepository.subscribe(tenantId, load); const id = window.setInterval(load, 5000);
     return () => { off(); window.clearInterval(id); };
@@ -14,7 +15,7 @@ export const CallScreen: React.FC<{ tenantId: string; storeName: string }> = ({ 
   const [showName, setShowName] = useState(false);
   const [names, setNames] = useState<Record<string, string>>({});
   useEffect(() => { arrivalRepository.getStoreQr(tenantId).then(r => setShowName(Boolean(r.showNameOnTv))).catch(() => {}); }, [tenantId]);
-  const codes = calledCodes(rows || []);
+  const codes = calledCodes(rows || []).filter(code => !ready.includes(code));
   const byCode = Object.fromEntries((rows || []).map(r => [r.pickup_code, r.order_id]));
   useEffect(() => {
     if (!showName || codes.length === 0) return;
@@ -31,7 +32,13 @@ export const CallScreen: React.FC<{ tenantId: string; storeName: string }> = ({ 
       </div>
       {rows === null ? <p className="mt-10 text-xl text-slate-400">Fila de retirada ainda não ativada nesta loja.</p> : (
         <>
-          <h2 className="mt-8 text-2xl font-bold text-green-400">Pedidos prontos para retirada</h2>
+          <h2 className="mt-8 text-2xl font-bold text-green-400">Prontos para retirada</h2>
+          {ready.length > 0 && (
+            <div data-testid="totem-ready-codes" className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-6">
+              {ready.map(code => <div key={code} className="rounded-3xl text-center font-mono font-black py-8 text-8xl bg-green-500 text-slate-950">{code}</div>)}
+            </div>
+          )}
+          <h2 className="mt-8 text-2xl font-bold">Chamados pelo QR</h2>
           {codes.length === 0 ? <p className="mt-6 text-xl text-slate-400">Aguardando...</p> : (
             <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-6">
               {codes.map((c, i) => (

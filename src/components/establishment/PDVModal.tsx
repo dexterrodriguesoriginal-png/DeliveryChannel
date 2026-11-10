@@ -10,6 +10,7 @@ import { productOptionRepository } from '../../repositories/productOptionReposit
 import { optionPriceCents, validateOptionSelection } from '../../lib/addons';
 import { rpcErrorMessage } from '../../lib/rpcErrors';
 import { InstalarTotemButton } from './InstalarTotemButton';
+import { TotemPendingPayments } from './TotemPendingPayments';
 import './instalarTotemButton.css';
 
 interface PDVModalProps {
@@ -442,6 +443,8 @@ export const PDVModal: React.FC<PDVModalProps> = ({
               {couponMsg && <p className={`text-[10px] ${couponPreview ? 'text-emerald-700' : 'text-rose-600'}`}>{couponMsg}</p>}
             </div>
             )}
+
+            <TotemPendingPayments tenantId={tenantId} />
 
             {/* Total e Fechar */}
             <div className="pt-3 border-t border-gray-200 space-y-3">

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import { Printer, X } from 'lucide-react';
 import { Order } from '../../types';
 import { paymentMethodLabel } from '../../lib/orders/labels';
@@ -16,10 +17,33 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   storeName,
   onClose,
 }) => {
+  const [resolvedCode, setResolvedCode] = useState('');
+  const [codeLoaded, setCodeLoaded] = useState(false);
+  useEffect(() => {
+    if (!order || order.paymentStatus !== 'PAID' || order.fulfillmentType !== 'PICKUP') {
+      setResolvedCode(''); setCodeLoaded(true); return;
+    }
+    let active = true;
+    setResolvedCode('');
+    setCodeLoaded(false);
+    void supabase.from('pickup_arrivals').select('pickup_code').eq('order_id', order.id).is('closed_at', null).maybeSingle()
+      .then(({ data }) => {
+        if (active) {
+          setResolvedCode(typeof data?.pickup_code === 'string' ? data.pickup_code : '');
+          setCodeLoaded(true);
+        }
+      });
+    return () => { active = false; };
+  }, [order?.id, order?.paymentStatus, order?.fulfillmentType]);
   if (!order) return null;
   const totals = orderMoneyBreakdown(order);
+  const isTotem = Boolean(order.totemDeviceId) || (order.customerName === 'Totem' && order.fulfillmentType === 'PICKUP');
+  const pickupCode = resolvedCode;
+  const hasApprovedCode = order.paymentStatus === 'PAID' && /^\d{3,4}$/.test(pickupCode || '');
+  if (isTotem && order.paymentStatus !== 'PAID') return null;
 
   const handlePrint = () => {
+    if (isTotem && (!codeLoaded || !hasApprovedCode)) return;
     window.print();
   };
 
@@ -37,18 +61,24 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         {/* Cabeçalho Térmico */}
         <div className="text-center border-b border-dashed border-black pb-3">
           <h2 className="font-bold text-sm uppercase tracking-wide">{storeName || 'DELIVERY CHANNEL DELIVERY'}</h2>
-          <p className="text-[10px] text-gray-700">CONTROLE DE EXPEDIÇÃO</p>
+          <p className="text-[10px] text-gray-700">{isTotem ? 'RETIRADA NO BALCÃO · TOTEM' : 'CONTROLE DE EXPEDIÇÃO'}</p>
           <p className="text-[11px] font-bold mt-1">Pedido: #{order.orderNumber || order.id.substring(0, 8).toUpperCase()}</p>
           <p className="text-[10px] text-gray-600">{new Date(order.createdAt).toLocaleString('pt-BR')}</p>
         </div>
 
+        {hasApprovedCode && (
+          <div className="text-center border-b border-dashed border-black py-4">
+            <p className="text-sm font-bold">SENHA DE RETIRADA</p>
+            <p className="font-black text-5xl tracking-widest">{pickupCode}</p>
+          </div>
+        )}
         {/* Dados do Cliente */}
         <div className="border-b border-dashed border-black pb-3 space-y-1 text-[11px]">
-          <p><strong>CLIENTE:</strong> {order.customerName}</p>
-          <p><strong>FONE:</strong> {order.customerPhone}</p>
+          {!isTotem && <p><strong>CLIENTE:</strong> {order.customerName}</p>}
+          {!isTotem && order.customerPhone && order.customerPhone !== '-' && <p><strong>FONE:</strong> {order.customerPhone}</p>}
           <p><strong>TIPO:</strong> {order.fulfillmentType === 'PICKUP' ? 'RETIRADA NO BALCÃO' : 'ENTREGA EM DOMICÍLIO'}</p>
-          <p><strong>ENDEREÇO:</strong> {order.deliveryAddress}</p>
-          {order.addressDetails && (
+          {!isTotem && <p><strong>ENDEREÇO:</strong> {order.deliveryAddress}</p>}
+          {!isTotem && order.addressDetails && (
             <p className="text-[10px] text-gray-700">
               {order.addressDetails.neighborhood ? `Bairro: ${order.addressDetails.neighborhood} ` : ''}
               {order.addressDetails.complement ? `Comp: ${order.addressDetails.complement} ` : ''}
@@ -108,6 +138,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
           </p>
         </div>
 
+        <p className="text-center font-bold text-[10px]">Não é documento fiscal</p>
         {/* Botões de Ação */}
         <div className="flex gap-2 pt-2 no-print">
           <button 

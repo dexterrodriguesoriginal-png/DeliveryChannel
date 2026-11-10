@@ -3,7 +3,7 @@
  * `available()` fica false e a interface da fila é escondida (degradação segura).
  */
 import { supabase } from '../lib/supabase';
-import { isArrivalFeatureMissing, type ArrivalRow } from '../lib/pickup/arrival';
+import { isArrivalFeatureMissing, readyTotemCodes, type ArrivalRow } from '../lib/pickup/arrival';
 
 let feature: 'unknown' | 'on' | 'off' = 'unknown';
 const listeners = new Set<() => void>();
@@ -28,6 +28,17 @@ export const arrivalRepository = {
     if (error) { if (isArrivalFeatureMissing(error)) { setFeature('off'); return null; } throw error; }
     setFeature('on');
     return (data || []) as ArrivalRow[];
+  },
+  async listReadyTotem(tenantId: string): Promise<string[]> {
+    // Staff-only RLS applies to both queries; no public by-slug lookup.
+    const arrivals = await this.listOpen(tenantId);
+    if (!arrivals?.length) return [];
+    const { data, error } = await supabase.from('orders')
+      .select('id,status,payment_status,totem_device_id,tenant_id')
+      .eq('tenant_id', tenantId)
+      .in('id', arrivals.map(a => a.order_id));
+    if (error) throw error;
+    return readyTotemCodes(arrivals, data || []);
   },
   subscribe(tenantId: string, cb: () => void): () => void {
     const ch = supabase.channel(`arrivals-${tenantId}-${Math.random().toString(36).slice(2, 8)}`)

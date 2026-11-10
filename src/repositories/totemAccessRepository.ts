@@ -78,6 +78,18 @@ function rpcMessage(error: { message?: string } | null, fallback: string): strin
   return fallback;
 }
 
+export interface TotemPaymentState {
+  ok: boolean;
+  orderId: string;
+  total: number;
+  paymentStatus: 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'DECLINED';
+  paymentLabel: string;
+  pickupCode?: string;
+  expiresAt?: string;
+  autoPrint?: boolean;
+  idempotent?: boolean;
+}
+
 export const totemAccessRepository = {
   async loadLogin(slug: string): Promise<TotemLoginInfo | null> {
     if (!isSupabaseConfigured || !slug) return null;
@@ -177,16 +189,58 @@ export const totemAccessRepository = {
     }
   },
 
-  async createOrder(token: string, items: Array<{ productId: string; quantity: number; notes?: string }>, idempotencyKey: string): Promise<{ orderId: string; total: number }> {
+  async createOrder(token: string, items: Array<{ productId: string; quantity: number; notes?: string }>, idempotencyKey: string): Promise<TotemPaymentState> {
     const { data, error } = await supabase.rpc('create_totem_order', {
       p_token: token,
       p_items: items,
       p_idempotency_key: idempotencyKey,
     });
-    if (error) throw new Error(rpcMessage(error, 'Não foi possível registrar o pedido. Tente de novo.'));
-    const row = data as { ok?: boolean; orderId?: string; total?: number };
+    if (error) throw new Error(rpcMessage(error, 'Não foi possível registrar o pedido.'));
+    const row = data as TotemPaymentState;
     if (!row?.ok || !row.orderId) throw new Error('Não foi possível registrar o pedido.');
-    return { orderId: row.orderId, total: Number(row.total || 0) };
+    return row;
+  },
+
+  async getPaymentStatus(token: string, orderId: string): Promise<TotemPaymentState> {
+    const { data, error } = await supabase.rpc('get_totem_payment_status', {
+      p_token: token, p_order_id: orderId,
+    });
+    if (error) throw new Error(rpcMessage(error, 'Não foi possível consultar o pagamento.'));
+    return data as TotemPaymentState;
+  },
+
+  async cancelPayment(token: string, orderId: string): Promise<void> {
+    const { error } = await supabase.rpc('cancel_totem_payment', { p_token: token, p_order_id: orderId });
+    if (error) throw new Error(rpcMessage(error, 'Não foi possível cancelar o pedido.'));
+  },
+
+  async confirmManualPayment(orderId: string): Promise<{ pickupCode: string }> {
+    const { data, error } = await supabase.rpc('confirm_manual_totem_payment', { p_order_id: orderId });
+    if (error) throw new Error('Não foi possível confirmar o pagamento deste pedido.');
+    return data as { pickupCode: string };
+  },
+
+  async listPendingPayments(tenantId: string): Promise<Array<{ orderId: string; total: number; createdAt: string; expiresAt: string; status: string; autoPrintStore: boolean }>> {
+    const { data, error } = await supabase.rpc('list_pending_totem_payments', { p_tenant: tenantId });
+    if (error) throw new Error('Não foi possível carregar os pagamentos pendentes.');
+    return Array.isArray(data) ? data : [];
+  },
+
+  async getPaymentSettings(tenantId: string): Promise<{ provider: string; timeoutSeconds: number; autoPrintTotem: boolean; autoPrintStore: boolean }> {
+    const { data, error } = await supabase.rpc('get_totem_payment_settings', { p_tenant: tenantId });
+    if (error) throw new Error('Não foi possível carregar as opções de pagamento.');
+    return data as { provider: string; timeoutSeconds: number; autoPrintTotem: boolean; autoPrintStore: boolean };
+  },
+
+  async setPaymentSettings(tenantId: string, settings: { provider: string; timeoutSeconds: number; autoPrintTotem: boolean; autoPrintStore: boolean }): Promise<void> {
+    const { error } = await supabase.rpc('set_totem_payment_settings', {
+      p_tenant: tenantId,
+      p_provider: settings.provider,
+      p_timeout_seconds: settings.timeoutSeconds,
+      p_auto_print_totem: settings.autoPrintTotem,
+      p_auto_print_store: settings.autoPrintStore,
+    });
+    if (error) throw new Error('Não foi possível salvar as opções de pagamento.');
   },
 
   async listUsers(context: SecurityContext, tenantId: string): Promise<TotemUserRow[]> {
