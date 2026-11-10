@@ -1,3 +1,4 @@
+import { TvAdminPanel } from '../../components/pickup/TvAdminPanel';
 import { PhonePreview } from '../../components/common/PhonePreview';
 import { ArrivalQrMarketingCard } from '../../components/pickup/ArrivalQrMarketingCard';
 import { useModules } from '../../hooks/useModules';
@@ -1624,10 +1625,11 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
         <CampaignsPanel tenantId={activeTenant.id} offers={offers} products={products} />
       )}
 
-      {activeTab === 'pickup-qr' && pickupQrTabVisible && activeTenant?.id && (
+      {activeTab === 'pickup-qr' && pickupQrTabVisible && activeTenant?.id && (<>
+        {(activeRole === 'OWNER' || activeRole === 'MANAGER') && <TvAdminPanel key={activeTenant.id} tenantId={activeTenant.id} />}
         <ArrivalQrMarketingCard tenantId={activeTenant.id} storeName={activeTenant.name}
           canManage={activeRole === 'OWNER' || activeRole === 'MANAGER'} />
-      )}
+      </>)}
 
       {activeTab === 'menu-outdoor' && menuOutdoorTabVisible && (
         <MenuOutdoorPanel tenantId={activeTenant.id} viewerId={securityContext.userId}
