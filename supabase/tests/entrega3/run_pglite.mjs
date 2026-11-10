@@ -1,0 +1,112 @@
+import { PGlite } from '/tmp/pglite/node_modules/@electric-sql/pglite/dist/index.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, '../../..');
+const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
+
+const M1 = read('supabase/migrations/20261109000100_cardapio_capa_menu.sql');
+const M2 = read('supabase/migrations/20261109000200_totem_salao_capa.sql');
+const M3 = read('supabase/migrations/20261109000300_totem_access_and_design.sql');
+const R3 = read('supabase/rollback/20261109000300_totem_access_and_design_down.sql');
+const stub = fs.readFileSync('/tmp/pglite/stub.sql', 'utf8');
+const extra = read('supabase/tests/totem_access/stub_extra.sql');
+
+const T = '11111111-1111-1111-1111-111111111111';
+const O = '22222222-2222-2222-2222-222222222222';
+const OWNER = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+const STAFF = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+const P1 = 'd0000000-0000-0000-0000-0000000000a1';
+const PINACTIVE = 'd0000000-0000-0000-0000-0000000000a2';
+const POTHER = 'd0000000-0000-0000-0000-0000000000b1';
+
+const db = new PGlite();
+let failed = 0;
+const ok = (name, cond, detail) => {
+  if (cond) console.log('PASS', name);
+  else { failed++; console.log('FAIL', name, detail || ''); }
+};
+
+async function exec(sql) { await db.exec(sql); }
+async function query(sql, params = []) { return db.query(sql, params); }
+async function expectOk(name, sql, params = []) {
+  try { const r = await query(sql, params); console.log('PASS', name); return r; }
+  catch (e) { failed++; console.log('FAIL', name, 'unexpected error:', e.message); return null; }
+}
+async function expectErr(name, sql, params = [], match) {
+  try { const r = await query(sql, params); failed++; console.log('FAIL', name, 'unexpected OK', JSON.stringify(r.rows)); }
+  catch (e) {
+    if (match && !String(e.message).includes(match)) { failed++; console.log('FAIL', name, 'wrong error:', e.message); }
+    else console.log('PASS', name, '→', String(e.message).split('\n')[0]);
+  }
+}
+
+async function asRole(role, uid = OWNER) {
+  await exec(`DELETE FROM public.caller`);
+  if (role) await exec(`INSERT INTO public.caller VALUES ('${uid}', '${role}')`);
+}
+
+async function setupBase() {
+  await exec(stub);
+  await exec(M1);
+  await exec(M2);
+  await exec(extra);
+}
+
+await setupBase();
+await exec(M3);
+
+await exec(`CREATE TABLE IF NOT EXISTS public.pickup_arrivals (
+  order_id uuid PRIMARY KEY REFERENCES public.orders(id),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  pickup_code text NOT NULL,
+  closed_at timestamptz,
+  created_at timestamptz DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_pickup_arrivals_open_code ON public.pickup_arrivals(tenant_id,pickup_code) WHERE closed_at IS NULL;
+CREATE OR REPLACE FUNCTION public._new_pickup_code(p_tenant uuid) RETURNS text LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE x text;
+BEGIN
+ FOR x IN SELECT lpad(n::text,3,'0') FROM generate_series(100,999) n LOOP
+  IF NOT EXISTS(SELECT 1 FROM public.pickup_arrivals WHERE tenant_id=p_tenant AND pickup_code=x AND closed_at IS NULL) THEN RETURN x; END IF;
+ END LOOP;
+ RAISE EXCEPTION 'NO_CODE';
+END $$;`);
+const M4 = read('supabase/migrations/20261110000100_entrega3_totem_senha_pagamento.sql');
+await exec(M4);
+console.log('M4_OK');
+
+await asRole('OWNER');
+await expectOk('cria usuário', `select public.admin_create_totem_user($1,'Totem','totem01','senha1234')`,[T]);
+await asRole(null);
+const activated = await expectOk('ativa totem', `select public.totem_activate('loja','totem01','senha1234','Terminal 1',false,'ip') j`);
+const token = activated?.rows?.[0]?.j?.token;
+ok('token existe', Boolean(token));
+const items = JSON.stringify([{ productId:P1, quantity:2, price:0, tenant_id:O }]);
+const key='c0000000-0000-0000-0000-000000000001';
+await expectErr('token inválido',`select public.create_totem_order('invalid',$1::jsonb,$2::uuid)`,[items,key],'TOTEM_DEVICE_INVALID');
+const created = await expectOk('pedido aguarda pagamento', `select public.create_totem_order($1,$2::jsonb,$3::uuid) j`,[token,items,key]);
+const initial=created?.rows?.[0]?.j;
+ok('não libera senha antes do pagamento',initial?.paymentStatus==='PENDING' && !initial.pickupCode);
+ok('total no servidor',Number(initial?.total)===25.8);
+const orderId=initial?.orderId;
+const before=await expectOk('pedido pendente no banco',`select status,payment_status from public.orders where id=$1`,[orderId]);
+ok('cozinha bloqueada',before?.rows?.[0]?.status==='PENDING' && before.rows[0].payment_status==='PENDING');
+const again=await expectOk('repetição idempotente',`select public.create_totem_order($1,$2::jsonb,$3::uuid) j`,[token,items,key]);
+ok('mesmo pedido sem senha',again?.rows?.[0]?.j?.orderId===orderId && !again.rows[0].j.pickupCode);
+await asRole('STAFF',STAFF);
+await expectErr('papel proibido',`select public.confirm_manual_totem_payment($1::uuid)`,[orderId],'FORBIDDEN');
+await asRole('OWNER');
+const confirmed=await expectOk('confirmação no PDV',`select public.confirm_manual_totem_payment($1::uuid) j`,[orderId]);
+ok('senha só após aprovação',/^[0-9]{3,4}$/.test(confirmed?.rows?.[0]?.j?.pickupCode||''));
+const result=await expectOk('consultar pago',`select public.get_totem_payment_status($1,$2::uuid) j`,[token,orderId]);
+ok('consulta mantém mesma senha',result?.rows?.[0]?.j?.pickupCode===confirmed?.rows?.[0]?.j?.pickupCode && result.rows[0].j.paymentStatus==='PAID');
+const count=await expectOk('uma tentativa',`select count(*)::int n from public.totem_payment_attempts where order_id=$1`,[orderId]);
+ok('idempotência impede segunda cobrança',count?.rows?.[0]?.n===1);
+const cancelled=await expectOk('cancelamento pago bloqueado (espera erro abaixo)',`select status from public.totem_payment_attempts where order_id=$1`,[orderId]);
+ok('tentativa aprovada',cancelled?.rows?.[0]?.status==='approved');
+console.log('FAILURES',failed);
+await db.close();
+if(failed)process.exitCode=1;
