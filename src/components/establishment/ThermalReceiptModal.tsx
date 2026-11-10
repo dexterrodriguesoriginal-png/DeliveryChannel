@@ -24,6 +24,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
       setResolvedCode(''); setCodeLoaded(true); return;
     }
     let active = true;
+    setResolvedCode('');
     setCodeLoaded(false);
     void supabase.from('pickup_arrivals').select('pickup_code').eq('order_id', order.id).is('closed_at', null).maybeSingle()
       .then(({ data }) => {
@@ -36,9 +37,9 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   }, [order?.id, order?.paymentStatus, order?.fulfillmentType]);
   if (!order) return null;
   const totals = orderMoneyBreakdown(order);
-  const isTotem = Boolean((order as Order & { totemDeviceId?: string }).totemDeviceId) || (order.customerName === 'Totem' && order.fulfillmentType === 'PICKUP');
-  const pickupCode = resolvedCode || (order as Order & { pickupCode?: string }).pickupCode;
-  const hasApprovedCode = order.paymentStatus === 'PAID' && /^\\d{3,4}$/.test(pickupCode || '');
+  const isTotem = Boolean(order.totemDeviceId) || (order.customerName === 'Totem' && order.fulfillmentType === 'PICKUP');
+  const pickupCode = resolvedCode;
+  const hasApprovedCode = order.paymentStatus === 'PAID' && /^\d{3,4}$/.test(pickupCode || '');
   if (isTotem && order.paymentStatus !== 'PAID') return null;
 
   const handlePrint = () => {

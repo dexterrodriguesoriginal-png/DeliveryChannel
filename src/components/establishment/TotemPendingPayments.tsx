@@ -13,9 +13,13 @@ export function TotemPendingPayments({ tenantId }: { tenantId: string }) {
   const [receipt, setReceipt] = useState<{ orderId: string; total: number; code: string } | null>(null);
   useEffect(() => {
     if (!receipt) return;
-    try { window.print(); } catch { setMessage('O navegador bloqueou a impressão automática.'); }
+    const clearReceipt = () => setReceipt(null);
+    window.addEventListener('afterprint', clearReceipt);
+    try { window.print(); } catch { setMessage('O navegador bloqueou a impressão automática.'); setReceipt(null); }
+    return () => window.removeEventListener('afterprint', clearReceipt);
   }, [receipt]);
   useEffect(() => {
+    setPending([]); setReceipt(null); setMessage('');
     if (!tenantId || !isSupabaseConfigured) return;
     let alive = true;
     const load = () => {
@@ -30,11 +34,11 @@ export function TotemPendingPayments({ tenantId }: { tenantId: string }) {
   if (!isSupabaseConfigured) return null;
   return (
     <section data-testid="totem-pdv-payments" className="p-3 border rounded-xl space-y-2">
-      <style>{`@media print {
+      {receipt && <style>{`@media print {
         body * { visibility: hidden !important; }
         #totem-store-receipt, #totem-store-receipt * { visibility: visible !important; }
         #totem-store-receipt { display: block !important; position: fixed; top: 0; left: 0; width: 76mm; padding: 4mm; font-family: monospace; color: black; background: white; }
-      }`}</style>
+      }`}</style>}
       {receipt && <div id="totem-store-receipt" style={{ display: 'none' }}>
         <strong>RETIRADA NO BALCÃO</strong>
         <h1>SENHA {receipt.code}</h1>
@@ -58,7 +62,7 @@ export function TotemPendingPayments({ tenantId }: { tenantId: string }) {
                 .then(result => {
                   setPending(list => list.filter(row => row.orderId !== item.orderId));
                   setMessage('Pagamento confirmado. A senha foi liberada.');
-                  if (item.autoPrintStore && /^\\d{3,4}$/.test(result.pickupCode)) {
+                  if (item.autoPrintStore && /^\d{3,4}$/.test(result.pickupCode)) {
                     const key = `dc_totem_printed:${tenantId}:${item.orderId}`;
                     try {
                       if (localStorage.getItem(key)) return;

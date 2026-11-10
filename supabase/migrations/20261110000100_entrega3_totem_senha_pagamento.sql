@@ -85,7 +85,7 @@ BEGIN
   RAISE EXCEPTION 'TOTEM_PAYMENT_EXPIRED_OR_CANCELLED' USING ERRCODE='42501';
  END IF;
  PERFORM set_config('dc.totem_approve_order',p_order::text,true);
- UPDATE public.orders SET payment_status='PAID',status='CONFIRMED',updated_at=now() WHERE id=p_order;
+ UPDATE public.orders SET payment_status='PAID',status='CONFIRMED',awaiting_online_payment=false,updated_at=now() WHERE id=p_order;
  PERFORM set_config('dc.totem_approve_order','',true);
  UPDATE public.totem_payment_attempts SET status='approved',approved_at=now(),approved_by=p_actor,updated_at=now() WHERE id=a.id;
  SELECT pickup_code INTO v_code FROM public.pickup_arrivals WHERE order_id=p_order;
@@ -100,8 +100,9 @@ CREATE OR REPLACE FUNCTION public._totem_payment_response(p_order uuid,p_device 
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE o public.orders%ROWTYPE; a public.totem_payment_attempts%ROWTYPE; v_code text; v_status text;
 BEGIN
- SELECT * INTO o FROM public.orders WHERE id=p_order AND tenant_id=p_tenant AND totem_device_id=p_device;
- SELECT * INTO a FROM public.totem_payment_attempts WHERE order_id=p_order AND tenant_id=p_tenant AND device_id=p_device;
+ -- Lock in the same order as approval/cancellation to serialize timeout with payment.
+ SELECT * INTO o FROM public.orders WHERE id=p_order AND tenant_id=p_tenant AND totem_device_id=p_device FOR UPDATE;
+ SELECT * INTO a FROM public.totem_payment_attempts WHERE order_id=p_order AND tenant_id=p_tenant AND device_id=p_device FOR UPDATE;
  IF o.id IS NULL OR a.id IS NULL THEN RAISE EXCEPTION 'TOTEM_ORDER_NOT_FOUND' USING ERRCODE='42501'; END IF;
  IF a.status='awaiting' AND a.expires_at<=now() THEN
    UPDATE public.totem_payment_attempts SET status='expired',updated_at=now() WHERE id=a.id AND status='awaiting';
@@ -148,7 +149,7 @@ BEGIN
   IF jsonb_typeof(v_item)<>'object' THEN RAISE EXCEPTION 'INVALID_TOTEM_ORDER' USING ERRCODE='22023'; END IF;
   BEGIN v_pid:=(v_item->>'productId')::uuid;v_qty:=(v_item->>'quantity')::integer;
   EXCEPTION WHEN others THEN RAISE EXCEPTION 'INVALID_TOTEM_ORDER' USING ERRCODE='22023'; END;
-  IF v_qty NOT BETWEEN 1 AND 99 THEN RAISE EXCEPTION 'INVALID_TOTEM_ORDER' USING ERRCODE='22023'; END IF;
+  IF v_qty IS NULL OR v_qty NOT BETWEEN 1 AND 99 THEN RAISE EXCEPTION 'INVALID_TOTEM_ORDER' USING ERRCODE='22023'; END IF;
   v_notes:=nullif(btrim(coalesce(v_item->>'notes','')),'');
   IF length(coalesce(v_notes,''))>200 THEN RAISE EXCEPTION 'INVALID_TOTEM_ORDER' USING ERRCODE='22023'; END IF;
   v_name:=NULL;v_price:=NULL;
@@ -162,8 +163,8 @@ BEGIN
  v_timeout:=coalesce(v_timeout,240);v_provider:=coalesce(v_provider,'manual');
  -- All automated terminal adapters are disabled until an authenticated backend exists.
  IF v_provider<>'manual' THEN v_provider:='manual'; END IF;
- INSERT INTO public.orders(tenant_id,customer_name,customer_phone,delivery_address,subtotal,delivery_fee,discount,total_amount,payment_method,payment_status,fulfillment_type,status,notes,origin,totem_device_id,idempotency_key)
- VALUES(v_tenant,'Totem','-','Totem do salão',v_total,0,0,v_total,'CASH','PENDING','PICKUP','PENDING','Aguardando pagamento na maquininha','direct',v_device,p_idempotency_key)
+ INSERT INTO public.orders(tenant_id,customer_name,customer_phone,delivery_address,subtotal,delivery_fee,discount,total_amount,payment_method,payment_status,fulfillment_type,status,notes,origin,totem_device_id,idempotency_key,awaiting_online_payment)
+ VALUES(v_tenant,'Totem','-','Totem do salão',v_total,0,0,v_total,'CASH','PENDING','PICKUP','PENDING','Aguardando pagamento na maquininha','direct',v_device,p_idempotency_key,true)
  RETURNING id INTO v_order;
  INSERT INTO public.order_items(order_id,product_id,product_name,quantity,unit_price,total_price,notes)
  SELECT v_order,product_id,product_name,quantity,unit_price,total_price,notes FROM _totem_order_lines;
@@ -177,7 +178,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE v_device uuid;v_tenant uuid;v_label text;
 BEGIN
  SELECT d.o_device,d.o_tenant,d.o_label INTO v_device,v_tenant,v_label FROM public._totem_device_ok(p_token) d;
- IF NOT public._rate_limit_hit('totem_payment_status',v_device::text,v_tenant,90,300) THEN
+ IF NOT public._rate_limit_hit('totem_payment_status',v_device::text,v_tenant,180,300) THEN
   RAISE EXCEPTION 'RATE_LIMITED' USING ERRCODE='P0001';
  END IF;
  RETURN public._totem_payment_response(p_order_id,v_device,v_tenant);
@@ -188,6 +189,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE v_device uuid;v_tenant uuid;v_label text;v_row public.totem_payment_attempts%ROWTYPE;
 BEGIN
  SELECT d.o_device,d.o_tenant,d.o_label INTO v_device,v_tenant,v_label FROM public._totem_device_ok(p_token) d;
+ PERFORM 1 FROM public.orders WHERE id=p_order_id AND tenant_id=v_tenant AND totem_device_id=v_device FOR UPDATE;
  SELECT * INTO v_row FROM public.totem_payment_attempts
  WHERE order_id=p_order_id AND device_id=v_device AND tenant_id=v_tenant FOR UPDATE;
  IF v_row.id IS NULL THEN RAISE EXCEPTION 'TOTEM_ORDER_NOT_FOUND' USING ERRCODE='42501'; END IF;
@@ -209,8 +211,10 @@ BEGIN
   RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
  END IF;
  v_result:=public._totem_approve_payment(p_order_id,auth.uid());
+ IF NOT (v_result->>'idempotent')::boolean THEN
  PERFORM public.log_audit_event('TOTEM_MANUAL_PAYMENT','orders',
    'Confirmação presencial no PDV' || CASE WHEN nullif(btrim(coalesce(p_terminal,'')),'') IS NOT NULL THEN ' - terminal: ' || left(public._sha256_hex(p_terminal),16) ELSE '' END,p_order_id::text,'PENDING','PAID',v_tenant);
+ END IF;
  RETURN v_result;
 END $$;
 
@@ -232,7 +236,7 @@ DECLARE v_role text;
 BEGIN
  v_role:=public._tenant_role_of_caller(p_tenant);
  IF v_role NOT IN ('OWNER','MANAGER') OR v_role IS NULL THEN RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501'; END IF;
- IF p_provider NOT IN ('manual','mercadopago_point','pagbank','infinitepay') OR p_timeout_seconds NOT BETWEEN 120 AND 300 THEN
+ IF p_provider IS DISTINCT FROM 'manual' OR p_timeout_seconds IS NULL OR p_timeout_seconds NOT BETWEEN 120 AND 300 THEN
   RAISE EXCEPTION 'INVALID_TOTEM_SETTINGS' USING ERRCODE='22023';
  END IF;
  INSERT INTO public.totem_payment_settings(tenant_id,provider,timeout_seconds,auto_print_totem,auto_print_store,updated_at)

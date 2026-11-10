@@ -215,7 +215,7 @@ export const totemAccessRepository = {
   },
 
   async confirmManualPayment(orderId: string): Promise<{ pickupCode: string }> {
-    const { error } = await supabase.rpc('confirm_manual_totem_payment', { p_order_id: orderId });
+    const { data, error } = await supabase.rpc('confirm_manual_totem_payment', { p_order_id: orderId });
     if (error) throw new Error('Não foi possível confirmar o pagamento deste pedido.');
     return data as { pickupCode: string };
   },
