@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
 import { totemAccessRepository } from '../../repositories/totemAccessRepository';
-import type { TotemLoginInfo } from '../../repositories/totemAccessRepository';
+import type { TotemLoginInfo, TotemPaymentState } from '../../repositories/totemAccessRepository';
 import { totemWelcomeRepository } from '../../repositories/totemWelcomeRepository';
 import { menuHeaderRepository } from '../../repositories/menuHeaderRepository';
 import { menuOutdoorRepository, type PublicMenuOutdoorSlide } from '../../repositories/menuOutdoorRepository';
@@ -45,7 +45,7 @@ import { formatMenuMoney } from '../../lib/menu/premiumTotem.model';
 import type { TotemOrderLine } from '../../components/client/totem/TotemOrderPanel';
 import './totemSalao.css';
 
-type TotemView = 'CAPA' | 'MENU' | 'DONE';
+type TotemView = 'CAPA' | 'MENU' | 'PAYMENT' | 'DONE';
 
 export function TotemSalaoApp({ slug }: { slug: string }) {
   const [loading, setLoading] = useState(true);
@@ -71,6 +71,34 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
   const [cart, setCart] = useState<DineInCartLine[]>([]);
   const [optionsProduct, setOptionsProduct] = useState<Product | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [payment, setPayment] = useState<TotemPaymentState | null>(null);
+  const [printFailed, setPrintFailed] = useState(false);
+  const paymentKey = React.useRef<string | null>(null);
+  const submitting = React.useRef(false);
+  const printedOrders = React.useRef(new Set<string>());
+  useEffect(() => {
+    if (view !== 'PAYMENT' || !payment?.orderId || !deviceToken) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const current = await totemAccessRepository.getPaymentStatus(deviceToken, payment.orderId);
+        if (!active) return;
+        setPayment(current);
+        if (current.paymentStatus === 'PAID' && current.pickupCode) setView('DONE');
+      } catch {
+        if (active) setOrderError('Não foi possível atualizar o pagamento. Tente novamente.');
+      }
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 3000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, [view, payment?.orderId, deviceToken]);
+  useEffect(() => {
+    if (view !== 'DONE' || !payment?.pickupCode || payment.paymentStatus !== 'PAID' || !payment.autoPrint) return;
+    if (printedOrders.current.has(payment.orderId)) return;
+    printedOrders.current.add(payment.orderId);
+    try { window.print(); } catch { setPrintFailed(true); }
+  }, [view, payment]);
 
 
   useEffect(() => {
@@ -243,35 +271,48 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
     setCart([]);
     setOptionsProduct(null);
     setCheckoutOpen(false);
+    setPayment(null);
+    setOrderError('');
+    setPrintFailed(false);
+    paymentKey.current = null;
     setView('CAPA');
   }, []);
 
   const finishOrder = useCallback(async () => {
-    if (orderBusy) return;
+    if (submitting.current || orderBusy) return;
+    if (!deviceToken) { setOrderError('Ative este totem para registrar pedidos.'); return; }
+    submitting.current = true;
+    setOrderBusy(true);
     setOrderError('');
-    if (deviceToken) {
-      setOrderBusy(true);
-      try {
-        await totemAccessRepository.createOrder(
-          deviceToken,
-          cart.map(line => ({
-            productId: line.product.id,
-            quantity: line.quantity,
-            notes: line.notes,
-          })),
-          newIdempotencyKey(),
-        );
-      } catch (reason) {
-        setOrderError(reason instanceof Error ? reason.message : 'Não foi possível registrar o pedido.');
-        setOrderBusy(false);
-        return;
-      }
+    paymentKey.current ??= newIdempotencyKey();
+    try {
+      const result = await totemAccessRepository.createOrder(
+        deviceToken,
+        cart.map(line => ({ productId: line.product.id, quantity: line.quantity, notes: line.notes })),
+        paymentKey.current,
+      );
+      setPayment(result);
+      setCheckoutOpen(false);
+      setCart([]);
+      if (result.paymentStatus === 'PAID' && result.pickupCode) setView('DONE');
+      else setView('PAYMENT');
+    } catch (reason) {
+      setOrderError(reason instanceof Error ? reason.message : 'Não foi possível registrar o pedido.');
+    } finally {
+      submitting.current = false;
       setOrderBusy(false);
     }
-    setCheckoutOpen(false);
-    setCart([]);
-    setView('DONE');
   }, [cart, deviceToken, orderBusy]);
+
+  const cancelPayment = useCallback(async () => {
+    if (!deviceToken || !payment?.orderId) return;
+    try {
+      await totemAccessRepository.cancelPayment(deviceToken, payment.orderId);
+      returnToCapa();
+    } catch (reason) {
+      setOrderError(reason instanceof Error ? reason.message : 'Não foi possível cancelar o pedido.');
+    }
+  }, [deviceToken, payment?.orderId, returnToCapa]);
 
   const addProduct = useCallback((product: Product, options: SelectedProductOption[] = [], quantity = 1) => {
     setCart(current => addDineInCartLine(current, product, options, quantity));
@@ -379,18 +420,32 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
         />
       )}
 
-      {view === 'DONE' && (
+      {view === 'PAYMENT' && payment && (
+        <main className="dc-totem-done" data-testid="totem-payment-wait" style={{ background: menuTheme.background, color: menuTheme.text }}>
+          <h1>{payment.paymentStatus === 'PENDING' ? 'Aguardando pagamento' : 'Pagamento não concluído'}</h1>
+          <p style={{ fontSize: '2rem' }}>Total: {formatMenuMoney(Math.round(payment.total * 100))}</p>
+          <p>{payment.paymentStatus === 'PENDING' ? payment.paymentLabel : 'Peça ajuda à equipe ou inicie um novo pedido.'}</p>
+          {orderError && <p role="alert">{orderError}</p>}
+          {payment.paymentStatus === 'PENDING' ? (
+            <button type="button" onClick={() => void cancelPayment()} style={{ background: menuTheme.accent, color: menuTheme.accentText }}>
+              Cancelar pedido
+            </button>
+          ) : (
+            <button type="button" onClick={returnToCapa} style={{ background: menuTheme.accent, color: menuTheme.accentText }}>Novo pedido</button>
+          )}
+        </main>
+      )}
+
+      {view === 'DONE' && payment?.paymentStatus === 'PAID' && payment.pickupCode && (
         <main className="dc-totem-done" data-testid="totem-order-done" style={{ background: menuTheme.background, color: menuTheme.text }}>
-          <h1>Dirija-se ao balcão</h1>
-          <p>Pague e retire o seu pedido no balcão. O pagamento e a senha de retirada entram na próxima etapa deste totem.</p>
-          <button
-            type="button"
-            data-testid="totem-new-order"
-            style={{ background: menuTheme.accent, color: menuTheme.accentText }}
-            onClick={returnToCapa}
-          >
-            Novo pedido
-          </button>
+          <h1>Senha de retirada</h1>
+          <strong data-testid="totem-pickup-code" style={{ fontSize: 'clamp(5rem, 22vw, 13rem)', lineHeight: 1.1 }}>{payment.pickupCode}</strong>
+          <p>Total pago: {formatMenuMoney(Math.round(payment.total * 100))}</p>
+          <p>Retire seu pedido no balcão quando sua senha aparecer na TV.</p>
+          <p>Não é documento fiscal</p>
+          {printFailed && <p>A impressão automática não foi concluída.</p>}
+          <button type="button" onClick={() => { try { window.print(); } catch { setPrintFailed(true); } }} style={{ background: menuTheme.accent, color: menuTheme.accentText }}>Imprimir comprovante</button>
+          <button type="button" data-testid="totem-new-order" style={{ background: menuTheme.accent, color: menuTheme.accentText }} onClick={returnToCapa}>Novo pedido</button>
         </main>
       )}
 
@@ -425,7 +480,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
               <h2>Confirmar pedido</h2>
               <button type="button" aria-label="Voltar ao cardápio" onClick={() => setCheckoutOpen(false)}><X size={22} /></button>
             </header>
-            <p className="dc-totem-modal-desc">Pague e retire no balcão. O pagamento ainda não é processado neste totem.</p>
+            <p className="dc-totem-modal-desc">Após confirmar, pague na maquininha ao lado do totem. Sua senha aparece depois da aprovação.</p>
             <ul className="dc-totem-checkout-lines">
               {orderLines.map(line => (
                 <li key={line.key}>
@@ -447,7 +502,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
               onClick={() => void finishOrder()}
               disabled={orderBusy}
             >
-              {orderBusy ? 'Registrando…' : 'Confirmar e ir ao balcão'}
+              {orderBusy ? 'Registrando…' : 'Confirmar e pagar'}
             </button>
           </section>
         </div>
