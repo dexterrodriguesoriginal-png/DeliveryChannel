@@ -11,7 +11,7 @@
  *  - Faturamento = total_amount − delivery_fee. Resgates = unidades dos itens OFFER de pedidos
  *    válidos (mesma unidade de offers.promo_times_used). Desconto = (preço original − cobrado) × qtd
  *    + cupom rateado no item.
- *  - Visualizações/cliques não são exibidos (sem rastreamento confiável nesta aba).
+ *  - CARD_VIEW/CARD_CLICK vêm da RPC N5, com deduplicação por sessão no servidor.
  * O cálculo local (computePromoPerformance) só é usado no modo de demonstração sem Supabase.
  */
 import type { Offer } from '../types';
@@ -42,6 +42,8 @@ type Row = Record<string, unknown>;
 /** Linha devolvida por get_promo_offer_performance (N5). */
 export interface ServerOfferPerformanceRow {
   offer_id: string;
+  card_views?: number | null;
+  card_clicks?: number | null;
   valid_orders: number;
   invalidated_orders: number;
   revenue: number;
@@ -57,6 +59,8 @@ export function parseServerPerformance(payload: unknown): ServerOfferPerformance
     const x = r as Row;
     return {
       offer_id: String(x.offer_id),
+      card_views: x.card_views == null ? null : Math.max(0, Number(x.card_views) || 0),
+      card_clicks: x.card_clicks == null ? null : Math.max(0, Number(x.card_clicks) || 0),
       valid_orders: Number(x.valid_orders) || 0,
       invalidated_orders: Number(x.invalidated_orders) || 0,
       revenue: Number(x.revenue) || 0,
@@ -78,14 +82,16 @@ export function summarizeServerPerformance(params: { tenantId: string; cards: Of
     const kind = getPromoCardKind(c);
     const r = byId.get(c.id);
     if (r?.last_valid_order_at) lastSale[c.id] = r.last_valid_order_at;
-    if (!(kind === 'CUSTOM_OFFER' || r)) {
-      return { cardId: c.id, kind, orders: null, revenue: null, cancelledOrders: null, redemptions: null, discount: null, discountRatio: null, averageTicket: null };
+    // Evento de visualização não transforma banner visual em venda atribuída.
+    const hasAttributedSale = Boolean(r && (r.valid_orders > 0 || r.invalidated_orders > 0 || r.last_valid_order_at));
+    if (!(kind === 'CUSTOM_OFFER' || hasAttributedSale)) {
+      return { cardId: c.id, kind, views: r?.card_views ?? null, clicks: r?.card_clicks ?? null, orders: null, revenue: null, cancelledOrders: null, redemptions: null, discount: null, discountRatio: null, averageTicket: null };
     }
     const v = r ?? { valid_orders: 0, invalidated_orders: 0, revenue: 0, redeemed_units: 0, discount: 0 };
     attributedOrders += v.valid_orders; revenue = round2(revenue + v.revenue); cancelledOrRefunded += v.invalidated_orders;
     redemptions += v.redeemed_units; discount = round2(discount + v.discount);
     return {
-      cardId: c.id, kind, orders: v.valid_orders, revenue: round2(v.revenue), cancelledOrders: v.invalidated_orders,
+      cardId: c.id, kind, views: r?.card_views ?? null, clicks: r?.card_clicks ?? null, orders: v.valid_orders, revenue: round2(v.revenue), cancelledOrders: v.invalidated_orders,
       redemptions: v.redeemed_units, discount: round2(v.discount),
       discountRatio: v.revenue > 0 ? round2(v.discount / v.revenue) : null,
       averageTicket: v.valid_orders > 0 ? round2(v.revenue / v.valid_orders) : null,
@@ -187,6 +193,8 @@ export function orderPromoRevenue(o: Pick<PromoOrder, 'totalAmount' | 'deliveryF
 export interface CardPerformanceRow {
   cardId: string;
   kind: PromoCardKind;
+  views?: number | null;
+  clicks?: number | null;
   /** null = não se aplica/não mensurável (card visual ou de produto sem rastreio). */
   orders: number | null;
   revenue: number | null;

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 vi.mock('../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: false, ensureValidSession: async () => true }));
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -42,6 +43,14 @@ const sampleProducts: Product[] = [
 ];
 
 describe('PDVModal — Frente de Caixa Balcão', () => {
+  it('regressão React #310: nenhum hook aparece após o retorno condicional de modal fechado', () => {
+    const source = readFileSync(new URL('../PDVModal.tsx', import.meta.url), 'utf8');
+    const guard = source.indexOf('if (!isOpen) return null;');
+    expect(guard).toBeGreaterThan(0);
+    // Hooks devem ser declarados antes deste guard; detecta regressões sem tocar no layout aprovado.
+    expect(source.slice(guard)).not.toMatch(/\b(?:useState|useRef|useEffect|useMemo|useCallback|useReducer|useContext|useId)\s*\(/);
+  });
+
   it('retorna null quando isOpen for false', () => {
     const html = renderToStaticMarkup(
       <PDVModal

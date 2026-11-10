@@ -156,6 +156,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
 
   // N5: campanhas só OWNER/MANAGER (RLS; sem CEO/SUPER_ADMIN) e só com backend n1n6.
   const canManageCampaigns = isN1N6Backend() && (activeRole === 'OWNER' || activeRole === 'MANAGER');
+  const canViewPerformance = activeRole === 'OWNER' || activeRole === 'MANAGER';
   const menuOutdoorTabVisible = canManageMenuOutdoor(activeRole);
   const upsellTabVisible = activeRole === 'OWNER' || activeRole === 'MANAGER';
   const canManage = activeRole === 'OWNER' || activeRole === 'MANAGER' || activeRole === 'SUPER_ADMIN' || activeRole === 'CEO';
@@ -163,7 +164,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
   // Navegação interna da ferramenta
   const [internalActiveTab, setInternalActiveTab] = useState<MarketingTab>('creatives');
   const selectedTab = requestedTab === null ? 'creatives' : requestedTab ?? internalActiveTab;
-  const activeTab = (selectedTab === 'campaigns' && !canManageCampaigns)
+  const activeTab = (selectedTab === 'performance' && !canViewPerformance)
+    || (selectedTab === 'campaigns' && !canManageCampaigns)
     || (selectedTab === 'menu-outdoor' && !menuOutdoorTabVisible)
     || (selectedTab === 'upsell' && !upsellTabVisible) ? 'creatives' : selectedTab;
   const changeActiveTab = (tab: MarketingTab) => {
@@ -1242,7 +1244,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
           </span>
         </button>
 
-        <button
+        {canViewPerformance && <button
           onClick={() => changeActiveTab('performance')}
           className={`pb-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
             activeTab === 'performance'
@@ -1252,7 +1254,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
         >
           <BarChart3 className="w-4 h-4" />
           <span>Desempenho & Vendas</span>
-        </button>
+        </button>}
 
         {canManageCampaigns && (
           <button
@@ -1606,7 +1608,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
       {/* ==================================================================== */}
       {/* ABA 2: DESEMPENHO & MÉTRICAS REAIS DAS PROMOÇÕES                     */}
       {/* ==================================================================== */}
-      {activeTab === 'performance' && (
+      {activeTab === 'performance' && canViewPerformance && (
         <PromoPerformancePanel
           tenantId={activeTenant.id}
           securityContext={securityContext}

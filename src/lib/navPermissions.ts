@@ -39,6 +39,8 @@ const DEFAULT_PERMISSIONS: Partial<Record<RoleId, readonly string[]>> = {
 export const CASHIER_ALLOWED_TABS: ReadonlySet<string> = new Set(['est-orders', 'est-salon', 'est-customers']);
 export const WAITER_ALLOWED_TABS: ReadonlySet<string> = new Set(['est-salon']);
 export const KITCHEN_ALLOWED_TABS: ReadonlySet<string> = new Set(['est-kitchen']);
+export const OPERATOR_ALLOWED_TABS: ReadonlySet<string> = new Set(['est-products', 'est-quality', 'est-categories', 'est-inventory']);
+export const DELIVERY_MANAGER_ALLOWED_TABS: ReadonlySet<string> = new Set(['est-orders', 'est-drivers']);
 
 /** Null is used only before the server's permission snapshot is available. */
 export function canAccessEstTab(role: RoleId | null | undefined, tabId: string, permissions?: readonly string[] | null): boolean {
@@ -51,7 +53,10 @@ export function canAccessEstTab(role: RoleId | null | undefined, tabId: string, 
   if (role === 'CEO' || role === 'SUPER_ADMIN' || role === 'OWNER') return true;
   if (role === 'DRIVER' || role === 'CUSTOMER') return false;
   // Dedicated roles never open the full OrdersPage, which contains customer data.
+  if (role === 'CASHIER' && !CASHIER_ALLOWED_TABS.has(tabId)) return false;
   if (role === 'KITCHEN' && !KITCHEN_ALLOWED_TABS.has(tabId)) return false;
+  if (role === 'OPERATOR' && !OPERATOR_ALLOWED_TABS.has(tabId)) return false;
+  if (role === 'DELIVERY_MANAGER' && !DELIVERY_MANAGER_ALLOWED_TABS.has(tabId)) return false;
   if (role === 'WAITER' && !WAITER_ALLOWED_TABS.has(tabId)) return false;
   // Sensitive finance/subscription is reserved for the owner, including custom grants.
   if (['view_finances', 'manage_subscription'].includes(EST_TAB_PERMISSION[tabId])) return false;

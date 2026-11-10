@@ -150,6 +150,18 @@ describe('modelo N5: get_promo_offer_performance', () => {
     { offer_id: 'c1', valid_orders: 2, invalidated_orders: 1, revenue: '160.00', redeemed_units: 3, discount: '16.00', last_valid_order_at: '2026-10-12T10:00:00Z' },
     { offer_id: 'outra-loja', valid_orders: 9, invalidated_orders: 0, revenue: 999, redeemed_units: 9, discount: 0, last_valid_order_at: null },
   ] };
+  it('mapeia CARD_VIEW e CARD_CLICK do contrato N5 sem inventar números do contrato antigo', () => {
+    const modern = parseServerPerformance({ rows: [
+      { offer_id: 'c1', card_views: 12, card_clicks: 4, valid_orders: 0, invalidated_orders: 0, revenue: 0, redeemed_units: 0, discount: 0, last_valid_order_at: null },
+    ] });
+    const summary = summarizeServerPerformance({ tenantId: T, cards, rows: modern });
+    expect(summary.rows.find(r => r.cardId === 'c1')).toMatchObject({ views: 12, clicks: 4 });
+    expect(summary.rows.find(r => r.cardId === 'c3')?.views).toBeNull();
+
+    const legacy = summarizeServerPerformance({ tenantId: T, cards, rows: parseServerPerformance(payload) });
+    expect(legacy.rows.find(r => r.cardId === 'c1')?.views).toBeNull();
+    expect(legacy.rows.find(r => r.cardId === 'c1')?.clicks).toBeNull();
+  });
   it('usa o agregado do servidor sem recalcular e ignora oferta desconhecida', () => {
     const s = summarizeServerPerformance({ tenantId: T, cards, rows: parseServerPerformance(payload) });
     expect(s.attributedOrders).toBe(2); expect(s.revenue).toBe(160); expect(s.redemptions).toBe(3); expect(s.discount).toBe(16);

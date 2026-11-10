@@ -56,6 +56,11 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
 
   const load = useCallback(async () => {
     if (!range || !prevRange) return;
+    if (securityContext.userRole !== 'OWNER' && securityContext.userRole !== 'MANAGER') {
+      setResult(null);
+      setError('Somente proprietário ou gerente da loja pode ver o desempenho dos cards.');
+      return;
+    }
     const seq = ++requestSeq.current; // descarta respostas antigas (troca rápida de período/loja)
     setLoading(true); setError(null);
     try {
@@ -66,7 +71,10 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
     } finally { if (seq === requestSeq.current) setLoading(false); }
   }, [range, prevRange, securityContext, tenantId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => { requestSeq.current++; }; // invalida respostas de período/loja antigos
+  }, [load]);
 
   const tenantOffers = useMemo(() => offers.filter(o => !o.tenantId || o.tenantId === tenantId), [offers, tenantId]);
   const build = useCallback((which: 'current' | 'previous'): PromoPerformanceSummary | null => {
@@ -91,7 +99,7 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
   const isDemo = result?.kind === 'demo';
   const attributionUnavailable = !loading && !error && result?.kind === 'unavailable';
   const ready = !loading && !error && !!summary;
-  const noAttributionData = attributionUnavailable || (ready && summary!.attributedOrders === 0 && summary!.cancelledOrRefunded === 0);
+  const noAttributionData = attributionUnavailable || (ready && summary!.attributedOrders === 0 && summary!.cancelledOrRefunded === 0 && !summary!.rows.some(r => (r.views ?? 0) > 0 || (r.clicks ?? 0) > 0));
 
   const d = (cur: number | null | undefined, prev: number | null | undefined) => compareMetric(cur ?? null, prev ?? null);
 
@@ -198,7 +206,7 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
             ) : (
               <p>Quando clientes comprarem pelo checkout promocional de um card, os resultados aparecem aqui.</p>
             )}
-            <p className="text-gray-500">Visualizações e cliques ainda não são rastreados de forma confiável, por isso conversão não é exibida.</p>
+            <p className="text-gray-500">Visualizações e cliques são estimativas por sessão e aparecem quando o banco dispõe da instrumentação N5.</p>
           </div>
         </Card>
       )}
@@ -272,7 +280,7 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
                   <th className="pb-3">Card / Oferta</th>
                   <th className="pb-3">Tipo</th>
                   <th className="pb-3">Status</th>
-                  <th className="pb-3" title="Não rastreado de forma confiável">Visualiz. / Cliques</th>
+                  <th className="pb-3" title="Eventos CARD_VIEW/CARD_CLICK deduplicados no servidor">Visualiz. / Cliques</th>
                   <th className="pb-3 text-right">Pedidos</th>
                   <th className="pb-3 text-right">Faturamento</th>
                   <th className="pb-3 text-right" title="Desconto concedido no período e quanto de desconto foi dado para cada R$ 1 vendido">Desconto × Fat.</th>
@@ -303,7 +311,7 @@ export const PromoPerformancePanel: React.FC<Props> = ({ tenantId, securityConte
                           : <span className="text-gray-600">Apenas visual</span>}
                       </td>
                       <td className="py-3"><span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${statusMeta.badgeClass}`}>{statusMeta.label}</span></td>
-                      <td className="py-3 text-gray-400" title="Rastreamento de visualizações/cliques ainda não instrumentado">—</td>
+                      <td className="py-3 font-mono" data-testid={`events-${card.id}`}>{loading ? '…' : row?.views != null && row?.clicks != null ? `${row.views} / ${row.clicks}` : '—'}</td>
                       <td className="py-3 text-right font-mono">
                         {loading ? '…' : row?.orders == null ? na : <span>{row.orders}{row.cancelledOrders ? <span className="text-[10px] text-gray-400"> (+{row.cancelledOrders} canc.)</span> : null}</span>}
                       </td>

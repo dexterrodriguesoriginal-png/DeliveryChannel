@@ -7,6 +7,7 @@ import { getCardDisplayDurationMs, isCardLiveAt, sortCardsForDisplay } from '../
 export interface OfferCarouselProps {
   offers: Offer[];
   onOfferClick?: (offer: Offer) => void;
+  onOfferView?: (offer: Offer) => void;
   autoPlayInterval?: number; // mantido por compatibilidade (duração padrão vem de getCardDisplayDurationMs)
   /** Diferença (ms) entre o relógio do servidor e o local; filtra início/término pelo relógio do servidor. */
   clockOffsetMs?: number;
@@ -18,6 +19,7 @@ const VIDEO_STALL_TIMEOUT_MS = 8000;
 export const OfferCarousel: React.FC<OfferCarouselProps> = ({
   offers,
   onOfferClick,
+  onOfferView,
   clockOffsetMs = 0,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -72,6 +74,11 @@ export const OfferCarousel: React.FC<OfferCarouselProps> = ({
 
   const currentKey = currentOffer ? `${currentOffer.source || 'OFFER'}:${currentOffer.id}` : '';
   const currentIsVideo = Boolean(currentOffer && currentOffer.mediaType === 'VIDEO' && (currentOffer.mediaUrl || currentOffer.imageUrl));
+
+  // Exposição efetiva do slide ativo, nunca a cada rerender do carrossel.
+  useEffect(() => {
+    if (currentOffer) onOfferView?.(currentOffer);
+  }, [currentKey, onOfferView]);
 
   // Gerenciamento do AutoPlay e Barra de Progresso
   useEffect(() => {

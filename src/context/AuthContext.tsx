@@ -1,5 +1,6 @@
 import { LEGAL_VERSION } from '../lib/legal/documents';
 import { AUTH_STORE_KEY, rememberAuthStore } from '../lib/auth/storeEmailBranding';
+import { clearDeviceSessionStorage, signOutSupabaseSession } from '../lib/auth/deviceLogout';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { isEmailRateLimitError, EMAIL_RATE_LIMIT_MSG, isEmailNotConfirmedError, isInvalidCredentialsError, INVALID_CREDENTIALS_MSG, isMembershipLoadFailure } from '../lib/auth/authErrors';
 import { currentEmailRedirectUrl, DEFAULT_APP_ORIGIN } from '../lib/auth/authRedirect';
@@ -111,6 +112,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, name: string, phone?: string, metadata?: Record<string, any>) => Promise<{ success: boolean; requiresEmailConfirmation?: boolean; error?: string }>;
   signInWithGoogle: (options?: GoogleAuthOptions) => Promise<void>;
   signOut: () => Promise<void>;
+  signOutLocal: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
 
   // Onboarding do primeiro estabelecimento
@@ -1465,28 +1467,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Logout Oficial
-  const signOut = async () => {
-    try {
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.removeItem(PREVIEW_BYPASS_SESSION_KEY);
-        // Limpar caches locais de tenant, role e chaves de sessão
-        const toRemove: string[] = [];
-        for (let i = 0; i < window.localStorage.length; i++) {
-          const k = window.localStorage.key(i);
-          if (k && (k.startsWith('adegafood_') || k.startsWith('deliverychannel_') || k.startsWith('sb-'))) {
-            toRemove.push(k);
-          }
-        }
-        toRemove.forEach(k => window.localStorage.removeItem(k));
-        window.sessionStorage.clear();
-      }
-    } catch {
-      // ignore
-    }
+  const performSignOut = async (scope: 'global' | 'local') => {
     setIsPreviewBypass(false);
     try {
-      await supabase.auth.signOut();
-    } catch (err) {
+      await signOutSupabaseSession(supabase.auth, scope, () => {
+        try {
+          if (typeof window !== 'undefined') {
+            clearDeviceSessionStorage(window.localStorage, window.sessionStorage);
+          }
+        } catch {
+          // Storage pode estar indisponível; o estado React ainda deve ser limpo.
+        }
+      });
+    } catch {
       console.warn('[AuthContext] Erro ao deslogar do Supabase:');
     }
     currentResolvedUserIdRef.current = null;
@@ -1506,6 +1499,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setMembershipStatus('UNAUTHENTICATED');
     setMembershipError(null);
   };
+
+  const signOut = () => performSignOut('global');
+  // O PWA do entregador encerra apenas a sessão deste aparelho.
+  const signOutLocal = () => performSignOut('local');
 
   // Recarrega a sessão e perfil do Supabase
   const refreshSession = useCallback(async () => {
@@ -1966,6 +1963,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signUp,
         signInWithGoogle,
         signOut,
+        signOutLocal,
         resetPassword,
 
         createFirstTenant,
