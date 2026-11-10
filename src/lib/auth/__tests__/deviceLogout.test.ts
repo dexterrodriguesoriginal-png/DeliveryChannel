@@ -35,3 +35,32 @@ describe('logout do PWA do entregador', () => {
     expect(signOut).toHaveBeenCalledWith({ scope: 'global' });
   });
 });
+
+
+describe('ordem e falhas da revogação', () => {
+  it('mantém o token até a revogação terminar e só então limpa o dispositivo', async () => {
+    let token: string | null = 'token';
+    let finish!: () => void;
+    const signOut = vi.fn(async () => {
+      expect(token).toBe('token');
+      await new Promise<void>(resolve => { finish = resolve; });
+      expect(token).toBe('token');
+      return { error: null };
+    });
+    const pending = signOutSupabaseSession({ signOut }, 'local', () => { token = null; });
+    expect(token).toBe('token');
+    finish();
+    await pending;
+    expect(token).toBeNull();
+  });
+
+  it.each(['rejection', 'returned error'])('limpa dados locais mesmo com %s', async failure => {
+    const error = new Error('offline');
+    const clear = vi.fn();
+    const signOut = failure === 'rejection'
+      ? vi.fn().mockRejectedValue(error)
+      : vi.fn().mockResolvedValue({ error });
+    await expect(signOutSupabaseSession({ signOut }, 'local', clear)).rejects.toThrow('offline');
+    expect(clear).toHaveBeenCalledOnce();
+  });
+});

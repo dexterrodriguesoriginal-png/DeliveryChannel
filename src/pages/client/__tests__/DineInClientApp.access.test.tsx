@@ -160,7 +160,10 @@ describe('Mesa — modelo de acesso (capabilities v2)', () => {
     await openMenu();
     fireEvent.click(await screen.findByTestId('confirm-identity-continue'));
     expect((await screen.findByTestId('role-chip')).textContent).toContain('responsável');
-    fireEvent.click(screen.getByRole('button', { name: 'Minha conta' }));
+    // A faixa aparece antes de get_my_tab confirmar a aprovação da sessão.
+    const account = screen.getByRole('button', { name: 'Minha conta' });
+    await waitFor(() => expect(account.hasAttribute('disabled')).toBe(false));
+    fireEvent.click(account);
     fireEvent.click(await screen.findByRole('button', { name: 'Gerar código de convite' }));
     expect((await screen.findByTestId('invite-code')).textContent).toBe('AB3 K7P');
     expect(h.access.createInvite).toHaveBeenCalledWith('s1', 15);

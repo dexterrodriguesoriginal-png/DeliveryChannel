@@ -16,6 +16,13 @@ type SignOutScope = 'global' | 'local';
 export async function signOutSupabaseSession(
   auth: { signOut: (options: { scope: SignOutScope }) => Promise<unknown> },
   scope: SignOutScope,
+  clearStorage: () => void = () => {},
 ): Promise<void> {
-  await auth.signOut({ scope });
+  // O SDK lê o token do storage para revogar a sessão no servidor.
+  try {
+    const result = await auth.signOut({ scope }) as { error?: unknown } | undefined;
+    if (result?.error) throw result.error;
+  } finally {
+    clearStorage();
+  }
 }

@@ -1468,18 +1468,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Logout Oficial
   const performSignOut = async (scope: 'global' | 'local') => {
-    try {
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.removeItem(PREVIEW_BYPASS_SESSION_KEY);
-        clearDeviceSessionStorage(window.localStorage, window.sessionStorage);
-      }
-    } catch {
-      // ignore
-    }
     setIsPreviewBypass(false);
     try {
-      await signOutSupabaseSession(supabase.auth, scope);
-    } catch (err) {
+      await signOutSupabaseSession(supabase.auth, scope, () => {
+        try {
+          if (typeof window !== 'undefined') {
+            clearDeviceSessionStorage(window.localStorage, window.sessionStorage);
+          }
+        } catch {
+          // Storage pode estar indisponível; o estado React ainda deve ser limpo.
+        }
+      });
+    } catch {
       console.warn('[AuthContext] Erro ao deslogar do Supabase:');
     }
     currentResolvedUserIdRef.current = null;
