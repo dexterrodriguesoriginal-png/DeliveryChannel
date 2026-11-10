@@ -3,7 +3,7 @@
  * `available()` fica false e a interface da fila é escondida (degradação segura).
  */
 import { supabase } from '../lib/supabase';
-import { isArrivalFeatureMissing, type ArrivalRow } from '../lib/pickup/arrival';
+import { isArrivalFeatureMissing, readyTotemCodes, type ArrivalRow } from '../lib/pickup/arrival';
 
 let feature: 'unknown' | 'on' | 'off' = 'unknown';
 const listeners = new Set<() => void>();
@@ -38,10 +38,7 @@ export const arrivalRepository = {
       .eq('tenant_id', tenantId)
       .in('id', arrivals.map(a => a.order_id));
     if (error) throw error;
-    const ready = new Set((data || []).filter(o =>
-      o.totem_device_id && o.status === 'READY' && o.payment_status === 'PAID',
-    ).map(o => o.id));
-    return arrivals.filter(a => !a.closed_at && ready.has(a.order_id)).map(a => a.pickup_code);
+    return readyTotemCodes(arrivals, data || []);
   },
   subscribe(tenantId: string, cb: () => void): () => void {
     const ch = supabase.channel(`arrivals-${tenantId}-${Math.random().toString(36).slice(2, 8)}`)
