@@ -3,6 +3,7 @@ import { ArrowLeft, ShoppingBag, Plus, Utensils, ChevronLeft, ChevronRight } fro
 import type { Category, Product } from '../../../types';
 import './totemMenu.css';
 import { isYouTubeId, youTubeEmbedUrl } from '../../../lib/youtube';
+import { kioskProductGridColumns } from '../../../lib/menu/kioskProductGrid';
 
 export interface TotemTheme {
   background: string;
@@ -446,7 +447,7 @@ export default function TotemMenuView({
                     </span>
                   </div>
 
-                  <div className="grid gap-3.5 sm:gap-4 md:gap-5" style={{ gridTemplateColumns: `repeat(${productColumns}, minmax(0, 1fr))` }}>
+                  <div className="grid gap-3.5 sm:gap-4 md:gap-5" style={{ gridTemplateColumns: kioskProductGridColumns(productColumns) }}>
                     {catProducts.map(product => {
                       const hasPromo = typeof product.promotionalPrice === 'number' &&
                         product.promotionalPrice > 0 &&

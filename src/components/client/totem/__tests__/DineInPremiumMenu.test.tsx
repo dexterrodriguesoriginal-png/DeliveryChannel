@@ -131,8 +131,11 @@ describe('totem premium touch menu', () => {
   it('keeps the number of cards per row under owner configuration', () => {
     const p = menuProps();
     const view = render(<DineInPremiumMenu {...p} productColumns={2} />);
-    expect((screen.getByTestId('kiosk-products-grid') as HTMLElement).style.gridTemplateColumns)
-      .toContain('repeat(2');
+    const gridStyle = (screen.getByTestId('kiosk-products-grid') as HTMLElement).style.gridTemplateColumns;
+    expect(gridStyle).toContain('auto-fill');
+    expect(gridStyle).toContain('150px');
+    expect(gridStyle).toContain('/ 2)');
+    expect(gridStyle).not.toMatch(/repeat\(2,/);
     view.unmount();
   });
 
