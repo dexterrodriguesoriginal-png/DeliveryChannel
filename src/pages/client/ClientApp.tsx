@@ -1164,6 +1164,23 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     }, 4000);
   }, [storeData, activeCategory]);
 
+  const viewedPromoCardsRef = useRef(new Map<string, number>());
+  const handleOfferView = useCallback((offer: Offer) => {
+    if (!storeData?.tenant.slug || offer.tenantId !== storeData.tenant.id || previewMode || !analyticsAllowed()) return;
+    const key = `${storeData.tenant.id}:${offer.source ?? 'OFFER'}:${offer.id}`;
+    const now = Date.now();
+    if (now - (viewedPromoCardsRef.current.get(key) ?? 0) < 60_000) return;
+    viewedPromoCardsRef.current.set(key, now);
+    void campaignRepository.trackEvent({
+      storeSlug: storeData.tenant.slug,
+      eventType: 'CARD_VIEW',
+      sessionId: getCampaignSessionId(),
+      campaignId: offer.campaignId,
+      cardId: offer.campaignCardId,
+      offerId: offer.source === 'CAMPAIGN_CARD' ? undefined : offer.id,
+    });
+  }, [storeData?.tenant.id, storeData?.tenant.slug, previewMode]);
+
   const handleOfferClick = useCallback((offer: Offer) => {
     // Validação de segurança: a oferta deve pertencer exatamente ao tenant atual
     if (offer.tenantId !== storeData?.tenant.id) {
@@ -2189,6 +2206,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
               <OfferCarousel
                 offers={storefrontCards}
                 onOfferClick={handleOfferClick}
+                onOfferView={handleOfferView}
                 clockOffsetMs={storeData.serverTimeOffsetMs}
               />
             </div>
