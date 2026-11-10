@@ -10,6 +10,7 @@ DROP FUNCTION IF EXISTS public.get_totem_payment_settings(uuid);
 DROP FUNCTION IF EXISTS public.set_totem_payment_settings(uuid,text,integer,boolean,boolean);
 DROP FUNCTION IF EXISTS public._totem_approve_payment(uuid,uuid);
 DROP FUNCTION IF EXISTS public._totem_payment_response(uuid,uuid,uuid);
+DROP FUNCTION IF EXISTS public.list_pending_totem_payments(uuid);
 -- Restaura o contrato da sincronização anterior da retirada.
 CREATE OR REPLACE FUNCTION public._orders_pickup_arrival_sync() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $$
@@ -26,8 +27,21 @@ BEGIN
  RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION public._orders_pickup_arrival_sync() FROM PUBLIC,anon,authenticated,service_role;
--- Não apagamos tentativas/configurações existentes: rollback não destrutivo.
--- A remoção física das tabelas só pode acontecer após política de retenção e conferência de dados.
+-- Reversão exata do esquema apenas se não houver dados a preservar.
+-- Com pagamentos registrados, abortar integralmente sem destruir auditoria.
+DO $
+BEGIN
+ IF to_regclass('public.totem_payment_attempts') IS NOT NULL
+    AND EXISTS (SELECT 1 FROM public.totem_payment_attempts LIMIT 1) THEN
+  RAISE EXCEPTION 'ROLLBACK_BLOCKED: há tentativas de pagamento; preserve a auditoria e migre os dados antes.';
+ END IF;
+ IF to_regclass('public.totem_payment_settings') IS NOT NULL
+    AND EXISTS (SELECT 1 FROM public.totem_payment_settings LIMIT 1) THEN
+  RAISE EXCEPTION 'ROLLBACK_BLOCKED: há configurações de lojas; migre os dados antes.';
+ END IF;
+END $;
+DROP TABLE IF EXISTS public.totem_payment_attempts;
+DROP TABLE IF EXISTS public.totem_payment_settings;
 CREATE OR REPLACE FUNCTION public.create_totem_order(p_token text, p_items jsonb, p_idempotency_key uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $
 DECLARE
