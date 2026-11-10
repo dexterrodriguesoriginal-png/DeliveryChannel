@@ -35,6 +35,20 @@ describe('áreas e menu por papel', () => {
     expect(roleDestination('DRIVER', 'loja')).toBe('/entregador');
     expect(visible('DRIVER')).toEqual([]); expect(visible('CUSTOMER')).toEqual([]);
   });
+  it('Nenhum cargo de operação acessa o laboratório nem dados do painel de outros papéis', () => {
+    for (const role of ['CASHIER', 'WAITER', 'KITCHEN', 'OPERATOR', 'DELIVERY_MANAGER', 'DRIVER']) {
+      expect(canAccessEstTab(role as any, 'security-lab')).toBe(false);
+    }
+    for (const role of ['KITCHEN', 'WAITER', 'DRIVER']) {
+      expect(canAccessEstTab(role as any, 'est-orders', ['view_orders', 'manage_orders'])).toBe(false);
+    }
+  });
+  it('cargos dedicados não ganham Dashboard/PII por permissões customizadas', () => {
+    expect(canAccessEstTab('CASHIER', 'est-dashboard', ['view_dashboard'])).toBe(false);
+    expect(canAccessEstTab('CASHIER', 'est-marketing', ['manage_catalog'])).toBe(false);
+    expect(canAccessEstTab('OPERATOR', 'est-orders', ['view_orders', 'manage_catalog'])).toBe(false);
+    expect(canAccessEstTab('DELIVERY_MANAGER', 'est-customers', ['manage_cashier'])).toBe(false);
+  });
   it('permissões recebidas do servidor substituem defaults e alteram menu/rota', () => {
     expect(visible('MANAGER', ['manage_catalog'])).toContain('est-products');
     expect(visible('MANAGER', ['manage_catalog'])).not.toContain('est-team');
