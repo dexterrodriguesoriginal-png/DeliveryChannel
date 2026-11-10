@@ -251,7 +251,8 @@ BEGIN
   RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
  END IF;
  SELECT coalesce(jsonb_agg(jsonb_build_object('orderId',o.id,'total',o.total_amount,
-  'createdAt',a.created_at,'expiresAt',a.expires_at,'status',a.status)
+  'createdAt',a.created_at,'expiresAt',a.expires_at,'status',a.status,
+  'autoPrintStore',coalesce((SELECT s.auto_print_store FROM public.totem_payment_settings s WHERE s.tenant_id=p_tenant),false))
   ORDER BY a.created_at DESC),'[]'::jsonb) INTO v_result
  FROM public.totem_payment_attempts a JOIN public.orders o ON o.id=a.order_id AND o.tenant_id=a.tenant_id
  WHERE a.tenant_id=p_tenant AND a.provider='manual' AND a.status='awaiting'
