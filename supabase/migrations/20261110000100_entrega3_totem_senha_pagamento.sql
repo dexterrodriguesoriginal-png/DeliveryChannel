@@ -58,7 +58,7 @@ BEGIN
     AND current_setting('dc.totem_approve_order',true) IS DISTINCT FROM OLD.id::text THEN
    RAISE EXCEPTION 'TOTEM_PAYMENT_FORBIDDEN: use o fluxo de aprovação do servidor.' USING ERRCODE='42501';
  END IF;
- IF OLD.totem_device_id IS NOT NULL AND OLD.payment_status<>'PAID' AND NEW.status IN ('CONFIRMED','PREPARING','READY')
+ IF OLD.totem_device_id IS NOT NULL AND OLD.payment_status<>'PAID' AND NEW.status NOT IN ('PENDING','CANCELLED')
     AND current_setting('dc.totem_approve_order',true) IS DISTINCT FROM OLD.id::text THEN
    RAISE EXCEPTION 'TOTEM_PAYMENT_REQUIRED' USING ERRCODE='42501';
  END IF;
@@ -210,7 +210,7 @@ BEGIN
  END IF;
  v_result:=public._totem_approve_payment(p_order_id,auth.uid());
  PERFORM public.log_audit_event('TOTEM_MANUAL_PAYMENT','orders',
-   'Confirmação presencial no PDV',p_order_id::text,'PENDING','PAID',v_tenant);
+   'Confirmação presencial no PDV' || CASE WHEN nullif(btrim(coalesce(p_terminal,'')),'') IS NOT NULL THEN ' - terminal: ' || left(regexp_replace(p_terminal,'[^a-zA-Z0-9_-]','','g'),32) ELSE '' END,p_order_id::text,'PENDING','PAID',v_tenant);
  RETURN v_result;
 END $$;
 
