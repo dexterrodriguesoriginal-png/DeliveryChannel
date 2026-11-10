@@ -5,6 +5,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { TotemPendingPayments } from '../TotemPendingPayments';
 import { totemAccessRepository } from '../../../repositories/totemAccessRepository';
 vi.mock('../../../lib/supabase', () => ({ isSupabaseConfigured: true }));
+vi.mock('../../../context/AuthContext', () => ({
+  useAuth: () => ({ activeTenant: { id: 'tenant1', theme: { primaryColor: '#7c3aed', buttonColor: '#7c3aed' } } }),
+}));
 vi.mock('../../../repositories/totemAccessRepository', () => ({ totemAccessRepository: {
   listPendingPayments: vi.fn(), confirmManualPayment: vi.fn(),
 } }));
@@ -17,7 +20,10 @@ describe('aprovação manual no PDV', () => {
     const print = vi.fn();
     window.print = print;
     render(<TotemPendingPayments tenantId="tenant1" />);
-    fireEvent.click(await screen.findByText('Confirmar pagamento'));
+    const confirm = await screen.findByText('Confirmar pagamento');
+    expect(confirm.className).not.toMatch(/bg-emerald-700/);
+    expect(confirm.getAttribute('style') || '').toMatch(/#7c3aed/i);
+    fireEvent.click(confirm);
     expect(print).not.toHaveBeenCalled();
     expect(screen.queryByText('SENHA 123')).toBeNull();
     approve({ pickupCode: '123' });

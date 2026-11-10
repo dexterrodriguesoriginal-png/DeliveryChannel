@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 vi.mock('../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: false, ensureValidSession: async () => true }));
+vi.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ activeTenant: { id: 'tenant-123', theme: { primaryColor: '#15803d' } } }) }));
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PDVModal } from '../PDVModal';
