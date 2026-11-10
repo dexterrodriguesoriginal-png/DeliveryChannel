@@ -28,6 +28,7 @@ import { TotemKioskLayer } from '../../components/client/totem/TotemKioskLayer';
 import { TotemInstallOverlay } from '../../components/client/totem/TotemInstallOverlay';
 import { TotemActivateScreen } from '../../components/client/totem/TotemActivateScreen';
 import { DEFAULT_TOTEM_DESIGN, type TotemDesign } from '../../lib/menu/totemDesign';
+import { pickVividAccent } from '../../lib/pwa/storeManifest';
 import { newIdempotencyKey } from '../../lib/backend';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { requestTotemFullscreenOnce } from '../../lib/menu/fullscreen';
@@ -310,7 +311,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
           tenantId={loginInfo?.tenantId || tenantId}
           storeName={loginInfo?.name || storeName || 'Totem'}
           logoUrl={loginInfo?.logoUrl || storeLogoUrl}
-          accent={loginInfo?.accent || menuTheme.accent}
+          accent={pickVividAccent([loginInfo?.accent, menuTheme.accent, totemDesign.colors.addButtonBg], '#176444')}
         />
         <TotemActivateScreen
           slug={slug}
@@ -343,7 +344,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
           tenantId={tenantId}
           storeName={storeName || 'Totem'}
           logoUrl={storeLogoUrl}
-          accent={menuTheme.accent}
+          accent={pickVividAccent([menuTheme.accent, totemDesign.colors.addButtonBg, loginInfo?.accent], '#176444')}
         />
       )}
       {view === 'CAPA' && (

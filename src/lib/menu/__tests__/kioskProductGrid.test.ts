@@ -1,19 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { KIOSK_PRODUCT_CARD_MIN_PX, kioskProductGridColumns } from '../kioskProductGrid';
+import { kioskProductGridColumns } from '../kioskProductGrid';
 
 describe('kioskProductGridColumns', () => {
-  it('nunca deixa o card mais estreito que 150px e respeita o máximo do dono', () => {
-    const three = kioskProductGridColumns(3);
-    expect(three.startsWith('repeat(auto-fill, minmax(')).toBe(true);
-    expect(three).toContain(`${KIOSK_PRODUCT_CARD_MIN_PX}px`);
-    expect(three).toContain('/ 3)');
-    expect(three).not.toMatch(/repeat\(3,/);
-
-    const two = kioskProductGridColumns(2);
-    expect(two).toContain('/ 2)');
-    expect(two).toContain('auto-fill');
-
-    const one = kioskProductGridColumns(1);
-    expect(one).toContain('/ 1)');
+  it('honra exatamente o 1/2/3 do dono, sem mínimo de 150px', () => {
+    expect(kioskProductGridColumns(3)).toBe('repeat(3, minmax(0, 1fr))');
+    expect(kioskProductGridColumns(2)).toBe('repeat(2, minmax(0, 1fr))');
+    expect(kioskProductGridColumns(1)).toBe('repeat(1, minmax(0, 1fr))');
+    expect(kioskProductGridColumns(3)).not.toContain('150px');
+    expect(kioskProductGridColumns(3)).not.toContain('auto-fill');
   });
 });

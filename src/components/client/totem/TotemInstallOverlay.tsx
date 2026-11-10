@@ -7,7 +7,7 @@ import {
   remainingSecondsAt,
 } from '../../../lib/pwa/installProgress';
 import { openInstalledApp, rememberOpenAttempt } from '../../../lib/pwa/openInstalledApp';
-import { totemStartUrl } from '../../../lib/pwa/totemManifest';
+import { totemAppId, totemManifestPath, totemStartUrl } from '../../../lib/pwa/totemManifest';
 import {
   clearDeferredPrompt,
   detectPlatform,
@@ -17,6 +17,8 @@ import {
   supportsNativeInstall,
   wasAppInstalledEvent,
 } from '../../../lib/pwa/installState';
+import { detectInstalledWebApp } from '../../../lib/pwa/installedWebApp';
+import { pickVividAccent } from '../../../lib/pwa/storeManifest';
 import './totemInstallOverlay.css';
 
 export const TOTEM_CONTINUE_KEY = (slug: string) => `dc_totem_continue_browser_${slug}`;
@@ -32,6 +34,8 @@ export interface TotemInstallOverlayProps {
   accent?: string;
   /** Força um estado (prévia e testes). */
   forcePhase?: TotemInstallForcePhase | null;
+  /** Força o estado "já instalado" (testes). */
+  forceInstalled?: boolean;
   search?: string;
 }
 
@@ -65,6 +69,7 @@ export function TotemInstallOverlay({
   logoUrl,
   accent = '#176444',
   forcePhase = null,
+  forceInstalled = false,
   search,
 }: TotemInstallOverlayProps) {
   const currentSearch = search ?? (typeof window !== 'undefined' ? window.location.search : '');
@@ -91,6 +96,8 @@ export function TotemInstallOverlay({
   const platform = typeof navigator !== 'undefined' ? detectPlatform(navigator.userAgent) : 'desktop';
   const standalone = typeof window !== 'undefined' && isStandalone(window);
   const wantInstall = installQuery(currentSearch);
+  const ctaColor = pickVividAccent([accent], '#176444');
+  const [alreadyInstalled, setAlreadyInstalled] = useState(Boolean(forceInstalled));
 
   const hideForSession = continued && !wantInstall && !forced;
   const visible = Boolean(forced) || (!standalone && !hideForSession);
@@ -158,6 +165,10 @@ export function TotemInstallOverlay({
   };
 
   const install = async () => {
+    if (alreadyInstalled) {
+      openTotem();
+      return;
+    }
     if (prompting.current) return;
     const ev = getDeferredPrompt();
     if (!ev) {
@@ -179,10 +190,27 @@ export function TotemInstallOverlay({
   }, [waitingPrompt, deferred]);
 
   useEffect(() => {
-    if (!waitingPrompt) return;
+    if (!waitingPrompt || alreadyInstalled) return;
     const id = window.setTimeout(() => { setWaitingPrompt(false); setNativeNotice(true); }, 8000);
     return () => window.clearTimeout(id);
-  }, [waitingPrompt]);
+  }, [waitingPrompt, alreadyInstalled]);
+
+  useEffect(() => {
+    if (forced) return;
+    if (forceInstalled) { setAlreadyInstalled(true); return; }
+    const nav = typeof navigator !== 'undefined' ? navigator : undefined;
+    const getApps = nav && 'getInstalledRelatedApps' in nav
+      ? () => (nav as Navigator & { getInstalledRelatedApps: () => Promise<{ platform?: string; url?: string; id?: string }[]> }).getInstalledRelatedApps()
+      : undefined;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const path = totemManifestPath(slug);
+    void detectInstalledWebApp({
+      getInstalledRelatedApps: getApps,
+      manifestUrl: origin ? `${origin}${path}` : path,
+      manifestId: tenantId ? totemAppId(tenantId) : undefined,
+      standalone,
+    }).then(value => setAlreadyInstalled(value));
+  }, [forceInstalled, forced, slug, tenantId, standalone]);
 
   const continueInBrowser = () => {
     markContinued(slug);
@@ -207,6 +235,7 @@ export function TotemInstallOverlay({
       className="dc-totem-install"
       data-testid="totem-install-overlay"
       data-phase={activePhase}
+      data-already-installed={alreadyInstalled ? 'true' : 'false'}
       role="dialog"
       aria-label="Instalar totem"
     >
@@ -273,16 +302,24 @@ export function TotemInstallOverlay({
                 type="button"
                 className="dc-totem-install-cta"
                 data-testid="totem-install-cta"
-                style={{ background: accent }}
+                style={{ background: ctaColor }}
+                aria-busy={waitingPrompt && !alreadyInstalled}
                 onClick={() => void install()}
               >
-                <Download aria-hidden="true" />Instalar totem
+                {alreadyInstalled
+                  ? <><Smartphone aria-hidden="true" />Abrir totem</>
+                  : <><Download aria-hidden="true" />Instalar totem</>}
               </button>
             )}
-            {waitingPrompt && (
+            {alreadyInstalled && (
+              <p className="dc-totem-install-hint" data-testid="totem-install-already" role="status">
+                O totem já está instalado neste aparelho — abra pelo ícone ou remova e instale de novo
+              </p>
+            )}
+            {waitingPrompt && !alreadyInstalled && (
               <p className="dc-totem-install-hint" data-testid="totem-install-waiting" role="status">Preparando a instalação…</p>
             )}
-            {nativeNotice && (
+            {nativeNotice && !alreadyInstalled && (
               <p className="dc-totem-install-hint" data-testid="totem-install-notice" role="status">
                 {typeof window !== 'undefined' && supportsNativeInstall(window)
                   ? 'Não foi possível iniciar a instalação automática. No menu do Chrome, toque em Instalar app.'

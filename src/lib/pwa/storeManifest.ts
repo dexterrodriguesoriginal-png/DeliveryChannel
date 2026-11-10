@@ -104,6 +104,14 @@ export function iconFallbackColor(theme?: StoreIdentityInput['theme']): string {
   return ICON_FALLBACK_COLOR;
 }
 
+/** Primeira cor viva da lista; ignora cinza/quase branco (ex.: primary #717179 da loja). */
+export function pickVividAccent(candidates: Array<string | undefined>, fallback = ICON_FALLBACK_COLOR): string {
+  for (const c of candidates) {
+    if (c && !isWeakIconColor(c)) return c.trim();
+  }
+  return fallback;
+}
+
 export function storeDisplayName(s: StoreIdentityInput): string {
   const n = (s.theme?.storeName || s.name || '').trim();
   return n || s.slug;
