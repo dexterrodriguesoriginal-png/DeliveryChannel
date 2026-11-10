@@ -29,21 +29,22 @@ END $$;
 REVOKE ALL ON FUNCTION public._orders_pickup_arrival_sync() FROM PUBLIC,anon,authenticated,service_role;
 -- Reversão exata do esquema apenas se não houver dados a preservar.
 -- Com pagamentos registrados, abortar integralmente sem destruir auditoria.
-DO $
+DO $$
+DECLARE v_has_rows boolean;
 BEGIN
- IF to_regclass('public.totem_payment_attempts') IS NOT NULL
-    AND EXISTS (SELECT 1 FROM public.totem_payment_attempts LIMIT 1) THEN
-  RAISE EXCEPTION 'ROLLBACK_BLOCKED: há tentativas de pagamento; preserve a auditoria e migre os dados antes.';
+ IF to_regclass('public.totem_payment_attempts') IS NOT NULL THEN
+  EXECUTE 'SELECT EXISTS (SELECT 1 FROM public.totem_payment_attempts LIMIT 1)' INTO v_has_rows;
+  IF v_has_rows THEN RAISE EXCEPTION 'ROLLBACK_BLOCKED: tentativas existentes; preserve auditoria.'; END IF;
  END IF;
- IF to_regclass('public.totem_payment_settings') IS NOT NULL
-    AND EXISTS (SELECT 1 FROM public.totem_payment_settings LIMIT 1) THEN
-  RAISE EXCEPTION 'ROLLBACK_BLOCKED: há configurações de lojas; migre os dados antes.';
+ IF to_regclass('public.totem_payment_settings') IS NOT NULL THEN
+  EXECUTE 'SELECT EXISTS (SELECT 1 FROM public.totem_payment_settings LIMIT 1)' INTO v_has_rows;
+  IF v_has_rows THEN RAISE EXCEPTION 'ROLLBACK_BLOCKED: configurações existentes; migre os dados.'; END IF;
  END IF;
-END $;
+END $$;
 DROP TABLE IF EXISTS public.totem_payment_attempts;
 DROP TABLE IF EXISTS public.totem_payment_settings;
 CREATE OR REPLACE FUNCTION public.create_totem_order(p_token text, p_items jsonb, p_idempotency_key uuid) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE
   v_device uuid; v_tenant uuid; v_label text;
   v_item jsonb;
@@ -155,7 +156,7 @@ BEGIN
   END IF;
 
   RETURN jsonb_build_object('ok', true, 'orderId', v_order, 'total', v_subtotal, 'idempotent', false);
-END $;
+END $$;
 REVOKE ALL ON FUNCTION public.create_totem_order(text,jsonb,uuid) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.create_totem_order(text,jsonb,uuid) TO anon,authenticated;
 NOTIFY pgrst,'reload schema';
