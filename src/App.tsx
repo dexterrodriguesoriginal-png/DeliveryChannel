@@ -1,3 +1,4 @@
+import { TvScreen } from './components/pickup/TvScreen';
 import { InstallDriverAppHint } from './components/driver/InstallDriverAppHint';
 import { LegalBoundary, CookieBanner } from './components/legal/LegalUI';
 import { isEmbeddedPreview } from './lib/theme/previewBridge';
@@ -828,6 +829,10 @@ function AppContent() {
 }
 
 export default function App() {
+  // A TV não inicializa sessão, painel, consentimento analítico ou contexto de equipe.
+  if (/^\/tv\/?$/.test(window.location.pathname)) {
+    return <ScreenErrorBoundary><TvScreen /></ScreenErrorBoundary>;
+  }
   return (
     <AuthProvider>
       <ToastProvider>
