@@ -243,7 +243,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION public.list_pending_totem_payments(p_tenant uuid) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE v_role text;v_result jsonb;
 BEGIN
  v_role:=public._tenant_role_of_caller(p_tenant);
@@ -257,7 +257,7 @@ BEGIN
  WHERE a.tenant_id=p_tenant AND a.provider='manual' AND a.status='awaiting'
  AND a.expires_at>now() AND o.payment_status='PENDING' AND o.status='PENDING';
  RETURN v_result;
-END $;
+END $$;
 
 REVOKE ALL ON FUNCTION public._orders_pickup_arrival_sync(),public._totem_payment_transition_guard(),
  public._totem_approve_payment(uuid,uuid),public._totem_payment_response(uuid,uuid,uuid),
