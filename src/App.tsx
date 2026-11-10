@@ -112,6 +112,7 @@ function AppContent() {
     refreshSession,
     supabaseUser,
     signOut,
+    signOutLocal,
     driverApprovalStatus,
     pendingTenantName,
     switchTenant,
@@ -283,7 +284,7 @@ function AppContent() {
         storeName={pendingTenantName}
         userName={currentUser?.name}
         onRefresh={driverScreen === 'PENDING' || driverScreen === 'UNAVAILABLE' ? () => retryAuthResolution() : undefined}
-        onSignOut={async () => { await signOut(); window.location.replace('/'); }}
+        onSignOut={async () => { await signOutLocal(); window.location.replace('/'); }}
       />
     );
   }
@@ -295,7 +296,7 @@ function AppContent() {
         variant="SUSPENDED"
         storeName={pendingTenantName}
         userName={currentUser?.name}
-        onSignOut={async () => { await signOut(); window.location.replace('/'); }}
+        onSignOut={async () => { await signOutLocal(); window.location.replace('/'); }}
       />
     );
   }
