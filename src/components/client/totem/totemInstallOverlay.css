@@ -23,9 +23,10 @@
   height: 88px;
   margin: 0 auto 12px;
   border-radius: 22px;
-  object-fit: cover;
-  background: #111;
+  object-fit: contain;
+  background: #fff;
 }
+
 .dc-totem-install-logo--fallback {
   display: flex;
   align-items: center;
@@ -108,4 +109,11 @@
 }
 .dc-totem-install-progress [data-testid="install-progress-bar"] {
   min-height: 10px;
+}
+
+/* Enquanto espera o beforeinstallprompt, o botão permanece na cor do tema — nunca cinza. */
+.dc-totem-install-cta[aria-busy="true"] {
+  cursor: progress;
+  filter: none;
+  opacity: 1;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildStoreManifest, cartStorageKey, deriveShortName, iconFallbackColor, ICON_FALLBACK_COLOR, isWeakIconColor, manifestDataUrl, storeInitials } from '../storeManifest';
+import { buildStoreManifest, cartStorageKey, deriveShortName, iconFallbackColor, ICON_FALLBACK_COLOR, isWeakIconColor, pickVividAccent, manifestDataUrl, storeInitials } from '../storeManifest';
 
 const O = 'https://exemplo.app';
 const adega = { id: 'tenant-adega-01', slug: 'adega-premium', name: 'Adega Premium Jardins', theme: { storeName: 'Adega Premium Jardins', primaryColor: '#15803d', backgroundColor: '#f8fafc', logoUrl: 'https://x/logo.png' } };
@@ -81,5 +81,12 @@ describe('iconFallbackColor', () => {
     expect(isWeakIconColor('#a7360f')).toBe(false);
     expect(iconFallbackColor({ primaryColor: '#717179', headerColor: '#a7360f' })).toBe('#a7360f');
     expect(iconFallbackColor({ primaryColor: '#717179' })).toBe(ICON_FALLBACK_COLOR);
+  });
+
+  it('picks the first vivid accent and skips the grey primary #717179', () => {
+    expect(pickVividAccent(['#717179', '#a7360f'], '#176444')).toBe('#a7360f');
+    expect(pickVividAccent(['#717179', '  #1D4ED8  '], '#176444')).toBe('#1D4ED8');
+    expect(pickVividAccent([undefined, '#eee', '#717179'], '#176444')).toBe('#176444');
+    expect(pickVividAccent(['#f97316'], '#176444')).toBe('#f97316');
   });
 });

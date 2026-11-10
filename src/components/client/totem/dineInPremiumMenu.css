@@ -2617,7 +2617,7 @@ IMPORTANTE:
 /* Telefone: mesma estrutura, em escala, subtotal+botão abaixo dos itens */
 @media (max-width: 699px) {
   .dc-kiosk[data-variant="totem"] {
-    --dc-kiosk-sidebar-width: 26vw;
+    --dc-kiosk-sidebar-width: 96px;
     --dc-kiosk-footer-height: auto;
     grid-template-rows: auto minmax(0, 1fr) 0 !important;
   }
@@ -2625,13 +2625,13 @@ IMPORTANTE:
     grid-template-rows: auto minmax(0, 1fr) auto !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-main {
-    grid-template-columns: 26vw minmax(0, 1fr) !important;
+    grid-template-columns: 96px minmax(0, 1fr) !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-category {
-    height: clamp(92px, 24vw, 120px) !important;
-    min-height: clamp(92px, 24vw, 120px) !important;
-    padding: 6px 5px 7px !important;
-    gap: 4px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 5px 3px 6px !important;
+    gap: 3px !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-category-label {
     font-size: clamp(11px, 3vw, 13px) !important;
@@ -2646,26 +2646,26 @@ IMPORTANTE:
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-product-name,
   .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name {
-    font-size: clamp(15px, 3.6vw, 18px) !important;
+    font-size: clamp(12px, 2.8vw, 13px) !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-product-description,
   .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description {
-    font-size: clamp(12px, 2.8vw, 14px) !important;
+    font-size: clamp(10px, 2.3vw, 11px) !important;
     -webkit-line-clamp: 3 !important;
     line-clamp: 3 !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-product-price,
   .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price {
-    font-size: clamp(18px, 4.4vw, 22px) !important;
+    font-size: 14px !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-add-button,
   .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button {
-    min-height: 44px !important;
+    min-height: 32px !important;
     height: auto !important;
-    font-size: clamp(13px, 3.2vw, 15px) !important;
-    border-radius: 10px !important;
-    gap: 6px !important;
-    padding: 8px 10px !important;
+    font-size: 12px !important;
+    border-radius: 8px !important;
+    gap: 4px !important;
+    padding: 4px 6px !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-order-panel,
   .dc-kiosk-order-panel {
@@ -2755,8 +2755,14 @@ IMPORTANTE:
 
 /* =========================================================
    Cards do cardápio (totem e mesa): nada de nome/preço/botão cortado.
-   Colunas vêm de kioskProductGridColumns() (≥150px, no máx. as do dono).
+   Colunas: exatamente as do dono (1/2/3). Em cards estreitos o texto
+   e o botão encolhem com a largura do card (container query).
    ========================================================= */
+.dc-kiosk .dc-kiosk-product-card,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-card {
+  container-type: inline-size;
+  container-name: dc-kiosk-card;
+}
 .dc-kiosk .dc-kiosk-product-name {
   text-overflow: clip !important;
   white-space: normal !important;
@@ -2785,4 +2791,56 @@ IMPORTANTE:
 .dc-kiosk .dc-kiosk-add-button {
   flex-shrink: 0;
   height: auto !important;
+}
+
+@container dc-kiosk-card (max-width: 200px) {
+  .dc-kiosk-product-name,
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name,
+  .dc-kiosk[data-variant="totem"] .dc-kiosk-product-name,
+  .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name {
+    font-size: clamp(12px, 11.5cqi, 13px) !important;
+    line-height: 1.2 !important;
+    font-weight: 800 !important;
+  }
+  .dc-kiosk-product-description,
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description,
+  .dc-kiosk[data-variant="totem"] .dc-kiosk-product-description,
+  .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description {
+    font-size: clamp(10px, 9.5cqi, 11px) !important;
+    line-height: 1.25 !important;
+    -webkit-line-clamp: 3 !important;
+    line-clamp: 3 !important;
+  }
+  .dc-kiosk-product-price,
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price,
+  .dc-kiosk[data-variant="totem"] .dc-kiosk-product-price,
+  .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-price {
+    font-size: 14px !important;
+    line-height: 1.15 !important;
+  }
+  .dc-kiosk-original-price,
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-original-price {
+    font-size: 10px !important;
+  }
+  .dc-kiosk-product-info,
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-info {
+    padding: 6px 6px 8px !important;
+  }
+  .dc-kiosk-add-button,
+  .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button,
+  .dc-kiosk[data-variant="totem"] .dc-kiosk-add-button,
+  .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button {
+    min-height: 32px !important;
+    height: auto !important;
+    font-size: 12px !important;
+    padding: 4px 6px !important;
+    gap: 4px !important;
+    border-radius: 8px !important;
+  }
+  .dc-kiosk-add-button svg,
+  .dc-kiosk[data-variant="totem"] .dc-kiosk-add-button svg,
+  .dc-kiosk[data-variant="totem"] .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-add-button svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
 }

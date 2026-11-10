@@ -129,4 +129,42 @@ describe('TotemInstallOverlay', () => {
     expect(screen.getByTestId('totem-install-open').textContent).toContain('Abrir totem');
     expect(screen.getByTestId('totem-install-open-hint').textContent).toMatch(/Abra o app Totem na tela inicial/);
   });
+
+  it('uses a vivid theme color when the store primary is the grey #717179', () => {
+    render(<TotemInstallOverlay {...props} accent="#717179" search="" />);
+    const cta = screen.getByTestId('totem-install-cta') as HTMLButtonElement;
+    expect(cta.style.background.toLowerCase()).toBe('#176444');
+    expect(cta.style.background.toLowerCase()).not.toBe('#717179');
+  });
+
+  it('renders the store logo in the overlay', () => {
+    render(<TotemInstallOverlay {...props} logoUrl="https://cdn.example.com/loja.webp" search="" />);
+    const img = document.querySelector('.dc-totem-install-logo') as HTMLImageElement;
+    expect(img).toBeTruthy();
+    expect(img.getAttribute('src')).toBe('https://cdn.example.com/loja.webp');
+  });
+
+  it('keeps the theme-colored button while waiting for beforeinstallprompt', () => {
+    render(<TotemInstallOverlay {...props} accent="#a7360f" search="" />);
+    fireEvent.click(screen.getByTestId('totem-install-cta'));
+    expect(screen.getByTestId('totem-install-waiting').textContent).toMatch(/Preparando a instalação/);
+    const cta = screen.getByTestId('totem-install-cta') as HTMLButtonElement;
+    expect((cta as HTMLButtonElement).style.background.toLowerCase()).toBe('#a7360f');
+    expect(cta.getAttribute('aria-busy')).toBe('true');
+  });
+
+  it('when the totem is already installed, explains how to open or reinstall instead of a stuck grey button', async () => {
+    render(<TotemInstallOverlay {...props} forceInstalled accent="#a7360f" search="" />);
+    expect(screen.getByTestId('totem-install-overlay').getAttribute('data-already-installed')).toBe('true');
+    expect(screen.getByTestId('totem-install-already').textContent).toMatch(
+      /já está instalado neste aparelho/,
+    );
+    const cta = screen.getByTestId('totem-install-cta');
+    expect(cta.textContent).toContain('Abrir totem');
+    expect((cta as HTMLButtonElement).style.background.toLowerCase()).toBe('#a7360f');
+    expect(screen.queryByTestId('totem-install-waiting')).toBeNull();
+    expect(screen.queryByTestId('totem-install-notice')).toBeNull();
+    fireEvent.click(cta);
+    await waitFor(() => expect(openInstalledApp).toHaveBeenCalled());
+  });
 });

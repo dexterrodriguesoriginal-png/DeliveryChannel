@@ -132,10 +132,7 @@ describe('totem premium touch menu', () => {
     const p = menuProps();
     const view = render(<DineInPremiumMenu {...p} productColumns={2} />);
     const gridStyle = (screen.getByTestId('kiosk-products-grid') as HTMLElement).style.gridTemplateColumns;
-    expect(gridStyle).toContain('auto-fill');
-    expect(gridStyle).toContain('150px');
-    expect(gridStyle).toContain('/ 2)');
-    expect(gridStyle).not.toMatch(/repeat\(2,/);
+    expect(gridStyle).toBe('repeat(2, minmax(0, 1fr))');
     view.unmount();
   });
 
