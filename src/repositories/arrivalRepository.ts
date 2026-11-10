@@ -29,6 +29,20 @@ export const arrivalRepository = {
     setFeature('on');
     return (data || []) as ArrivalRow[];
   },
+  async listReadyTotem(tenantId: string): Promise<string[]> {
+    // Staff-only RLS applies to both queries; no public by-slug lookup.
+    const arrivals = await this.listOpen(tenantId);
+    if (!arrivals?.length) return [];
+    const { data, error } = await supabase.from('orders')
+      .select('id,status,payment_status,totem_device_id,tenant_id')
+      .eq('tenant_id', tenantId)
+      .in('id', arrivals.map(a => a.order_id));
+    if (error) throw error;
+    const ready = new Set((data || []).filter(o =>
+      o.totem_device_id && o.status === 'READY' && o.payment_status === 'PAID',
+    ).map(o => o.id));
+    return arrivals.filter(a => !a.closed_at && ready.has(a.order_id)).map(a => a.pickup_code);
+  },
   subscribe(tenantId: string, cb: () => void): () => void {
     const ch = supabase.channel(`arrivals-${tenantId}-${Math.random().toString(36).slice(2, 8)}`)
       .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'pickup_arrivals', filter: `tenant_id=eq.${tenantId}` }, () => cb())
