@@ -214,12 +214,13 @@ export const totemAccessRepository = {
     if (error) throw new Error(rpcMessage(error, 'Não foi possível cancelar o pedido.'));
   },
 
-  async confirmManualPayment(orderId: string): Promise<void> {
+  async confirmManualPayment(orderId: string): Promise<{ pickupCode: string }> {
     const { error } = await supabase.rpc('confirm_manual_totem_payment', { p_order_id: orderId });
     if (error) throw new Error('Não foi possível confirmar o pagamento deste pedido.');
+    return data as { pickupCode: string };
   },
 
-  async listPendingPayments(tenantId: string): Promise<Array<{ orderId: string; total: number; createdAt: string; expiresAt: string; status: string }>> {
+  async listPendingPayments(tenantId: string): Promise<Array<{ orderId: string; total: number; createdAt: string; expiresAt: string; status: string; autoPrintStore: boolean }>> {
     const { data, error } = await supabase.rpc('list_pending_totem_payments', { p_tenant: tenantId });
     if (error) throw new Error('Não foi possível carregar os pagamentos pendentes.');
     return Array.isArray(data) ? data : [];
