@@ -210,7 +210,7 @@ BEGIN
  END IF;
  v_result:=public._totem_approve_payment(p_order_id,auth.uid());
  PERFORM public.log_audit_event('TOTEM_MANUAL_PAYMENT','orders',
-   'Confirmação presencial no PDV' || CASE WHEN nullif(btrim(coalesce(p_terminal,'')),'') IS NOT NULL THEN ' - terminal: ' || left(regexp_replace(p_terminal,'[^a-zA-Z0-9_-]','','g'),32) ELSE '' END,p_order_id::text,'PENDING','PAID',v_tenant);
+   'Confirmação presencial no PDV' || CASE WHEN nullif(btrim(coalesce(p_terminal,'')),'') IS NOT NULL THEN ' - terminal: ' || left(public._sha256_hex(p_terminal),16) ELSE '' END,p_order_id::text,'PENDING','PAID',v_tenant);
  RETURN v_result;
 END $$;
 
