@@ -219,6 +219,29 @@ export const totemAccessRepository = {
     if (error) throw new Error('Não foi possível confirmar o pagamento deste pedido.');
   },
 
+  async listPendingPayments(tenantId: string): Promise<Array<{ orderId: string; total: number; createdAt: string; expiresAt: string; status: string }>> {
+    const { data, error } = await supabase.rpc('list_pending_totem_payments', { p_tenant: tenantId });
+    if (error) throw new Error('Não foi possível carregar os pagamentos pendentes.');
+    return Array.isArray(data) ? data : [];
+  },
+
+  async getPaymentSettings(tenantId: string): Promise<{ provider: string; timeoutSeconds: number; autoPrintTotem: boolean; autoPrintStore: boolean }> {
+    const { data, error } = await supabase.rpc('get_totem_payment_settings', { p_tenant: tenantId });
+    if (error) throw new Error('Não foi possível carregar as opções de pagamento.');
+    return data as { provider: string; timeoutSeconds: number; autoPrintTotem: boolean; autoPrintStore: boolean };
+  },
+
+  async setPaymentSettings(tenantId: string, settings: { provider: string; timeoutSeconds: number; autoPrintTotem: boolean; autoPrintStore: boolean }): Promise<void> {
+    const { error } = await supabase.rpc('set_totem_payment_settings', {
+      p_tenant: tenantId,
+      p_provider: settings.provider,
+      p_timeout_seconds: settings.timeoutSeconds,
+      p_auto_print_totem: settings.autoPrintTotem,
+      p_auto_print_store: settings.autoPrintStore,
+    });
+    if (error) throw new Error('Não foi possível salvar as opções de pagamento.');
+  },
+
   async listUsers(context: SecurityContext, tenantId: string): Promise<TotemUserRow[]> {
     authorize(context, tenantId);
     const { data, error } = await supabase.rpc('admin_list_totem_users', { p_tenant: tenantId });
