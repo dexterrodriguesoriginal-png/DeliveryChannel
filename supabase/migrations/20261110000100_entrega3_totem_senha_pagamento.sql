@@ -242,15 +242,32 @@ BEGIN
  RETURN public.get_totem_payment_settings(p_tenant);
 END $$;
 
+CREATE OR REPLACE FUNCTION public.list_pending_totem_payments(p_tenant uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $
+DECLARE v_role text;v_result jsonb;
+BEGIN
+ v_role:=public._tenant_role_of_caller(p_tenant);
+ IF v_role IS NULL OR v_role NOT IN ('OWNER','MANAGER','OPERATOR','CASHIER') THEN
+  RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
+ END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('orderId',o.id,'total',o.total_amount,
+  'createdAt',a.created_at,'expiresAt',a.expires_at,'status',a.status)
+  ORDER BY a.created_at DESC),'[]'::jsonb) INTO v_result
+ FROM public.totem_payment_attempts a JOIN public.orders o ON o.id=a.order_id AND o.tenant_id=a.tenant_id
+ WHERE a.tenant_id=p_tenant AND a.provider='manual' AND a.status='awaiting'
+ AND a.expires_at>now() AND o.payment_status='PENDING' AND o.status='PENDING';
+ RETURN v_result;
+END $;
+
 REVOKE ALL ON FUNCTION public._orders_pickup_arrival_sync(),public._totem_payment_transition_guard(),
  public._totem_approve_payment(uuid,uuid),public._totem_payment_response(uuid,uuid,uuid),
  public.create_totem_order(text,jsonb,uuid),public.get_totem_payment_status(text,uuid),
  public.cancel_totem_payment(text,uuid),public.confirm_manual_totem_payment(uuid,text),
- public.get_totem_payment_settings(uuid),public.set_totem_payment_settings(uuid,text,integer,boolean,boolean)
+ public.get_totem_payment_settings(uuid),public.set_totem_payment_settings(uuid,text,integer,boolean,boolean),public.list_pending_totem_payments(uuid)
  FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.create_totem_order(text,jsonb,uuid),
  public.get_totem_payment_status(text,uuid),public.cancel_totem_payment(text,uuid) TO anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.confirm_manual_totem_payment(uuid,text),
- public.get_totem_payment_settings(uuid),public.set_totem_payment_settings(uuid,text,integer,boolean,boolean) TO authenticated;
+ public.get_totem_payment_settings(uuid),public.set_totem_payment_settings(uuid,text,integer,boolean,boolean),public.list_pending_totem_payments(uuid) TO authenticated;
 NOTIFY pgrst,'reload schema';
 COMMIT;
