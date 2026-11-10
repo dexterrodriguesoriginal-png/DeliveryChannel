@@ -885,14 +885,14 @@ export function DineInPremiumMenu({
                     </button>
 
                     <div className="dc-kiosk-product-info">
-                      <h3 className="dc-kiosk-product-name">
+                      <button
+                        type="button"
+                        className="dc-kiosk-product-name"
+                        data-testid={`kiosk-product-name-${product.id}`}
+                        onClick={() => handleProductDetails(product.id)}
+                      >
                         {product.name}
-                      </h3>
-
-                      <p className="dc-kiosk-product-description">
-                        {product.description ||
-                          'Confira este produto da casa.'}
-                      </p>
+                      </button>
 
                       <div className="dc-kiosk-product-bottom">
                         {product.isPromotional &&

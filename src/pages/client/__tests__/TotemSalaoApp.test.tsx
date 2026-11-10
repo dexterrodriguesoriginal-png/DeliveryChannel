@@ -140,6 +140,24 @@ describe('TotemSalaoApp', () => {
     }
   });
 
+  it('returns to the capa on idle even when the product sheet is open, and closes the sheet', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<TotemSalaoApp slug="cafe-da-praca" />);
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+      fireEvent.click(screen.getByTestId('totem-capa-cta'));
+      fireEvent.click(screen.getByLabelText('Ver detalhes de Suco da casa'));
+      expect(screen.getByTestId('kiosk-product-sheet')).toBeTruthy();
+      act(() => { vi.advanceTimersByTime(30000); });
+      expect(screen.getByText('Ainda está aí?')).toBeTruthy();
+      act(() => { vi.advanceTimersByTime(10000); });
+      expect(screen.getByTestId('totem-capa')).toBeTruthy();
+      expect(screen.queryByTestId('kiosk-product-sheet')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not return to the capa while checkout review is open', async () => {
     vi.useFakeTimers();
     try {

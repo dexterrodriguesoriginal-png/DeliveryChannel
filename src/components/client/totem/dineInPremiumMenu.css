@@ -2844,3 +2844,107 @@ IMPORTANTE:
     height: 14px !important;
   }
 }
+
+
+/* =========================================================
+   Cards compactos (totem e mesa): foto 4:3 + nome + preço +
+   Adicionar. Sem descrição no card, sem buracos, sem 1:1
+   que estica o cartão no telefone. Tipografia escala com a
+   largura do card. Cores só dos tokens do tema.
+   ========================================================= */
+.dc-kiosk .dc-kiosk-product-card,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-card {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden;
+}
+.dc-kiosk .dc-kiosk-product-photo-button,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-photo-button {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  aspect-ratio: 4 / 3 !important;
+  overflow: hidden;
+}
+.dc-kiosk .dc-kiosk-product-photo,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dc-kiosk .dc-kiosk-product-info,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-info {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0;
+  gap: 4px !important;
+  padding: clamp(6px, 1.4cqi, 12px) clamp(6px, 1.4cqi, 12px) clamp(7px, 1.6cqi, 12px) !important;
+}
+.dc-kiosk .dc-kiosk-product-description,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-description {
+  display: none !important;
+}
+button.dc-kiosk-product-name,
+.dc-kiosk button.dc-kiosk-product-name,
+.dc-kiosk[data-variant="totem"] button.dc-kiosk-product-name {
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 800 !important;
+  font-size: clamp(13px, 12cqi, 24px) !important;
+  line-height: 1.2 !important;
+  text-align: left;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+  cursor: pointer;
+}
+.dc-kiosk .dc-kiosk-product-bottom,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-bottom {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  flex-shrink: 0;
+  gap: 4px !important;
+  margin-top: auto !important;
+  padding-top: 4px !important;
+}
+.dc-kiosk .dc-kiosk-original-price,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-original-price {
+  font-size: clamp(10px, 8cqi, 14px) !important;
+  font-weight: 600;
+  line-height: 1.1;
+  text-decoration: line-through;
+  overflow: visible !important;
+}
+.dc-kiosk .dc-kiosk-product-price,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-product-price {
+  font-size: clamp(14px, 14cqi, 30px) !important;
+  font-weight: 800 !important;
+  line-height: 1.1 !important;
+  overflow: visible !important;
+  white-space: nowrap;
+}
+.dc-kiosk .dc-kiosk-add-button,
+.dc-kiosk[data-variant="totem"] .dc-kiosk-add-button {
+  width: 100% !important;
+  min-height: clamp(32px, 28cqi, 48px) !important;
+  height: auto !important;
+  padding: 4px 8px !important;
+  flex-shrink: 0;
+  font-size: clamp(12px, 10cqi, 17px) !important;
+  font-weight: 800;
+}

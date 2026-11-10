@@ -43,14 +43,16 @@ export function dineInCartLineKey(productId: string, options: SelectedProductOpt
 export function addDineInCartLine(
   cart: DineInCartLine[],
   product: Product,
-  options: SelectedProductOption[] = []
+  options: SelectedProductOption[] = [],
+  quantity = 1,
 ): DineInCartLine[] {
+  const add = Math.max(1, Math.trunc(Number(quantity) || 1));
   const stableOptions = normalizedOptions(options);
   const key = dineInCartLineKey(product.id, stableOptions);
   const existing = cart.find(line => line.key === key);
   return existing
-    ? cart.map(line => line.key === key ? { ...line, quantity: line.quantity + 1 } : line)
-    : [...cart, { key, product, quantity: 1, options: stableOptions }];
+    ? cart.map(line => line.key === key ? { ...line, quantity: line.quantity + add } : line)
+    : [...cart, { key, product, quantity: add, options: stableOptions }];
 }
 
 export function changeDineInCartLineQuantity(
