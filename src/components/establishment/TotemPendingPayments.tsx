@@ -2,11 +2,16 @@ import { useEffect, useState } from 'react';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { totemAccessRepository } from '../../repositories/totemAccessRepository';
 import { formatBRL } from '../../lib/pricing/money';
+import { useAuth } from '../../context/AuthContext';
+import { themeToTokens } from '../../lib/theme/themeEngine';
 
 type Pending = { orderId: string; total: number; createdAt: string; expiresAt: string; status: string; autoPrintStore: boolean };
 
 /** Staff-authenticated PDV queue; the server checks the tenant and permissions again on approval. */
 export function TotemPendingPayments({ tenantId }: { tenantId: string }) {
+  const { activeTenant } = useAuth();
+  const palette = themeToTokens(activeTenant?.id === tenantId ? activeTenant.theme : null).palette;
+  const confirmStyle = { backgroundColor: palette.buttonBg, color: palette.buttonText };
   const [pending, setPending] = useState<Pending[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -55,7 +60,7 @@ export function TotemPendingPayments({ tenantId }: { tenantId: string }) {
             <p>Pedido #{item.orderId.slice(0, 8).toUpperCase()}</p>
           </div>
           <button type="button" disabled={busy !== null}
-            className="px-3 py-2 rounded-lg bg-emerald-700 text-white text-xs font-bold"
+            className="px-3 py-2 rounded-lg text-xs font-bold" style={confirmStyle}
             onClick={() => {
               setBusy(item.orderId); setMessage('');
               void totemAccessRepository.confirmManualPayment(item.orderId)
