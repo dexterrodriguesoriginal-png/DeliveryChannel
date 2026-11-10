@@ -11,6 +11,8 @@ export function TotemPaymentSettings({ tenantId }: { tenantId: string }) {
   const [notice, setNotice] = useState('');
   useEffect(() => {
     let active = true;
+    // Older test doubles and environments without the migration have no settings RPC.
+    if (typeof totemAccessRepository.getPaymentSettings !== 'function') return;
     void totemAccessRepository.getPaymentSettings(tenantId).then(value => {
       if (active) setSettings(value);
     }).catch(() => { if (active) setNotice('Configuração de pagamento indisponível até aplicar a migration.'); });
