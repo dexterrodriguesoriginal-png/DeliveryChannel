@@ -6,10 +6,12 @@ import { menuOptionsRepository } from '../../../../repositories/menuOptionsRepos
 import { DEFAULT_HOME_LABEL, MAX_HOME_LABEL_LENGTH, sanitizeHomeLabel } from '../../../../lib/menu/homeLabel';
 import { DEFAULT_MENU_OPTIONS, MAX_IDLE_SECONDS, MIN_IDLE_SECONDS, isValidMenuOptions } from '../../../../lib/menu/menuOptions';
 
+import { totemPublicUrl } from '../../../../lib/menu/totemAccess';
+
 const same = (a: MenuOptions, b: MenuOptions) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Opções operacionais do cardápio da mesa (modo totem). Salvam separadas do visual. */
-export function MenuOptionsPanel({ securityContext, tenantId }: { securityContext: SecurityContext; tenantId: string }) {
+export function MenuOptionsPanel({ securityContext, tenantId, slug }: { securityContext: SecurityContext; tenantId: string; slug: string }) {
   const [saved, setSaved] = useState<MenuOptions>({ ...DEFAULT_MENU_OPTIONS });
   const [draft, setDraft] = useState<MenuOptions>({ ...DEFAULT_MENU_OPTIONS });
   const [loading, setLoading] = useState(true);
@@ -43,6 +45,7 @@ export function MenuOptionsPanel({ securityContext, tenantId }: { securityContex
     } finally { setSaving(false); inFlight.current = false; }
   };
 
+  const totemUrl = totemPublicUrl(window.location.origin, slug);
   const invalid = !isValidMenuOptions({ ...draft, homeLabel: sanitizeHomeLabel(draft.homeLabel) });
   return <section className="menu-design-section" data-testid="menu-options-panel">
     <div className="menu-design-section-title"><Type size={18} /><div><h2>Nome do botão do cardápio</h2><p>Como o bloco aparece na tela inicial do QR da mesa.</p></div></div>
@@ -67,7 +70,7 @@ export function MenuOptionsPanel({ securityContext, tenantId }: { securityContex
           <option value="BOTH">Ambos (pré-configuração do balcão)</option>
         </select>
       </label>
-      {draft.serviceMode !== 'TABLE' && <p role="status" className="text-xs text-amber-800">Totem de balcão exige autorização do dispositivo e integração com pagamento/senha de retirada. Esta configuração é armazenada, mas o atendimento pelo totem de balcão permanece indisponível. A flag VITE_ENABLE_COUNTER_KIOSK, quando implementada, deve exigir dispositivo autenticado, checkout e geração de senha homologados; definir a flag sozinha não libera o balcão.</p>}
+      {draft.serviceMode !== 'TABLE' && <p role="status" className="theme-save-status">O totem do salão já está disponível em /totem/:slug. {totemUrl && <a href={totemUrl} target="_blank" rel="noopener noreferrer">Abrir totem do salão</a>} O acesso exige autorização do dispositivo. Esta opção não altera as regras de pagamento e retirada.</p>}
       <label className="menu-design-color"><span>Produtos por fileira</span>
         <select aria-label="Produtos por fileira" value={draft.productColumns} onChange={event => setDraft({ ...draft, productColumns: Number(event.target.value) as 1 | 2 | 3 })}>
           <option value={1}>1 produto</option><option value={2}>2 produtos</option><option value={3}>3 produtos</option>

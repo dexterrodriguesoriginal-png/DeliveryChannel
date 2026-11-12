@@ -326,7 +326,7 @@ describe('TotemMenuView', () => {
   it('renderiza banner do YouTube só como embed nocookie mudo', () => {
     renderSlides([{ id: 'yt', youtubeId: 'dQw4w9WgXcQ', title: 'Promo' }]);
     const frame = screen.getByTestId('outdoor-youtube');
-    expect(frame.getAttribute('src')).toBe('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1&mute=1&loop=1&playlist=dQw4w9WgXcQ&controls=0&playsinline=1');
+    expect(frame.getAttribute('src')).toContain('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1&mute=1&loop=1&playlist=dQw4w9WgXcQ&controls=0&playsinline=1&enablejsapi=1&origin=');
   });
   it('não renderiza iframe para id de YouTube adulterado', () => {
     renderSlides([{ id: 'yt', youtubeId: '"><script>' }]);

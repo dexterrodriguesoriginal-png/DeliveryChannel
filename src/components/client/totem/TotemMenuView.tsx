@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { ArrowLeft, ShoppingBag, Plus, Utensils, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Category, Product } from '../../../types';
 import './totemMenu.css';
-import { isYouTubeId, youTubeEmbedUrl } from '../../../lib/youtube';
+import { OutdoorYouTubePlayer } from './OutdoorYouTubePlayer';
+import { isYouTubeId } from '../../../lib/youtube';
 import { kioskProductGridColumns } from '../../../lib/menu/kioskProductGrid';
 
 export interface TotemTheme {
@@ -27,9 +28,8 @@ export interface TotemOutdoorSlide {
   imageDurationSeconds?: number;
 }
 
-/** Fotos ficam 5,5 s; YouTube (sem evento de fim) fica 60 s; vídeo enviado avança ao terminar. */
+/** Fotos ficam 5,5 s; vídeos avançam ao terminar. */
 export const OUTDOOR_IMAGE_MS = 5500;
-export const OUTDOOR_YOUTUBE_MS = 60000;
 
 export interface TotemMenuViewProps {
   storeName: string;
@@ -158,10 +158,10 @@ export default function TotemMenuView({
     if (slideCount > 1) setCurrentSlideIndex(prev => (prev + 1) % slideCount);
   }, [slideCount]);
   useEffect(() => {
-    if (slideCount <= 1 || currentKind === 'video') return;
+    if (slideCount <= 1 || currentKind === 'video' || currentKind === 'youtube') return;
     const duration = outdoorSlides[currentSlideIndex % slideCount]?.imageDurationSeconds;
     const imageMilliseconds = Number.isInteger(duration) && Number(duration) >= 1 && Number(duration) <= 120 ? Number(duration) * 1000 : OUTDOOR_IMAGE_MS;
-    const timer = setTimeout(advanceSlide, currentKind === 'youtube' ? OUTDOOR_YOUTUBE_MS : imageMilliseconds);
+    const timer = setTimeout(advanceSlide, imageMilliseconds);
     return () => clearTimeout(timer);
   }, [outdoorSlides, slideCount, currentSlideIndex, currentKind, advanceSlide]);
 
@@ -284,10 +284,12 @@ export default function TotemMenuView({
                 className="w-full h-full object-cover"
               />
             ) : activeSlide.youtubeId && isYouTubeId(activeSlide.youtubeId) ? (
-              <iframe
+              <OutdoorYouTubePlayer
                 key={activeSlide.id}
                 data-testid="outdoor-youtube"
-                src={youTubeEmbedUrl(activeSlide.youtubeId)}
+                youtubeId={activeSlide.youtubeId}
+                onEnded={advanceSlide}
+                loop={slideCount === 1}
                 title={activeSlide.title || 'Vídeo de destaque'}
                 allow="autoplay; encrypted-media; picture-in-picture"
                 referrerPolicy="strict-origin-when-cross-origin"

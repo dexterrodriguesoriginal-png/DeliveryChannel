@@ -2027,9 +2027,9 @@ IMPORTANTE:
   .dc-kiosk[data-cover="true"] { --dc-kiosk-header-height: clamp(96px, 25vw, 116px); }
   .dc-kiosk-header--cover .dc-kiosk-brand-logo { width: clamp(68px, 19vw, 84px); height: clamp(68px, 19vw, 84px); }
   .dc-kiosk .dc-kiosk-sidebar { padding: 10px 7px 14px !important; }
-  .dc-kiosk .dc-kiosk-category { padding: 9px 4px 8px !important; gap: 5px !important; }
+  .dc-kiosk .dc-kiosk-category { padding: 9px 4px 8px !important; gap: 10px !important; }
   .dc-kiosk .dc-kiosk-category-visual { width: 40px; height: 40px; }
-  .dc-kiosk .dc-kiosk-category-label { font-size: clamp(9.5px, 2.65vw, 11.5px) !important; line-height: 1.15 !important; }
+  .dc-kiosk .dc-kiosk-category-label { font-size: clamp(9.5px, 2.65vw, 11.5px) !important; line-height: 1.15 !important; display: block !important; overflow: visible; overflow-wrap: anywhere; }
   .dc-kiosk .dc-kiosk-products-area { padding: 8px 8px 14px !important; }
   .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-name { font-size: clamp(14px, 3.4vw, 16px) !important; }
   .dc-kiosk .dc-kiosk-products-grid[data-columns="3"] .dc-kiosk-product-description { font-size: clamp(11px, 2.6vw, 13px) !important; }
@@ -2062,7 +2062,7 @@ IMPORTANTE:
 }
 .dc-kiosk .dc-kiosk-nav-label { white-space: nowrap; overflow-wrap: normal; }
 @media (max-width: 699px) {
-  .dc-kiosk .dc-kiosk-category { padding: 8px 4px 7px !important; gap: 4px !important; }
+  .dc-kiosk .dc-kiosk-category { padding: 8px 4px 7px !important; gap: 10px !important; }
   .dc-kiosk .dc-kiosk-category-visual { width: 34px; height: 34px; }
   .dc-kiosk .dc-kiosk-nav-label { font-size: clamp(10.5px, 3vw, 12.5px) !important; }
   .dc-kiosk .dc-kiosk-nav-icon svg { width: 22px !important; height: 22px !important; }
@@ -2631,7 +2631,7 @@ IMPORTANTE:
     height: auto !important;
     min-height: 0 !important;
     padding: 5px 3px 6px !important;
-    gap: 3px !important;
+    gap: 10px !important;
   }
   .dc-kiosk[data-variant="totem"] .dc-kiosk-category-label {
     font-size: clamp(11px, 3vw, 13px) !important;
