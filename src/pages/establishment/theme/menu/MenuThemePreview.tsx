@@ -20,7 +20,18 @@ interface Props {
   productColumns?: 1 | 2 | 3;
 }
 const noop = () => {};
-const priceNumber = (value: string | number) => typeof value === 'number' ? value : Number(value.replace(/[^\d,]/g, '').replace(',', '.')) || 0;
+/** Parses "19.90", "19,90", "R$ 1.234,56" and "1,234.56" into a number. */
+export const priceNumber = (value: string | number): number => {
+  if (typeof value === 'number') return value;
+  const cleaned = value.replace(/[^\d.,]/g, '');
+  const decimalAt = Math.max(cleaned.lastIndexOf(','), cleaned.lastIndexOf('.'));
+  if (decimalAt < 0) return Number(cleaned) || 0;
+  const fraction = cleaned.slice(decimalAt + 1);
+  const integer = cleaned.slice(0, decimalAt).replace(/[.,]/g, '');
+  // Prices have at most 2 decimals: a trailing group of 3 digits ("1.234") is a thousands separator.
+  if (fraction.length === 3) return Number(integer + fraction) || 0;
+  return Number(`${integer || '0'}.${fraction}`) || 0;
+};
 
 /** The customer menu itself, inside an isolated viewport. Drafts never invoke order callbacks. */
 export function MenuThemePreview({ theme, storeName, storeLogoUrl, storeTagline, products, categories, device, header = DEFAULT_MENU_HEADER, productColumns = 2 }: Props) {

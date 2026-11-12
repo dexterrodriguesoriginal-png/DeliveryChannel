@@ -20,6 +20,7 @@ import {
   hslToHex,
   getLuminance,
   ensureContrast,
+  getContrast,
 } from './palettes';
 import { STORE_LAYOUTS } from './layouts';
 import { TYPE_PAIRS } from './typePairs';
@@ -68,6 +69,14 @@ export function assembleTemplateTokens(
   const textSurfaces = [p.bgGeneral, p.bgHeader, p.bgCard, p.bgMenu, p.categoryBg, ...(general.gradientColors || [])];
   for (const key of ['textTitle', 'textMain', 'textSecondary'] as const) {
     for (const surface of textSurfaces) p[key] = ensureContrast(p[key], surface, 4.5, palette.mode === 'dark' ? 'lighter' : 'darker');
+  }
+
+  // O badge de destaque usa `accent` como fundo e a melhor tinta da paleta como texto
+  // (ver paletteInkFor). Ajusta apenas o acento do catálogo para garantir 4.5:1.
+  const inks = [p.buttonText, p.textTitle, p.textMain, p.bgGeneral];
+  const bestInk = inks.reduce((best, color) => (getContrast(color, p.accent) > getContrast(best, p.accent) ? color : best));
+  if (getContrast(bestInk, p.accent) < 4.5) {
+    p.accent = ensureContrast(p.accent, bestInk, 4.5, getLuminance(bestInk) > getLuminance(p.accent) ? 'darker' : 'lighter');
   }
 
   // Seleciona o layout baseado no segmento e no índice do modelo (0 a 5)
