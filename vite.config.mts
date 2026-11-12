@@ -35,9 +35,17 @@ function pwaVersionAssetPlugin(version: string): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
+  const env = { ...loadEnv(mode, process.cwd(), 'VITE_'), ...pickVite(process.env) };
+  if (command === 'build' && mode === 'production') {
+    const missing = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY']
+      .filter((name) => !env[name]?.trim());
+    if (missing.length) {
+      throw new Error(`Build de produção recusado: variáveis obrigatórias ausentes ou vazias: ${missing.join(', ')}. Configure-as antes de gerar o build.`);
+    }
+  }
   // Guarda staging × produção (src/lib/deployGuard.ts): falha o build/dev se a configuração for perigosa.
-  const guardErrors = checkBuildEnv({ ...loadEnv(mode, process.cwd(), 'VITE_'), ...pickVite(process.env) });
+  const guardErrors = checkBuildEnv(env);
   if (guardErrors.length) {
     throw new Error('Configuração de build recusada:\n - ' + guardErrors.join('\n - '));
   }
