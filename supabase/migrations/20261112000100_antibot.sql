@@ -106,7 +106,7 @@ BEGIN
    IF f.result_type NOT IN ('jsonb','uuid') THEN RAISE EXCEPTION 'ANTIBOT_UNEXPECTED_RETURN_TYPE'; END IF;
    SELECT string_agg(format('%I',a),', ' ORDER BY i) INTO args FROM unnest(f.proargnames) WITH ORDINALITY t(a,i);
    identifier := CASE WHEN 'p_customer_phone'=ANY(f.proargnames) THEN 'regexp_replace(p_customer_phone,''[^0-9]'','''',''g'')'
-     ELSE 'auth.uid()::text' END;
+     ELSE 'coalesce(nullif(current_setting(''request.jwt.claims'',true),'''')::jsonb->>''email'',auth.uid()::text)' END;
    copied := replace(f.definition,'FUNCTION public.' || f.proname || '(', 'FUNCTION private.antibot_' || f.proname || '(');
    EXECUTE copied;
    EXECUTE format('REVOKE ALL ON FUNCTION private.antibot_%I(%s) FROM PUBLIC,anon,authenticated,service_role',f.proname,f.identity_args);

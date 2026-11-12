@@ -77,8 +77,8 @@ cópias privadas das implementações completas. Os quatro checkouts públicos
 (`process_checkout_atomic`, `_v2`, `_v3` e `process_promotional_checkout_atomic`)
 compartilham **20 tentativas em 10 minutos** por IP e telefone normalizado; quando
 há sessão, também por usuário. `validate_coupon` limita **60 em 10 minutos** por
-IP e usuário autenticado (a assinatura existente de prévia não recebe e-mail ou
-telefone). Checkout anônimo, se permitido pelas regras existentes, recebe o
+IP, e-mail da sessão assinada e usuário autenticado (a assinatura existente de
+prévia não recebe telefone ou identificador anônimo). Checkout anônimo, se permitido pelas regras existentes, recebe o
 mesmo limite por IP/telefone; este PR não relaxa nenhuma exigência de login.
 As RPCs internas de cupom/PDV continuam com suas permissões atuais.
 
