@@ -1,3 +1,4 @@
+import { useUnsavedChanges } from '../../../lib/ui/useUnsavedChanges';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Check,
@@ -18,7 +19,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { themeService } from '../../../services/themeService';
 import { productRepository } from '../../../repositories/productRepository';
-import { safeImageUrl, validateHexColor } from '../../../lib/theme/themeEngine';
+import { safeImageUrl, validateHexColor, tokensToTheme } from '../../../lib/theme/themeEngine';
 import { announceThemeSaved } from '../../../lib/theme/themeLiveUpdate';
 import { useBottomActionsOffset, useFloatingLeftOf } from '../../../lib/ui/bottomActionsOffset';
 import { LiveStorePreview } from '../../../components/establishment/theme/LiveStorePreview';
@@ -53,6 +54,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   const { showToast } = useToast();
   const draft = useThemeDraft(tenant.theme);
   const controls = useThemeControls(draft.draftTokens, draft.updateTokens);
+  const [galleryPreview, setGalleryPreview] = useState<StoreTemplate | null>(null);
   const [tab, setTab] = useState<Tab>('models');
   const [products, setProducts] = useState<ThemedProductItem[]>([]);
   const [saving, setSaving] = useState(false);
@@ -80,15 +82,10 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [tab]);
-  useEffect(() => {
-    const beforeUnload = (event: BeforeUnloadEvent) => {
-      if (draft.isDirty) event.preventDefault();
-    };
-    window.addEventListener('beforeunload', beforeUnload);
-    return () => window.removeEventListener('beforeunload', beforeUnload);
-  }, [draft.isDirty]);
+  useUnsavedChanges(draft.isDirty);
   const apply = (template: StoreTemplate) => {
     draft.applyTemplate(template);
+    setGalleryPreview(null);
     setTab('identity');
     showToast({
       type: 'info',
@@ -165,10 +162,10 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
     setSaving(true);
     try {
       const restored = await themeService.resetToDeliveryChannelDefault(securityContext, tenant.id, {
-        storeName: tenant.theme.storeName || tenant.name,
-        tagline: tenant.theme.tagline,
-        logoUrl: tenant.theme.logoUrl,
-        bannerUrl: tenant.theme.bannerUrl,
+        storeName: draft.draftTheme.storeName || tenant.name,
+        tagline: draft.draftTheme.tagline,
+        logoUrl: draft.draftTheme.logoUrl,
+        bannerUrl: draft.draftTheme.bannerUrl,
       });
       draft.markSaved(restored, draft.draftTheme);
       void announceThemeSaved(tenant.id);
@@ -207,7 +204,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   const previewFor = (fill: boolean) => (
     <LiveStorePreview
       fill={fill}
-      theme={draft.draftTheme}
+      theme={tab === 'models' && galleryPreview ? tokensToTheme(galleryPreview.tokens, draft.draftTheme) : draft.draftTheme}
       storeSlug={tenant.slug}
       products={products}
       segmentId={resolveSegment(tenant.category)}
@@ -216,7 +213,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   );
   const preview = previewFor(false);
   return (
-    <ThemeEditorContext.Provider value={{ ...draft, ...controls, activeTenant: tenant }}>
+    <ThemeEditorContext.Provider value={{ ...draft, ...controls, activeTenant: tenant, openBackgrounds: surface => { controls.setActiveBgTarget(surface); setTab('backgrounds'); } }}>
       <div className="theme-editor" data-testid="theme-editor">
         <header className="theme-editor-header">
           <div className="flex items-center gap-2">
@@ -249,6 +246,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
             <fieldset disabled={saving} className="min-w-0 border-0 p-0">
               <div hidden={tab !== 'models'}>
                 <TemplateGallery
+                  active={tab === 'models'}
                   tenantId={tenant.id}
                   storeSlug={tenant.slug}
                   category={tenant.category}
@@ -257,6 +255,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
                   products={products}
                   isStoreOpen={tenant.settings?.isOpen}
                   onApply={apply}
+                  onPreviewChange={setGalleryPreview}
                 />
               </div>
               {tab === 'identity' && <IdentityTab />}
@@ -304,8 +303,9 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
               )}
             </fieldset>
           </main>
-          {tab !== 'models' && tab !== 'preview' && (
+          {tab !== 'preview' && (
             <aside className="theme-editor-preview" aria-label="Prévia da sua loja">
+              {tab === 'models' && galleryPreview && <div className="mb-2 space-y-2"><p className="text-sm font-semibold">Em prévia: {galleryPreview.name}</p><button type="button" className="theme-primary" onClick={() => apply(galleryPreview)}>Usar modelo no rascunho</button></div>}
               {previewFor(true)}
             </aside>
           )}
@@ -321,7 +321,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
               </>
             ) : (
               <>
-                <Check size={14} /> Tudo salvo
+                <Check size={14} /> Design do App salvo
               </>
             )}
           </span>

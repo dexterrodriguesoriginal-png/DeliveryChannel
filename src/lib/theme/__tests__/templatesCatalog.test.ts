@@ -10,15 +10,15 @@ import {
   VALID_DENSITIES,
 } from '../themeEngine';
 
-describe('Catálogo de 150 Modelos — templatesCatalog.test.ts', () => {
-  it('contém exatamente 150 modelos gerados como dados', () => {
-    expect(TEMPLATES.length).toBe(150);
+describe('Catálogo de 500 Modelos — templatesCatalog.test.ts', () => {
+  it('contém exatamente 500 modelos gerados como dados', () => {
+    expect(TEMPLATES.length).toBe(500);
   });
 
-  it('todos os 150 modelos possuem IDs únicos', () => {
+  it('todos os 500 modelos possuem IDs únicos', () => {
     const ids = TEMPLATES.map((t) => t.id);
     const uniqueIds = new Set(ids);
-    expect(uniqueIds.size).toBe(150);
+    expect(uniqueIds.size).toBe(500);
   });
 
   it('cobre exatamente os 25 segmentos de negócio especificados', () => {
@@ -33,15 +33,15 @@ describe('Catálogo de 150 Modelos — templatesCatalog.test.ts', () => {
     }
   });
 
-  it('cada segmento possui exatamente 6 modelos distintos (3 claros e 3 escuros)', () => {
+  it('cada segmento possui exatamente 20 modelos distintos (10 claros e 10 escuros)', () => {
     for (const segment of SEGMENTS) {
       const models = TEMPLATES.filter((t) => t.segmentId === segment.id);
-      expect(models.length).toBe(6);
+      expect(models.length).toBe(20);
 
       const lightModels = models.filter((t) => t.mode === 'light');
       const darkModels = models.filter((t) => t.mode === 'dark');
-      expect(lightModels.length).toBe(3);
-      expect(darkModels.length).toBe(3);
+      expect(lightModels.length).toBe(10);
+      expect(darkModels.length).toBe(10);
     }
   });
 
@@ -86,15 +86,15 @@ describe('Catálogo de 150 Modelos — templatesCatalog.test.ts', () => {
   describe('filterTemplates()', () => {
     it('filtra modelos por segmento', () => {
       const results = filterTemplates({ segment: 'adega' });
-      expect(results.length).toBe(6);
+      expect(results.length).toBe(20);
       expect(results.every((t) => t.segmentId === 'adega')).toBe(true);
     });
 
     it('filtra modelos por modo light / dark', () => {
       const light = filterTemplates({ mode: 'light' });
       const dark = filterTemplates({ mode: 'dark' });
-      expect(light.length).toBe(75);
-      expect(dark.length).toBe(75);
+      expect(light.length).toBe(250);
+      expect(dark.length).toBe(250);
     });
 
     it('filtra modelos por busca textual (nome ou segmento)', () => {

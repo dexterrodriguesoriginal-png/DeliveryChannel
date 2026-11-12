@@ -43,14 +43,14 @@ describe('galeria de modelos', () => {
     expect(screen.getAllByTestId('template-card').length).toBeGreaterThanOrEqual(1);
     for (const card of screen.getAllByTestId('template-card'))
       expect(card.getAttribute('data-template-id')).toContain('padaria');
-    fireEvent.change(screen.getByLabelText('Meu estilo'), { target: { value: 'escuro' } });
+    fireEvent.change(screen.getByLabelText('Modo'), { target: { value: 'dark' } });
     for (const card of screen.getAllByTestId('template-card'))
       expect(card.textContent).toContain('Escuro');
   });
-  it('limpa todos os filtros, conta 150 e pagina de 24 em 24', () => {
+  it('limpa todos os filtros, conta 500 e pagina de 24 em 24', () => {
     render(gallery({ category: 'padaria' }));
     fireEvent.click(screen.getByRole('button', { name: 'Limpar filtros' }));
-    expect(screen.getByRole('status').textContent).toBe('150 modelos');
+    expect(screen.getByRole('status').textContent).toBe('500 modelos');
     expect(screen.getAllByTestId('template-card')).toHaveLength(24);
     fireEvent.click(screen.getByRole('button', { name: /Ver mais/ }));
     expect(screen.getAllByTestId('template-card')).toHaveLength(48);
@@ -137,7 +137,7 @@ describe('galeria de modelos', () => {
     localStorage.setItem('dc:theme-favs:tenant-1', '{invalid');
     const { container } = render(gallery());
     expect(container.textContent).not.toMatch(/tokens CSS|homologad|semântica/i);
-    expect(screen.getByRole('status').textContent).toBe('150 modelos');
+    expect(screen.getByRole('status').textContent).toBe('500 modelos');
   });
 });
 
@@ -161,4 +161,20 @@ it('sugere pela logo e permite filtrar pelas cores extraídas', async () => {
   fireEvent.click(screen.getByRole('button', { name: /Filtrar azul da logo/ }));
   expect(screen.getByRole('button', { name: 'Azul' }).getAttribute('aria-pressed')).toBe('true');
   expect(screen.getAllByTestId('template-card').length).toBeGreaterThan(0);
+});
+
+it('combines search, mode, favorites and progressive loading without leaking unrelated matches', () => {
+  const matches = TEMPLATES.filter(t => t.mode === 'dark').slice(0, 30);
+  localStorage.setItem('dc:theme-favs:tenant-1', JSON.stringify(matches.map(t => t.id)));
+  render(gallery());
+  fireEvent.click(screen.getByRole('button', { name: /Só favoritos/ }));
+  fireEvent.change(screen.getByLabelText('Modo'), { target: { value: 'dark' } });
+  expect(screen.getAllByTestId('template-card')).toHaveLength(24);
+  fireEvent.click(screen.getByRole('button', { name: /Ver mais/ }));
+  expect(screen.getAllByTestId('template-card')).toHaveLength(30);
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: matches[0].name } });
+  expect(screen.getAllByTestId('template-card')).toHaveLength(1);
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'nao-existe' } });
+  expect(screen.queryAllByTestId('template-card')).toHaveLength(0);
+  expect(screen.getByRole('status').textContent).toBe('0 modelos');
 });

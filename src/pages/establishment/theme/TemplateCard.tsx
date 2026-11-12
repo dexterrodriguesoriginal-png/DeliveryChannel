@@ -57,10 +57,11 @@ export const TemplateCard = memo(function TemplateCard({
         <div>
           <h3 className="text-sm font-bold text-slate-900">{template.name}</h3>
           <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-            {titleCase(template.shade.replaceAll('-', ' '))} · {titleCase(style)} ·{' '}
+            {template.segmentLabel} · {titleCase(template.shade.replaceAll('-', ' '))} · {titleCase(style)} ·{' '}
             {template.mode === 'dark' ? 'Escuro' : 'Claro'}
           </p>
         </div>
+        <div className="flex gap-1" aria-label="Cores principais">{(['primary', 'secondary', 'accent', 'bgGeneral'] as const).map(key => <span key={key} title={template.tokens.palette[key]} className="h-5 w-5 rounded-full border" style={{ backgroundColor: template.tokens.palette[key] }} />)}</div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"

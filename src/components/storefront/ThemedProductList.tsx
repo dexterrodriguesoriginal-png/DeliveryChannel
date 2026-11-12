@@ -1,3 +1,4 @@
+import { paletteInkFor } from '../../lib/theme/contrastGuidance';
 /**
  * ThemedProductList — Componente de vitrine compartilhado
  * Renderiza produtos respeitando rigorosamente a configuração de layout dos tokens:
@@ -158,7 +159,7 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
               <span
                 data-testid="preview-accent-badge"
                 className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider text-white shadow-xs"
-                style={{ backgroundColor: 'var(--dc-accent, #22c55e)' }}
+                style={{ backgroundColor: tokens.palette.accent, color: paletteInkFor(tokens, tokens.palette.accent) }}
               >
                 {prod.tag}
               </span>
@@ -312,7 +313,7 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
               <span
                 data-testid="preview-accent-badge"
                 className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase text-white shrink-0"
-                style={{ backgroundColor: 'var(--dc-accent, #22c55e)' }}
+                style={{ backgroundColor: tokens.palette.accent, color: paletteInkFor(tokens, tokens.palette.accent) }}
               >
                 {prod.tag}
               </span>

@@ -98,6 +98,8 @@ export interface DineInPremiumMenuProps {
   onRepeat?: (item: ReorderItem) => void;
   /** Tenant resolvido pelo QR/servidor. */
   tenantId: string;
+  /** Editor-only rendering: suppress best-seller network polling. */
+  preview?: boolean;
 
   storeName: string;
   storeLogoUrl?: string | null;
@@ -343,6 +345,7 @@ function BottomNavigation({
 
 export function DineInPremiumMenu({
   tenantId,
+  preview = false,
   storeName,
   storeLogoUrl,
   storeTagline,
@@ -534,7 +537,7 @@ export function DineInPremiumMenu({
     Math.trunc(Number(cartCount) || 0),
   );
 
-  const bestSellers = useMenuBestSellers(tenantId);
+  const bestSellers = useMenuBestSellers(preview ? '' : tenantId);
   const isTotem = variant === 'TOTEM';
   const totemOrderVisible = isTotem && orderLines.some(line => Number(line.quantity) > 0);
 

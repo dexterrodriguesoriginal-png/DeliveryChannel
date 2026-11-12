@@ -1,3 +1,4 @@
+import { themeContrastGuidance } from '../../../../lib/theme/contrastGuidance';
 import { ColorPicker } from '../../../../components/ui/ColorPicker';
 import { Card } from '../../../../components/ui/Card';
 import { Palette, AlertTriangle } from 'lucide-react';
@@ -6,6 +7,7 @@ import { useThemeEditorContext } from '../ThemeEditorContext';
 export function ColorsTab() {
   const {
     draftTokens,
+    openBackgrounds,
     activeColorTarget,
     setActiveColorTarget,
     hexInputError,
@@ -13,6 +15,8 @@ export function ColorsTab() {
     currentTargetColor,
     handleColorChange,
   } = useThemeEditorContext();
+  const colorTargets = paletteTargets.filter(item => !['bgGeneral', 'bgHeader', 'bgCard'].includes(item.id));
+  const issues = themeContrastGuidance(draftTokens);
   return (
     <Card className="theme-tab-card p-5 space-y-5">
       <div className="pb-3 border-b border-gray-100 flex items-center justify-between">
@@ -34,9 +38,9 @@ export function ColorsTab() {
           Selecione o elemento para customizar a cor:
         </span>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {paletteTargets.map((item) => {
+          {['Marca', 'Fundos', 'Textos', 'Botões', 'Preços', 'Ícones', 'Linhas'].map(group => <fieldset key={group} className="col-span-full"><legend className="text-xs font-bold mb-2">{group}</legend><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{colorTargets.filter(item => (item.id === 'bgCard' ? 'Cartões' : item.group === 'Superfícies' ? 'Fundos' : item.group) === group).map((item) => {
             const isSelected = activeColorTarget === item.id;
-            const hex = draftTokens.palette[item.id] || '#15803d';
+            const hex = draftTokens.palette[item.id];
             return (
               <button
                 key={item.id}
@@ -59,10 +63,16 @@ export function ColorsTab() {
                 </div>
               </button>
             );
-          })}
+          })}</div></fieldset>)}
         </div>
       </div>
 
+      <section className="space-y-2"><h4 className="text-xs font-bold">Fundos e cartões</h4><p className="text-xs text-gray-500">Cores sólidas, gradientes e imagens ficam juntos na aba Fundos. Cada superfície usa apenas o modo escolhido; a cor base permanece como alternativa à imagem.</p><div className="flex flex-wrap gap-2">{([['general', 'Fundo geral'], ['header', 'Cabeçalho'], ['card', 'Cartões']] as const).map(([surface, label]) => <button type="button" className="theme-secondary" key={surface} onClick={() => openBackgrounds?.(surface)}>{label}</button>)}</div></section>
+      {issues.length > 0 && <div role="status" className="space-y-2 text-xs">
+        <p className="font-bold">Contraste: algumas combinações podem dificultar a leitura.</p>
+        {issues.map(issue => <p key={issue.label}>{issue.label}: {issue.ratio.toFixed(2)}:1 (recomendado {issue.minimum}:1). Sugestão para a cor do texto/ícone: <code>{issue.suggestion}</code>.</p>)}
+        <p>Sua escolha será mantida. Em gradientes e imagens, confira também as áreas claras e escuras na prévia.</p>
+      </div>}
       {/* Editor da Cor Ativa */}
       <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/60 space-y-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
@@ -88,7 +98,7 @@ export function ColorsTab() {
             color={currentTargetColor}
             onChange={handleColorChange}
             label={`Cor Hexadecimal de ${paletteTargets.find((t) => t.id === activeColorTarget)?.label}`}
-            defaultColor="#15803d"
+            defaultColor={draftTokens.palette.primary}
             testIdPrefix="palette-color-picker"
           />
         </div>

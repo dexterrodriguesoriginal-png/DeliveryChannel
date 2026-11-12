@@ -58,8 +58,9 @@ describe('editor independente do cardápio', () => {
   });
   it('mostra catálogo real, prévia celular/tablet e aplica fonte, cantos e espaçamento', async () => {
     render(<MenuThemeEditor tenant={tenant} />); await loaded();
-    expect(await screen.findByText('Hambúrguer da casa')).toBeTruthy();
-    expect(screen.getByText('Especiais')).toBeTruthy();
+    expect(screen.getByTitle('Prévia real do cardápio')).toBeTruthy();
+    expect(mocks.product).toHaveBeenCalledWith(mocks.context, tenant.id);
+    expect(mocks.category).toHaveBeenCalledWith(mocks.context, tenant.id);
     fireEvent.change(screen.getByLabelText('Fonte'), { target: { value: 'Playfair Display' } });
     fireEvent.change(screen.getByLabelText('Arredondamento dos cantos'), { target: { value: '8' } });
     fireEvent.change(screen.getByLabelText('Espaçamento'), { target: { value: 'compact' } });
@@ -154,4 +155,17 @@ describe('editor independente do cardápio', () => {
     expect(within(tabs).getByRole('tab', { name: 'Design do Totem' })).toBeTruthy();
     expect(within(tabs).queryByRole('tab', { name: 'Tela Inicial' })).toBeNull();
   });
+});
+
+it('does not claim everything is saved while independently saved options are pending', async () => {
+  render(<MenuThemeEditor tenant={tenant} />); await loaded();
+  await waitFor(() => expect(screen.queryByText('Confira o carregamento dos painéis')).toBeNull());
+  fireEvent.click(screen.getByLabelText('Modo totem'));
+  expect(screen.getByText(/Alterações não salvas — confira os painéis/)).toBeTruthy();
+  expect(screen.queryByText('Tudo salvo')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Usar modelo Noturno' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Salvar cardápio' }));
+  await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(1));
+  expect(screen.getByText(/Alterações não salvas — confira os painéis/)).toBeTruthy();
+  expect(screen.queryByText('Tudo salvo')).toBeNull();
 });

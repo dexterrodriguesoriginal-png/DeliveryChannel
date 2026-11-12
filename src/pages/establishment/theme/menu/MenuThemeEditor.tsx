@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useUnsavedChanges } from '../../../../lib/ui/useUnsavedChanges';
+import { DEFAULT_MENU_HEADER } from '../../../../lib/menu/menuHeader';
+import { DEFAULT_MENU_OPTIONS } from '../../../../lib/menu/menuOptions';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, CheckCheck, LayoutGrid, Palette, Save, Smartphone, Sparkles, Tablet, Type } from 'lucide-react';
 import type { Category, Tenant } from '../../../../types';
 import type { MenuTheme } from '../../../../types/menuTheme';
@@ -43,9 +46,17 @@ export function MenuThemeEditor({ tenant, active = true }: { tenant: Tenant; act
   const inFlight = useRef(false);
   const actionsRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLElement>(null);
+  const previewRef = useRef<HTMLElement>(null);
   useBottomActionsOffset(actionsRef, active);
   useFloatingLeftOf(contentRef, 12, active);
   const dirty = !same(saved, draft);
+  useUnsavedChanges(dirty);
+  const [headerState, setHeaderState] = useState({ draft: { ...DEFAULT_MENU_HEADER }, dirty: false, loading: true });
+  const [optionsState, setOptionsState] = useState({ draft: { ...DEFAULT_MENU_OPTIONS }, dirty: false, loading: true });
+  const onHeaderDraft = useCallback((draft: typeof DEFAULT_MENU_HEADER, dirty: boolean, loading: boolean) => setHeaderState({ draft, dirty, loading }), []);
+  const onOptionsDraft = useCallback((draft: typeof DEFAULT_MENU_OPTIONS, dirty: boolean, loading: boolean) => setOptionsState({ draft, dirty, loading }), []);
+  const anyDirty = dirty || headerState.dirty || optionsState.dirty;
+  const anyLoading = loading || loadFailed || headerState.loading || optionsState.loading;
   const issues = menuThemeContrastIssues(draft);
 
   useEffect(() => {
@@ -69,12 +80,6 @@ export function MenuThemeEditor({ tenant, active = true }: { tenant: Tenant; act
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, allowed, loadAttempt]);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
-  useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
-
   const update = (patch: Partial<MenuTheme>) => { setDraft(previous => ({ ...previous, ...patch })); setNotice(''); };
   const save = async () => {
     if (!allowed || loading || loadFailed || inFlight.current || !dirty) return;
@@ -92,7 +97,7 @@ export function MenuThemeEditor({ tenant, active = true }: { tenant: Tenant; act
   if (!allowed) return <div className="p-6 text-sm text-slate-600" role="status">Apenas o dono ou gerente desta loja pode editar o design do cardápio.</div>;
   const previewProducts = products.length ? products : sampleProducts(resolveSegment(tenant.category));
   return <div className="theme-editor menu-design-editor" data-testid="menu-theme-editor">
-    <header className="theme-editor-header menu-design-header"><div><span className="theme-eyebrow">À MESA, DO SEU JEITO</span><h1><Sparkles size={21} /> Design do Cardápio</h1><p>Um visual próprio para explorar o cardápio pelo QR da mesa.</p></div><span className="menu-design-independent"><CheckCheck size={15} /> Independente do app</span></header>
+    <header className="theme-editor-header menu-design-header"><div><span className="theme-eyebrow">À MESA, DO SEU JEITO</span><h1><Sparkles size={21} /> Design do Cardápio</h1><p>Cores, fonte e formato próprios do cardápio por QR. Alterar o app não altera este design; cada painel tem seu botão de salvar.</p></div><button type="button" className="theme-secondary" onClick={() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Ver prévia do cardápio</button><span className="menu-design-independent"><CheckCheck size={15} /> Independente do app</span></header>
     <div className="menu-design-body">
       <main ref={contentRef} className="menu-design-controls" aria-label="Design do cardápio">
         {loading ? <p role="status" className="menu-design-message">Carregando o design do cardápio…</p> : <>
@@ -111,11 +116,11 @@ export function MenuThemeEditor({ tenant, active = true }: { tenant: Tenant; act
           </fieldset>
         </>}
         {!loading && <BestSellersPanel securityContext={securityContext} tenantId={tenant.id} />}
-        {!loading && <MenuHeaderPanel securityContext={securityContext} tenantId={tenant.id} />}
-        {!loading && <MenuOptionsPanel securityContext={securityContext} tenantId={tenant.id} slug={tenant.slug} />}
+        {!loading && <MenuHeaderPanel onDraftChange={onHeaderDraft} securityContext={securityContext} tenantId={tenant.id} />}
+        {!loading && <MenuOptionsPanel onDraftChange={onOptionsDraft} securityContext={securityContext} tenantId={tenant.id} slug={tenant.slug} />}
       </main>
-      <aside className="menu-design-live" aria-label="Prévia ao vivo do cardápio"><div className="menu-design-preview-toolbar"><div><span className="theme-eyebrow">PRÉVIA AO VIVO</span><h2>Comer com os olhos</h2></div><div className="menu-design-device-toggle" role="group" aria-label="Formato da prévia"><button type="button" aria-label="Prévia no celular" aria-pressed={device === 'phone'} onClick={() => setDevice('phone')}><Smartphone size={17} /></button><button type="button" aria-label="Prévia no tablet" aria-pressed={device === 'tablet'} onClick={() => setDevice('tablet')}><Tablet size={17} /></button></div></div><MenuThemePreview theme={draft} storeName={tenant.theme.storeName || tenant.name} categories={categories.map(category => category.name)} products={previewProducts} device={device} /><p className="menu-design-preview-caption">{products.length ? 'Prévia com produtos do seu catálogo.' : 'Produtos ilustrativos. Seu catálogo continua o mesmo.'} As alterações aparecem aqui antes de salvar.</p></aside>
+      <aside ref={previewRef} className="menu-design-live" aria-label="Prévia ao vivo do cardápio"><div className="menu-design-preview-toolbar"><div><span className="theme-eyebrow">PRÉVIA AO VIVO</span><h2>Comer com os olhos</h2><button type="button" className="theme-filter-chip" onClick={() => contentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Voltar aos ajustes</button></div><div className="menu-design-device-toggle" role="group" aria-label="Formato da prévia"><button type="button" aria-label="Prévia no celular" aria-pressed={device === 'phone'} onClick={() => setDevice('phone')}><Smartphone size={17} /></button><button type="button" aria-label="Prévia no tablet" aria-pressed={device === 'tablet'} onClick={() => setDevice('tablet')}><Tablet size={17} /></button></div></div><MenuThemePreview storeLogoUrl={tenant.theme.logoUrl} storeTagline={tenant.theme.tagline} theme={draft} storeName={tenant.theme.storeName || tenant.name} categories={categories} header={headerState.draft} productColumns={optionsState.draft.productColumns || 2} products={previewProducts} device={device} /><p className="menu-design-preview-caption">{products.length ? 'Prévia com produtos do seu catálogo.' : 'Produtos ilustrativos. Seu catálogo continua o mesmo.'} As alterações aparecem aqui antes de salvar.</p></aside>
     </div>
-    <footer ref={actionsRef} className="theme-editor-actions menu-design-actions"><span role="status" className="theme-save-status">{notice || (loading ? 'Aguarde o carregamento' : dirty ? 'Alterações não salvas' : <><Check size={14} /> Tudo salvo</>)}</span><div className="theme-action-buttons"><button type="button" className="theme-secondary" disabled={!dirty || saving || loading} onClick={() => { setDraft({ ...saved }); setError(''); setNotice(''); }}>Cancelar alterações</button><button type="button" className="theme-primary" disabled={!dirty || saving || loading} onClick={() => void save()}><Save size={15} />{saving ? 'Salvando…' : 'Salvar cardápio'}</button></div></footer>
+    <footer ref={actionsRef} className="theme-editor-actions menu-design-actions"><span role="status" className="theme-save-status">{anyDirty ? 'Alterações não salvas — confira os painéis de aparência, capa/menu e opções' : anyLoading ? 'Confira o carregamento dos painéis' : notice || <><Check size={14} /> Tudo salvo</>}</span><div className="theme-action-buttons"><button type="button" className="theme-secondary" disabled={!dirty || saving || loading} onClick={() => { setDraft({ ...saved }); setError(''); setNotice(''); }}>Cancelar alterações</button><button type="button" className="theme-primary" disabled={!dirty || saving || loading} onClick={() => void save()}><Save size={15} />{saving ? 'Salvando…' : 'Salvar cardápio'}</button></div></footer>
   </div>;
 }

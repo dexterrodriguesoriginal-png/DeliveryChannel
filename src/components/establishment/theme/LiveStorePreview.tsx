@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Home, Search, ShoppingBag, Smartphone, Monitor } from 'lucide-react';
+import { Home, Search, ShoppingBag, Smartphone, Tablet, Monitor } from 'lucide-react';
 import { TenantTheme } from '../../../types';
 import {
   themeToTokens,
@@ -15,7 +15,7 @@ export interface LiveStorePreviewProps {
   theme: TenantTheme;
   storeSlug?: string;
   isOpen?: boolean;
-  defaultMode?: 'mobile' | 'desktop';
+  defaultMode?: 'mobile' | 'tablet' | 'desktop';
   products?: ThemedProductItem[];
   segmentId?: string;
   compact?: boolean;
@@ -65,8 +65,8 @@ export function StorefrontPreview({
       <div className="space-y-3 p-3">
         <div
           data-testid="preview-search-bar"
-          className="flex items-center gap-2 rounded-xl border bg-white p-2.5 text-xs"
-          style={{ backgroundColor: '#ffffff', borderColor: p.border, color: p.textSecondary }}
+          className="flex items-center gap-2 rounded-xl border p-2.5 text-xs"
+          style={{ borderColor: p.border, color: p.textSecondary }}
         >
           <Search data-testid="preview-icon-search" size={14} style={{ color: p.iconColor }} />{' '}
           Buscar na loja
@@ -161,9 +161,9 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
     <div data-testid="live-store-preview" className={`w-full min-w-0 ${fill ? 'flex h-full min-h-0 flex-col' : ''}`}>
       {!compact && (
         <div className="mb-1 flex flex-none flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-          <span className="font-semibold">Sua loja, ao vivo</span>
+          <span className="font-semibold">{props.storeSlug ? 'Sua loja, ao vivo' : 'Prévia ilustrativa'}</span>
           <div className="flex gap-1">
-            {(['mobile', 'desktop'] as const).map((value) => (
+            {(['mobile', 'tablet', 'desktop'] as const).map((value) => (
               <button
                 type="button"
                 key={value}
@@ -174,7 +174,7 @@ export const LiveStorePreview: React.FC<LiveStorePreviewProps> = ({
               >
                 {value === 'mobile' ? (
                   <Smartphone size={15} aria-label="Celular" />
-                ) : (
+                ) : value === 'tablet' ? <Tablet size={15} aria-label="Tablet" /> : (
                   <Monitor size={15} aria-label="Computador" />
                 )}
               </button>

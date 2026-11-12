@@ -1,3 +1,4 @@
+import { useUnsavedChanges } from '../../../../lib/ui/useUnsavedChanges';
 import { useEffect, useRef, useState } from 'react';
 import { ImagePlus, LayoutList, Save, Trash2 } from 'lucide-react';
 import type { SecurityContext } from '../../../../services/securityEngine';
@@ -13,7 +14,7 @@ const same = (a: MenuHeaderSettings, b: MenuHeaderSettings) =>
   a.coverUrl === b.coverUrl && a.categoryMenuMode === b.categoryMenuMode;
 
 /** Capa da loja (estilo Facebook/YouTube) e menu lateral do cardápio. Salva separado das cores. */
-export function MenuHeaderPanel({ securityContext, tenantId }: { securityContext: SecurityContext; tenantId: string }) {
+export function MenuHeaderPanel({ securityContext, tenantId, onDraftChange }: { securityContext: SecurityContext; tenantId: string; onDraftChange?: (draft: MenuHeaderSettings, dirty: boolean, loading: boolean) => void }) {
   const [saved, setSaved] = useState<MenuHeaderSettings>({ ...DEFAULT_MENU_HEADER });
   const [draft, setDraft] = useState<MenuHeaderSettings>({ ...DEFAULT_MENU_HEADER });
   const [loading, setLoading] = useState(true);
@@ -24,6 +25,8 @@ export function MenuHeaderPanel({ securityContext, tenantId }: { securityContext
   const inFlight = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dirty = !same(saved, draft);
+  useUnsavedChanges(dirty);
+  useEffect(() => { onDraftChange?.(draft, dirty, loading || !!error); }, [draft, dirty, loading, error, onDraftChange]);
 
   useEffect(() => {
     let active = true;
@@ -96,7 +99,7 @@ export function MenuHeaderPanel({ securityContext, tenantId }: { securityContext
           onChange={() => { setDraft({ ...draft, categoryMenuMode: 'IMAGE' }); setNotice(''); }} /></label>
     </fieldset>
     <div className="theme-action-buttons">
-      <span role="status" className="theme-save-status">{notice || (dirty ? 'Alterações não salvas' : '')}</span>
+      <span role="status" className="theme-save-status">{dirty ? 'Alterações não salvas' : notice || (loading ? 'Carregando…' : 'Painel salvo')}</span>
       <button type="button" className="theme-primary" disabled={!dirty || busy} onClick={() => void save()}><Save size={15} />{saving ? 'Salvando…' : 'Salvar capa e menu'}</button>
     </div>
   </section>;

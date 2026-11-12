@@ -1,3 +1,4 @@
+import { confirmPendingDesignNavigation } from './lib/ui/useUnsavedChanges';
 import { TvScreen } from './components/pickup/TvScreen';
 import { InstallDriverAppHint } from './components/driver/InstallDriverAppHint';
 import { LegalBoundary, CookieBanner } from './components/legal/LegalUI';
@@ -141,6 +142,7 @@ function AppContent() {
   };
 
   const setActiveTab = (page: string) => {
+    if (page !== activeTab && !confirmPendingDesignNavigation()) return;
     setActiveTabState(page);
     setActiveSubTab('');
     savePanelRoute(page);
@@ -155,6 +157,7 @@ function AppContent() {
     const syncPanelRoute = () => {
       if (!isPanelPathname(window.location.pathname)) return;
       const route = readPanelRoute(window.location.hash);
+      if (route?.page !== activeTab && !confirmPendingDesignNavigation()) { savePanelRoute(activeTab, activeSubTab); return; }
       if (route) {
         if (route.page !== 'driver') setActiveTabState(route.page);
         setActiveSubTab(route.tab || '');
@@ -171,7 +174,7 @@ function AppContent() {
       window.removeEventListener('popstate', syncPanelRoute);
       window.removeEventListener('hashchange', syncPanelRoute);
     };
-  }, [activeRole]);
+  }, [activeRole, activeTab, activeSubTab]);
 
   // Fecha automaticamente modal de login/conta após sucesso na autenticação
   // - Usuário novo: modal fecha para OnboardingCreateTenant assumir a tela principal

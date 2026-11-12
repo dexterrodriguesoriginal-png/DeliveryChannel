@@ -28,7 +28,7 @@ export interface PhonePreviewProps {
   theme?: Partial<TenantTheme>;
   /** Card promocional em rascunho (Marketing). */
   card?: Partial<Offer> | null;
-  mode?: 'mobile' | 'desktop';
+  mode?: 'mobile' | 'tablet' | 'desktop';
   /** true: ocupa 100% da altura do pai (coluna fixa do editor). false: limita pela altura da janela. */
   fill?: boolean;
   /** Reserva abaixo do aparelho em modo livre (título, botões do diálogo etc.). */
@@ -52,8 +52,8 @@ export function PhonePreview({ storeSlug, theme, card, mode = 'mobile', fill = f
   const [ready, setReady] = useState(false);
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const mobile = mode === 'mobile';
-  const logicalW = mobile ? PHONE_W : DESKTOP_W;
-  const logicalH = mobile ? PHONE_H : DESKTOP_H;
+  const logicalW = mobile ? PHONE_W : mode === 'tablet' ? 1024 : DESKTOP_W;
+  const logicalH = mobile ? PHONE_H : mode === 'tablet' ? 768 : DESKTOP_H;
   const bezel = mobile ? PHONE_BEZEL : DESKTOP_BEZEL;
   const outerW = logicalW + bezel * 2;
   const outerH = logicalH + bezel * 2;

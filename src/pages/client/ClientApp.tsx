@@ -1,3 +1,4 @@
+import { paletteInkFor } from '../../lib/theme/contrastGuidance';
 import { statusColorStyle, statusColorTokens } from '../../lib/orders/statusColors';
 import { CheckoutTrackingAction } from '../../components/client/CheckoutTrackingAction';
 import { reconcileOrderSeen } from '../../lib/customer/orderSeen';
@@ -2271,7 +2272,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                                 ? 'ring-2 ring-emerald-500 bg-emerald-50/40 border-emerald-400' 
                                 : 'border-gray-200/90 hover:border-gray-300'
                             } ${isOutOfStock ? 'opacity-70 bg-gray-50/60' : ''}`}
-                            style={{ borderRadius }}
+                            style={{ borderRadius, ...getSurfaceBackgroundStyle(activeTokens.backgrounds.card, activeTokens.palette.bgCard), color: 'var(--dc-text-main)', borderColor: 'var(--dc-border)' }}
                           >
                             {/* Imagem do Produto + Badges */}
                             <div className="relative w-full h-28 sm:h-32 rounded-xl overflow-hidden bg-gray-100 mb-2">
@@ -2288,7 +2289,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                               )}
 
                               {item.showDiscountBadge !== false && discountPct > 0 && (
-                                <span className="absolute top-1.5 left-1.5 bg-rose-600 text-white text-[9.5px] font-black uppercase px-2 py-0.5 rounded-full shadow-xs flex items-center gap-0.5">
+                                <span style={{ backgroundColor: 'var(--dc-accent)', color: paletteInkFor(activeTokens, activeTokens.palette.accent) }} className="absolute top-1.5 left-1.5 text-[9.5px] font-black uppercase px-2 py-0.5 rounded-full shadow-xs flex items-center gap-0.5">
                                   <Flame className="w-2.5 h-2.5 fill-current" />
                                   {discountPct}% OFF
                                 </span>
@@ -2305,11 +2306,11 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
                             {/* Detalhes do Produto */}
                             <div className="space-y-1 min-w-0 mb-2 flex-1">
-                              <h4 className="font-bold text-xs text-gray-900 leading-snug line-clamp-2" title={p.name}>
+                              <h4 style={{ color: 'var(--dc-text-title)' }} className="font-bold text-xs leading-snug line-clamp-2" title={p.name}>
                                 {p.name}
                               </h4>
                               {p.description && (
-                                <p className="text-[10px] text-gray-400 line-clamp-1">
+                                <p style={{ color: 'var(--dc-text-main)' }} className="text-[10px] line-clamp-1">
                                   {p.description}
                                 </p>
                               )}
@@ -2323,12 +2324,12 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                                     <span className="text-[10px] text-gray-400 line-through font-mono block leading-tight">
                                       {formatBRL(p.price)}
                                     </span>
-                                    <span className="font-extrabold text-xs sm:text-sm text-emerald-800 font-mono leading-tight">
+                                    <span style={{ color: 'var(--dc-promo-price)' }} className="font-extrabold text-xs sm:text-sm font-mono leading-tight">
                                       {formatBRL(item.promotionalPrice)}
                                     </span>
                                   </div>
                                 ) : (
-                                  <span className="font-extrabold text-xs sm:text-sm text-gray-900 font-mono">
+                                  <span style={{ color: 'var(--dc-price)' }} className="font-extrabold text-xs sm:text-sm font-mono">
                                     {formatBRL(p.price)}
                                   </span>
                                 )}
@@ -2353,7 +2354,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                                       type="button"
                                       onClick={() => handleAddToCart(p, campaignOrigin)}
                                       className="w-5 h-5 rounded text-white flex items-center justify-center cursor-pointer shadow-xs"
-                                      style={{ backgroundColor: buttonColor }}
+                                      style={{ backgroundColor: 'var(--dc-button-bg)', color: 'var(--dc-button-text)' }}
                                     >
                                       <Plus className="w-2.5 h-2.5" />
                                     </button>
@@ -2363,7 +2364,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                                     type="button"
                                     onClick={() => handleAddToCart(p, campaignOrigin)}
                                     className="h-6 px-2 rounded-lg text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-xs hover:opacity-95 transition-opacity"
-                                    style={{ backgroundColor: buttonColor }}
+                                    style={{ backgroundColor: 'var(--dc-button-bg)', color: 'var(--dc-button-text)' }}
                                   >
                                     <Plus className="w-3 h-3" />
                                     <span>Adicionar</span>
@@ -2382,13 +2383,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
           {/* Barra de Busca de Produtos */}
           <div className="relative">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--dc-icon-color)' }} />
             <input
               type="text"
               placeholder="Buscar produtos, bebidas ou petiscos..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9.5 pr-4 py-2.5 rounded-2xl border border-gray-200 text-xs bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full pl-9.5 pr-4 py-2.5 rounded-2xl border text-xs shadow-2xs focus:outline-none focus:ring-2"
+              style={{ color: 'var(--dc-text-main)', borderColor: 'var(--dc-border)', background: 'transparent' }}
             />
           </div>
 
@@ -2409,9 +2411,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                 }
 
                 if (isSelected) {
-                  base += 'bg-emerald-700 text-white shadow-xs ';
+                  base += 'shadow-xs ';
                 } else {
-                  base += 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 ';
+                  base += 'hover:opacity-90 ';
                 }
                 return base;
               };
@@ -2422,7 +2424,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                     onClick={() => setActiveCategory('ALL')}
                     className={getCatButtonClass(activeCategory === 'ALL')}
                     style={{
-                      backgroundColor: activeCategory === 'ALL' ? primaryColor : undefined,
+                      backgroundColor: 'var(--dc-category-bg)', color: 'var(--dc-text-title)', borderColor: activeCategory === 'ALL' ? 'var(--dc-icon-color)' : 'var(--dc-border)',
                       borderRadius: catStyle === 'tabs-underline' ? '0' : borderRadius,
                     }}
                   >
@@ -2434,7 +2436,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
                       onClick={() => setActiveCategory(c.id)}
                       className={getCatButtonClass(activeCategory === c.id)}
                       style={{
-                        backgroundColor: activeCategory === c.id ? primaryColor : undefined,
+                        backgroundColor: 'var(--dc-category-bg)', color: 'var(--dc-text-title)', borderColor: activeCategory === c.id ? 'var(--dc-icon-color)' : 'var(--dc-border)',
                         borderRadius: catStyle === 'tabs-underline' ? '0' : borderRadius,
                       }}
                     >

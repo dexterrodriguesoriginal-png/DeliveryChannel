@@ -1,7 +1,7 @@
 /**
- * Catálogo Oficial dos 150 Modelos de Vitrine DeliveryChannel
+ * Catálogo Oficial dos 500 Modelos de Vitrine DeliveryChannel
  * Composto deterministicamente através dos 4 eixos do Sistema de Design:
- * Paleta (150 paletas homologadas) × Layout (10 variações) × Tipografia (8 pares) × Estilo de Componentes (6 acabamentos).
+ * Paleta (500 paletas homologadas) × Layout (10 variações) × Tipografia (8 pares) × Estilo de Componentes (6 acabamentos).
  *
  * 100% dos modelos possuem conformidade estrita com WCAG AA, tokens version: 1
  * e tamanho serializado estritamente inferior a 16 KB.
@@ -9,6 +9,7 @@
 
 import { BackgroundStyleConfig, StoreTemplate, ThemeTokens } from '../../../types/theme';
 import { SEGMENTS } from './segments';
+import { EXPANDED_PALETTES } from './expandedPalettes';
 import {
   SEGMENT_PALETTES,
   buildPalette,
@@ -18,6 +19,7 @@ import {
   rgbToHsl,
   hslToHex,
   getLuminance,
+  ensureContrast,
 } from './palettes';
 import { STORE_LAYOUTS } from './layouts';
 import { TYPE_PAIRS } from './typePairs';
@@ -60,25 +62,33 @@ export function assembleTemplateTokens(
   variantIndex: number
 ): ThemeTokens {
   const p = buildPalette(palette.base, palette.mode);
+  const general = generalBackground(p.bgGeneral, palette.mode, variantIndex);
+  // Auxiliary copy also appears outside cards: validate every rendered text surface,
+  // including both gradient endpoints. This changes catalog defaults, never owner edits.
+  const textSurfaces = [p.bgGeneral, p.bgHeader, p.bgCard, p.bgMenu, p.categoryBg, ...(general.gradientColors || [])];
+  for (const key of ['textTitle', 'textMain', 'textSecondary'] as const) {
+    for (const surface of textSurfaces) p[key] = ensureContrast(p[key], surface, 4.5, palette.mode === 'dark' ? 'lighter' : 'darker');
+  }
 
   // Seleciona o layout baseado no segmento e no índice do modelo (0 a 5)
   // Garante diversidade visual rica em cada segmento
-  const layoutIdx = (variantIndex * 2 + (palette.mode === 'dark' ? 1 : 0)) % STORE_LAYOUTS.length;
+  const segmentIndex = SEGMENTS.findIndex(segment => segment.id === palette.segmentId);
+  const layoutIdx = (variantIndex * 2 + segmentIndex * 3 + (palette.segmentId === 'distribuidora' ? 7 : 0) + (palette.mode === 'dark' ? 1 : 0)) % STORE_LAYOUTS.length;
   const layout = STORE_LAYOUTS[layoutIdx].config;
 
   // Seleciona o par tipográfico apropriado
-  const typeIdx = (variantIndex + (palette.segmentId.charCodeAt(0) % 3)) % TYPE_PAIRS.length;
+  const typeIdx = (variantIndex + segmentIndex) % TYPE_PAIRS.length;
   const typo = TYPE_PAIRS[typeIdx].config;
 
   // Seleciona o estilo de componentes (raio de borda e sombra)
-  const compIdx = variantIndex % COMPONENT_STYLES.length;
+  const compIdx = (variantIndex + segmentIndex) % COMPONENT_STYLES.length;
   const comp = COMPONENT_STYLES[compIdx].config;
 
   return {
     version: 1,
     palette: p,
     backgrounds: {
-      general: generalBackground(p.bgGeneral, palette.mode, variantIndex),
+      general,
       header: {
         type: 'solid',
         color: p.bgHeader,
@@ -106,13 +116,13 @@ export function assembleTemplateTokens(
 }
 
 /**
- * Constrói os 150 modelos oficiais deterministicamente
+ * Constrói os 500 modelos oficiais deterministicamente
  */
 export function buildTemplateCatalog(): StoreTemplate[] {
   // Acompanhamento do índice por segmento para distribuir eixos uniformemente
   const segmentCounters: Record<string, number> = {};
 
-  return SEGMENT_PALETTES.map((pal) => {
+  return [...SEGMENT_PALETTES, ...EXPANDED_PALETTES].map((pal) => {
     const sId = pal.segmentId;
     const vIdx = segmentCounters[sId] || 0;
     segmentCounters[sId] = vIdx + 1;
@@ -214,14 +224,18 @@ export interface TemplateFilterOptions {
   mode?: 'light' | 'dark';
   q?: string;
   search?: string;
+  shade?: string;
+  includeRecolored?: boolean;
 }
 
 /**
  * Filtra templates por múltiplos critérios com geração automática de variante recolorida
  * para qualquer combinação segmento × colorFamily que não exista nativamente.
  */
+export const normalizeSearch = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
 export function filterTemplates(options: TemplateFilterOptions = {}): StoreTemplate[] {
-  const { segment, colorFamily, style, mode, q, search } = options;
+  const { segment, colorFamily, style, mode, q, search, shade, includeRecolored = true } = options;
 
   const normalizedSegment =
     segment && segment !== 'all' && segment !== 'Todos'
@@ -235,9 +249,11 @@ export function filterTemplates(options: TemplateFilterOptions = {}): StoreTempl
 
   const normalizedStyle = style ? style.toLowerCase().trim() : undefined;
   const rawQ = q || search;
-  const normalizedQ = rawQ ? rawQ.toLowerCase().trim() : undefined;
+  const normalizedQ = rawQ ? normalizeSearch(rawQ) : undefined;
 
-  // Filtragem inicial dos 150 modelos nativos
+  const matchesQuery = (tpl: StoreTemplate) => !normalizedQ || normalizeSearch([tpl.name, tpl.segmentLabel, tpl.segmentId, tpl.colorFamily, tpl.shade, ...tpl.style, tpl.mode === 'dark' ? 'escuro' : 'claro'].join(' ')).includes(normalizedQ);
+
+  // Filtragem inicial dos 500 modelos nativos
   let results = TEMPLATES.filter((tpl) => {
     // 1. Segmento
     if (normalizedSegment) {
@@ -263,22 +279,15 @@ export function filterTemplates(options: TemplateFilterOptions = {}): StoreTempl
       if (!hasStyle) return false;
     }
 
-    // 5. Busca textual livre
-    if (normalizedQ) {
-      const match =
-        tpl.name.toLowerCase().includes(normalizedQ) ||
-        tpl.segmentLabel.toLowerCase().includes(normalizedQ) ||
-        tpl.shade.toLowerCase().includes(normalizedQ) ||
-        tpl.style.some((s) => s.toLowerCase().includes(normalizedQ));
-      if (!match) return false;
-    }
+    if (shade && tpl.shade !== shade) return false;
+    if (!matchesQuery(tpl)) return false;
 
     return true;
   });
 
   // Requisito especial: Se houver filtro conjunto por segmento e colorFamily
   // e nenhuma combinação nativa existir, gera a variante recolorida determinística.
-  if (results.length === 0 && normalizedSegment && normalizedColorFamily) {
+  if (includeRecolored && results.length === 0 && normalizedSegment && normalizedColorFamily && Object.hasOwn(CANONICAL_FAMILY_BASES, normalizedColorFamily)) {
     const validSegment = SEGMENTS.find(
       (s) => s.id.toLowerCase() === normalizedSegment || s.label.toLowerCase() === normalizedSegment
     );
@@ -296,7 +305,7 @@ export function filterTemplates(options: TemplateFilterOptions = {}): StoreTempl
     }
   }
 
-  return results;
+  return results.filter(t => (!shade || t.shade === shade) && matchesQuery(t));
 }
 
 /**
