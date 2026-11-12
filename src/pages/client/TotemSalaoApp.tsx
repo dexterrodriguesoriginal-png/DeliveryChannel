@@ -63,8 +63,9 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [reorderHistory,setReorderHistory]=useState<{slug:string;generation:number;items:ReorderItem[]}>({slug:'',generation:-1,items:[]});
   const repeatGeneration=useRef(0);
-  const repeatScope=useRef(slug);
-  if(repeatScope.current!==slug){repeatScope.current=slug;repeatGeneration.current+=1;}
+  const deviceScope = `${slug}:${deviceToken || ''}`;
+  const repeatScope=useRef(deviceScope);
+  if(repeatScope.current!==deviceScope){repeatScope.current=deviceScope;repeatGeneration.current+=1;}
   const reorderItems=reorderHistory.slug===slug && reorderHistory.generation===repeatGeneration.current?reorderHistory.items:[];
   const [orderError, setOrderError] = useState('');
   const [orderBusy, setOrderBusy] = useState(false);
@@ -273,7 +274,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
     [orderLines],
   );
 
-  const idleEnabled = (view === 'MENU' || view === 'DONE') && !checkoutOpen;
+  const idleEnabled = (view === 'MENU' || view === 'DONE') && !orderBusy;
 
   const returnToCapa = useCallback(() => {
     repeatGeneration.current += 1;
@@ -288,6 +289,8 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
     paymentKey.current = null;
     setView('CAPA');
   }, []);
+
+  useEffect(() => { returnToCapa(); }, [slug, deviceToken, returnToCapa]);
 
   const finishOrder = useCallback(async () => {
     if (submitting.current || orderBusy) return;
@@ -311,10 +314,10 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
       if (result.paymentStatus === 'PAID' && result.pickupCode) setView('DONE');
       else setView('PAYMENT');
     } catch (reason) {
-      setOrderError(reason instanceof Error ? reason.message : 'Não foi possível registrar o pedido.');
+      if(generation===repeatGeneration.current) setOrderError(reason instanceof Error ? reason.message : 'Não foi possível registrar o pedido.');
     } finally {
       submitting.current = false;
-      setOrderBusy(false);
+      if(generation===repeatGeneration.current) setOrderBusy(false);
     }
   }, [cart, deviceToken, orderBusy, slug]);
 

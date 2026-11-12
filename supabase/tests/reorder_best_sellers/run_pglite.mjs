@@ -52,6 +52,25 @@ const history=(await db.query('SELECT get_session_reorder_items($1) items',[sess
 assert(history.every(i=>i.id!==`50000000-0000-0000-0000-${String(seq).padStart(12,'0')}`));
 assert.deepEqual(history.find(i=>i.id===mine).options,[{groupId:product(10),optionId:product(11),qty:2,fraction:0.5}]);
 assert.equal(history.find(i=>i.id===mine).notes,'Sem cebola');
+// Authorization must remain valid at the moment of each history lookup.
+for (const [disable,restore] of [
+ ["approved_at=NULL","approved_at=now()"],
+ ["ended_at=now()","ended_at=NULL"],
+ ["expires_at=now()-interval '1 second'","expires_at=now()+interval '1 hour'"],
+]) {
+ await db.exec(`UPDATE tab_sessions SET ${disable} WHERE id='${session}'`);
+ await assert.rejects(db.query('SELECT get_session_reorder_items($1)',[session]),/FORBIDDEN/);
+ await db.exec(`UPDATE tab_sessions SET ${restore} WHERE id='${session}'`);
+}
+await db.exec("UPDATE dining_tabs SET status='CLOSED'");
+await assert.rejects(db.query('SELECT get_session_reorder_items($1)',[session]),/FORBIDDEN/);
+await db.exec("UPDATE dining_tabs SET status='OPEN'");
+assert.equal((await db.query("SELECT relrowsecurity FROM pg_class WHERE oid='menu_best_seller_settings'::regclass")).rows[0].relrowsecurity,true);
+await db.exec('SET ROLE authenticated');
+await assert.rejects(db.query('SELECT * FROM menu_best_seller_settings'),/permission denied/);
+await assert.rejects(db.query('UPDATE menu_best_seller_settings SET enabled=false'),/permission denied/);
+await db.exec('RESET ROLE');
+assert.deepEqual((await db.query('SELECT * FROM get_menu_best_sellers($1)',[product(99)])).rows,[]);
 await db.exec(`SELECT set_config('test.uid','${stranger}',false)`);
 await assert.rejects(db.query('SELECT get_session_reorder_items($1)',[session]));
 await assert.rejects(db.query('SELECT set_menu_best_seller_settings($1,false,$2)',[tenant,[]]));

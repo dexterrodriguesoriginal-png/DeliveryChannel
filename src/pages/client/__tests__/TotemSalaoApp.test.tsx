@@ -158,7 +158,7 @@ describe('TotemSalaoApp', () => {
     }
   });
 
-  it('does not return to the capa while checkout review is open', async () => {
+  it('clears an abandoned checkout review after the inactivity warning', async () => {
     vi.useFakeTimers();
     try {
       render(<TotemSalaoApp slug="cafe-da-praca" />);
@@ -167,10 +167,12 @@ describe('TotemSalaoApp', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Adicionar Suco da casa' }));
       fireEvent.click(screen.getByTestId('totem-order-checkout'));
       expect(screen.getByTestId('totem-checkout-review')).toBeTruthy();
-      act(() => { vi.advanceTimersByTime(120000); });
-      expect(screen.getByTestId('totem-checkout-review')).toBeTruthy();
+      act(() => { vi.advanceTimersByTime(30000); });
+      expect(screen.getByText('Ainda está aí?')).toBeTruthy();
+      act(() => { vi.advanceTimersByTime(10000); });
+      expect(screen.queryByTestId('totem-checkout-review')).toBeNull();
       expect(screen.queryByText('Ainda está aí?')).toBeNull();
-      expect(screen.queryByTestId('totem-capa')).toBeNull();
+      expect(screen.getByTestId('totem-capa')).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }

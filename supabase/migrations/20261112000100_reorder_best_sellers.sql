@@ -87,6 +87,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE v_device uuid;v_tenant uuid;v_label text;v_existing uuid;v_order uuid;
  v_item jsonb;v_pid uuid;v_qty integer;v_name text;v_price numeric(10,2);
  v_total numeric(10,2):=0;v_notes text;v_timeout integer;v_provider text;v_result jsonb;
+ v_lines jsonb:='[]'::jsonb;v_line record;
 BEGIN
  SELECT d.o_device,d.o_tenant,d.o_label INTO v_device,v_tenant,v_label FROM public._totem_device_ok(p_token) d;
  IF p_idempotency_key IS NULL THEN RAISE EXCEPTION 'INVALID_TOTEM_ORDER: chave obrigatória' USING ERRCODE='22023'; END IF;
@@ -102,16 +103,23 @@ BEGIN
  IF jsonb_typeof(p_items) IS DISTINCT FROM 'array' OR jsonb_array_length(p_items) NOT BETWEEN 1 AND 50 THEN
   RAISE EXCEPTION 'INVALID_TOTEM_ORDER: 1 a 50 itens' USING ERRCODE='22023';
  END IF;
- CREATE TEMP TABLE IF NOT EXISTS _totem_order_lines(product_id uuid,product_name text,quantity integer,unit_price numeric(10,2),total_price numeric(10,2),notes text) ON COMMIT DROP;
- DELETE FROM _totem_order_lines;
- INSERT INTO _totem_order_lines
- SELECT x.r_product_id,x.r_name,x.r_quantity,x.r_unit_price,x.r_quantity*x.r_unit_price,x.r_notes
- FROM public._price_items(v_tenant,p_items,true) x;
- IF EXISTS(SELECT 1 FROM _totem_order_lines l JOIN public.products p ON p.id=l.product_id AND p.tenant_id=v_tenant
+ -- Price each cart line separately: repeated configurations may have different notes.
+ -- Keep intermediates local to this invocation of the SECURITY DEFINER function.
+ FOR v_item IN SELECT value FROM jsonb_array_elements(p_items) ORDER BY value->>'productId' LOOP
+  SELECT * INTO v_line FROM public._price_items(v_tenant,jsonb_build_array(v_item),true);
+  IF v_line.r_quantity>99 OR length(coalesce(v_line.r_notes,''))>200 THEN
+   RAISE EXCEPTION 'INVALID_TOTEM_ORDER: quantidade ou observação inválida' USING ERRCODE='22023';
+  END IF;
+  v_lines:=v_lines||jsonb_build_array(jsonb_build_object(
+   'product_id',v_line.r_product_id,'product_name',v_line.r_name,'quantity',v_line.r_quantity,
+   'unit_price',v_line.r_unit_price,'notes',v_line.r_notes,'input',v_item));
+  v_total:=v_total+v_line.r_quantity*v_line.r_unit_price;
+ END LOOP;
+ IF EXISTS(SELECT 1 FROM jsonb_to_recordset(v_lines) l(product_id uuid,quantity integer)
+ JOIN public.products p ON p.id=l.product_id AND p.tenant_id=v_tenant
  GROUP BY p.id,p.stock_quantity HAVING sum(l.quantity)>p.stock_quantity) THEN
   RAISE EXCEPTION 'OUT_OF_STOCK: item indisponível na quantidade solicitada.';
  END IF;
- SELECT sum(total_price) INTO v_total FROM _totem_order_lines;
  SELECT coalesce(timeout_seconds,240),coalesce(provider,'manual') INTO v_timeout,v_provider
  FROM public.totem_payment_settings WHERE tenant_id=v_tenant;
  v_timeout:=coalesce(v_timeout,240);v_provider:=coalesce(v_provider,'manual');
@@ -120,8 +128,17 @@ BEGIN
  INSERT INTO public.orders(tenant_id,customer_name,customer_phone,delivery_address,subtotal,delivery_fee,discount,total_amount,payment_method,payment_status,fulfillment_type,status,notes,origin,totem_device_id,idempotency_key,awaiting_online_payment)
  VALUES(v_tenant,'Totem','-','Totem do salão',v_total,0,0,v_total,'CASH','PENDING','PICKUP','PENDING','Aguardando pagamento na maquininha','direct',v_device,p_idempotency_key,true)
  RETURNING id INTO v_order;
- INSERT INTO public.order_items(order_id,product_id,product_name,quantity,unit_price,total_price,notes)
- SELECT v_order,product_id,product_name,quantity,unit_price,total_price,notes FROM _totem_order_lines;
+ FOR v_item IN SELECT value FROM jsonb_array_elements(v_lines) LOOP
+  -- The snapshot trigger must see only this line, including identical options
+  -- repeated with different notes or configurations with the same price.
+  PERFORM set_config('app.product_option_items',jsonb_build_array(v_item->'input')::text,true);
+  PERFORM set_config('app.product_option_used','[]',true);
+  INSERT INTO public.order_items(order_id,product_id,product_name,quantity,unit_price,total_price,notes)
+  VALUES(v_order,(v_item->>'product_id')::uuid,v_item->>'product_name',(v_item->>'quantity')::integer,
+   (v_item->>'unit_price')::numeric,(v_item->>'quantity')::integer*(v_item->>'unit_price')::numeric,v_item->>'notes');
+ END LOOP;
+ PERFORM set_config('app.product_option_items','',true);
+ PERFORM set_config('app.product_option_used','',true);
  INSERT INTO public.totem_payment_attempts(tenant_id,order_id,device_id,provider,amount,expires_at)
  VALUES(v_tenant,v_order,v_device,v_provider,v_total,now()+make_interval(secs=>v_timeout));
  RETURN public._totem_payment_response(v_order,v_device,v_tenant)||jsonb_build_object('idempotent',false);

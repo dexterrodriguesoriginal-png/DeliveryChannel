@@ -25,6 +25,7 @@ vi.mock('../../../../../repositories/totemAccessRepository', () => ({
 }));
 vi.mock('../../../../../repositories/productRepository', () => ({ productRepository: { getProducts: mocks.product } }));
 vi.mock('../../../../../repositories/categoryRepository', () => ({ categoryRepository: { getCategories: mocks.category } }));
+vi.mock('../BestSellersPanel', () => ({ BestSellersPanel: () => <section aria-label="Destaques do cardápio" /> }));
 vi.mock('../../../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: true }));
 vi.mock('../../ThemeEditorShell', () => ({ ThemeEditorShell: () => <label>Nome do app<input defaultValue="App original" /></label> }));
 import { DEFAULT_MENU_THEME, MENU_TEMPLATES } from '../../../../../lib/theme/menuTheme';
