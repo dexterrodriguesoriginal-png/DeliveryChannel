@@ -11,6 +11,7 @@ import { DEFAULT_MENU_THEME, MENU_COLOR_KEYS, MENU_FONTS, MENU_TEMPLATES, menuTh
 import { resolveSegment, sampleProducts } from '../../../../lib/theme/previewProducts';
 import { MenuThemePreview } from './MenuThemePreview';
 import { MenuOptionsPanel } from './MenuOptionsPanel';
+import { BestSellersPanel } from './BestSellersPanel';
 import { MenuHeaderPanel } from './MenuHeaderPanel';
 import { useBottomActionsOffset, useFloatingLeftOf } from '../../../../lib/ui/bottomActionsOffset';
 import '../themeEditor.css';
@@ -109,6 +110,7 @@ export function MenuThemeEditor({ tenant, active = true }: { tenant: Tenant; act
             <section className="menu-design-section"><div className="menu-design-section-title"><Type size={18} /><div><h2>Fonte e formato</h2><p>Detalhes que deixam o toque mais agradável.</p></div></div><div className="menu-design-format-grid"><label>Fonte<select className="theme-select" value={draft.fontFamily} onChange={event => update({ fontFamily: event.target.value })}>{MENU_FONTS.map(font => <option key={font}>{font}</option>)}</select></label><label>Cantos: {draft.radius} px<input type="range" aria-label="Arredondamento dos cantos" min="0" max="32" value={draft.radius} onChange={event => update({ radius: Number(event.target.value) })} /></label><label>Espaçamento<select className="theme-select" value={draft.layout} onChange={event => update({ layout: event.target.value as MenuTheme['layout'] })}><option value="comfortable">Confortável</option><option value="compact">Compacto</option></select></label></div></section>
           </fieldset>
         </>}
+        {!loading && <BestSellersPanel securityContext={securityContext} tenantId={tenant.id} />}
         {!loading && <MenuHeaderPanel securityContext={securityContext} tenantId={tenant.id} />}
         {!loading && <MenuOptionsPanel securityContext={securityContext} tenantId={tenant.id} slug={tenant.slug} />}
       </main>

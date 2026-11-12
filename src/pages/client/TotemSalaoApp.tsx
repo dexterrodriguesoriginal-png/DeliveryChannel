@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
 import { totemAccessRepository } from '../../repositories/totemAccessRepository';
@@ -23,6 +23,8 @@ import {
 } from '../../lib/menu/totemWelcome';
 import { safeHomeImageUrl } from '../../lib/storeHome/storeHome.model';
 import { TotemCapaScreen } from '../../components/client/totem/TotemCapaScreen';
+import { repeatItem, type ReorderItem } from '../../lib/customer/dineInReorder';
+import { reorderRepository } from '../../repositories/reorderRepository';
 import { DineInPremiumMenu } from '../../components/client/totem/DineInPremiumMenu';
 import { TotemKioskLayer } from '../../components/client/totem/TotemKioskLayer';
 import { TotemInstallOverlay } from '../../components/client/totem/TotemInstallOverlay';
@@ -38,6 +40,7 @@ import {
   changeDineInCartLineQuantity,
   dineInCartLineUnitPriceCents,
   dineInOptionLabels,
+  dineInRoundItems,
   type DineInCartLine,
 } from '../../lib/customer/dineInCart';
 import { validateOptionSelection } from '../../lib/addons';
@@ -58,6 +61,11 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
   const [totemDesign, setTotemDesign] = useState<TotemDesign>(DEFAULT_TOTEM_DESIGN);
   const [deviceToken, setDeviceToken] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [reorderHistory,setReorderHistory]=useState<{slug:string;generation:number;items:ReorderItem[]}>({slug:'',generation:-1,items:[]});
+  const repeatGeneration=useRef(0);
+  const repeatScope=useRef(slug);
+  if(repeatScope.current!==slug){repeatScope.current=slug;repeatGeneration.current+=1;}
+  const reorderItems=reorderHistory.slug===slug && reorderHistory.generation===repeatGeneration.current?reorderHistory.items:[];
   const [orderError, setOrderError] = useState('');
   const [orderBusy, setOrderBusy] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -265,9 +273,12 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
     [orderLines],
   );
 
-  const idleEnabled = view === 'MENU' && !checkoutOpen;
+  const idleEnabled = (view === 'MENU' || view === 'DONE') && !checkoutOpen;
 
   const returnToCapa = useCallback(() => {
+    repeatGeneration.current += 1;
+    setReorderHistory({slug:'',generation:-1,items:[]});
+    setOrderBusy(false);
     setCart([]);
     setOptionsProduct(null);
     setCheckoutOpen(false);
@@ -285,12 +296,15 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
     setOrderBusy(true);
     setOrderError('');
     paymentKey.current ??= newIdempotencyKey();
+    const generation=repeatGeneration.current;
     try {
       const result = await totemAccessRepository.createOrder(
         deviceToken,
-        cart.map(line => ({ productId: line.product.id, quantity: line.quantity, notes: line.notes })),
+        dineInRoundItems(cart),
         paymentKey.current,
       );
+      if(generation!==repeatGeneration.current) return;
+      setReorderHistory(previous => ({slug,generation,items:[...cart.map(line=>({id:`${result.orderId}:${line.key}`,productId:line.product.id,name:line.product.name,quantity:line.quantity,notes:line.notes||'',options:line.options,optionLabels:dineInOptionLabels(line.product,line.options)})),...(previous.slug===slug && previous.generation===generation?previous.items:[])]}));
       setPayment(result);
       setCheckoutOpen(false);
       setCart([]);
@@ -302,7 +316,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
       submitting.current = false;
       setOrderBusy(false);
     }
-  }, [cart, deviceToken, orderBusy]);
+  }, [cart, deviceToken, orderBusy, slug]);
 
   const cancelPayment = useCallback(async () => {
     if (!deviceToken || !payment?.orderId) return;
@@ -399,9 +413,21 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
           storeName={storeName}
           categories={categories}
           products={products}
+          reorderItems={reorderItems}
+          onRepeat={item=>{
+            const generation=repeatGeneration.current;
+            if(orderBusy) return;
+            setOrderBusy(true); setOrderError('');
+            void reorderRepository.product(slug,tenantId,item.productId).then(product=>{
+              if(generation!==repeatGeneration.current) return;
+              const next=repeatItem(cart,item,product);
+              setCart(next); setCheckoutOpen(true);
+            }).catch(reason=>{if(generation===repeatGeneration.current)setOrderError(reason instanceof Error?reason.message:'Não foi possível repetir o item.');})
+            .finally(()=>{if(generation===repeatGeneration.current)setOrderBusy(false);});
+          }}
           menuTheme={menuTheme}
           cartCount={cart.reduce((sum, line) => sum + line.quantity, 0)}
-          orderingDisabled={false}
+          orderingDisabled={orderBusy}
           productColumns={menuOptions.productColumns}
           outdoorSlides={outdoorSlides}
           categoryMenuMode={menuHeader.categoryMenuMode}
@@ -419,6 +445,8 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
           onOpenProduct={openProduct}
         />
       )}
+
+      {view === 'MENU' && orderError && <p role="alert" style={{position:'fixed',top:16,left:'10%',right:'10%',zIndex:80,padding:16,background:menuTheme.surface,color:menuTheme.text}}>{orderError}</p>}
 
       {view === 'PAYMENT' && payment && (
         <main className="dc-totem-done" data-testid="totem-payment-wait" style={{ background: menuTheme.background, color: menuTheme.text }}>
@@ -445,6 +473,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
           <p>Não é documento fiscal</p>
           {printFailed && <p>A impressão automática não foi concluída.</p>}
           <button type="button" onClick={() => { try { window.print(); } catch { setPrintFailed(true); } }} style={{ background: menuTheme.accent, color: menuTheme.accentText }}>Imprimir comprovante</button>
+          <button type="button" onClick={()=>{paymentKey.current=null;setPayment(null);setView('MENU');}} style={{background:menuTheme.accent,color:menuTheme.accentText}}>Continuar pedindo</button>
           <button type="button" data-testid="totem-new-order" style={{ background: menuTheme.accent, color: menuTheme.accentText }} onClick={returnToCapa}>Novo pedido</button>
         </main>
       )}
