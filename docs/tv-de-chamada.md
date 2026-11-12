@@ -18,8 +18,8 @@ Aplicar, quando autorizado pelo responsável pelo ambiente, `supabase/migrations
 - Tabelas `tv_devices`, `tv_pairing_codes`, `tv_pairing_attempts` e `tv_access_audit`: RLS ligada, sem políticas ou privilégios diretos para anon/authenticated.
 - RPCs SECURITY DEFINER com `search_path=''` e privilégios explícitos. Administração reutiliza `_totem_require_manager`, restrito a OWNER/MANAGER da loja.
 - Token aleatório de 256 bits, SHA-256 no banco, separado dos tokens do totem. A RPC `tv_read` não aceita tenant/order ID: deriva a loja exclusivamente do token, valida revogação e loja ativa em cada leitura.
-- Pareamento serializado por origem e código para uso único e contagem concorrente. Cinco falhas bloqueiam novos pareamentos por dez minutos desde o início da janela. Resultados de erro são retornados como JSON para preservar contador e auditoria na transação.
-- Origem: `cf-connecting-ip`, com fallback para o último salto de `x-forwarded-for`. O gateway Supabase/proxy deve sobrescrever esses cabeçalhos; sem endereço, usa um único bucket compartilhado. Nunca recebe IP/identificador de limite como argumento da RPC.
+- Pareamento serializado por origem e código para uso único e contagem concorrente. Cinco falhas por origem ou trinta falhas globais bloqueiam novos pareamentos por dez minutos desde o início da respectiva janela. O teto global independe dos cabeçalhos e também limita ataques distribuídos; sob ataque, novas ativações por código podem ficar indisponíveis até o fim da janela, sem afetar TVs já ativas ou ativação autenticada. Tentativas já bloqueadas não geram novas linhas de auditoria. Resultados de erro são retornados como JSON para preservar contador e auditoria na transação.
+- Origem: `cf-connecting-ip`, com fallback para o último salto de `x-forwarded-for`. O gateway Supabase/proxy deve sobrescrever esses cabeçalhos; sem endereço, usa um único bucket compartilhado. Nunca recebe IP/identificador de limite como argumento da RPC. Cabeçalhos são apenas uma barreira adicional: mesmo se falsificados, não contornam o teto global.
 - Auditoria registra emissão de código, ativação, revogação e falha; inclui ator quando autenticado. Não grava tokens/códigos em claro nem credenciais de funcionário.
 - Payload: `ok`, nome da loja, campos visuais explicitamente selecionados e `entries` com `code`, `name` (primeiro nome opcional), `kind` (pronto/chamado). Não retorna IDs de pedidos/clientes, telefone, endereço, itens ou valores. Totens prontos exigem pagamento PAID; chamados pelo QR respeitam janela de trinta minutos e pedidos abertos.
 - Cores derivadas do motor central de tema. A TV não usa cores literais. `/chamada` também recebe fundos/textos do tema e botão de tela cheia.
@@ -28,11 +28,12 @@ Aplicar, quando autorizado pelo responsável pelo ambiente, `supabase/migrations
 ## Validação
 
 ```sh
-npm install --no-save --package-lock=false
-npm run lint
-npm run build
+bun install
+bun x tsc --noEmit
 node supabase/tests/tv_access/run_pglite.mjs
-npm test -- src/components/pickup/__tests__ src/repositories/__tests__/tvAccessRepository.test.ts
+node supabase/tests/totem_access/run_pglite.mjs
+node supabase/tests/entrega3/run_pglite.mjs
+bun run test
 ```
 
 PGlite aplica as migrações reais do padrão de totem e desta funcionalidade sobre fixtures isoladas. Cobre pareamento, validade, expiração, reuso, hash, token inválido/revogado, outra loja, perfis, cinco falhas, desbloqueio, auditoria, RLS/privilégios, minimização dos dados, notificações vazias, rollback e reaplicação. Os doubles de criptografia e transporte realtime vêm das fixtures; o teste não prova comportamento de rede do Supabase hospedado.
@@ -44,3 +45,16 @@ Smoke no Chromium com RPCs simuladas: abrir `/tv` sem sessão, parear, conferir 
 ## Rollback
 
 `supabase/rollback/20261110000400_tv_device_access_down.sql` remove apenas triggers, funções e tabelas desta funcionalidade, preservando pedidos, fila, temas e acesso do totem. Invalida todos os dispositivos de TV e remove o histórico de auditoria específico da TV; exportar esse histórico antes caso seja necessário retê-lo. Reverter o frontend junto para não apresentar uma rota sem backend.
+
+## Revisão do PR #43 — 12/11/2026
+
+Achados corrigidos na branch `feat/tv-device-access`:
+
+- Rate limit dependia exclusivamente da origem declarada em cabeçalhos. Acrescentado teto global de trinta falhas em dez minutos, serializado no banco e testado com rotação dos dois cabeçalhos de IP. Requisições já bloqueadas não ampliam a auditoria indefinidamente.
+- Campos de ativação e QR administrativo ainda dependiam de cores padrão do navegador/componente. Agora usam a paleta do motor de tema; o painel recebe o tema da loja.
+- Teste estrutural de Marketing não aceitava o novo painel de TV na aba. Atualizado para conferir os dois componentes e a autorização OWNER/MANAGER.
+- Runner PGlite do totem usava dependência e fixture em `/tmp/pglite`. Agora usa a dependência instalada e a fixture versionada.
+
+Validação final: `bun install`, `tsc --noEmit`, Vitest completo (**303 arquivos, 2.501 testes aprovados**) e os três runners PGlite (`tv_access`, `totem_access`, `entrega3`) aprovados. Os testes da TV também verificam SECURITY DEFINER/search_path, bloqueio de SELECT/DELETE para anon/authenticated, prontos pagos, chamados expirados, fila encerrada e loja inativa. Smoke Chromium com RPCs simuladas aprovado: pareamento, tema, persistência/reload e revogação por polling, sem erros JavaScript.
+
+Veredito: **APROVADO após as correções**. Validação hospedada de gateway, pgcrypto e transporte realtime não foi realizada; PGlite usa doubles dessas integrações. Nenhuma migração aplicada a banco remoto, merge ou deploy.

@@ -1,4 +1,4 @@
-import { PGlite } from '/tmp/pglite/node_modules/@electric-sql/pglite/dist/index.js';
+import { PGlite } from '@electric-sql/pglite';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,7 +11,7 @@ const M1 = read('supabase/migrations/20261109000100_cardapio_capa_menu.sql');
 const M2 = read('supabase/migrations/20261109000200_totem_salao_capa.sql');
 const M3 = read('supabase/migrations/20261109000300_totem_access_and_design.sql');
 const R3 = read('supabase/rollback/20261109000300_totem_access_and_design_down.sql');
-const stub = fs.readFileSync('/tmp/pglite/stub.sql', 'utf8');
+const stub = read('supabase/tests/entrega3/stub.sql');
 const extra = fs.readFileSync(path.join(here, 'stub_extra.sql'), 'utf8');
 
 const T = '11111111-1111-1111-1111-111111111111';

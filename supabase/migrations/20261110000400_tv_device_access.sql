@@ -58,8 +58,20 @@ END $$;
 
 CREATE FUNCTION public.tv_pair(p_code text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-DECLARE h jsonb; forwarded text[]; subject text; a public.tv_pairing_attempts%ROWTYPE; c public.tv_pairing_codes%ROWTYPE; token text; device uuid;
+DECLARE global_subject text:=public._sha256_hex('tv-pair-global'); global_attempt public.tv_pairing_attempts%ROWTYPE; h jsonb; forwarded text[]; subject text; a public.tv_pairing_attempts%ROWTYPE; c public.tv_pairing_codes%ROWTYPE; token text; device uuid;
 BEGIN
+ -- Limite global independente de cabeçalhos fornecidos pelo cliente. O lock
+ -- serializa as tentativas e impede bypass por rotação/spoofing de origem.
+ INSERT INTO public.tv_pairing_attempts(subject_hash,reset_at)
+ VALUES(global_subject,now()+interval '10 minutes') ON CONFLICT DO NOTHING;
+ SELECT * INTO global_attempt FROM public.tv_pairing_attempts WHERE subject_hash=global_subject FOR UPDATE;
+ IF global_attempt.reset_at<=now() THEN
+  UPDATE public.tv_pairing_attempts SET failures=0,reset_at=now()+interval '10 minutes' WHERE subject_hash=global_subject;
+  global_attempt.failures:=0;
+ END IF;
+ IF global_attempt.failures>=30 THEN
+  RETURN jsonb_build_object('ok',false,'reason','RATE_LIMITED');
+ END IF;
  h:=COALESCE(NULLIF(current_setting('request.headers',true),'')::jsonb,'{}'::jsonb);
  -- O gateway deve sobrescrever os cabeçalhos de origem. No fallback XFF usamos
  -- o último salto, impedindo contornar o limite ao prefixar endereços arbitrários.
@@ -73,13 +85,12 @@ BEGIN
   a.failures:=0;
  END IF;
  IF a.failures>=5 THEN
-  INSERT INTO public.tv_access_audit(event) VALUES('PAIRING_FAILED');
   RETURN jsonb_build_object('ok',false,'reason','RATE_LIMITED');
  END IF;
  SELECT * INTO c FROM public.tv_pairing_codes WHERE code_hash=public._sha256_hex(p_code) FOR UPDATE;
  IF p_code IS NULL OR p_code !~ '^[0-9]{6}$' OR c.tenant_id IS NULL OR c.used_at IS NOT NULL OR c.expires_at<=now()
  OR NOT EXISTS(SELECT 1 FROM public.tenants WHERE id=c.tenant_id AND status='ACTIVE') THEN
-  UPDATE public.tv_pairing_attempts SET failures=failures+1 WHERE subject_hash=subject;
+  UPDATE public.tv_pairing_attempts SET failures=failures+1 WHERE subject_hash IN (subject,global_subject);
   INSERT INTO public.tv_access_audit(tenant_id,event) VALUES(c.tenant_id,'PAIRING_FAILED');
   RETURN jsonb_build_object('ok',false,'reason','INVALID_CODE');
  END IF;

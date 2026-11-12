@@ -36,6 +36,7 @@ export function TvScreen() {
     return () => { disposed = true; off(); window.clearInterval(timer); };
   }, [token]);
   const palette = themeToTokens(data?.theme).palette;
+  const inputStyle = { borderColor: palette.border, background: palette.bgCard, color: palette.textMain };
   return <main className="min-h-screen p-6" style={{ background: palette.bgGeneral, color: palette.textMain }}>
     <header className="flex justify-between items-center" style={{ background: palette.bgHeader, color: palette.textTitle }}>
       <h1 className="text-3xl font-black">{data?.storeName || 'TV de chamada'}</h1>
@@ -50,13 +51,13 @@ export function TvScreen() {
     }}>
       <button type="button" onClick={() => { setStaff(!staff); setPassword(''); }}>{staff ? 'Usar código de pareamento' : 'Ativar com conta de dono ou gerente'}</button>
       {staff ? <>
-        <label>Identificador da loja <input required value={slug} onChange={e => setSlug(e.target.value)} className="border p-2" /></label>
-        <label>Nome da TV <input required maxLength={40} value={label} onChange={e => setLabel(e.target.value)} className="border p-2" /></label>
-        <label>E-mail <input type="email" required autoComplete="off" value={email} onChange={e => setEmail(e.target.value)} className="border p-2" /></label>
-        <label>Senha <input type="password" required autoComplete="off" value={password} onChange={e => setPassword(e.target.value)} className="border p-2" /></label>
+        <label>Identificador da loja <input style={inputStyle} required value={slug} onChange={e => setSlug(e.target.value)} className="border p-2" /></label>
+        <label>Nome da TV <input style={inputStyle} required maxLength={40} value={label} onChange={e => setLabel(e.target.value)} className="border p-2" /></label>
+        <label>E-mail <input style={inputStyle} type="email" required autoComplete="off" value={email} onChange={e => setEmail(e.target.value)} className="border p-2" /></label>
+        <label>Senha <input style={inputStyle} type="password" required autoComplete="off" value={password} onChange={e => setPassword(e.target.value)} className="border p-2" /></label>
         <p>A conta é usada uma única vez. A TV guarda apenas seu token de exibição.</p>
       </> : <><label htmlFor="tv-code">Código de pareamento</label>
-      <input id="tv-code" inputMode="numeric" autoComplete="off" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} className="border rounded-xl p-3 text-2xl" style={{ borderColor: palette.border, background: palette.bgCard }} /></>}
+      <input id="tv-code" inputMode="numeric" autoComplete="off" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} className="border rounded-xl p-3 text-2xl" style={inputStyle} /></>}
       <button disabled={busy || (!staff && code.length !== 6)} className="rounded-xl p-3" style={{ background: palette.buttonBg, color: palette.buttonText }}>{busy ? 'Ativando...' : 'Ativar TV'}</button>
       <p>No painel da loja, acesse Marketing → QR Code de Retirada → TV de chamada → Ativar nova TV. O código vale por 10 minutos e só pode ser usado uma vez.</p>
     </form> : data ? <>

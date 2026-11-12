@@ -1626,7 +1626,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
       )}
 
       {activeTab === 'pickup-qr' && pickupQrTabVisible && activeTenant?.id && (<>
-        {(activeRole === 'OWNER' || activeRole === 'MANAGER') && <TvAdminPanel key={activeTenant.id} tenantId={activeTenant.id} />}
+        {(activeRole === 'OWNER' || activeRole === 'MANAGER') && <TvAdminPanel key={activeTenant.id} tenantId={activeTenant.id} theme={activeTenant.theme} />}
         <ArrivalQrMarketingCard tenantId={activeTenant.id} storeName={activeTenant.name}
           canManage={activeRole === 'OWNER' || activeRole === 'MANAGER'} />
       </>)}

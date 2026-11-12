@@ -23,7 +23,7 @@ export const tvAccessRepository = {
   async pair(code: string): Promise<string> {
     const { data, error } = await tvClient.rpc('tv_pair', { p_code: code });
     if (error) throw new Error('Não foi possível conectar. Tente novamente.');
-    if (!data?.ok) throw new Error(data?.reason === 'RATE_LIMITED' ? 'Pareamento bloqueado após 5 tentativas. Aguarde 10 minutos.' : 'Código inválido, expirado ou já utilizado.');
+    if (!data?.ok) throw new Error(data?.reason === 'RATE_LIMITED' ? 'Limite de pareamento atingido (5 tentativas por origem ou limite compartilhado). Aguarde 10 minutos.' : 'Código inválido, expirado ou já utilizado.');
     try { localStorage.setItem(key, data.token); } catch { throw new Error('Permita o armazenamento neste navegador para ativar a TV.'); }
     return data.token;
   },
