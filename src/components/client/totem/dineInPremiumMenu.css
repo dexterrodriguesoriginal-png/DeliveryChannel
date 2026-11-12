@@ -2062,7 +2062,7 @@ IMPORTANTE:
 }
 .dc-kiosk .dc-kiosk-nav-label { white-space: nowrap; overflow-wrap: normal; }
 @media (max-width: 699px) {
-  .dc-kiosk .dc-kiosk-category { padding: 8px 4px 7px !important; gap: 4px !important; }
+  .dc-kiosk .dc-kiosk-category { padding: 8px 4px 7px !important; gap: 10px !important; }
   .dc-kiosk .dc-kiosk-category-visual { width: 34px; height: 34px; }
   .dc-kiosk .dc-kiosk-nav-label { font-size: clamp(10.5px, 3vw, 12.5px) !important; }
   .dc-kiosk .dc-kiosk-nav-icon svg { width: 22px !important; height: 22px !important; }

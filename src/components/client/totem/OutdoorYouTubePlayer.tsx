@@ -5,7 +5,6 @@ export const OUTDOOR_YOUTUBE_FALLBACK_SECONDS = 60;
 
 type Player = {
   getDuration(): number;
-  getCurrentTime(): number;
   mute(): void;
   playVideo(): void;
   destroy(): void;
@@ -20,21 +19,40 @@ type YouTubeWindow = Window & {
   onYouTubeIframeAPIReady?: () => void;
 };
 
-let apiPromise: Promise<void> | undefined;
-function loadAPI(): Promise<void> {
+const apiListeners = new Set<() => void>();
+let pendingScript: HTMLScriptElement | undefined;
+let resetAPI: (() => void) | undefined;
+function loadAPI(ready: () => void): () => void {
   const host = window as YouTubeWindow;
-  if (host.YT?.Player) return Promise.resolve();
-  if (!apiPromise) {
-    apiPromise = new Promise<void>((resolve, reject) => {
-      const previous = host.onYouTubeIframeAPIReady;
-      host.onYouTubeIframeAPIReady = () => { previous?.(); resolve(); };
-      const script = document.createElement('script');
-      script.src = 'https://www.youtube.com/iframe_api';
-      script.onerror = () => { apiPromise = undefined; script.remove(); reject(new Error('Não foi possível carregar o YouTube.')); };
-      document.head.appendChild(script);
-    });
+  if (host.YT?.Player) { ready(); return () => {}; }
+  apiListeners.add(ready);
+  if (!pendingScript) {
+    const previous = host.onYouTubeIframeAPIReady;
+    const script = document.createElement('script');
+    pendingScript = script;
+    const reset = () => {
+      if (host.onYouTubeIframeAPIReady === callback) host.onYouTubeIframeAPIReady = previous;
+      script.onerror = null;
+      script.remove();
+      pendingScript = undefined;
+      resetAPI = undefined;
+    };
+    const callback = () => {
+      const listeners = [...apiListeners];
+      apiListeners.clear();
+      reset();
+      try { previous?.(); } finally { listeners.forEach(listener => listener()); }
+    };
+    resetAPI = reset;
+    host.onYouTubeIframeAPIReady = callback;
+    script.src = 'https://www.youtube.com/iframe_api';
+    script.onerror = () => { apiListeners.clear(); reset(); };
+    document.head.appendChild(script);
   }
-  return apiPromise;
+  return () => {
+    apiListeners.delete(ready);
+    if (!apiListeners.size) resetAPI?.();
+  };
 }
 
 /** A API controla a duração; 60 s protegem o carrossel quando ela falha. */
@@ -47,9 +65,9 @@ export function OutdoorYouTubePlayer({ youtubeId, onEnded, loop = false, ...prop
   const advance = useRef(onEnded);
   advance.current = onEnded;
   useEffect(() => {
+    const element = frame.current;
     let disposed = false;
     let finished = false;
-    let durationKnown = false;
     let player: Player | undefined;
     const finish = () => {
       if (disposed || finished) return;
@@ -65,15 +83,14 @@ export function OutdoorYouTubePlayer({ youtubeId, onEnded, loop = false, ...prop
     const useDuration = (target: Player) => {
       const duration = target.getDuration();
       if (Number.isFinite(duration) && duration > 0) {
-        durationKnown = true;
         window.clearTimeout(timer);
-        if (!loop) timer = window.setTimeout(finish, Math.max(0, duration - target.getCurrentTime()) * 1000);
+        // ENDED is authoritative: buffering must never shorten the video.
       }
     };
-    loadAPI().then(() => {
-      if (disposed || !frame.current) return;
+    const unsubscribe = loadAPI(() => {
+      if (disposed || finished || !frame.current) return;
       const host = window as YouTubeWindow;
-      player = new host.YT!.Player(frame.current, { events: {
+      try { player = new host.YT!.Player(frame.current, { events: {
         onReady: ({ target }) => {
           if (disposed) return;
           target.mute(); target.playVideo(); useDuration(target);
@@ -83,12 +100,20 @@ export function OutdoorYouTubePlayer({ youtubeId, onEnded, loop = false, ...prop
           if (data === 0) {
             if (loop) { target.playVideo(); } else finish();
           } else if (data === 1) useDuration(target);
-          else if (durationKnown && (data === 2 || data === 3)) window.clearTimeout(timer);
         },
         onError: fallback,
-      } });
-    }).catch(() => { /* O temporizador inicial mantém o fallback sem a API. */ });
-    return () => { disposed = true; window.clearTimeout(timer); player?.destroy(); };
+      } }); } catch { fallback(); }
+    });
+    return () => {
+      disposed = true;
+      unsubscribe();
+      window.clearTimeout(timer);
+      // YouTube removes the iframe; restore React's node for cleanup/StrictMode replay.
+      const parent = element?.parentNode;
+      const sibling = element?.nextSibling;
+      player?.destroy();
+      if (element && parent && element.parentNode !== parent) parent.insertBefore(element, sibling ?? null);
+    };
   }, [youtubeId, loop]);
   const src = `${youTubeEmbedUrl(youtubeId).replace(/&loop=1&playlist=[^&]+/, loop ? `&loop=1&playlist=${youtubeId}` : '')}&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
   return <iframe {...props} ref={frame} src={src} allow="autoplay; encrypted-media; picture-in-picture" />;
