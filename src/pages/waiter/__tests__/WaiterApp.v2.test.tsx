@@ -107,6 +107,7 @@ import { WaiterApp } from '../WaiterApp';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  h.realtimeOrders = null;
   h.auth.supabaseUser = null;
   h.auth.activeTenant = null;
   h.auth.activeRole = null;
@@ -231,8 +232,10 @@ describe('Garçom v2 — Login simples e Modos de atendimento', () => {
       // The second round can finish preparation before the next snapshot arrives.
       h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [first, second] } as never);
       h.realtimeOrders?.();
-      await waitFor(() => expect(table.getAttribute('data-status')).toBe('READY'));
-      expect(table.style.getPropertyValue('--sc-bg')).toBe('#a855f7');
+      // Initial assignment loading may remount the table. Read the current DOM,
+      // rather than asserting on a detached node captured before that refresh.
+      await waitFor(() => expect(screen.getByTestId('salon-table-t-1').getAttribute('data-status')).toBe('READY'));
+      expect(screen.getByTestId('salon-table-t-1').style.getPropertyValue('--sc-bg')).toBe('#a855f7');
       expect(screen.getByTestId('waiter-counter-alert').textContent).toContain('1 pedido pronto');
       expect(h.readySound).toHaveBeenCalledTimes(1);
       h.realtimeOrders?.();
@@ -246,11 +249,11 @@ describe('Garçom v2 — Login simples e Modos de atendimento', () => {
       for (const [status, color] of [['PENDING', 'NEW_ORDER'], ['PREPARING', 'PREPARING'], ['READY', 'READY']]) {
         h.salonStaff.snapshot.mockResolvedValue({ ...base, rounds: [...history, { ...third, status }] } as never);
         h.realtimeOrders?.();
-        await waitFor(() => expect(table.getAttribute('data-status')).toBe(color));
+        await waitFor(() => expect(screen.getByTestId('salon-table-t-1').getAttribute('data-status')).toBe(color));
       }
       expect(screen.getByTestId('waiter-counter-alert').textContent).toContain('1 pedido pronto');
       expect(h.readySound).toHaveBeenCalledTimes(2);
-      fireEvent.click(table);
+      fireEvent.click(screen.getByTestId('salon-table-t-1'));
       const deliver = screen.getByRole('button', { name: 'Entregue' }) as HTMLButtonElement;
       expect(deliver.disabled).toBe(true);
       expect(deliver.title).toBe('Aguardando balcão');

@@ -1,3 +1,4 @@
+import { captchaToken } from '../lib/turnstile';
 import { createClient } from '@supabase/supabase-js';
 import { supabase, supabaseUrl } from '../lib/supabase';
 import type { TenantTheme } from '../types';
@@ -30,7 +31,8 @@ export const tvAccessRepository = {
   async activateAsStaff(slug: string, label: string, email: string, password: string): Promise<string> {
     // Autenticação somente em memória, sem alterar a sessão administrativa deste navegador.
     const staffClient = createTvClient();
-    const { error: loginError } = await staffClient.auth.signInWithPassword({ email: email.trim(), password });
+    const token = await captchaToken('login');
+    const { error: loginError } = await staffClient.auth.signInWithPassword({ email: email.trim(), password, ...(token ? { options: { captchaToken: token } } : {}) });
     if (loginError) throw new Error('E-mail ou senha inválidos.');
     try {
       const { data, error } = await staffClient.rpc('tv_activate_as_staff', { p_slug: slug, p_label: label });

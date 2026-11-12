@@ -13,6 +13,7 @@ const base = { storeName: 'Adega Show', primaryColor: '#15803d' } as any;
 
 describe('Prévia = réplica do app real do cliente', () => {
   it('embute /app/<slug>?preview=1 numa moldura de celular 390 px com toggle mantido', () => {
+    const errors = vi.spyOn(console, 'error');
     const ui = render(<LiveStorePreview theme={base} storeSlug="adegashow" />);
     const frame = ui.getByTestId('store-replica-frame') as HTMLIFrameElement;
     expect(frame.getAttribute('src')).toBe('/app/adegashow?preview=1');
@@ -20,6 +21,9 @@ describe('Prévia = réplica do app real do cliente', () => {
     expect(ui.getByTestId('preview-mode-mobile')).toBeTruthy();
     expect(ui.getByTestId('preview-mode-desktop')).toBeTruthy();
     expect(ui.queryByTestId('preview-general-surface')).toBeNull();
+    expect(frame.contentWindow).toBeTruthy();
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
   });
 
   it('mudar a cor no editor reflete na prévia sem salvar (postMessage do rascunho)', () => {
