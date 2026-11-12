@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { captchaToken, protectedFetch, ANTIBOT_LIMIT_MESSAGE, friendlyAuthProtectionError } from '../turnstile';
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); document.body.innerHTML = ''; });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); document.body.innerHTML = ''; });
 describe('proteção opcional contra robôs', () => {
   it('sem chave mantém a requisição e não cria widget nem script', async () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '');
@@ -27,6 +27,24 @@ describe('proteção opcional contra robôs', () => {
   it('traduz bloqueios e falha de captcha do Supabase Auth', () => {
     expect(friendlyAuthProtectionError({status:429,message:'rate limit'})).toBe(ANTIBOT_LIMIT_MESSAGE);
     expect(friendlyAuthProtectionError({code:'captcha_failed',message:'verification failed'})).toMatch('Não foi possível verificar');
+  });
+  it('permite nova tentativa quando o script não emite load nem error', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'key');
+    vi.stubGlobal('turnstile', undefined);
+    const scripts: HTMLScriptElement[] = [];
+    vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T): T => {
+      scripts.push(node as unknown as HTMLScriptElement); return node;
+    });
+    const first = expect(captchaToken('login')).rejects.toThrow('Não foi possível verificar');
+    await vi.advanceTimersByTimeAsync(15000);
+    await first;
+    expect(document.body.children).toHaveLength(0);
+    const retry = captchaToken('login');
+    expect(scripts).toHaveLength(2);
+    const rejection = expect(retry).rejects.toThrow('Não foi possível verificar');
+    scripts[1].dispatchEvent(new Event('error'));
+    await rejection;
   });
   it('preserva mensagem de negócio das RPCs legadas com retorno UUID', async () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '');
@@ -56,7 +74,7 @@ describe('proteção opcional contra robôs', () => {
     expect(new Headers(fetch.mock.calls[0][1].headers).get('x-turnstile-token')).toBe('new-token');
     expect(new Headers(fetch.mock.calls[0][1].headers).get('authorization')).toBe('Bearer user');
     render.mockClear();
-    for (const rpc of ['totem_submit_order', 'dine_in_submit_order', 'validate_coupon']) await protectedFetch(`https://example.test/rest/v1/rpc/${rpc}`);
+    for (const rpc of ['create_totem_order', 'totem_activate', 'enter_table', 'submit_round', 'validate_coupon']) await protectedFetch(`https://example.test/rest/v1/rpc/${rpc}`);
     expect(render).not.toHaveBeenCalled();
   });
   it('mostra mensagem de bloqueio amigável em português', async () => {

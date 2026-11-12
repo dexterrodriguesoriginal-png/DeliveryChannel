@@ -14,10 +14,22 @@ function loadWidget(): Promise<WidgetAPI> {
   if (existing) return Promise.resolve(existing);
   if (!loading) loading = new Promise<WidgetAPI>((resolve, reject) => {
     const script = document.createElement('script');
+    const fail = () => {
+      clearTimeout(timeout);
+      script.remove();
+      reject(new Error(CAPTCHA_MESSAGE));
+    };
+    // A blocked/stalled script may never emit load or error. Release the shared
+    // promise so a later attempt can load it again instead of timing out forever.
+    const timeout = setTimeout(fail, 15000);
     script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
     script.async = true;
-    script.onload = () => (window as any).turnstile ? resolve((window as any).turnstile) : reject(new Error(CAPTCHA_MESSAGE));
-    script.onerror = () => { script.remove(); reject(new Error(CAPTCHA_MESSAGE)); };
+    script.onload = () => {
+      clearTimeout(timeout);
+      if ((window as any).turnstile) resolve((window as any).turnstile);
+      else fail();
+    };
+    script.onerror = fail;
     document.head.appendChild(script);
   }).catch(error => { loading = undefined; throw error; });
   return loading!;

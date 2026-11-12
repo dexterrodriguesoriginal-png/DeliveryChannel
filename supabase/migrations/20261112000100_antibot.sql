@@ -1,7 +1,7 @@
 -- Proposta: não aplicar automaticamente em produção.
 BEGIN;
 CREATE SCHEMA IF NOT EXISTS private;
-REVOKE ALL ON SCHEMA private FROM PUBLIC,anon,authenticated;
+-- Do not change ACLs of a pre-existing shared private schema.
 CREATE TABLE private.antibot_config (
  singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
  allowed_hostnames text[] NOT NULL DEFAULT '{}',
@@ -23,18 +23,18 @@ CREATE INDEX antibot_audit_created ON public.antibot_audit(created_at);
 ALTER TABLE private.antibot_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.antibot_counters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.antibot_audit ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON private.antibot_config,public.antibot_counters,public.antibot_audit FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON private.antibot_config,public.antibot_counters,public.antibot_audit FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON SEQUENCE public.antibot_audit_id_seq FROM PUBLIC,anon,authenticated,service_role;
 GRANT SELECT ON public.antibot_audit TO authenticated;
 CREATE POLICY antibot_platform_read ON public.antibot_audit FOR SELECT TO authenticated USING (
  EXISTS(SELECT 1 FROM public.tenant_users tu WHERE tu.user_id=auth.uid() AND tu.status='ACTIVE' AND tu.role_id IN ('CEO','SUPER_ADMIN'))
 );
-GRANT ALL ON public.antibot_counters,public.antibot_audit TO service_role;
 
 CREATE FUNCTION private.antibot_cleanup() RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path='' AS $$
  DELETE FROM public.antibot_counters WHERE reset_at < clock_timestamp() - interval '1 day';
  DELETE FROM public.antibot_audit WHERE created_at < clock_timestamp() - interval '30 days';
 $$;
-REVOKE ALL ON FUNCTION private.antibot_cleanup() FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION private.antibot_cleanup() FROM PUBLIC,anon,authenticated,service_role;
 
 CREATE FUNCTION private.antibot_guard(operation text, identifier text, checkout boolean) RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
@@ -53,9 +53,10 @@ BEGIN
  ip_hash := public._sha256_hex(config.hash_secret || ':ip:' || ip);
  PERFORM private.antibot_cleanup();
  -- All identities are salted hashes; e-mail/phone/IP never enter persisted records.
- FOR subject IN SELECT DISTINCT x FROM unnest(ARRAY[ip_hash,
+ -- Gate the IP first: blocked clients cannot grow counters by rotating phones.
+ FOR subject IN SELECT x FROM (SELECT DISTINCT x FROM unnest(ARRAY[ip_hash,
    CASE WHEN nullif(trim(identifier),'') IS NOT NULL THEN public._sha256_hex(config.hash_secret || ':id:' || lower(trim(identifier))) END,
-   CASE WHEN auth.uid() IS NOT NULL THEN public._sha256_hex(config.hash_secret || ':user:' || auth.uid()::text) END]) x WHERE x IS NOT NULL ORDER BY x
+   CASE WHEN auth.uid() IS NOT NULL THEN public._sha256_hex(config.hash_secret || ':user:' || auth.uid()::text) END]) x WHERE x IS NOT NULL) subjects ORDER BY (x<>ip_hash),x
  LOOP
    INSERT INTO public.antibot_counters AS c(scope,subject_hash,attempts,reset_at)
    VALUES(CASE WHEN checkout THEN 'checkout' ELSE 'coupon' END,subject,1,clock_timestamp()+interval '10 minutes')
@@ -63,7 +64,7 @@ BEGIN
      attempts=CASE WHEN c.reset_at<=clock_timestamp() THEN 1 ELSE least(c.attempts+1,1000000) END,
      reset_at=CASE WHEN c.reset_at<=clock_timestamp() THEN clock_timestamp()+interval '10 minutes' ELSE c.reset_at END
    RETURNING attempts INTO n;
-   IF n > (CASE WHEN checkout THEN 20 ELSE 60 END) THEN allowed:=false; END IF;
+   IF n > (CASE WHEN checkout THEN 20 ELSE 60 END) THEN allowed:=false; EXIT; END IF;
  END LOOP;
  IF NOT allowed THEN reason:='RATE_LIMITED';
  ELSIF checkout AND nullif(secret,'') IS NOT NULL THEN
@@ -88,13 +89,13 @@ BEGIN
  END IF;
  RETURN reason;
 END $$;
-REVOKE ALL ON FUNCTION private.antibot_guard(text,text,boolean) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION private.antibot_guard(text,text,boolean) FROM PUBLIC,anon,authenticated,service_role;
 
 -- Keep the exact public signatures, defaults and ACLs. Save full definitions for rollback.
 -- Private copies retain all existing business validations; wrappers count even failed business calls.
 CREATE TABLE private.antibot_originals(signature text PRIMARY KEY, definition text NOT NULL, private_signature text NOT NULL);
 ALTER TABLE private.antibot_originals ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON private.antibot_originals FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON private.antibot_originals FROM PUBLIC,anon,authenticated,service_role;
 DO $install$
 DECLARE f record; args text; identifier text; result_expr text; body text; copied text;
 BEGIN
@@ -109,6 +110,7 @@ BEGIN
      ELSE 'coalesce(nullif(current_setting(''request.jwt.claims'',true),'''')::jsonb->>''email'',auth.uid()::text)' END;
    copied := replace(f.definition,'FUNCTION public.' || f.proname || '(', 'FUNCTION private.antibot_' || f.proname || '(');
    EXECUTE copied;
+   EXECUTE format('ALTER FUNCTION private.antibot_%I(%s) SET search_path TO ''''',f.proname,f.identity_args);
    EXECUTE format('REVOKE ALL ON FUNCTION private.antibot_%I(%s) FROM PUBLIC,anon,authenticated,service_role',f.proname,f.identity_args);
    INSERT INTO private.antibot_originals VALUES(format('public.%I(%s)',f.proname,f.identity_args),f.definition,format('private.antibot_%I(%s)',f.proname,f.identity_args));
    result_expr:=CASE WHEN f.result_type='jsonb' THEN 'jsonb_build_object(''code'',reason,''message'',message)' ELSE 'NULL' END;

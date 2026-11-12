@@ -97,6 +97,10 @@ PostgREST por proxy que preserve esses headers de clientes sem sobrescrevê-los.
 Bloqueios repetidos do mesmo IP/operação/motivo são agregados por janela de
 10 minutos, com contagem, para limitar o crescimento da auditoria.
 Contadores vencidos há mais de um dia são removidos; auditoria dura 30 dias.
+O limite de IP é verificado antes dos identificadores: um IP já bloqueado não
+consegue criar novos contadores variando o telefone. As funções privadas usam
+`search_path` vazio; os objetos novos revogam inclusive grants herdados por
+privilégios padrão. O schema `private`, se já existir, mantém suas permissões.
 
 `public.antibot_audit` registra operação, motivo, hash do IP e horário, sem token,
 e-mail, telefone ou conteúdo do pedido. Somente CEO/SUPER_ADMIN ativo consegue
@@ -114,10 +118,19 @@ pelas RPCs de pedidos. A tabela nova audita os bloqueios de checkout/cupom.
 ## Como testar
 
 ```sh
-npx vitest run src/lib/__tests__/turnstile.test.ts
-node supabase/tests/antibot/run_pglite.mjs
+bun install
 npx tsc --noEmit
+npx vitest run --maxWorkers=4 --testTimeout=30000
+node supabase/tests/antibot/run_pglite.mjs
+node supabase/tests/entrega3/run_pglite.mjs
+node supabase/tests/totem_access/run_pglite.mjs
+node supabase/tests/tv_access/run_pglite.mjs
 ```
+
+A configuração Vitest mantém iframes e `contentWindow`, mas impede a navegação
+dos frames e requisições externas. Isso evita os erros de iframe desabilitado do
+Happy DOM 21 sem ocultar erros de aplicação. O carregador Turnstile tem timeout
+próprio de 15 segundos e permite nova tentativa quando o script fica sem resposta.
 
 O PGlite usa funções de negócio e HTTP isoladas como doubles: valida instalação,
 limites, falhas atômicas, persistência, limpeza, RLS, bypass direto, host/ação e
