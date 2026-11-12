@@ -36,7 +36,7 @@ CREATE FUNCTION extensions.http_post(text,text,text) RETURNS TABLE(content text)
 const originalQuery="select oid::regprocedure::text signature,pg_get_functiondef(oid) definition,proacl::text acl from pg_proc where pronamespace='public'::regnamespace and proname in ('process_checkout_atomic','process_checkout_atomic_v2','process_checkout_atomic_v3','process_promotional_checkout_atomic','validate_coupon') order by 1";
 const originals=await q(originalQuery);
 const schemaAcl=(await q("select nspacl::text acl from pg_namespace where nspname='private'"))[0].acl;
-await db.exec(read('supabase/migrations/20261112000100_antibot.sql'));
+await db.exec(read('supabase/migrations/20261112000200_antibot.sql'));
 assert.equal((await q("select nspacl::text acl from pg_namespace where nspname='private'"))[0].acl,schemaAcl,'shared schema grants are preserved');
 assert.equal((await q("select count(*)::int n from pg_proc where pronamespace='private'::regnamespace and prosecdef and not coalesce(proconfig @> ARRAY['search_path=\"\"'],false)"))[0].n,0,'every private SECURITY DEFINER has an empty fixed search_path');
 const headers = async (ip,token) => db.query("select set_config('request.headers',$1,false),set_config('response.status','200',false)",[JSON.stringify({'x-real-ip':ip,...(token?{'x-turnstile-token':token}:{})})]);
@@ -100,7 +100,7 @@ await db.exec('RESET ROLE');
 await db.exec("insert into public.tenant_users values('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','ACTIVE','CEO'); select set_config('test.uid','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',false); SET ROLE authenticated");
 assert.ok((await q('select count(*)::int n from public.antibot_audit'))[0].n>0);
 await db.exec('RESET ROLE');
-await db.exec(read('supabase/rollback/20261112000100_antibot.sql'));
+await db.exec(read('supabase/rollback/20261112000200_antibot.sql'));
 assert.deepEqual(await q(originalQuery),originals);
 assert.equal((await q("select nspacl::text acl from pg_namespace where nspname='private'"))[0].acl,schemaAcl);
 assert.equal((await call('restored')).ok,true);

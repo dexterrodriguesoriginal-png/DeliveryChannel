@@ -20,7 +20,7 @@ a valer quando a migração for aplicada, independentemente do captcha.
 
 Em staging primeiro, depois em uma janela de ativação controlada:
 
-1. Revise/aplique `supabase/migrations/20261112000100_antibot.sql` pelo processo
+1. Revise/aplique `supabase/migrations/20261112000200_antibot.sql` pelo processo
    habitual de migrações. Ela não exige Turnstile, Vault, http ou cron habilitados
    para funcionar com captcha desligado.
 2. No Supabase **Database → Extensions**, habilite `http` no schema `extensions`.
@@ -148,7 +148,7 @@ próxima publicação. Os limites continuam ativos. Não desabilite apenas o cli
 enquanto o servidor exigir tokens.
 
 Para rollback estrutural, revise/execute
-`supabase/rollback/20261112000100_antibot.sql`: restaura todas as definições
+`supabase/rollback/20261112000200_antibot.sql`: restaura todas as definições
 originais completas, remove as tabelas e funções deste recurso e cancela o cron.
 Não faça rollback após outra migração redefinir as mesmas RPCs sem conciliar as
 definições primeiro. A extensão `http` e o secret Vault não são apagados pelo
