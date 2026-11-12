@@ -1916,6 +1916,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isPreviewBypass,
   ]);
 
+  if (import.meta.env.PROD && !isSupabaseConfigured) {
+    return (
+      <div role="alert" className="min-h-screen flex items-center justify-center p-6 text-center">
+        Configuração do sistema ausente — contate o suporte
+      </div>
+    );
+  }
+
   return (
     <AuthContext.Provider
       value={{
