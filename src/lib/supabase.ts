@@ -1,3 +1,4 @@
+import { protectedFetch } from './turnstile';
 import { createClient } from '@supabase/supabase-js';
 import { resolvePublicConfig } from '../config/publicConfig';
 
@@ -31,7 +32,7 @@ export const supabase = createClient(
       },
     },
     global: {
-      fetch: (...args) => fetch(...args),
+      fetch: protectedFetch,
     },
   }
 );

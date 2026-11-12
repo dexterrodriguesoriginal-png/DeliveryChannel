@@ -1,3 +1,4 @@
+import { captchaToken, friendlyAuthProtectionError } from '../lib/turnstile';
 import { LEGAL_VERSION } from '../lib/legal/documents';
 import { AUTH_STORE_KEY, rememberAuthStore } from '../lib/auth/storeEmailBranding';
 import { clearDeviceSessionStorage, signOutSupabaseSession } from '../lib/auth/deviceLogout';
@@ -1234,13 +1235,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithPassword = async (email: string, password: string): Promise<{ success: boolean; error?: string; code?: 'EMAIL_NOT_CONFIRMED' }> => {
     setAuthError(null);
     try {
+      const token = await captchaToken('login');
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
+        ...(token ? { options: { captchaToken: token } } : {}),
       });
 
       if (error) {
-        let friendlyMessage = error.message;
+        let friendlyMessage = friendlyAuthProtectionError(error);
         if (isInvalidCredentialsError(error)) {
           friendlyMessage = INVALID_CREDENTIALS_MSG;
         } else if (isEmailNotConfirmedError(error)) {
@@ -1292,6 +1295,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: cleanEmail,
         password,
         options: {
+          captchaToken: await captchaToken('signup'),
           emailRedirectTo: redirectUrl,
           data: {
             name,
@@ -1303,7 +1307,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        let friendlyMsg = error.message;
+        let friendlyMsg = friendlyAuthProtectionError(error);
         if (
           error.message.toLowerCase().includes('already registered') || 
           error.message.toLowerCase().includes('already in use')
@@ -1406,10 +1410,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const resetPassword = async (email: string) => {
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        captchaToken: await captchaToken('recovery'),
         redirectTo: window.location.origin,
       });
       if (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: friendlyAuthProtectionError(error) };
       }
       return { success: true };
     } catch (err: any) {

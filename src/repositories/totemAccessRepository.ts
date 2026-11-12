@@ -1,3 +1,4 @@
+import { captchaToken } from '../lib/turnstile';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { requireBackend } from '../lib/backend';
 import type { SecurityContext } from '../services/securityEngine';
@@ -176,7 +177,8 @@ export const totemAccessRepository = {
   },
 
   async activateAsStaff(slug: string, deviceLabel: string, email: string, password: string): Promise<TotemActivateResult> {
-    const { error: signError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    const token = await captchaToken('login');
+    const { error: signError } = await supabase.auth.signInWithPassword({ email: email.trim(), password, ...(token ? { options: { captchaToken: token } } : {}) });
     if (signError) throw new Error('E-mail ou senha do dono/gerente inválidos.');
     try {
       const { data, error } = await supabase.rpc('totem_activate_as_staff', { p_slug: slug, p_device_label: deviceLabel });
