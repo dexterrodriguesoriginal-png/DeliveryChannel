@@ -18,7 +18,9 @@ describe('Marketing pickup QR tab', () => {
   it('card lives only inside the new tab, right after Materiais & QR Code', () => {
     const src = readFileSync(new URL('../../pages/establishment/MarketingPage.tsx', import.meta.url), 'utf8');
     expect(src.match(/<ArrivalQrMarketingCard/g)).toHaveLength(1);
-    expect(src).toMatch(/activeTab === 'pickup-qr' && pickupQrTabVisible && activeTenant\?\.id && \(\s*<ArrivalQrMarketingCard/);
+    const pickupTab = src.match(/activeTab === 'pickup-qr' && pickupQrTabVisible && activeTenant\?\.id && \(\s*<>([\s\S]*?)<\/>\s*\)}/)?.[1];
+    expect(pickupTab).toContain('<ArrivalQrMarketingCard');
+    expect(pickupTab).toMatch(/activeRole === 'OWNER' \|\| activeRole === 'MANAGER'\) && <TvAdminPanel/);
     expect(src.indexOf('QR Code de Retirada')).toBeGreaterThan(src.indexOf('Materiais & QR Code'));
   });
 });

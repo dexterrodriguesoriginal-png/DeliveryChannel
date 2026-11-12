@@ -1,0 +1,20 @@
+-- Revoga acesso da TV antes de remover objetos exclusivos desta migração.
+BEGIN;
+DROP TRIGGER IF EXISTS tv_refresh_names ON public.store_arrival_qr;
+DROP TRIGGER IF EXISTS tv_refresh_theme ON public.tenant_themes;
+DROP TRIGGER IF EXISTS tv_refresh_devices ON public.tv_devices;
+DROP TRIGGER IF EXISTS tv_refresh_orders ON public.orders;
+DROP TRIGGER IF EXISTS tv_refresh_arrivals ON public.pickup_arrivals;
+DROP FUNCTION IF EXISTS public._tv_notify_refresh();
+DROP FUNCTION IF EXISTS public.tv_read(text);
+DROP FUNCTION IF EXISTS public.tv_pair(text);
+DROP FUNCTION IF EXISTS public.tv_activate_as_staff(text,text);
+DROP FUNCTION IF EXISTS public.admin_create_tv_code(uuid,text);
+DROP FUNCTION IF EXISTS public.admin_list_tvs(uuid);
+DROP FUNCTION IF EXISTS public.admin_revoke_tv(uuid,uuid);
+DROP TABLE IF EXISTS public.tv_access_audit;
+DROP TABLE IF EXISTS public.tv_pairing_attempts;
+DROP TABLE IF EXISTS public.tv_pairing_codes;
+DROP TABLE IF EXISTS public.tv_devices;
+NOTIFY pgrst,'reload schema';
+COMMIT;

@@ -1,0 +1,140 @@
+import { PGlite } from '@electric-sql/pglite';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const read = p => fs.readFileSync(new URL(`../../../${p}`, import.meta.url), 'utf8');
+const db = new PGlite();
+const T = '11111111-1111-1111-1111-111111111111';
+const O = '22222222-2222-2222-2222-222222222222';
+const query = async (sql, params=[]) => (await db.query(sql, params)).rows;
+const rpc = async (fn, args=[]) => (await query(`select public.${fn}(${args.map((_,i)=>'$'+(i+1)).join(',')}) j`, args))[0].j;
+await db.exec(read('supabase/tests/entrega3/stub.sql'));
+await db.exec(read('supabase/migrations/20261109000100_cardapio_capa_menu.sql'));
+await db.exec(read('supabase/migrations/20261109000200_totem_salao_capa.sql'));
+await db.exec(read('supabase/tests/totem_access/stub_extra.sql'));
+await db.exec(read('supabase/migrations/20261109000300_totem_access_and_design.sql'));
+await db.exec(`
+CREATE TABLE public.store_arrival_qr(tenant_id uuid PRIMARY KEY,show_name_on_tv boolean DEFAULT false);
+INSERT INTO public.store_arrival_qr VALUES('${T}',false),('${O}',true);
+CREATE TABLE public.pickup_arrivals(order_id uuid PRIMARY KEY,tenant_id uuid,pickup_code text,called_at timestamptz,closed_at timestamptz);
+CREATE SCHEMA realtime;
+CREATE TABLE realtime.test_events(payload jsonb,event text,topic text,private boolean);
+CREATE FUNCTION realtime.send(jsonb,text,text,boolean) RETURNS void LANGUAGE sql AS $$ INSERT INTO realtime.test_events VALUES($1,$2,$3,$4) $$;
+`);
+await db.exec(read('supabase/migrations/20261110000400_tv_device_access.sql'));
+const role = async r => { await db.exec('delete from public.caller'); if(r) await db.query(`insert into public.caller(uid,role,tenant_id) values('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',$1,$2)`,[r,T]); };
+await role('OWNER');
+const code = await rpc('admin_create_tv_code',[T,'TV principal']);
+assert.match(code.code,/^\d{6}$/);
+assert.ok(Math.abs(new Date(code.expiresAt)-Date.now()-600000)<5000);
+await role(null);
+const activated = await rpc('tv_pair',[code.code]);
+assert.equal(activated.ok,true);
+assert.match(activated.token,/^[a-f0-9]{64}$/);
+assert.equal((await query('select token_hash from public.tv_devices'))[0].token_hash === activated.token,false);
+assert.equal((await rpc('tv_pair',[code.code])).reason,'INVALID_CODE');
+console.log('PASS pareamento, duração, hash e uso único');
+await role('OWNER');
+const expired = await rpc('admin_create_tv_code',[T,'Expirada']);
+await db.query(`update public.tv_pairing_codes set expires_at=now()-interval '1 second' where code_hash=public._sha256_hex($1)`,[expired.code]);
+await role(null);
+assert.equal((await rpc('tv_pair',[expired.code])).reason,'INVALID_CODE');
+console.log('PASS código expirado');
+await db.query(`insert into public.orders(id,tenant_id,customer_name,customer_phone,delivery_address,subtotal,total_amount,payment_method,payment_status,fulfillment_type,status)
+ values('10000000-0000-0000-0000-000000000001',$1,'  Maria   Silva','telefone-secreto','endereço-secreto',99,99,'CASH','PAID','PICKUP','READY'),
+ ('10000000-0000-0000-0000-000000000002',$2,'Outra Pessoa','telefone-outra','endereço-outra',99,99,'CASH','PAID','PICKUP','READY')`,[T,O]);
+await db.query(`insert into public.pickup_arrivals values('10000000-0000-0000-0000-000000000001',$1,'123',now(),null),('10000000-0000-0000-0000-000000000002',$2,'999',now(),null)`,[T,O]);
+let feed=await rpc('tv_read',[activated.token]);
+assert.deepEqual(feed.entries,[{code:'123',name:null,kind:'called'}]);
+await db.query('update public.store_arrival_qr set show_name_on_tv=true where tenant_id=$1',[T]);
+feed=await rpc('tv_read',[activated.token]);
+assert.deepEqual(feed.entries,[{code:'123',name:'Maria',kind:'called'}]);
+assert.deepEqual(Object.keys(feed).sort(),['entries','ok','storeName','theme']);
+assert.ok(!/Silva|secreto|999|total_amount|customer_phone|order_id/.test(JSON.stringify(feed)));
+assert.equal((await rpc('tv_read',['bad'])).reason,'DEVICE_INVALID');
+assert.ok((await query('select last_seen_at from public.tv_devices'))[0].last_seen_at);
+console.log('PASS token inválido, isolamento de loja, último acesso, só senha/primeiro nome');
+// Totem só fica pronto com pagamento confirmado; chamados antigos/fechados saem.
+await db.query(`insert into public.totem_devices(id,tenant_id,activated_by,activation_kind,label,token_hash)
+ values('33333333-3333-3333-3333-333333333333',$1,'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','STAFF','Totem',repeat('a',64))`,[T]);
+await db.query(`insert into public.orders(id,tenant_id,customer_name,customer_phone,delivery_address,subtotal,total_amount,payment_method,payment_status,fulfillment_type,status,totem_device_id)
+ values('10000000-0000-0000-0000-000000000003',$1,'Cliente Totem','sigilo','sigilo',42,42,'CASH','PAID','PICKUP','READY','33333333-3333-3333-3333-333333333333')`,[T]);
+await db.query(`insert into public.pickup_arrivals values('10000000-0000-0000-0000-000000000003',$1,'456',null,null)`,[T]);
+assert.equal((await rpc('tv_read',[activated.token])).entries.find(e=>e.code==='456').kind,'ready');
+await db.exec("update public.orders set payment_status='PENDING' where id='10000000-0000-0000-0000-000000000003'");
+assert.ok(!(await rpc('tv_read',[activated.token])).entries.some(e=>e.code==='456'));
+await db.query("update public.pickup_arrivals set called_at=now()-interval '31 minutes' where tenant_id=$1",[T]);
+assert.deepEqual((await rpc('tv_read',[activated.token])).entries,[]);
+await db.exec("update public.orders set payment_status='PAID' where id='10000000-0000-0000-0000-000000000003'");
+await db.query("update public.pickup_arrivals set closed_at=now() where tenant_id=$1",[T]);
+assert.deepEqual((await rpc('tv_read',[activated.token])).entries,[]);
+await db.query("update public.tenants set status='INACTIVE' where id=$1",[T]);
+assert.equal((await rpc('tv_read',[activated.token])).reason,'DEVICE_INVALID');
+await db.query("update public.tenants set status='ACTIVE' where id=$1",[T]);
+console.log('PASS prontos pagos, expiração de chamados, encerramento e loja inativa');
+await role('OPERATOR');
+await assert.rejects(()=>rpc('admin_list_tvs',[T]),/FORBIDDEN/);
+await assert.rejects(()=>rpc('admin_create_tv_code',[T,'TV']),/FORBIDDEN/);
+await assert.rejects(()=>rpc('tv_activate_as_staff',['loja','TV']),/FORBIDDEN/);
+await role('OWNER');
+await assert.rejects(()=>rpc('admin_list_tvs',[O]),/FORBIDDEN/);
+await assert.rejects(()=>rpc('tv_activate_as_staff',['outra','TV']),/FORBIDDEN/);
+const staff=await rpc('tv_activate_as_staff',['loja','TV gerente']);
+assert.equal(staff.ok,true);
+assert.equal((await rpc('tv_read',[staff.token])).ok,true);
+const devices=await rpc('admin_list_tvs',[T]);
+await assert.rejects(()=>rpc('admin_revoke_tv',[O,devices[0].id]),/FORBIDDEN/);
+await rpc('admin_revoke_tv',[T,devices.find(d=>d.label==='TV principal').id]);
+assert.equal((await rpc('tv_read',[activated.token])).reason,'DEVICE_INVALID');
+console.log('PASS autorização admin, ativação staff, revogação imediata e revogação em outra loja bloqueada');
+await db.exec('delete from public.tv_pairing_attempts');
+await role('OWNER');
+const afterLock=await rpc('admin_create_tv_code',[T,'Depois do bloqueio']);
+await role(null);
+for(let i=0;i<5;i++) assert.equal((await rpc('tv_pair',['errado'])).reason,'INVALID_CODE');
+assert.equal((await rpc('tv_pair',[afterLock.code])).reason,'RATE_LIMITED');
+assert.ok((await query('select failures from public.tv_pairing_attempts')).every(r=>r.failures===5));
+assert.ok((await query("select count(*)::int n from public.tv_access_audit where event='PAIRING_FAILED'"))[0].n>=7);
+await db.exec(`update public.tv_pairing_attempts set reset_at=now()-interval '1 second'`);
+assert.equal((await rpc('tv_pair',[afterLock.code])).ok,true);
+console.log('PASS cinco falhas persistem, bloqueio, auditoria e desbloqueio após janela');
+// Cabeçalhos arbitrários não podem remover a barreira global de força bruta.
+await db.exec('delete from public.tv_pairing_attempts');
+for(let i=0;i<30;i++) {
+ await db.query("select set_config('request.headers',$1,false)", [JSON.stringify({'cf-connecting-ip':`198.51.100.${i}`, 'x-forwarded-for':`203.0.113.${i}`})]);
+ assert.equal((await rpc('tv_pair',['errado'])).reason,'INVALID_CODE');
+}
+await role('OWNER');
+const globallyLocked = await rpc('admin_create_tv_code',[T,'Limite global']);
+await role(null);
+await db.query("select set_config('request.headers',$1,false)", [JSON.stringify({'cf-connecting-ip':'192.0.2.99'})]);
+assert.equal((await rpc('tv_pair',[globallyLocked.code])).reason,'RATE_LIMITED');
+await db.exec(`update public.tv_pairing_attempts set reset_at=now()-interval '1 second'`);
+assert.equal((await rpc('tv_pair',[globallyLocked.code])).ok,true);
+console.log('PASS limite global resiste à rotação de cabeçalhos e expira corretamente');
+
+for(const table of ['tv_devices','tv_pairing_codes','tv_pairing_attempts','tv_access_audit']) {
+ assert.equal((await query(`select relrowsecurity from pg_class where oid=$1::regclass`,['public.'+table]))[0].relrowsecurity,true);
+ for(const databaseRole of ['anon','authenticated']) {
+  await db.exec(`set role ${databaseRole}`);
+  await assert.rejects(()=>query(`select * from public.${table}`),/permission denied/);
+  await assert.rejects(()=>query(`delete from public.${table}`),/permission denied/);
+  await db.exec('reset role');
+ }
+
+}
+const functions = await query(`select p.proname,p.prosecdef,p.proconfig from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+ where n.nspname='public' and p.proname in ('admin_create_tv_code','tv_pair','tv_activate_as_staff','admin_list_tvs','admin_revoke_tv','tv_read','_tv_notify_refresh')`);
+assert.equal(functions.length,7);
+assert.ok(functions.every(f=>f.prosecdef && f.proconfig.includes('search_path=""')));
+await db.exec('set role anon');
+await assert.rejects(()=>rpc('admin_create_tv_code',[T,'TV']),/permission denied/);
+assert.equal((await rpc('tv_read',[staff.token])).ok,true);
+await db.exec('reset role');
+assert.ok((await query('select * from realtime.test_events')).every(r=>JSON.stringify(r.payload)==='{}' && /^tv-[a-f0-9]{64}$/.test(r.topic)));
+console.log('PASS RLS, anon sem acesso direto, RPC pública e realtime sem dados');
+await db.exec(read('supabase/rollback/20261110000400_tv_device_access_down.sql'));
+assert.equal((await query("select to_regclass('public.tv_devices') t"))[0].t,null);
+assert.equal((await query('select count(*)::int n from public.orders'))[0].n,3);
+await db.exec(read('supabase/migrations/20261110000400_tv_device_access.sql'));
+console.log('PASS rollback preserva pedidos e permite reaplicar');
+await db.close();

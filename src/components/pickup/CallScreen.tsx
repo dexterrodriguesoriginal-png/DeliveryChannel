@@ -5,18 +5,14 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { contrastRatio, themeToTokens } from '../../lib/theme/themeEngine';
 
-function inkOn(background: string): string {
-  return contrastRatio('#ffffff', background) >= contrastRatio('#0f172a', background) ? '#ffffff' : '#0f172a';
-}
-
 /** /chamada: tela cheia para TV/tablet com os códigos chamados (sem nomes). */
 export const CallScreen: React.FC<{ tenantId: string; storeName: string }> = ({ tenantId, storeName }) => {
   const { activeTenant } = useAuth();
   const palette = themeToTokens(activeTenant?.id === tenantId ? activeTenant.theme : null).palette;
   const readyTone = useMemo(() => {
     const background = palette.accent || palette.buttonBg;
-    return { background, color: inkOn(background) };
-  }, [palette.accent, palette.buttonBg]);
+    return { background, color: [palette.buttonText, palette.textMain, palette.textTitle].sort((a, b) => contrastRatio(b, background) - contrastRatio(a, background))[0] };
+  }, [palette]);
   const [rows, setRows] = useState<ArrivalRow[] | null>([]);
   const [ready, setReady] = useState<string[]>([]);
   const load = useCallback(() => { void Promise.all([arrivalRepository.listOpen(tenantId), arrivalRepository.listReadyTotem(tenantId)]).then(([open, codes]) => { setRows(open); setReady(codes); }).catch(() => {}); }, [tenantId]);
@@ -37,12 +33,12 @@ export const CallScreen: React.FC<{ tenantId: string; storeName: string }> = ({ 
     });
   }, [showName, codes.join(',')]);
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col p-6" data-testid="call-screen" onDoubleClick={() => document.documentElement.requestFullscreen?.().catch(() => {})}>
+    <div className="min-h-screen flex flex-col p-6" style={{ background: palette.bgGeneral, color: palette.textMain }} data-testid="call-screen" onDoubleClick={() => document.documentElement.requestFullscreen?.().catch(() => {})}>
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-black">{storeName}</h1>
-        <span className="text-slate-400 text-sm">Toque duas vezes para tela cheia</span>
+        <button className="rounded-xl p-3" style={{ background: palette.buttonBg, color: palette.buttonText }} onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})}>Tela cheia</button>
       </div>
-      {rows === null ? <p className="mt-10 text-xl text-slate-400">Fila de retirada ainda não ativada nesta loja.</p> : (
+      {rows === null ? <p className="mt-10 text-xl">Fila de retirada ainda não ativada nesta loja.</p> : (
         <>
           <h2 className="mt-8 text-2xl font-bold" style={{ color: readyTone.background }}>Prontos para retirada</h2>
           {ready.length > 0 && (
@@ -51,10 +47,10 @@ export const CallScreen: React.FC<{ tenantId: string; storeName: string }> = ({ 
             </div>
           )}
           <h2 className="mt-8 text-2xl font-bold">Chamados pelo QR</h2>
-          {codes.length === 0 ? <p className="mt-6 text-xl text-slate-400">Aguardando...</p> : (
+          {codes.length === 0 ? <p className="mt-6 text-xl">Aguardando...</p> : (
             <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-6">
               {codes.map((c, i) => (
-                <div key={c} data-testid="call-code" className={`rounded-3xl text-center font-mono font-black py-8 ${i === 0 ? 'animate-pulse' : 'bg-slate-800'} ${showName ? 'text-5xl' : i === 0 ? 'text-8xl' : 'text-6xl'}`} style={i === 0 ? readyTone : undefined}>{tvLabel(names[byCode[c]], c, showName)}</div>
+                <div key={c} data-testid="call-code" className={`rounded-3xl text-center font-mono font-black py-8 ${i === 0 ? 'animate-pulse' : ''} ${showName ? 'text-5xl' : i === 0 ? 'text-8xl' : 'text-6xl'}`} style={i === 0 ? readyTone : { background: palette.bgCard, color: palette.textMain }}>{tvLabel(names[byCode[c]], c, showName)}</div>
               ))}
             </div>
           )}
