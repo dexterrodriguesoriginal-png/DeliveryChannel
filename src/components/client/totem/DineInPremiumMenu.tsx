@@ -80,6 +80,9 @@ import type { CategoryMenuMode } from '../../../lib/menu/menuHeader';
 import { kioskProductGridColumns } from '../../../lib/menu/kioskProductGrid';
 
 import './dineInPremiumMenu.css';
+import { useMenuBestSellers } from '../../../hooks/useMenuBestSellers';
+import { ReorderList } from '../dinein/ReorderList';
+import type { ReorderItem } from '../../../lib/customer/dineInReorder';
 import { MenuOutdoorCarousel } from './MenuOutdoorCarousel';
 import type { PublicMenuOutdoorSlide } from '../../../repositories/menuOutdoorRepository';
 import { TotemOrderPanel, type TotemOrderLine } from './TotemOrderPanel';
@@ -91,6 +94,8 @@ export type DineInMenuVariant = 'MESA' | 'TOTEM';
 // ============================================
 
 export interface DineInPremiumMenuProps {
+  reorderItems?: ReorderItem[];
+  onRepeat?: (item: ReorderItem) => void;
   /** Tenant resolvido pelo QR/servidor. */
   tenantId: string;
 
@@ -353,6 +358,8 @@ export function DineInPremiumMenu({
   orderingDisabled,
   busy = false,
   tableControls,
+  reorderItems = [],
+  onRepeat,
   productColumns = 3,
   outdoorSlides = [],
   coverUrl,
@@ -527,6 +534,7 @@ export function DineInPremiumMenu({
     Math.trunc(Number(cartCount) || 0),
   );
 
+  const bestSellers = useMenuBestSellers(tenantId);
   const isTotem = variant === 'TOTEM';
   const totemOrderVisible = isTotem && orderLines.some(line => Number(line.quantity) > 0);
 
@@ -809,6 +817,7 @@ export function DineInPremiumMenu({
           {!isTotem && (
             <MenuOutdoorCarousel slides={outdoorSlides} onOpenProduct={id => handleProductDetails(id)} />
           )}
+          {onRepeat && <ReorderList items={reorderItems} onRepeat={onRepeat} disabled={!mayOrder} />}
           <div className="dc-kiosk-category-heading">
             <div className="dc-kiosk-category-title-row">
               {activeCategory && (() => {
@@ -885,6 +894,7 @@ export function DineInPremiumMenu({
                     </button>
 
                     <div className="dc-kiosk-product-info">
+                      {bestSellers.includes(product.id) && <span className="dc-kiosk-best-seller">Mais pedido da casa</span> }
                       <button
                         type="button"
                         className="dc-kiosk-product-name"
@@ -894,6 +904,7 @@ export function DineInPremiumMenu({
                         {product.name}
                       </button>
 
+                      {onRepeat && reorderItems.some(i => i.productId === product.id) && <button type="button" className="dc-kiosk-repeat" disabled={!mayOrder} onClick={() => onRepeat(reorderItems.find(i => i.productId === product.id)!)}>Pedir de novo</button>}
                       <div className="dc-kiosk-product-bottom">
                         {product.isPromotional &&
                           product.promotionalPriceCents !== null && (

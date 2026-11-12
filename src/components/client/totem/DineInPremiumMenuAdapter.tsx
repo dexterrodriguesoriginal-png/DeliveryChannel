@@ -20,6 +20,7 @@
  * ao DineInClientApp.
  */
 
+import type { ReorderItem } from '../../../lib/customer/dineInReorder';
 import React, {
   useEffect,
   useRef,
@@ -102,6 +103,8 @@ interface RunningOperation {
 }
 
 export interface DineInPremiumMenuAdapterProps {
+  reorderItems?: ReorderItem[];
+  onRepeat?: (item: ReorderItem) => void;
   tenantId: string;
 
   storeName: string;
@@ -186,6 +189,8 @@ export function DineInPremiumMenuAdapter({
   orderingDisabled,
   busy = false,
   tableControls,
+  reorderItems,
+  onRepeat,
   productColumns = 3,
   outdoorSlides = [],
   coverUrl,
@@ -657,6 +662,8 @@ export function DineInPremiumMenuAdapter({
 
         categories={categories}
         products={products}
+        reorderItems={reorderItems}
+        onRepeat={onRepeat}
 
         menuTheme={menuTheme}
         homeDesign={homeDesign}

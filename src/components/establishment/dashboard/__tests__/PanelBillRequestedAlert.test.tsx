@@ -102,7 +102,7 @@ describe('PanelBillRequestedAlert — Item 13', () => {
     await waitFor(() => expect(screen.getByTestId('bill-requested-toast-tab-3')).toBeTruthy());
     expect(screen.getByTestId('bill-requested-toast-tab-3').textContent).toContain('Mesa 03 pediu a conta — R$ 110,00');
     expect(screen.getByTestId('bill-requested-toast-tab-7').textContent).toContain('Mesa 07 pediu a conta — R$ 45,50');
-    expect(h.beep).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(h.beep).toHaveBeenCalledTimes(1));
 
     // Clicar em "Ver conta" na Mesa 03 abre o painel lateral da mesa e dispensa o balão da Mesa 03
     const toast3 = screen.getByTestId('bill-requested-toast-tab-3');
@@ -197,7 +197,7 @@ describe('isolamento e atualização do alerta de conta pedida', () => {
     await waitFor(() => expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull());
     await act(async () => { h.finishTabs!({ data: requested, error: null }); });
     expect(screen.queryByTestId('bill-requested-toast-stack')).toBeNull();
-    expect(h.beep).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(h.beep).toHaveBeenCalledTimes(1));
   });
 
   it('não inventa saldo zero se a consulta de pedidos falhar', async () => {

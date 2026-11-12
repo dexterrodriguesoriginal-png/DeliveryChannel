@@ -189,7 +189,7 @@ export const totemAccessRepository = {
     }
   },
 
-  async createOrder(token: string, items: Array<{ productId: string; quantity: number; notes?: string }>, idempotencyKey: string): Promise<TotemPaymentState> {
+  async createOrder(token: string, items: Array<{ productId: string; quantity: number; notes?: string; options?: Array<{group_id:string;option_id:string;qty:number;fraction:number|null}> }>, idempotencyKey: string): Promise<TotemPaymentState> {
     const { data, error } = await supabase.rpc('create_totem_order', {
       p_token: token,
       p_items: items,

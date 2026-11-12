@@ -2948,3 +2948,10 @@ button.dc-kiosk-product-name,
   font-size: clamp(12px, 10cqi, 17px) !important;
   font-weight: 800;
 }
+
+/* Destaque discreto: mantém a largura e as três colunas do catálogo. */
+.dc-kiosk-best-seller { color: var(--dc-kiosk-accent); font-size: .65rem; line-height: 1.2; font-weight: 700; overflow-wrap: anywhere; }
+.dc-kiosk-repeat, .dc-kiosk-reorder-list button { color: var(--dc-kiosk-accent); background: var(--dc-kiosk-surface); border: 1px solid currentColor; border-radius: .5rem; padding: .4rem; font-size: .75rem; }
+.dc-kiosk-reorder-list { color: var(--dc-kiosk-text); background: var(--dc-kiosk-surface); padding: .6rem; margin-bottom: .5rem; max-height: 9rem; overflow: auto; }
+.dc-kiosk-reorder-list h2 { font-size: .9rem; font-weight: 700; }
+.dc-kiosk-reorder-list > div { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .8rem; margin-top: .3rem; }

@@ -1,3 +1,5 @@
+import { reorderRepository } from '../../repositories/reorderRepository';
+import { repeatItem, type ReorderItem } from '../../lib/customer/dineInReorder';
 import { tableMoveApprovalRepository, type TableMoveRequest } from '../../repositories/tableMoveApprovalRepository';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, CircleUserRound, Crown, Loader2, ReceiptText, ShoppingBag, UserRound, Users, X } from 'lucide-react';
@@ -145,6 +147,12 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   });
   const [sessionId, setSessionId] = useState('');
   const [tab, setTab] = useState<MyTab | null>(null);
+  const [reorderHistory,setReorderHistory] = useState<{session:string;user?:string;items:ReorderItem[]}>({session:'',items:[]});
+  useEffect(()=>{
+    let alive=true;
+    if(sessionId) void reorderRepository.history(sessionId).then(items=>{if(alive)setReorderHistory({session:sessionId,user:supabaseUser?.id,items});}).catch(()=>{if(alive)setReorderHistory({session:sessionId,user:supabaseUser?.id,items:[]});});
+    return ()=>{alive=false;};
+  },[sessionId,tab,supabaseUser?.id]);
   const [cart, setCart] = useState<DineInCartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   // QR leva diretamente ao cardápio; Início só aparece após navegação explícita.
@@ -851,6 +859,22 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
     reviewRound();
   };
 
+  const repeatOrderItem = async (item: ReorderItem) => {
+    if (orderingDisabled || busy || !sessionId || !resolution?.tenantSlug) return;
+    const source = {...activeIdentityRef.current};
+    setBusy(true);
+    try {
+      const mine = await reorderRepository.history(sessionId);
+      const verified = mine.find(i => i.id === item.id);
+      if (!verified) throw new Error('Este item não pertence à sessão atual.');
+      const product = await reorderRepository.product(resolution.tenantSlug,storeTenantId,verified.productId);
+      if (!contextMatches(source)) return;
+      const next = repeatItem(cart,verified,product);
+      setCart(next);
+      setAccountOpen(false); setCartOpen(true);
+    } catch (reason) { if(contextMatches(source)) setNotice(reason instanceof Error ? reason.message : 'Não foi possível repetir o item.'); }
+    finally { if(contextMatches(source)) setBusy(false); }
+  };
   const addItem = (product: Product, fromUpsell = false) => {
     if (orderingDisabled || busy || !products.some(item => item.id === product.id)) return;
     if (product.optionGroups?.some(group => group.active)) {
@@ -1510,6 +1534,8 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
           available={homeAvailable}
           onAction={handleStoreHomeAction}
         /> : premiumTotemActive ? <DineInPremiumMenuAdapter
+          reorderItems={reorderHistory.session === sessionId && reorderHistory.user === supabaseUser?.id ? reorderHistory.items : []}
+          onRepeat={item => void repeatOrderItem(item)}
           key={`${token}:${storeTenantId}:${sessionId}`}
           tenantId={storeTenantId}
           storeName={storeName}
@@ -1704,6 +1730,7 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
             <InvitePanel invite={invite} busy={inviteBusy} link={invite && resolution?.tenantSlug ? inviteUrl(window.location.origin, resolution.tenantSlug, token, invite.code) : ''} onCreate={() => void createInvite()} onRevoke={() => void revokeInvite()} />
             <MembersPanel members={tab?.members || []} mySessionId={sessionId} busy={membersBusy} onRemove={member => void removeMember(member)} onTransfer={member => void transferTo(member)} />
           </div>}
+          {reorderHistory.session === sessionId && reorderHistory.user === supabaseUser?.id && reorderHistory.items.length > 0 && <section aria-label="Seus pedidos"><h3>Seus pedidos</h3>{reorderHistory.items.map(item => <p key={item.id}>{item.quantity}× {item.name} <button type="button" disabled={busy || orderingDisabled} onClick={()=>void repeatOrderItem(item)}>Pedir de novo</button></p>)}</section>}
           <div className="my-4 space-y-3">{tab?.rounds?.length ? tab.rounds.map(round => <article key={round.orderId} data-testid={`account-round-${round.orderId}`} className="rounded-xl border p-3" style={statusColorStyle(round.status)}>
             <div className="mb-2 flex justify-between font-bold"><span>Rodada {round.roundNo}</span><span>{formatBRL(round.subtotal)}</span></div>
             <p className="mb-2 text-xs">{access ? `Pedido de ${round.mine ? 'você' : round.customerName}` : round.customerName} · {dineInStatus(round.status).label}</p>
