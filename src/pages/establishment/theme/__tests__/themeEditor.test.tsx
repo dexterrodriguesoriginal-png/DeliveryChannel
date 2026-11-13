@@ -48,7 +48,7 @@ const tenant = {
 } as Tenant;
 async function applySecondModel() {
   fireEvent.click(screen.getAllByRole('button', { name: /Ver na minha loja/ })[1]);
-  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Usar modelo' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Usar modelo no rascunho' }));
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -83,13 +83,13 @@ describe('editor e salvamento', () => {
     expect(mocks.setTenant).toHaveBeenCalledWith(
       expect.objectContaining({ id: tenant.id, theme: saved })
     );
-    await waitFor(() => expect(screen.getByText('Tudo salvo')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Design do App salvo')).toBeTruthy());
   });
   it('desfaz e cancela sem gravar no backend; mantém linguagem de lojista nas abas', async () => {
     render(<ThemeEditorShell tenant={tenant} />);
     await applySecondModel();
     fireEvent.click(screen.getByRole('button', { name: 'Desfazer' }));
-    expect(screen.getByText('Tudo salvo')).toBeTruthy();
+    expect(screen.getByText('Design do App salvo')).toBeTruthy();
     const input = screen.getByDisplayValue(identity.storeName);
     fireEvent.change(input, { target: { value: 'Outro nome' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar alterações' }));

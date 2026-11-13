@@ -669,3 +669,8 @@
 .menu-design-cover-preview span { padding: 12px; }
 .menu-design-cover-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 18px; border: 0; padding: 0; }
 .menu-design-cover-actions .theme-secondary { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Keep the preview shortcut readable on narrow screens. */
+.menu-design-editor .menu-design-header { flex-wrap: wrap; }
+.menu-design-header > div { flex: 1; min-width: min(100%, 240px); }
+.menu-design-header > button { white-space: nowrap; }

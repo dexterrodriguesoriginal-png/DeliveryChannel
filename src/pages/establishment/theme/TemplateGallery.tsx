@@ -10,6 +10,7 @@ import {
   getTemplateById,
   SEGMENTS,
   TEMPLATES,
+  normalizeSearch,
 } from '../../../lib/theme/templates';
 import { themeToTokens, tokensToTheme } from '../../../lib/theme/themeEngine';
 import {
@@ -27,6 +28,7 @@ import { resolveSegment } from '../../../lib/theme/previewProducts';
 export interface TemplateGalleryProps {
   /** Slug da loja: a prévia mostra o app real do cliente. */
   storeSlug?: string;
+  active?: boolean;
   tenantId: string;
   category?: string;
   savedTheme: TenantTheme;
@@ -34,6 +36,7 @@ export interface TemplateGalleryProps {
   products?: ThemedProductItem[];
   isStoreOpen?: boolean;
   onApply: (template: StoreTemplate) => void;
+  onPreviewChange?: (template: StoreTemplate | null) => void;
 }
 const FAMILY_LABELS: Record<ColorFamily, string> = {
   azul: 'Azul',
@@ -46,7 +49,7 @@ const FAMILY_LABELS: Record<ColorFamily, string> = {
   marrom: 'Marrom',
   neutros: 'Neutros',
 };
-const STYLES = ['claro', 'escuro', 'elegante', 'artesanal', 'vibrante', 'minimalista'];
+const STYLES = [...new Set(TEMPLATES.flatMap(t => t.style))].filter(s => !['claro', 'escuro'].includes(s)).sort();
 function readFavorites(key: string): string[] {
   try {
     const value = JSON.parse(localStorage.getItem(key) || '[]');
@@ -57,6 +60,7 @@ function readFavorites(key: string): string[] {
 }
 export function TemplateGallery({
   storeSlug,
+  active = true,
   tenantId,
   category,
   savedTheme,
@@ -64,11 +68,14 @@ export function TemplateGallery({
   products,
   isStoreOpen,
   onApply,
+  onPreviewChange,
 }: TemplateGalleryProps) {
   const [segment, setSegment] = useState(resolveSegment(category) || '');
   const [family, setFamily] = useState('');
   const [shade, setShade] = useState('');
   const [style, setStyle] = useState('');
+  const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<'' | 'light' | 'dark'>('');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [limit, setLimit] = useState(24);
   const favoritesKey = `dc:theme-favs:${tenantId}`;
@@ -85,7 +92,7 @@ export function TemplateGallery({
   }, [favoritesKey]);
   useEffect(() => {
     setLimit(24);
-  }, [segment, family, shade, style, onlyFavorites, logoColors]);
+  }, [segment, family, shade, style, mode, query, onlyFavorites, logoColors]);
   useEffect(() => {
     logoRequest.current++;
     setLogoColors([]);
@@ -100,6 +107,7 @@ export function TemplateGallery({
   const current = useMemo(() => findClosestTemplate(themeToTokens(savedTheme)), [savedTheme]);
   const currentId = current.id;
   const draftId = draftTheme.tokens?.meta?.templateId;
+  useEffect(() => { if (preview?.id === draftId) setPreview(null); }, [draftId, preview?.id]);
   const shades = useMemo(
     () => [...new Set(TEMPLATES.filter((t) => t.colorFamily === family).map((t) => t.shade))],
     [family]
@@ -108,8 +116,11 @@ export function TemplateGallery({
     let filtered = filterTemplates({
       segment,
       colorFamily: family,
-      style: ['claro', 'escuro'].includes(style) ? undefined : style || undefined,
-      mode: style === 'claro' ? 'light' : style === 'escuro' ? 'dark' : undefined,
+      style: style || undefined,
+      mode: mode || undefined,
+      search: query,
+      shade,
+      includeRecolored: true,
     });
     if (onlyFavorites) {
       const variations = favorites
@@ -119,6 +130,8 @@ export function TemplateGallery({
           (t) =>
             (!segment || t.segmentId === segment) &&
             (!family || t.colorFamily === family) &&
+            (!mode || t.mode === mode) &&
+            (!query || normalizeSearch([t.name, t.segmentLabel, t.colorFamily, t.shade, ...t.style].join(' ')).includes(normalizeSearch(query))) &&
             (!style ||
               (style === 'claro'
                 ? t.mode === 'light'
@@ -137,7 +150,7 @@ export function TemplateGallery({
     return logoColors.length
       ? ranked
       : [...ranked].sort((a, b) => Number(b.id === currentId) - Number(a.id === currentId));
-  }, [segment, family, shade, style, onlyFavorites, favorites, logoColors, currentId]);
+  }, [segment, family, shade, style, mode, query, onlyFavorites, favorites, logoColors, currentId]);
   const toggleFavorite = useCallback(
     (id: string) => {
       setFavorites((previous) => {
@@ -171,6 +184,8 @@ export function TemplateGallery({
     setFamily('');
     setShade('');
     setStyle('');
+    setMode('');
+    setQuery('');
     setOnlyFavorites(false);
     setLogoColors([]);
     setLimit(24);
@@ -184,9 +199,11 @@ export function TemplateGallery({
     setLogoColors(colors);
     setExtracting(false);
   };
+  const previewTemplate = (template: StoreTemplate) => { setPreview(template); onPreviewChange?.(template); };
   const apply = (template: StoreTemplate) => {
     onApply(template);
     setPreview(null);
+    onPreviewChange?.(null);
     setCompareOpen(false);
   };
   return (
@@ -206,6 +223,14 @@ export function TemplateGallery({
         </span>
       </div>
       <div className="theme-filter-panel space-y-4">
+        <label className="theme-filter-label">Buscar nos 500 temas
+          <input type="search" className="theme-select" value={query} onChange={event => setQuery(event.target.value)} placeholder="Nome, segmento, cor, tom ou estilo" />
+        </label>
+        <label className="theme-filter-label">Modo
+          <select className="theme-select" value={mode} onChange={event => setMode(event.target.value as typeof mode)}>
+            <option value="">Claro e escuro</option><option value="light">Claro</option><option value="dark">Escuro</option>
+          </select>
+        </label>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="theme-filter-label">
             Meu estabelecimento
@@ -360,7 +385,7 @@ export function TemplateGallery({
                 favorite={favorites.includes(currentId)}
                 comparing={comparing.some((t) => t.id === currentId)}
                 compareDisabled={comparing.length >= 2}
-                onPreview={setPreview}
+                onPreview={previewTemplate}
                 onFavorite={toggleFavorite}
                 onCompare={toggleCompare}
               />
@@ -380,7 +405,7 @@ export function TemplateGallery({
               favorite={favorites.includes(template.id)}
               comparing={comparing.some((t) => t.id === template.id)}
               compareDisabled={comparing.length >= 2}
-              onPreview={setPreview}
+              onPreview={previewTemplate}
               onFavorite={toggleFavorite}
               onCompare={toggleCompare}
             />
@@ -413,8 +438,8 @@ export function TemplateGallery({
           </p>
         </div>
       )}
-      {preview && (
-        <ThemeDialog title="Veja na sua loja" onClose={() => setPreview(null)}>
+      {active && preview && (!onPreviewChange || window.innerWidth < 900) && (
+        <ThemeDialog title="Veja na sua loja" onClose={() => { setPreview(null); onPreviewChange?.(null); }}>
           <div className="mx-auto max-w-sm space-y-4">
             <div>
               <span className="template-badge">Em prévia</span>
@@ -443,7 +468,7 @@ export function TemplateGallery({
         identity={draftTheme}
         products={products}
         isStoreOpen={isStoreOpen}
-        isOpen={compareOpen}
+        isOpen={active && compareOpen}
         onClose={() => setCompareOpen(false)}
         onApply={apply}
       />

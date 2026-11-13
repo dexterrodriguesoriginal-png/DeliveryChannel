@@ -3,7 +3,7 @@ import { Tenant } from '../../../types';
 import { useThemeDraft } from './useThemeDraft';
 import { useThemeControls } from './useThemeControls';
 export type ThemeEditorContextValue = ReturnType<typeof useThemeDraft> &
-  ReturnType<typeof useThemeControls> & { activeTenant: Tenant };
+  ReturnType<typeof useThemeControls> & { activeTenant: Tenant; openBackgrounds?: (surface: 'general' | 'header' | 'card') => void };
 export const ThemeEditorContext = createContext<ThemeEditorContextValue | null>(null);
 export function useThemeEditorContext() {
   const context = useContext(ThemeEditorContext);

@@ -1,3 +1,4 @@
+import { themeContrastGuidance } from '../../../../lib/theme/contrastGuidance';
 import { ColorPicker } from '../../../../components/ui/ColorPicker';
 import { Card } from '../../../../components/ui/Card';
 import { BackgroundStyleConfig } from '../../../../types/theme';
@@ -25,6 +26,7 @@ export function BackgroundsTab() {
     dragStartRef,
     updateSurfaceBackground,
   } = useThemeEditorContext();
+  const contrastIssues = themeContrastGuidance(draftTokens);
   return (
     <Card className="theme-tab-card p-5 space-y-5">
       <div className="pb-3 border-b border-gray-100">
@@ -38,6 +40,8 @@ export function BackgroundsTab() {
         </p>
       </div>
 
+      {contrastIssues.length > 0 && <div role="status" className="text-xs space-y-1"><p className="font-bold">Confira a legibilidade na prévia:</p>{contrastIssues.map(issue => <p key={issue.label}>{issue.label}: {issue.ratio.toFixed(2)}:1. Sugestão de texto: {issue.suggestion}.</p>)}</div>}
+      <p className="text-xs text-gray-500">Escolha um modo por superfície. O gradiente substitui a cor sólida; a imagem usa a cor base enquanto carrega. Em imagens, use a sobreposição e confira a leitura nas áreas claras e escuras.</p>
       {/* Seletor de Superfície: Geral, Cabeçalho ou Cartões */}
       <div className="flex items-center gap-2 p-1 bg-gray-100 rounded-xl">
         {[
@@ -71,11 +75,11 @@ export function BackgroundsTab() {
         const currentGradientColors: string[] =
           currentBg.gradientColors && currentBg.gradientColors.length >= 2
             ? currentBg.gradientColors
-            : [currentBg.color || '#15803d', '#166534'];
+            : [currentBg.color || draftTokens.palette.primary, draftTokens.palette.secondary];
 
         const activeStopIndex = Math.min(activeGradientStopIndex, currentGradientColors.length - 1);
         const activeStopColor =
-          currentGradientColors[activeStopIndex] || currentGradientColors[0] || '#15803d';
+          currentGradientColors[activeStopIndex] || currentGradientColors[0] || draftTokens.palette.primary;
 
         const handleGradientColorUpdate = (index: number, newHex: string) => {
           if (!validateHexColor(newHex)) return;
@@ -90,8 +94,8 @@ export function BackgroundsTab() {
 
         const handleAddGradientStop = () => {
           if (currentGradientColors.length >= 5) return;
-          const candidateColors = ['#22c55e', '#3b82f6', '#ec4899', '#f59e0b'];
-          const newColor = candidateColors[currentGradientColors.length - 2] || '#10b981';
+          const candidateColors = [draftTokens.palette.accent, draftTokens.palette.primary, draftTokens.palette.secondary, draftTokens.palette.bgGeneral];
+          const newColor = candidateColors[currentGradientColors.length - 2] || draftTokens.palette.accent;
           const nextColors = [...currentGradientColors, newColor];
           updateCurrentBg({
             gradientColors: nextColors,
@@ -166,10 +170,10 @@ export function BackgroundsTab() {
                 </div>
 
                 <ColorPicker
-                  color={currentBg.color || '#ffffff'}
+                  color={currentBg.color || draftTokens.palette.bgGeneral}
                   onChange={(hex) => updateCurrentBg({ color: hex })}
                   label={`Seletor de Cor — ${surfaceLabel}`}
-                  defaultColor={activeBgTarget === 'general' ? '#f8fafc' : '#ffffff'}
+                  defaultColor={draftTokens.palette[activeBgTarget === 'general' ? 'bgGeneral' : activeBgTarget === 'header' ? 'bgHeader' : 'bgCard']}
                   testIdPrefix={`bg-solid-picker-${activeBgTarget}`}
                 />
               </div>
@@ -281,7 +285,7 @@ export function BackgroundsTab() {
                     color={activeStopColor}
                     onChange={(hex) => handleGradientColorUpdate(activeStopIndex, hex)}
                     label={`Seletor de Cor — Parada ${activeStopIndex + 1} do Gradiente`}
-                    defaultColor={activeStopIndex === 0 ? '#15803d' : '#166534'}
+                    defaultColor={activeStopIndex === 0 ? draftTokens.palette.primary : draftTokens.palette.secondary}
                     testIdPrefix={`gradient-picker-stop-${activeStopIndex + 1}`}
                   />
                 </div>
@@ -428,7 +432,7 @@ export function BackgroundsTab() {
                           currentBg.imageUrl ||
                           'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=800&auto=format&fit=crop&q=80',
                       },
-                      currentBg.color || '#0f172a'
+                      currentBg.color || draftTokens.palette.bgGeneral
                     )}
                   >
                     {/* Marcador Visual do Ponto Focal */}
@@ -532,10 +536,10 @@ export function BackgroundsTab() {
                   </div>
 
                   <ColorPicker
-                    color={currentBg.overlayColor || '#000000'}
+                    color={currentBg.overlayColor || draftTokens.palette.textTitle}
                     onChange={(hex) => updateCurrentBg({ overlayColor: hex })}
                     label="Cor da Camada de Sobreposição (Overlay)"
-                    defaultColor="#000000"
+                    defaultColor={draftTokens.palette.textTitle}
                     testIdPrefix="bg-overlay-picker"
                     showOpacity={true}
                     opacity={currentBg.overlayOpacity ?? 40}

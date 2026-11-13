@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { TEMPLATES } from '../templates/catalog';
 import { contrastRatio, validateWcagContrast } from '../themeEngine';
+import { paletteInkFor } from '../contrastGuidance';
 
 describe('Acessibilidade e Contraste WCAG AA dos 150 Modelos — templatesContrast.test.ts', () => {
   it('todos os 150 modelos são 100% aprovados pelo validador oficial validateWcagContrast()', () => {
@@ -106,5 +107,14 @@ describe('Acessibilidade e Contraste WCAG AA dos 150 Modelos — templatesContra
         `Modelo "${template.id}": textTitle (${p.textTitle}) vs categoryBg (${p.categoryBg}) teve ratio ${ratio.toFixed(2)}`
       ).toBeGreaterThanOrEqual(4.5);
     }
+  });
+});
+
+describe('Contraste do badge de destaque nos 500 modelos', () => {
+  it('texto sobre accent (paletteInkFor) cumpre ≥ 4.5:1 em todos os 500 modelos', () => {
+    expect(TEMPLATES).toHaveLength(500);
+    const failures = TEMPLATES.map(t => ({ id: t.id, ratio: contrastRatio(paletteInkFor(t.tokens, t.tokens.palette.accent), t.tokens.palette.accent) }))
+      .filter(x => x.ratio < 4.5);
+    expect(failures).toEqual([]);
   });
 });

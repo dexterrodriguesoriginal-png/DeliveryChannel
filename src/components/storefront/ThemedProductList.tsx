@@ -1,3 +1,4 @@
+import { paletteInkFor } from '../../lib/theme/contrastGuidance';
 /**
  * ThemedProductList — Componente de vitrine compartilhado
  * Renderiza produtos respeitando rigorosamente a configuração de layout dos tokens:
@@ -111,6 +112,12 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
     ...(isEmulatorPreview ? { fontSize: `${Math.round(10 * typo.scaleFactor)}px` } : {}),
   };
 
+  // Textos auxiliares e controles de quantidade usam apenas tokens do tema
+  const mutedStyle: React.CSSProperties = { color: p.textSecondary };
+  const qtyBoxStyle: React.CSSProperties = { backgroundColor: `color-mix(in srgb, ${p.textMain} 10%, transparent)` };
+  const qtyMinusStyle: React.CSSProperties = { backgroundColor: p.bgCard, color: p.textMain };
+  const qtyValueStyle: React.CSSProperties = { color: p.textMain };
+
   // Renderiza um card individual
   const renderCard = (prod: ThemedProductItem, isFeaturedHero = false, isGridCard = false) => {
     const isOutOfStock =
@@ -158,7 +165,7 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
               <span
                 data-testid="preview-accent-badge"
                 className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider text-white shadow-xs"
-                style={{ backgroundColor: 'var(--dc-accent, #22c55e)' }}
+                style={{ backgroundColor: tokens.palette.accent, color: paletteInkFor(tokens, tokens.palette.accent) }}
               >
                 {prod.tag}
               </span>
@@ -207,7 +214,8 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
                   </span>
                   <span
                     data-testid="preview-strikethrough-price"
-                    className="text-[10px] text-gray-400 line-through font-mono"
+                    className="text-[10px] line-through font-mono"
+                    style={mutedStyle}
                   >
                     {formatDisplayPrice(prod.price)}
                   </span>
@@ -222,26 +230,27 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
                 </span>
               )}
               {prod.unit && (
-                <span className="text-[10px] text-gray-400 font-mono uppercase">/{prod.unit}</span>
+                <span className="text-[10px] font-mono uppercase" style={mutedStyle}>/{prod.unit}</span>
               )}
             </div>
 
             {/* Botão de Adição / Quantidade */}
             {isOutOfStock ? (
-              <span className="text-[10px] font-bold text-gray-400 uppercase py-1">Esgotado</span>
+              <span className="text-[10px] font-bold uppercase py-1" style={mutedStyle}>Esgotado</span>
             ) : qty > 0 && onRemoveFromCart ? (
-              <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 shadow-2xs">
+              <div className="flex items-center gap-1 rounded-xl p-1 shadow-2xs" style={qtyBoxStyle}>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onRemoveFromCart(prod);
                   }}
-                  className="w-6 h-6 rounded-lg bg-white flex items-center justify-center text-gray-700 hover:bg-gray-200 cursor-pointer shadow-xs"
+                  className="w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer shadow-xs"
+                  style={qtyMinusStyle}
                 >
                   <Minus className="w-3 h-3" />
                 </button>
-                <span className="text-xs font-black font-mono px-1">{qty}</span>
+                <span className="text-xs font-black font-mono px-1" style={qtyValueStyle}>{qty}</span>
                 <button
                   type="button"
                   data-testid="preview-action-button"
@@ -312,7 +321,7 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
               <span
                 data-testid="preview-accent-badge"
                 className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase text-white shrink-0"
-                style={{ backgroundColor: 'var(--dc-accent, #22c55e)' }}
+                style={{ backgroundColor: tokens.palette.accent, color: paletteInkFor(tokens, tokens.palette.accent) }}
               >
                 {prod.tag}
               </span>
@@ -341,7 +350,8 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
                 </span>
                 <span
                   data-testid="preview-strikethrough-price"
-                  className="text-xs text-gray-400 line-through font-mono"
+                  className="text-xs line-through font-mono"
+                  style={mutedStyle}
                 >
                   {formatDisplayPrice(prod.price)}
                 </span>
@@ -356,7 +366,7 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
               </span>
             )}
             {prod.unit && (
-              <span className="text-[10px] text-gray-400 font-mono uppercase">/{prod.unit}</span>
+              <span className="text-[10px] font-mono uppercase" style={mutedStyle}>/{prod.unit}</span>
             )}
           </div>
         </div>
@@ -376,20 +386,21 @@ export const ThemedProductList: React.FC<ThemedProductListProps> = ({
           )}
 
           {isOutOfStock ? (
-            <span className="text-[10px] font-bold text-gray-400 uppercase py-1">Indisponível</span>
+            <span className="text-[10px] font-bold uppercase py-1" style={mutedStyle}>Indisponível</span>
           ) : qty > 0 && onRemoveFromCart ? (
-            <div className="flex items-center gap-1.5 bg-gray-100 rounded-xl p-1 shadow-2xs">
+            <div className="flex items-center gap-1.5 rounded-xl p-1 shadow-2xs" style={qtyBoxStyle}>
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onRemoveFromCart(prod);
                 }}
-                className="w-6 h-6 rounded-lg bg-white flex items-center justify-center text-gray-700 hover:bg-gray-200 cursor-pointer shadow-xs"
+                className="w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer shadow-xs"
+                  style={qtyMinusStyle}
               >
                 <Minus className="w-3 h-3" />
               </button>
-              <span className="text-xs font-black font-mono px-1">{qty}</span>
+              <span className="text-xs font-black font-mono px-1" style={qtyValueStyle}>{qty}</span>
               <button
                 type="button"
                 data-testid="preview-action-button"

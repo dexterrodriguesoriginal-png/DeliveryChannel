@@ -21,10 +21,10 @@ describe('ΔE: distância de cor', () => {
   });
 });
 
-describe('150 modelos sem cores repetidas', () => {
-  it('continua com 150 modelos e ids únicos', () => {
-    expect(TEMPLATES).toHaveLength(150);
-    expect(new Set(TEMPLATES.map((t) => t.id)).size).toBe(150);
+describe('500 modelos sem cores repetidas', () => {
+  it('continua com 500 modelos e ids únicos', () => {
+    expect(TEMPLATES).toHaveLength(500);
+    expect(new Set(TEMPLATES.map((t) => t.id)).size).toBe(500);
   });
   it(`primárias do mesmo segmento distam ΔE2000 >= ${MIN_PRIMARY_DE_SAME_SEGMENT}`, () => {
     expect(catalogViolations(sigs).sameSegment).toEqual([]);
