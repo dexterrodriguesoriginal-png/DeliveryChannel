@@ -674,3 +674,21 @@
 .menu-design-editor .menu-design-header { flex-wrap: wrap; }
 .menu-design-header > div { flex: 1; min-width: min(100%, 240px); }
 .menu-design-header > button { white-space: nowrap; }
+
+/* Each form scrolls independently; the complete device fits the remaining column. */
+@media (min-width: 761px) {
+  .menu-design-body { overflow: hidden; }
+  .menu-design-live, .totem-design .menu-design-preview-col {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    position: sticky;
+    top: 0;
+    align-self: stretch;
+  }
+  .menu-design-preview-toolbar, .menu-design-preview-caption { flex: none; }
+}
+@media (max-width: 760px) {
+  .menu-design-live, .totem-design .menu-design-preview-col { display: flex; flex-direction: column; height: 75dvh; }
+}

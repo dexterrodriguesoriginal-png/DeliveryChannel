@@ -305,7 +305,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
           </main>
           {tab !== 'preview' && (
             <aside className="theme-editor-preview" aria-label="Prévia da sua loja">
-              {tab === 'models' && galleryPreview && <div className="mb-2 space-y-2"><p className="text-sm font-semibold">Em prévia: {galleryPreview.name}</p><button type="button" className="theme-primary" onClick={() => apply(galleryPreview)}>Usar modelo no rascunho</button></div>}
+              {tab === 'models' && galleryPreview && <div className="mb-2 space-y-2"><p className="text-sm font-semibold">Em prévia: {galleryPreview.name}</p><button type="button" className="theme-primary" onClick={() => apply(galleryPreview)}>Usar este tema</button></div>}
               {previewFor(true)}
             </aside>
           )}

@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ScaledPreview } from '../../../../components/common/ScaledPreview';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Category, Product } from '../../../../types';
 import type { MenuTheme } from '../../../../types/menuTheme';
@@ -35,21 +36,10 @@ export const priceNumber = (value: string | number): number => {
 
 /** The customer menu itself, inside an isolated viewport. Drafts never invoke order callbacks. */
 export function MenuThemePreview({ theme, storeName, storeLogoUrl, storeTagline, products, categories, device, header = DEFAULT_MENU_HEADER, productColumns = 2 }: Props) {
-  const wrapper = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const [frameDocument, setFrameDocument] = useState<Document | null>(null);
-  const [width, setWidth] = useState(340);
   const logicalWidth = device === 'phone' ? 390 : 1024;
   const logicalHeight = device === 'phone' ? 844 : 768;
-  const scale = Math.min(1, width / logicalWidth);
-  useLayoutEffect(() => {
-    const measure = () => { if (wrapper.current?.clientWidth) setWidth(wrapper.current.clientWidth); };
-    measure();
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
-    if (wrapper.current) observer?.observe(wrapper.current);
-    window.addEventListener('resize', measure);
-    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
-  }, []);
   useEffect(() => {
     if (!frameDocument) return;
     // Vite dev styles and production stylesheet links are copied; CSS stays scoped to the frame.
@@ -75,17 +65,17 @@ export function MenuThemePreview({ theme, storeName, storeLogoUrl, storeTagline,
     price: priceNumber(item.price), promotionalPrice: item.promotionalPrice ? priceNumber(item.promotionalPrice) : undefined,
     isActive: true, isAvailable: item.isAvailable !== false, stockQuantity: item.stockQuantity ?? 99, unit: item.unit || 'un',
   }));
-  return <div ref={wrapper} className={`menu-design-device menu-design-device-${device}`}>
+  return <ScaledPreview width={logicalWidth + 16} height={logicalHeight + 16}><div style={{ width: logicalWidth + 16, height: logicalHeight + 16, maxWidth: 'none', borderWidth: 8 }} className={`menu-design-device menu-design-device-${device}`}>
     <div data-testid="menu-design-preview" data-device={device} data-layout={theme.layout}
-      style={{ background: theme.background, fontFamily: resolveFontFamilyCss(theme.fontFamily), '--menu-preview-radius': `${theme.radius}px`, height: logicalHeight * scale, overflow: 'hidden' } as React.CSSProperties}>
+      style={{ background: theme.background, fontFamily: resolveFontFamilyCss(theme.fontFamily), '--menu-preview-radius': `${theme.radius}px`, height: logicalHeight, overflow: 'hidden' } as React.CSSProperties}>
       <iframe ref={frame} title="Prévia real do cardápio" srcDoc={'<!doctype html><html lang="pt-BR"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0"><div id="menu-preview-root"></div></body></html>'}
         onLoad={() => setFrameDocument(frame.current?.contentDocument || null)}
-        style={{ width: logicalWidth, height: logicalHeight, border: 0, transform: `scale(${scale})`, transformOrigin: 'top left' }} />
+        style={{ width: logicalWidth, height: logicalHeight, border: 0, transformOrigin: 'top left' }} />
       {frameDocument?.getElementById('menu-preview-root') && createPortal(
         <DineInPremiumMenu preview tenantId={tenantId} storeName={storeName} storeLogoUrl={storeLogoUrl} storeTagline={storeTagline} tableLabel="Mesa · Prévia" categories={previewCategories} products={previewProducts}
           menuTheme={theme} coverUrl={header.coverUrl} categoryMenuMode={header.categoryMenuMode} productColumns={productColumns}
           cartCount={0} orderingDisabled={false} onGoHome={noop} onOpenCart={noop} onOpenTable={noop} onOpenExpenses={noop} onAddProduct={noop} onOpenProduct={noop} />,
         frameDocument.getElementById('menu-preview-root')!)}
     </div>
-  </div>;
+  </div></ScaledPreview>;
 }
