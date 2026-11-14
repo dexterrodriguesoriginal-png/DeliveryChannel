@@ -454,7 +454,7 @@ export function TemplateGallery({
                 Experimente à vontade. Você escolhe quando salvar.
               </p>
             </div>
-            {renderPreview ? renderPreview(preview) : <LiveStorePreview
+            {renderPreview ? <div className="menu-design-catalog-preview">{renderPreview(preview)}</div> : <LiveStorePreview
               theme={tokensToTheme(preview.tokens, draftTheme)}
               storeSlug={storeSlug}
               products={products}

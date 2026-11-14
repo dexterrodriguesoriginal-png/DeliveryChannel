@@ -266,9 +266,8 @@
   border-radius: 13px;
 }
 .theme-editor-preview > [data-testid='live-store-preview'] {
-  flex: 1 0 auto;
-  /* rótulo (~28px) + celular com no mínimo 560px de altura */
-  min-height: 586px;
+  flex: 1 1 0;
+  min-height: 0;
 }
 .theme-editor-preview .theme-phone-screen {
   height: min(500px, calc(100dvh - 320px));

@@ -48,7 +48,7 @@ const tenant = {
 } as Tenant;
 async function applySecondModel() {
   fireEvent.click(screen.getAllByRole('button', { name: /Ver na minha loja/ })[1]);
-  fireEvent.click(screen.getByRole('button', { name: 'Usar modelo no rascunho' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Usar este tema' }));
 }
 beforeEach(() => {
   vi.clearAllMocks();

@@ -6,7 +6,7 @@ const capture = vi.hoisted(() => ({ props: null as Record<string, any> | null })
 vi.mock('../../../../../components/client/totem/DineInPremiumMenu', () => ({ DineInPremiumMenu: (props: Record<string, any>) => { capture.props = props; return <div>{props.storeName}</div>; } }));
 import { MenuThemePreview } from '../MenuThemePreview';
 import { DEFAULT_MENU_THEME } from '../../../../../lib/theme/menuTheme';
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 it('uses the real customer menu contract and updates cover, category images and columns without publishing', () => {
   const base = { theme: { ...DEFAULT_MENU_THEME }, storeName: 'Loja real', categories: [{ id: 'wine', tenantId: 'tenant-real', name: 'Vinhos', order: 0, isActive: true, imageUrl: 'https://example.com/wine.png' }], products: [{ id: 'bottle', categoryId: 'wine', name: 'Vinho real', price: 20 }], device: 'phone' as const };
   const view = render(<MenuThemePreview {...base} />);
@@ -23,6 +23,11 @@ it('uses the real customer menu contract and updates cover, category images and 
 });
 
 it('renders the real totem variant and fits the entire logical viewport on a short screen', () => {
+  vi.stubGlobal('innerWidth', 1280);
+  vi.stubGlobal('innerHeight', 720);
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(360);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ top: 240 } as DOMRect);
   const view = render(<MenuThemePreview theme={DEFAULT_MENU_THEME} totemDesign={DEFAULT_TOTEM_DESIGN} storeName="Loja" categories={[]} products={[]} device="tablet" />);
   const frame = view.getByTitle('Prévia real do totem') as HTMLIFrameElement;
   frame.contentDocument!.body.innerHTML = '<div id="menu-preview-root"></div>';
@@ -35,5 +40,11 @@ it('renders the real totem variant and fits the entire logical viewport on a sho
   expect(capture.props?.orderLines[0].quantity).toBe(1);
   expect(frame.style.width).toBe('1024px');
   expect(frame.style.height).toBe('768px');
-  expect(parseFloat(view.getByTestId('menu-design-preview').style.height)).toBeLessThanOrEqual(window.innerHeight - 240);
+  expect(view.getByTestId('menu-design-preview').style.height).toBe('768px');
+  const scaled = view.getByTestId('scaled-preview');
+  const scale = Number(scaled.dataset.scale);
+  expect(scale).toBeGreaterThan(0);
+  expect(parseFloat(scaled.style.width) * scale).toBeLessThanOrEqual(360);
+  expect(parseFloat(scaled.style.height) * scale).toBeLessThanOrEqual(400);
+  expect(scaled.style.transform).toBe(`scale(${scale})`);
 });

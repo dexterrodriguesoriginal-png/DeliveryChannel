@@ -43,7 +43,7 @@ export function TemplateCompareDialog({
                 {template.mode === 'dark' ? 'Escuro' : 'Claro'} · {template.segmentLabel}
               </p>
             </div>
-            {renderPreview ? renderPreview(template) : <LiveStorePreview
+            {renderPreview ? <div className="menu-design-catalog-preview">{renderPreview(template)}</div> : <LiveStorePreview
               theme={tokensToTheme(template.tokens, identity)}
               storeSlug={storeSlug}
               products={products}
