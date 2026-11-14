@@ -9,7 +9,12 @@ export function ScaledPreview({ width, height, children }: { width: number; heig
     const el = ref.current;
     if (!el) return;
     const measure = () => {
-      const availableHeight = Math.min(el.clientHeight || height, window.innerHeight - el.getBoundingClientRect().top - 16);
+      // Stacked previews can mount below the viewport; their column still has
+      // usable dimensions before scrolling (including the preview shortcut).
+      const columnHeight = el.clientHeight || height;
+      const availableHeight = window.innerWidth <= 760
+        ? columnHeight
+        : Math.min(columnHeight, window.innerHeight - el.getBoundingClientRect().top - 16);
       setScale(fitScale(el.clientWidth, availableHeight, width, height));
     };
     measure();
