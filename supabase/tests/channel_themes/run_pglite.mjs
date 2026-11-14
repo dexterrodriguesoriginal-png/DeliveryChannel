@@ -37,7 +37,7 @@ for (const channel of ['menu','totem']) {
  const get = channel==='menu' ? '_channel_menu_theme' : '_channel_totem_design';
  const set = channel==='menu' ? 'set_menu_theme' : 'set_totem_design';
  const theme = await value(`SELECT public.${get}('${old}') j`);
- const saved = (await db.query(`SELECT public.${set}($1,$2::jsonb) j`,[old,JSON.stringify({...theme,followApp:true,templateId:'catalog-1'})])).rows[0].j;
+ const saved = (await db.query(`SELECT public.${set}($1,$2::jsonb) j`,[old,JSON.stringify({...theme,followApp:true,templateId:'catalog-1',...(channel==='totem' ? {fontFamily:'Poppins'} : {})})])).rows[0].j;
  assert.equal(saved.followApp,true);
  assert.equal(saved.templateId,'catalog-1');
  await assert.rejects(db.query(`SELECT public.${set}($1,$2::jsonb)`,[old,JSON.stringify({...theme,followApp:'true'})]),/INVALID/);
@@ -54,16 +54,37 @@ await assert.rejects(db.query('SELECT * FROM public._channel_theme_2026111400020
 await assert.rejects(db.query(`SELECT public._channel_menu_theme('${old}')`),/permission denied/);
 await db.exec('RESET ROLE');
 // A later dependency must block rollback atomically, never be removed by CASCADE.
+await db.exec(`UPDATE public.tenant_settings SET address='Rua preservada', phone_whatsapp='11999999999' WHERE tenant_id='${old}';
+INSERT INTO public.tenant_settings(tenant_id,address,phone_whatsapp) VALUES('${fresh}','Sem personalização','11888888888');`);
 const upgradedDefinitions = await definitions();
+const settings = async () => (await db.query('SELECT * FROM public.tenant_settings ORDER BY tenant_id')).rows;
+const upgradedSettings = await settings();
+const normalizedSettings = upgradedSettings.map(row => {
+ const {followApp, templateId, ...menu_theme} = row.menu_theme;
+ const totem_design = row.totem_design === null ? null : Object.fromEntries(
+  Object.entries(row.totem_design).filter(([key]) => !['followApp','templateId','fontFamily'].includes(key))
+ );
+ return {...row, menu_theme, totem_design};
+});
 await db.exec('CREATE VIEW public.channel_theme_dependency AS SELECT channel_theme_default FROM public.tenants');
 await assert.rejects(db.exec(read('rollback/20261114000200_channel_theme_inheritance_down.sql')), /depend/);
 await db.exec('ROLLBACK');
 assert.deepEqual(await definitions(), upgradedDefinitions);
+assert.deepEqual(await settings(), upgradedSettings, 'blocked rollback leaves all saved data intact');
 await db.exec('DROP VIEW public.channel_theme_dependency');
 await db.exec(read('rollback/20261114000200_channel_theme_inheritance_down.sql'));
 assert.deepEqual(await definitions(), originalDefinitions, 'exact function bodies, security settings and ACLs restored');
 assert.equal((await db.query(`SELECT count(*) n FROM information_schema.columns WHERE table_schema='public' AND table_name='tenants' AND column_name='channel_theme_default'`)).rows[0].n, 0);
 assert.equal((await db.query(`SELECT to_regclass('public._channel_theme_20261114000200_restore') r`)).rows[0].r, null);
 assert.deepEqual((await db.query(`SELECT public._menu_theme_public(public._menu_theme_default()) theme`)).rows[0].theme, await value(`SELECT public._menu_theme_default() j`));
-console.log('PASS: exact rollback; migration preserves existing tokens, defaults new stores to follow, round-trips independent selections, validates metadata and retains authorization.');
+assert.deepEqual(await settings(), normalizedSettings, 'only new channel keys removed; all rows and other settings preserved');
+assert.ok((await db.query(`SELECT public._menu_theme_valid(menu_theme) AND (totem_design IS NULL OR public._totem_design_valid(totem_design)) valid FROM public.tenant_settings`)).rows.every(row => row.valid));
+// Rechecking constraints on every saved row must succeed with the old validators.
+await db.exec('UPDATE public.tenant_settings SET address=address');
+assert.equal((await db.query(`SELECT count(*) n FROM pg_trigger WHERE tgrelid='public.tenant_settings'::regclass AND tgname IN ('menu_theme_write_guard','totem_design_write_guard') AND tgenabled='O'`)).rows[0].n, 2);
+await db.exec(read('migrations/20261114000200_channel_theme_inheritance.sql'));
+assert.deepEqual(await settings(), normalizedSettings, 'reapplying up preserves normalized settings');
+assert.equal((await value(`SELECT public._channel_menu_theme('${old}') j`)).followApp, false);
+assert.equal((await value(`SELECT public._channel_totem_design('${old}') j`)).followApp, false);
+console.log('PASS: exact rollback; migration preserves existing tokens, defaults new stores to follow, round-trips independent selections, validates metadata, retains authorization and reapplies up after normalizing saved channel JSON.');
 await db.close();
