@@ -1,5 +1,7 @@
-/** Visual exclusivo do cardápio da mesa. Nunca é derivado do tema do app. */
+/** Tokens públicos do cardápio; ausência de followApp preserva lojas antigas. */
 export interface MenuTheme {
+  followApp?: boolean;
+  templateId?: string;
   background: string;
   surface: string;
   text: string;

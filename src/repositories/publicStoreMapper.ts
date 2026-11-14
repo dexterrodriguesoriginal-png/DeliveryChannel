@@ -17,7 +17,7 @@
  * ao tenant do slug é descartado (defesa em profundidade além do filtro do servidor).
  */
 import { fulfillmentFieldsFromRaw } from '../lib/pricing/fulfillmentPricing';
-import { normalizeMenuTheme } from '../lib/theme/menuTheme';
+import { resolveMenuTheme } from '../lib/theme/channelThemes';
 import type { MenuTheme } from '../types/menuTheme';
 import { normalizeMenuOptions } from '../lib/menu/menuOptions';
 import type { MenuOptions } from '../types/menuOptions';
@@ -470,7 +470,7 @@ export function mapPublicStorePayload(raw: unknown, receivedAtMs: number = Date.
     tenant,
     theme: mapTheme(raw.theme, tenant.name),
     settings: mapSettings(raw.settings),
-    menuTheme: normalizeMenuTheme(raw.menuTheme),
+    menuTheme: resolveMenuTheme(raw.menuTheme, mapTheme(raw.theme, tenant.name)),
     menuOptions: normalizeMenuOptions(raw.menuOptions),
     categories: arr(raw.categories).map(mapCategory).filter(sameTenant),
     products: arr(raw.products).map(mapProduct).filter(sameTenant),

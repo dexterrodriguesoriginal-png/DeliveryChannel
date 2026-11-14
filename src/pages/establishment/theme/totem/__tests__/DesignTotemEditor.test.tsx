@@ -56,8 +56,8 @@ describe('DesignTotemEditor', () => {
     expect(themes.compareDocumentPosition(colors) & following).toBe(following);
     fireEvent.click(screen.getByTestId('totem-theme-oceano'));
     const oceano = designFromPreset('oceano');
-    const preview = screen.getByTestId('totem-design-preview').querySelector('.totem-design-preview') as HTMLElement;
-    expect(preview.style.getPropertyValue('--dc-kiosk-bg').toLowerCase()).toBe(oceano.colors.pageBg.toLowerCase());
+    expect(screen.getByTitle('Prévia real do totem')).toBeTruthy();
+    expect((screen.getByLabelText('Fundo da página') as HTMLInputElement).value.toLowerCase()).toBe(oceano.colors.pageBg.toLowerCase());
     fireEvent.click(screen.getByTestId('totem-design-restore'));
     fireEvent.click(screen.getByTestId('totem-design-save'));
     await waitFor(() => expect(save).toHaveBeenCalled());

@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { PGlite } from '@electric-sql/pglite';
+const read = p => fs.readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
+const db = new PGlite();
+const old = '11111111-1111-1111-1111-111111111111';
+const fresh = '33333333-3333-3333-3333-333333333333';
+await db.exec(read('tests/entrega3/stub.sql'));
+await db.exec(`CREATE FUNCTION public.get_public_store(p_slug text) RETURNS jsonb LANGUAGE plpgsql AS $$
+DECLARE v_theme record; v_tenant record;
+BEGIN SELECT t.id INTO v_tenant FROM public.tenants t WHERE slug=$1;
+SELECT 'Loja' AS store_name INTO v_theme;
+RETURN jsonb_build_object('theme', to_jsonb(v_theme), 'tenant',jsonb_build_object('id',v_tenant.id)); END $$;`);
+await db.exec(read('migrations/20261104000900_entrega2_menu_theme.sql'));
+await db.exec(read('migrations/20261109000100_cardapio_capa_menu.sql'));
+await db.exec(read('migrations/20261109000200_totem_salao_capa.sql'));
+// Use the existing crypto/device fixture, retaining the real public menu projection.
+const publicDefinition = (await db.query(`SELECT pg_get_functiondef('public.get_public_store(text)'::regprocedure) s`)).rows[0].s;
+await db.exec(read('tests/totem_access/stub_extra.sql'));
+await db.exec(publicDefinition);
+await db.exec(read('migrations/20261109000300_totem_access_and_design.sql'));
+const before = (await db.query(`SELECT public._menu_theme_public(menu_theme) theme,totem_design FROM public.tenant_settings WHERE tenant_id=$1`,[old])).rows;
+await db.exec(read('migrations/20261114000100_channel_theme_inheritance.sql'));
+assert.deepEqual((await db.query(`SELECT public._menu_theme_public(menu_theme) theme,totem_design FROM public.tenant_settings WHERE tenant_id=$1`,[old])).rows,before);
+await db.exec(`INSERT INTO public.tenants(id,slug) VALUES('${fresh}','nova');`);
+const value = async sql => (await db.query(sql)).rows[0].j;
+assert.equal((await value(`SELECT public._channel_menu_theme('${old}') j`)).followApp,false);
+assert.equal((await value(`SELECT public._channel_totem_design('${old}') j`)).followApp,false);
+assert.equal((await value(`SELECT public._channel_menu_theme('${fresh}') j`)).followApp,true);
+assert.equal((await value(`SELECT public._channel_totem_design('${fresh}') j`)).followApp,true);
+assert.equal((await value(`SELECT public.get_public_store('nova') j`)).menuTheme.followApp,true);
+await db.exec(`INSERT INTO public.caller VALUES('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','OWNER','${old}')`);
+assert.equal((await value(`SELECT public.get_menu_theme('${old}') j`)).followApp,false);
+for (const channel of ['menu','totem']) {
+ const get = channel==='menu' ? '_channel_menu_theme' : '_channel_totem_design';
+ const set = channel==='menu' ? 'set_menu_theme' : 'set_totem_design';
+ const theme = await value(`SELECT public.${get}('${old}') j`);
+ const saved = (await db.query(`SELECT public.${set}($1,$2::jsonb) j`,[old,JSON.stringify({...theme,followApp:true,templateId:'catalog-1'})])).rows[0].j;
+ assert.equal(saved.followApp,true);
+ assert.equal(saved.templateId,'catalog-1');
+ await assert.rejects(db.query(`SELECT public.${set}($1,$2::jsonb)`,[old,JSON.stringify({...theme,followApp:'true'})]),/INVALID/);
+}
+const menu = await value(`SELECT public._channel_menu_theme('${old}') j`);
+await assert.rejects(db.query('SELECT public.set_menu_theme($1,$2::jsonb)',[old,JSON.stringify({...menu,followApp:false,text:menu.background})]),/INVALID_MENU_THEME/);
+const totem = await value(`SELECT public._channel_totem_design('${old}') j`);
+await assert.rejects(db.query('SELECT public.set_totem_design($1,$2::jsonb)',[old,JSON.stringify({...totem,followApp:false,colors:{...totem.colors,productCardText:totem.colors.productCardBg}})]),/INVALID_TOTEM_DESIGN/);
+await db.exec(`DELETE FROM public.caller; INSERT INTO public.caller VALUES('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','STAFF','${old}')`);
+await assert.rejects(db.query(`SELECT public.get_menu_theme('${old}')`),/FORBIDDEN/);
+await assert.rejects(db.query(`SELECT public.set_totem_design('${old}',public._totem_design_default())`),/FORBIDDEN/);
+await db.exec('SET ROLE anon');
+await assert.rejects(db.query(`SELECT public._channel_menu_theme('${old}')`),/permission denied/);
+console.log('PASS: migration preserves existing tokens, defaults new stores to follow, round-trips independent selections, validates metadata and retains authorization.');
+await db.close();

@@ -322,6 +322,7 @@
   box-shadow:0 2px 5px #17362215;
 }
 .menu-design-device {
+  align-self:start;
   position:relative;
   border:7px solid #23352c;
   border-radius:32px;
@@ -652,6 +653,7 @@
 }
 @media(prefers-reduced-motion:reduce) {
   .menu-design-template,.menu-design-device {
+  align-self:start;
     transition:none;
   }
 }

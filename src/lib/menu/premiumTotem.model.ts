@@ -500,7 +500,7 @@ export function resolveMenuVisualTheme(
     layout: menu.layout,
 
     headerGradient:
-      homeTemplate.topGradient,
+      menu.followApp || menu.templateId ? `linear-gradient(135deg, ${menu.accent}, ${menu.categoryActiveBg})` : homeTemplate.topGradient,
   };
 }
 

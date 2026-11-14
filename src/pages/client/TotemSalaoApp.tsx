@@ -1,3 +1,4 @@
+import { useChannelThemeRefresh } from '../../lib/theme/useChannelThemeRefresh';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
@@ -72,6 +73,11 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [menuTheme, setMenuTheme] = useState<MenuTheme>(DEFAULT_MENU_THEME);
+  useChannelThemeRefresh(deviceToken ? `${slug}:${deviceToken}` : '', tenantId, async () => {
+    if (!deviceToken) return null;
+    const result = await totemAccessRepository.loadStore(deviceToken);
+    return result.status === 'ok' && result.store.data.tenant.id === tenantId ? result.store : null;
+  }, store => { setMenuTheme(store.data.menuTheme ?? DEFAULT_MENU_THEME); setTotemDesign(store.design); });
   const [menuOptions, setMenuOptions] = useState<MenuOptions>({ ...DEFAULT_MENU_OPTIONS });
   const [menuHeader, setMenuHeader] = useState<MenuHeaderSettings>({ ...DEFAULT_MENU_HEADER });
   const [welcome, setWelcome] = useState<TotemWelcomeSettings>({ ...DEFAULT_TOTEM_WELCOME, slides: [] });
@@ -364,7 +370,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
           tenantId={loginInfo?.tenantId || tenantId}
           storeName={loginInfo?.name || storeName || 'Totem'}
           logoUrl={loginInfo?.logoUrl || storeLogoUrl}
-          accent={pickVividAccent([loginInfo?.accent, menuTheme.accent, totemDesign.colors.addButtonBg], '#176444')}
+          accent={totemDesign.followApp || totemDesign.templateId ? totemDesign.colors.addButtonBg : pickVividAccent([loginInfo?.accent, menuTheme.accent, totemDesign.colors.addButtonBg], '#176444')}
         />
         <TotemActivateScreen
           slug={slug}
@@ -397,7 +403,7 @@ export function TotemSalaoApp({ slug }: { slug: string }) {
           tenantId={tenantId}
           storeName={storeName || 'Totem'}
           logoUrl={storeLogoUrl}
-          accent={pickVividAccent([menuTheme.accent, totemDesign.colors.addButtonBg, loginInfo?.accent], '#176444')}
+          accent={totemDesign.followApp || totemDesign.templateId ? totemDesign.colors.addButtonBg : pickVividAccent([menuTheme.accent, totemDesign.colors.addButtonBg, loginInfo?.accent], '#176444')}
         />
       )}
       {view === 'CAPA' && (

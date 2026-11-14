@@ -1,3 +1,4 @@
+import { resolveTotemDesign, menuFromTotem } from '../lib/theme/channelThemes';
 import { captchaToken } from '../lib/turnstile';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { requireBackend } from '../lib/backend';
@@ -145,11 +146,14 @@ export const totemAccessRepository = {
     try {
       const row = data as Record<string, unknown>;
       const { totemDesign, totemWelcome, totemDeviceId, totemDeviceLabel, ...storePayload } = row;
+      const storeData = mapStore(storePayload);
+      const design = resolveTotemDesign(totemDesign ?? DEFAULT_TOTEM_DESIGN, storeData.theme);
+      if (design.followApp || design.templateId) storeData.menuTheme = menuFromTotem(design);
       return {
         status: 'ok',
         store: {
-          data: mapStore(storePayload),
-          design: normalizeTotemDesign(totemDesign ?? DEFAULT_TOTEM_DESIGN),
+          data: storeData,
+          design,
           welcome: normalizeTotemWelcome(totemWelcome ?? DEFAULT_TOTEM_WELCOME),
         },
       };

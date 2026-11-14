@@ -1,3 +1,4 @@
+import { DEFAULT_TOTEM_DESIGN } from '../../../../../lib/menu/totemDesign';
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -19,4 +20,15 @@ it('uses the real customer menu contract and updates cover, category images and 
   expect(frame.style.width).toBe('1024px');
   expect(capture.props).toMatchObject({ coverUrl: 'https://example.com/cover.png', categoryMenuMode: 'IMAGE', productColumns: 3 });
   expect(capture.props?.onAddProduct(base.products[0])).toBeUndefined();
+});
+
+it('renders the real totem variant and fits the entire logical viewport on a short screen', () => {
+  const view = render(<MenuThemePreview theme={DEFAULT_MENU_THEME} totemDesign={DEFAULT_TOTEM_DESIGN} storeName="Loja" categories={[]} products={[]} device="tablet" />);
+  const frame = view.getByTitle('Prévia real do totem') as HTMLIFrameElement;
+  frame.contentDocument!.body.innerHTML = '<div id="menu-preview-root"></div>';
+  fireEvent.load(frame);
+  expect(capture.props).toMatchObject({ variant: 'TOTEM', totemDesign: DEFAULT_TOTEM_DESIGN, preview: true });
+  expect(frame.style.width).toBe('1024px');
+  expect(frame.style.height).toBe('768px');
+  expect(parseFloat(view.getByTestId('menu-design-preview').style.height)).toBeLessThanOrEqual(window.innerHeight - 240);
 });
