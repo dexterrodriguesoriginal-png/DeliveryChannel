@@ -27,6 +27,7 @@ vi.mock('../../../../../repositories/productRepository', () => ({ productReposit
 vi.mock('../../../../../repositories/categoryRepository', () => ({ categoryRepository: { getCategories: mocks.category } }));
 vi.mock('../BestSellersPanel', () => ({ BestSellersPanel: () => <section aria-label="Destaques do cardápio" /> }));
 vi.mock('../../../../../lib/supabase', () => ({ supabase: {}, isSupabaseConfigured: true }));
+vi.mock('../../TemplateGallery', () => ({ TemplateGallery: () => <section aria-label="Catálogo compartilhado" /> }));
 vi.mock('../../ThemeEditorShell', () => ({ ThemeEditorShell: () => <label>Nome do app<input defaultValue="App original" /></label> }));
 import { DEFAULT_MENU_THEME, MENU_TEMPLATES } from '../../../../../lib/theme/menuTheme';
 import { MenuThemeEditor } from '../MenuThemeEditor';
@@ -52,7 +53,7 @@ describe('editor independente do cardápio', () => {
     const preview = screen.getByTestId('menu-design-preview');
     expect(preview.style.background).toBe('#101113');
     fireEvent.click(screen.getByRole('button', { name: 'Salvar cardápio' }));
-    await waitFor(() => expect(mocks.save).toHaveBeenCalledExactlyOnceWith(mocks.context, tenant.id, MENU_TEMPLATES.find(item => item.id === 'noturno')!.theme));
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledExactlyOnceWith(mocks.context, tenant.id, { ...MENU_TEMPLATES.find(item => item.id === 'noturno')!.theme, followApp: false }));
     expect(JSON.stringify(tenant)).toBe(original);
     expect(await screen.findByText('Design do cardápio salvo.')).toBeTruthy();
   });
@@ -168,4 +169,16 @@ it('does not claim everything is saved while independently saved options are pen
   await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(1));
   expect(screen.getByText(/Alterações não salvas — confira os painéis/)).toBeTruthy();
   expect(screen.queryByText('Tudo salvo')).toBeNull();
+});
+
+it('starts linked for new stores and lets the owner opt out before choosing a legacy model', async () => {
+  mocks.load.mockResolvedValue({ ...DEFAULT_MENU_THEME, followApp: true });
+  render(<MenuThemeEditor tenant={tenant} />); await loaded();
+  const toggle = screen.getByRole('switch', { name: 'Seguir o tema do Design do App' }) as HTMLInputElement;
+  expect(toggle.checked).toBe(true);
+  expect(screen.getByRole('button', { name: 'Usar modelo Horta' }).closest('fieldset')?.disabled).toBe(true);
+  fireEvent.click(toggle);
+  fireEvent.click(screen.getByRole('button', { name: 'Usar modelo Horta' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Salvar cardápio' }));
+  await waitFor(() => expect(mocks.save).toHaveBeenCalledWith(mocks.context, tenant.id, { ...MENU_TEMPLATES.find(t => t.id === 'horta')!.theme, followApp: false }));
 });

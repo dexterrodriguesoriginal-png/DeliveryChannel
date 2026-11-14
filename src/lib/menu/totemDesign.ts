@@ -1,4 +1,4 @@
-import { MENU_TEMPLATES } from '../theme/menuTheme';
+import { MENU_FONTS, MENU_TEMPLATES } from '../theme/menuTheme';
 
 export const TOTEM_COLOR_KEYS = [
   'pageBg', 'sidebarBg', 'sidebarCardBg', 'sidebarCardText',
@@ -11,6 +11,9 @@ export type TotemColorKey = (typeof TOTEM_COLOR_KEYS)[number];
 export type TotemDesignColors = Record<TotemColorKey, string>;
 
 export interface TotemDesign {
+  followApp?: boolean;
+  fontFamily?: string;
+  templateId?: string;
   preset: string;
   bannerRadius: number;
   colors: TotemDesignColors;
@@ -117,12 +120,18 @@ export function normalizeTotemDesign(raw: unknown): TotemDesign {
     const value = colors[key];
     if (typeof value === 'string' && isTotemHex(value)) result.colors[key] = value;
   }
+  if (typeof source.fontFamily === 'string' && MENU_FONTS.some(font => font === source.fontFamily)) result.fontFamily = source.fontFamily;
+  if (typeof source.followApp === 'boolean') result.followApp = source.followApp;
+  if (typeof source.templateId === 'string' && /^[a-z0-9_-]{1,100}$/.test(source.templateId)) result.templateId = source.templateId;
   return result;
 }
 
 export function isValidTotemDesign(raw: unknown): raw is TotemDesign {
   if (!isObject(raw)) return false;
-  if (Object.keys(raw).some(key => !['preset', 'bannerRadius', 'colors'].includes(key))) return false;
+  if (raw.followApp !== undefined && typeof raw.followApp !== 'boolean') return false;
+  if (raw.templateId !== undefined && (typeof raw.templateId !== 'string' || !/^[a-z0-9_-]{1,100}$/.test(raw.templateId))) return false;
+  if (raw.fontFamily !== undefined && !MENU_FONTS.some(font => font === raw.fontFamily)) return false;
+  if (Object.keys(raw).some(key => !['preset', 'bannerRadius', 'colors', 'followApp', 'templateId', 'fontFamily'].includes(key))) return false;
   if (typeof raw.preset !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(raw.preset)) return false;
   if (typeof raw.bannerRadius !== 'number' || !Number.isInteger(raw.bannerRadius) || raw.bannerRadius < 0 || raw.bannerRadius > 48) return false;
   if (!isObject(raw.colors)) return false;
