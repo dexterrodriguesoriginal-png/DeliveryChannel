@@ -19,8 +19,10 @@ const publicDefinition = (await db.query(`SELECT pg_get_functiondef('public.get_
 await db.exec(read('tests/totem_access/stub_extra.sql'));
 await db.exec(publicDefinition);
 await db.exec(read('migrations/20261109000300_totem_access_and_design.sql'));
+const definitions = async () => (await db.query(`SELECT oid::regprocedure::text signature, pg_get_functiondef(oid) definition, proacl FROM pg_proc WHERE pronamespace='public'::regnamespace ORDER BY 1`)).rows;
+const originalDefinitions = await definitions();
 const before = (await db.query(`SELECT public._menu_theme_public(menu_theme) theme,totem_design FROM public.tenant_settings WHERE tenant_id=$1`,[old])).rows;
-await db.exec(read('migrations/20261114000100_channel_theme_inheritance.sql'));
+await db.exec(read('migrations/20261114000200_channel_theme_inheritance.sql'));
 assert.deepEqual((await db.query(`SELECT public._menu_theme_public(menu_theme) theme,totem_design FROM public.tenant_settings WHERE tenant_id=$1`,[old])).rows,before);
 await db.exec(`INSERT INTO public.tenants(id,slug) VALUES('${fresh}','nova');`);
 const value = async sql => (await db.query(sql)).rows[0].j;
@@ -48,6 +50,20 @@ await db.exec(`DELETE FROM public.caller; INSERT INTO public.caller VALUES('aaaa
 await assert.rejects(db.query(`SELECT public.get_menu_theme('${old}')`),/FORBIDDEN/);
 await assert.rejects(db.query(`SELECT public.set_totem_design('${old}',public._totem_design_default())`),/FORBIDDEN/);
 await db.exec('SET ROLE anon');
+await assert.rejects(db.query('SELECT * FROM public._channel_theme_20261114000200_restore'), /permission denied/);
 await assert.rejects(db.query(`SELECT public._channel_menu_theme('${old}')`),/permission denied/);
-console.log('PASS: migration preserves existing tokens, defaults new stores to follow, round-trips independent selections, validates metadata and retains authorization.');
+await db.exec('RESET ROLE');
+// A later dependency must block rollback atomically, never be removed by CASCADE.
+const upgradedDefinitions = await definitions();
+await db.exec('CREATE VIEW public.channel_theme_dependency AS SELECT channel_theme_default FROM public.tenants');
+await assert.rejects(db.exec(read('rollback/20261114000200_channel_theme_inheritance_down.sql')), /depend/);
+await db.exec('ROLLBACK');
+assert.deepEqual(await definitions(), upgradedDefinitions);
+await db.exec('DROP VIEW public.channel_theme_dependency');
+await db.exec(read('rollback/20261114000200_channel_theme_inheritance_down.sql'));
+assert.deepEqual(await definitions(), originalDefinitions, 'exact function bodies, security settings and ACLs restored');
+assert.equal((await db.query(`SELECT count(*) n FROM information_schema.columns WHERE table_schema='public' AND table_name='tenants' AND column_name='channel_theme_default'`)).rows[0].n, 0);
+assert.equal((await db.query(`SELECT to_regclass('public._channel_theme_20261114000200_restore') r`)).rows[0].r, null);
+assert.deepEqual((await db.query(`SELECT public._menu_theme_public(public._menu_theme_default()) theme`)).rows[0].theme, await value(`SELECT public._menu_theme_default() j`));
+console.log('PASS: exact rollback; migration preserves existing tokens, defaults new stores to follow, round-trips independent selections, validates metadata and retains authorization.');
 await db.close();

@@ -28,6 +28,11 @@ it('renders the real totem variant and fits the entire logical viewport on a sho
   frame.contentDocument!.body.innerHTML = '<div id="menu-preview-root"></div>';
   fireEvent.load(frame);
   expect(capture.props).toMatchObject({ variant: 'TOTEM', totemDesign: DEFAULT_TOTEM_DESIGN, preview: true });
+  expect(capture.props?.orderLines).toEqual([{ key: 'preview-order', name: 'Produto de exemplo', quantity: 1, unitPriceCents: 1990 }]);
+  expect(capture.props?.orderSubtotalCents).toBe(1990);
+  expect(capture.props?.onCheckoutOrder()).toBeUndefined();
+  expect(capture.props?.onChangeOrderQuantity('preview-order', 1)).toBeUndefined();
+  expect(capture.props?.orderLines[0].quantity).toBe(1);
   expect(frame.style.width).toBe('1024px');
   expect(frame.style.height).toBe('768px');
   expect(parseFloat(view.getByTestId('menu-design-preview').style.height)).toBeLessThanOrEqual(window.innerHeight - 240);

@@ -18,6 +18,8 @@ import {
   wasAppInstalledEvent,
 } from '../../../lib/pwa/installState';
 import { detectInstalledWebApp } from '../../../lib/pwa/installedWebApp';
+import { channelText } from '../../../lib/theme/channelThemes';
+import { isTotemHex, readableOn } from '../../../lib/menu/totemDesign';
 import { pickVividAccent } from '../../../lib/pwa/storeManifest';
 import './totemInstallOverlay.css';
 
@@ -32,6 +34,7 @@ export interface TotemInstallOverlayProps {
   storeName: string;
   logoUrl?: string;
   accent?: string;
+  addButtonText?: string;
   /** Força um estado (prévia e testes). */
   forcePhase?: TotemInstallForcePhase | null;
   /** Força o estado "já instalado" (testes). */
@@ -68,6 +71,7 @@ export function TotemInstallOverlay({
   storeName,
   logoUrl,
   accent = '#176444',
+  addButtonText,
   forcePhase = null,
   forceInstalled = false,
   search,
@@ -96,7 +100,8 @@ export function TotemInstallOverlay({
   const platform = typeof navigator !== 'undefined' ? detectPlatform(navigator.userAgent) : 'desktop';
   const standalone = typeof window !== 'undefined' && isStandalone(window);
   const wantInstall = installQuery(currentSearch);
-  const ctaColor = pickVividAccent([accent], '#176444');
+  const ctaColor = addButtonText && isTotemHex(accent) ? accent : pickVividAccent([accent], '#176444');
+  const ctaText = channelText(isTotemHex(addButtonText) ? addButtonText : readableOn(ctaColor), [ctaColor]);
   const [alreadyInstalled, setAlreadyInstalled] = useState(Boolean(forceInstalled));
 
   const hideForSession = continued && !wantInstall && !forced;
@@ -272,6 +277,7 @@ export function TotemInstallOverlay({
                 <a
                   className="dc-totem-install-open"
                   data-testid="totem-install-open"
+                  style={{ background: ctaColor, color: ctaText }}
                   href={startPath}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -302,7 +308,7 @@ export function TotemInstallOverlay({
                 type="button"
                 className="dc-totem-install-cta"
                 data-testid="totem-install-cta"
-                style={{ background: ctaColor }}
+                style={{ background: ctaColor, color: ctaText }}
                 aria-busy={waitingPrompt && !alreadyInstalled}
                 onClick={() => void install()}
               >

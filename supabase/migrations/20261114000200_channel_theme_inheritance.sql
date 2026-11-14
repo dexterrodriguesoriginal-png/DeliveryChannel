@@ -1,5 +1,18 @@
 -- Existing tenants retain their published appearance. Only future tenants opt in.
 BEGIN;
+-- Keep the deployed definitions verbatim: installations may contain earlier RPC fixes.
+CREATE TABLE public._channel_theme_20261114000200_restore (signature text PRIMARY KEY, definition text NOT NULL);
+ALTER TABLE public._channel_theme_20261114000200_restore ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public._channel_theme_20261114000200_restore FROM PUBLIC,anon,authenticated,service_role;
+INSERT INTO public._channel_theme_20261114000200_restore
+SELECT sig, pg_get_functiondef(sig::regprocedure) FROM unnest(ARRAY[
+ 'public._menu_theme_valid(jsonb)', 'public._totem_design_valid(jsonb)',
+ 'public._menu_theme_public(jsonb)', 'public.get_menu_theme(uuid)',
+ 'public.get_public_store(text)', 'public.get_totem_design(uuid)',
+ 'public.get_totem_store(text)', 'public.totem_current_device(text)',
+ 'public.set_menu_theme(uuid,jsonb)', 'public.set_totem_design(uuid,jsonb)'
+]) AS sig;
+
 ALTER TABLE public.tenants ADD COLUMN channel_theme_default boolean NOT NULL DEFAULT false;
 ALTER TABLE public.tenants ALTER COLUMN channel_theme_default SET DEFAULT true;
 
