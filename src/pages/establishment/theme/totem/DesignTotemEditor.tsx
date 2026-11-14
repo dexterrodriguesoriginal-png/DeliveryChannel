@@ -1,3 +1,4 @@
+import { ScaledPreview } from '../../../../components/common/ScaledPreview';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { CheckCheck, MonitorPlay, Palette, RotateCcw, Sparkles } from 'lucide-react';
 import { useAuth } from '../../../../context/AuthContext';
@@ -165,7 +166,7 @@ export function DesignTotemEditor({ tenant, active = true }: { tenant: Tenant; a
           </div>
         </main>
         <aside className="menu-design-preview-col" data-testid="totem-design-preview">
-          <div className="totem-design-preview" style={vars as CSSProperties}>
+          <ScaledPreview width={390} height={844}><div className="totem-design-preview" style={{ ...vars, height: 844 } as CSSProperties}>
             <div className="totem-preview-page">
               <aside className="totem-preview-sidebar">
                 <span>Cervejas</span>
@@ -188,7 +189,7 @@ export function DesignTotemEditor({ tenant, active = true }: { tenant: Tenant; a
               <span>Seu pedido</span>
               <button type="button">Finalizar pedido</button>
             </footer>
-          </div>
+          </div></ScaledPreview>
         </aside>
       </div>
     </div>

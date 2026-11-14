@@ -187,3 +187,15 @@
     overflow: visible;
   }
 }
+
+.totem-design .menu-design-preview-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  position: sticky;
+  top: 0;
+}
+@media (max-width: 760px) {
+  .totem-design .menu-design-preview-col { height: 75dvh; }
+}

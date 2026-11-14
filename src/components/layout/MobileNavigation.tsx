@@ -1,5 +1,9 @@
 import React from 'react';
 import { Home, Search, Tag, ShoppingBag, Clock, Bike, User, ClipboardList } from 'lucide-react';
+import type { TenantTheme } from '../../types';
+import { themeToTokens } from '../../lib/theme/themeEngine';
+import { systemBarsFromTokens } from '../../lib/pwa/systemBars';
+import { readablePaletteInkFor } from '../../lib/theme/contrastGuidance';
 import { cn } from '../../utils/cn';
 
 export interface MobileNavigationProps {
@@ -11,6 +15,7 @@ export interface MobileNavigationProps {
   profileBadge?: number;
   ordersBadge?: boolean;
   primaryColor?: string;
+  theme?: Partial<TenantTheme>;
 }
 
 export const MobileNavigation: React.FC<MobileNavigationProps> = ({
@@ -21,6 +26,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
   profileBadge = 0,
   ordersBadge = false,
   primaryColor = '#15803d',
+  theme,
 }) => {
   if (type === 'driver') {
     const driverTabs = [
@@ -51,6 +57,8 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
     );
   }
 
+  const tokens = themeToTokens(theme);
+  const background = systemBarsFromTokens(tokens).nav;
   // App do cliente (/app/<slug>): Início, Busca, Ofertas, Sacola, Pedidos e Perfil.
   const customerTabs = [
     { id: 'home', label: 'Início', icon: <Home className="w-5 h-5" /> },
@@ -87,7 +95,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
   ];
 
   return (
-    <nav data-testid="customer-bottom-nav" className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] grid grid-cols-6 shadow-lg max-w-lg mx-auto sm:rounded-t-2xl">
+    <nav style={{ backgroundColor: background }} data-testid="customer-bottom-nav" className="fixed bottom-0 left-0 right-0 z-40 backdrop-blur-md border-t border-gray-200 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] grid grid-cols-6 shadow-lg max-w-lg mx-auto sm:rounded-t-2xl">
       {customerTabs.map((tab) => {
         const isActive = tab.id === activeTab;
         return (
@@ -98,7 +106,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
             aria-current={isActive ? 'page' : undefined}
             className="flex flex-col items-center gap-0.5 py-1 text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer active:scale-95"
             style={{
-              color: isActive ? primaryColor : '#94a3b8',
+              color: readablePaletteInkFor(tokens, background, isActive ? (theme ? tokens.palette.buttonBg : primaryColor) : tokens.palette.textSecondary),
             }}
           >
             {tab.icon}

@@ -44,3 +44,12 @@ export function paletteInkFor(tokens: ThemeTokens, background: string): string {
   return [tokens.palette.buttonText, tokens.palette.textTitle, tokens.palette.textMain, tokens.palette.bgGeneral]
     .reduce((best, color) => contrastRatio(color, background) > contrastRatio(best, background) ? color : best);
 }
+
+/** Keep the owner's ink when readable; otherwise derive an accessible shade from their palette. */
+export function readablePaletteInkFor(tokens: ThemeTokens, background: string, preferred: string): string {
+  if (contrastRatio(preferred, background) >= 4.5) return preferred;
+  const ink = paletteInkFor(tokens, background);
+  return (['lighter', 'darker'] as const)
+    .map(direction => ensureContrast(ink, background, 4.5, direction))
+    .find(candidate => contrastRatio(candidate, background) >= 4.5) || ink;
+}

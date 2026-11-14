@@ -3628,6 +3628,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           ordersBadge={navTab !== 'orders' && ordersUnread}
           profileBadge={unreadCount}
           primaryColor={buttonColor}
+          theme={theme}
         />
       )}
 

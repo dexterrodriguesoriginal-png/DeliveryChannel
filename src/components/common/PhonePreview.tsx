@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Offer, TenantTheme } from '../../types';
 import { themeToTokens } from '../../lib/theme/themeEngine';
+import { readablePaletteInkFor } from '../../lib/theme/contrastGuidance';
 import { systemBarsFromTokens } from '../../lib/pwa/systemBars';
 import { isPreviewReadyMessage, previewUrl, sendPreviewCard, sendPreviewTheme } from '../../lib/theme/previewBridge';
 
@@ -18,7 +19,7 @@ export const NAV_H = 48;
 /** Escala uniforme para o aparelho INTEIRO caber na área disponível (nunca amplia). */
 export function fitScale(availW: number, availH: number, logicalW: number, logicalH: number) {
   if (!(availW > 0) || !(availH > 0)) return 1;
-  return Math.max(0.1, Math.min(1, availW / logicalW, availH / logicalH));
+  return Math.min(1, availW / logicalW, availH / logicalH);
 }
 export const replicaScale = (containerWidth: number, logicalWidth: number) => fitScale(containerWidth, Infinity, logicalWidth, 1);
 
@@ -89,9 +90,10 @@ export function PhonePreview({ storeSlug, theme, card, mode = 'mobile', fill = f
   const statusH = mobile ? STATUS_H : 0;
   const navH = mobile ? NAV_H : 0;
   // Cores das barras do sistema escolhidas no editor (ao vivo, antes de salvar).
-  const bars = systemBarsFromTokens(themeToTokens(theme));
-  const statusInk = bars.statusIsDark ? '#ffffff' : '#0f172a';
-  const navInk = bars.navIsDark ? '#ffffff' : '#0f172a';
+  const tokens = themeToTokens(theme);
+  const bars = systemBarsFromTokens(tokens);
+  const statusInk = readablePaletteInkFor(tokens, bars.status, tokens.palette.textMain);
+  const navInk = readablePaletteInkFor(tokens, bars.nav, tokens.palette.textMain);
 
   return (
     <div
