@@ -41,6 +41,107 @@ assert.equal((await q("select nspacl::text acl from pg_namespace where nspname='
 assert.equal((await q("select count(*)::int n from pg_proc where pronamespace='private'::regnamespace and prosecdef and not coalesce(proconfig @> ARRAY['search_path=\"\"'],false)"))[0].n,0,'every private SECURITY DEFINER has an empty fixed search_path');
 const headers = async (ip,token) => db.query("select set_config('request.headers',$1,false),set_config('response.status','200',false)",[JSON.stringify({'x-real-ip':ip,...(token?{'x-turnstile-token':token}:{})})]);
 const call=async (phone,fail=false) => (await q('select public.process_checkout_atomic_v2($1,$2) result',[phone,fail]))[0].result;
+// Apply the incremental migration, exercise the real public wrappers, then restore
+// the old guard so the original installation/rollback regression suite also runs.
+const guardQuery = `select pg_get_functiondef(oid) definition,proacl::text acl
+ from pg_proc where oid='private.antibot_guard(text,text,boolean)'::regprocedure`;
+const oldGuard = await q(guardQuery);
+const securityQuery = `select c.oid::regclass::text name,c.relrowsecurity,c.relacl::text acl,
+ (select jsonb_agg(to_jsonb(p) order by policyname) from pg_policies p
+ where p.schemaname=n.nspname and p.tablename=c.relname) policies
+ from pg_class c join pg_namespace n on n.oid=c.relnamespace
+ where c.relname in ('antibot_config','antibot_counters','antibot_audit','antibot_originals')
+ order by 1`;
+const oldSecurity = await q(securityQuery);
+const wrapperDefinitions = await q(originalQuery);
+await db.exec(read('supabase/migrations/20261114000100_antibot_ip_limits.sql'));
+assert.deepEqual(await q(securityQuery), oldSecurity, 'RLS, policies and table ACLs unchanged');
+assert.deepEqual(await q(originalQuery), wrapperDefinitions, 'public wrappers and messages unchanged');
+assert.deepEqual(await q(`select prosecdef,proconfig from pg_proc
+ where oid='private.antibot_guard(text,text,boolean)'::regprocedure`),
+ [{prosecdef:true,proconfig:['search_path=public, pg_temp']}]);
+for (const role of ['anon','authenticated','service_role']) {
+ await db.exec(`SET ROLE ${role}`);
+ await assert.rejects(db.query("select private.antibot_guard('checkout','bypass',true)"), /permission denied/);
+ await assert.rejects(db.query("update private.antibot_config set allowed_hostnames='{}'"), /permission denied/);
+ await db.exec('RESET ROLE');
+}
+const resetLimits = async () => db.exec(`delete from public.antibot_counters;
+ delete from public.antibot_audit;
+ select set_config('test.uid','',false),set_config('request.jwt.claims','{}',false)`);
+const coupon = async () => (await q("select public.validate_coupon('code') result"))[0].result;
+await headers('shared-ip');
+for (let i=0;i<300;i++) assert.equal((await call(`119${String(i).padStart(8,'0')}`)).ok,true,
+ `shared IP checkout ${i+1} passes (including 21)`);
+const blocked = await call('11888888888');
+assert.equal(blocked.code,'RATE_LIMITED','301st checkout from shared IP blocks');
+assert.equal(blocked.message,'Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente.');
+const countersAtLimit = (await q('select count(*)::int n from public.antibot_counters'))[0].n;
+assert.equal((await call('11777777777')).code,'RATE_LIMITED');
+assert.equal((await q('select count(*)::int n from public.antibot_counters'))[0].n,countersAtLimit,
+ 'IP remains first: blocked IP cannot grow identifier counters');
+assert.equal((await q('select blocked_attempts from public.antibot_audit'))[0].blocked_attempts,2);
+const stored = JSON.stringify(await q('select * from public.antibot_counters'))+
+ JSON.stringify(await q('select * from public.antibot_audit'));
+for (const raw of ['shared-ip','11900000000','11888888888']) assert.ok(!stored.includes(raw));
+await resetLimits();
+await headers('phone-ip');
+for(let i=0;i<20;i++) assert.equal((await call(i%2 ? '(11) 99999-9999' : '11999999999')).ok,true);
+assert.equal((await call('11999999999')).code,'RATE_LIMITED','21st normalized phone blocks');
+await headers('another-phone-ip');
+assert.equal((await call('11999999999')).code,'RATE_LIMITED','phone limit survives IP rotation');
+await resetLimits();
+await db.exec("select set_config('test.uid','bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',false)");
+for(let i=0;i<20;i++) {
+ await headers(`user-ip-${i}`);
+ assert.equal((await call(`119${String(i).padStart(8,'0')}`)).ok,true);
+}
+await headers('user-ip-21');
+assert.equal((await call('11888888888')).code,'RATE_LIMITED','21st logged user blocks despite phone/IP rotation');
+await resetLimits();
+await headers('coupon-shared-ip');
+for(let i=0;i<600;i++) assert.equal((await coupon()).valid,false,`shared IP coupon ${i+1} passes`);
+assert.equal((await coupon()).code,'RATE_LIMITED','601st coupon from IP blocks');
+await resetLimits();
+await headers('email-ip');
+for(let i=0;i<60;i++) {
+ await db.query("select set_config('request.jwt.claims',$1,false)",
+ [JSON.stringify({email:i%2 ? ' Cliente@Example.Test ' : 'cliente@example.test'})]);
+ assert.equal((await coupon()).valid,false);
+}
+assert.equal((await coupon()).code,'RATE_LIMITED','61st normalized email blocks');
+await resetLimits();
+await db.exec("select set_config('test.uid','bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',false)");
+for(let i=0;i<60;i++) {
+ await headers(`coupon-user-ip-${i}`);
+ await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({email:`user-${i}@example.test`})]);
+ assert.equal((await coupon()).valid,false);
+}
+assert.equal((await coupon()).code,'RATE_LIMITED','61st logged user coupon blocks');
+await resetLimits();
+// Preserve ingress provenance: rotating a client-controlled first hop cannot
+// evade the limit when ingress appends the same trusted final hop.
+for(let i=0;i<301;i++) {
+ await db.query("select set_config('request.headers',$1,false)",
+ [JSON.stringify({'x-forwarded-for':`client-${i}, ingress-final`})]);
+ const result = await call(`119${String(i).padStart(8,'0')}`);
+ assert.equal(i<300 ? result.ok : result.code, i<300 ? true : 'RATE_LIMITED');
+}
+await db.exec(read('supabase/rollback/20261114000100_antibot_ip_limits.sql'));
+assert.deepEqual(await q(guardQuery),oldGuard,'incremental rollback restores exact definition and ACL');
+assert.deepEqual(await q(securityQuery),oldSecurity);
+await resetLimits();
+await headers('rollback-ip');
+for(let i=0;i<20;i++) assert.equal((await call(`119${String(i).padStart(8,'0')}`)).ok,true);
+assert.equal((await call('11888888888')).code,'RATE_LIMITED','rollback restores 21st-IP checkout block');
+await resetLimits();
+await headers('rollback-coupon-ip');
+for(let i=0;i<60;i++) assert.equal((await coupon()).valid,false);
+assert.equal((await coupon()).code,'RATE_LIMITED','rollback restores 61st-IP coupon block');
+await resetLimits();
+await db.exec('delete from public.test_orders');
+console.log('PASS limites separados IP 300/600, identidade 20/60, privacidade, ACL/RLS e rollback exato');
+
 await headers('ip-a');
 assert.equal((await call('11999999999')).ok,true);
 assert.equal((await call('11999999999',true)).code,'P0001');

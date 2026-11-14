@@ -21,7 +21,8 @@ a valer quando a migração for aplicada, independentemente do captcha.
 Em staging primeiro, depois em uma janela de ativação controlada:
 
 1. Revise/aplique `supabase/migrations/20261112000200_antibot.sql` pelo processo
-   habitual de migrações. Ela não exige Turnstile, Vault, http ou cron habilitados
+   habitual de migrações, seguida de `20261114000100_antibot_ip_limits.sql`.
+   A instalação não exige Turnstile, Vault, http ou cron habilitados
    para funcionar com captcha desligado.
 2. No Supabase **Database → Extensions**, habilite `http` no schema `extensions`.
    O checkout usa uma RPC com chamada síncrona ao `siteverify`, limitada a 5 s;
@@ -75,11 +76,21 @@ Dispositivos já pareados não são afetados.
 As assinaturas, defaults e permissões públicas existentes são preservados, com
 cópias privadas das implementações completas. Os quatro checkouts públicos
 (`process_checkout_atomic`, `_v2`, `_v3` e `process_promotional_checkout_atomic`)
-compartilham **20 tentativas em 10 minutos** por IP e telefone normalizado; quando
-há sessão, também por usuário. `validate_coupon` limita **60 em 10 minutos** por
-IP, e-mail da sessão assinada e usuário autenticado (a assinatura existente de
-prévia não recebe telefone ou identificador anônimo). Checkout anônimo, se permitido pelas regras existentes, recebe o
-mesmo limite por IP/telefone; este PR não relaxa nenhuma exigência de login.
+compartilham os contadores por tipo de sujeito, em janelas de **10 minutos**:
+
+| Sujeito | Checkout | Cupom (`validate_coupon`) |
+| --- | ---: | ---: |
+| IP compartilhado | 300 | 600 |
+| Telefone normalizado / e-mail da sessão assinada | 20 | 60 |
+| Usuário autenticado | 20 | 60 |
+
+O checkout usa telefone normalizado; a prévia de cupom usa e-mail da sessão
+assinada e não recebe telefone ou identificador anônimo. Checkout anônimo, se
+permitido pelas regras existentes, recebe os limites de IP e telefone acima.
+Os quatro limites ficam nas constantes no topo de `private.antibot_guard` na
+migração `20261114000100_antibot_ip_limits.sql`. Ajustá-los exige redefinir a
+função como owner; anon/authenticated não podem alterá-los nem executar a função
+privada diretamente. A migração não muda as exigências de login.
 As RPCs internas de cupom/PDV continuam com suas permissões atuais.
 
 Bloqueios retornam HTTP 429 e a mensagem **“Muitas tentativas em pouco tempo.
@@ -98,7 +109,9 @@ Bloqueios repetidos do mesmo IP/operação/motivo são agregados por janela de
 10 minutos, com contagem, para limitar o crescimento da auditoria.
 Contadores vencidos há mais de um dia são removidos; auditoria dura 30 dias.
 O limite de IP é verificado antes dos identificadores: um IP já bloqueado não
-consegue criar novos contadores variando o telefone. As funções privadas usam
+consegue criar novos contadores variando o telefone. A função
+`private.antibot_guard` usa `SECURITY DEFINER` e
+`SET search_path = public, pg_temp`; as demais funções privadas mantêm
 `search_path` vazio; os objetos novos revogam inclusive grants herdados por
 privilégios padrão. O schema `private`, se já existir, mantém suas permissões.
 
@@ -134,7 +147,10 @@ próprio de 15 segundos e permite nova tentativa quando o script fica sem respos
 
 O PGlite usa funções de negócio e HTTP isoladas como doubles: valida instalação,
 limites, falhas atômicas, persistência, limpeza, RLS, bypass direto, host/ação e
-rollback exato das definições. Não acessa Cloudflare ou produção. Faça também a
+rollback exato das definições. Cobre 21 checkouts do mesmo IP com telefones
+diferentes, bloqueio no 301º por IP e no 21º por telefone/usuário, 600 cupons por
+IP e 60 por e-mail/usuário, além do retorno aos limites anteriores no rollback
+incremental. Não acessa Cloudflare ou produção. Faça também a
 verificação de integração em staging com chaves reais: cadastro, login,
 recuperação, entrega, retirada, promoções, rejeição sem token, repetição de token
 e navegação/pedido no totem/mesa já pareados. Confira no Network que não há script
@@ -146,6 +162,11 @@ Para desligar só captcha, primeiro desabilite CAPTCHA em Auth e remova o secret
 `delivery_turnstile_secret` do Vault; depois remova a site key do frontend na
 próxima publicação. Os limites continuam ativos. Não desabilite apenas o cliente
 enquanto o servidor exigir tokens.
+
+Para reverter apenas os limites por IP, revise/execute
+`supabase/rollback/20261114000100_antibot_ip_limits.sql`: restaura exatamente a
+função anterior (inclusive `search_path` e ACL), voltando a 20 checkouts/60 cupons
+por IP em 10 minutos. Contadores, auditoria e RLS são preservados.
 
 Para rollback estrutural, revise/execute
 `supabase/rollback/20261112000200_antibot.sql`: restaura todas as definições
