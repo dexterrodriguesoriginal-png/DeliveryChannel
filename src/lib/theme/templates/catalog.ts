@@ -120,6 +120,7 @@ export function assembleTemplateTokens(
     layout,
     meta: {
       templateId: palette.id,
+      appTabBarColor: null,
     },
   };
 }

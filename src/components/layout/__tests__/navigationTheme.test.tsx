@@ -6,15 +6,15 @@ import { PhonePreview } from '../../common/PhonePreview';
 import { createDefaultThemeTokens, tokensToTheme, contrastRatio } from '../../../lib/theme/themeEngine';
 
 afterEach(cleanup);
-it.each(['#ebc934', '#121245', '#ffffff', '#747474', '#888888'])('uses the saved nav color %s in customer navigation and preview with readable ink', color => {
+it.each(['#ebc934', '#121245', '#ffffff', '#747474', '#888888'])('uses the independent tab color %s in customer navigation and preview with readable ink', color => {
   const tokens = createDefaultThemeTokens({ storeName: 'Loja' });
-  tokens.meta = { ...tokens.meta, systemBars: { navBarColor: color } };
+  tokens.meta = { ...tokens.meta, appTabBarColor: color, systemBars: { navBarColor: tokens.palette.bgHeader } };
   // Same JSON round trip as persisted theme configuration.
   const theme = JSON.parse(JSON.stringify(tokensToTheme(tokens, { storeName: 'Loja' })));
   const ui = render(<><MobileNavigation type="customer" activeTab="home" onTabChange={() => {}} theme={theme} /><PhonePreview storeSlug="loja" theme={theme} /></>);
   expect(ui.getByTestId('customer-bottom-nav').style.backgroundColor).toBe(color);
-  expect(ui.getByTestId('phone-nav-bar').style.backgroundColor).toBe(color);
-  expect(contrastRatio(ui.getByTestId('phone-nav-bar').style.color, color)).toBeGreaterThanOrEqual(4.5);
+  expect(ui.getByTestId('phone-nav-bar').style.backgroundColor).toBe(tokens.palette.bgHeader);
+  expect(contrastRatio(ui.getByTestId('phone-nav-bar').style.color, tokens.palette.bgHeader)).toBeGreaterThanOrEqual(4.5);
   for (const button of ui.getByTestId('customer-bottom-nav').querySelectorAll('button')) {
     expect(contrastRatio(button.style.color, color)).toBeGreaterThanOrEqual(4.5);
   }

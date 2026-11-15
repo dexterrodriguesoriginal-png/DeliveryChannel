@@ -170,6 +170,13 @@ export function useThemeControls(
     },
     [updateTokens]
   );
+  const updateAppTabBar = useCallback((color: string | null) => {
+    if (color !== null && !validateHexColor(color)) return;
+    updateTokens(prev => ({
+      ...prev,
+      meta: { ...prev.meta, appTabBarColor: color === null ? null : normalizeHexColor(color) },
+    }));
+  }, [updateTokens]);
   const updateSurfaceBackground = useCallback(
     (surface: 'general' | 'header' | 'card', updates: Partial<BackgroundStyleConfig>) => {
       updateTokens((prev) => {
@@ -266,5 +273,6 @@ export function useThemeControls(
     handleColorChange,
     updateSurfaceBackground,
     updateSystemBars,
+    updateAppTabBar,
   };
 }
