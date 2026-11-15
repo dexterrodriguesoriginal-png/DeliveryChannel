@@ -6,6 +6,7 @@ import { SystemBarsCard } from '../tabs/SystemBarsCard';
 import { ThemeEditorContext } from '../ThemeEditorContext';
 import { useThemeDraft } from '../useThemeDraft';
 import { useThemeControls } from '../useThemeControls';
+import { MobileNavigation } from '../../../../components/layout/MobileNavigation';
 import { PhonePreview } from '../../../../components/common/PhonePreview';
 import { DEFAULT_DELIVERY_CHANNEL_THEME } from '../../../../lib/theme/themeEngine';
 import { applySystemBarMeta } from '../../../../lib/pwa/applyStoreIdentity';
@@ -18,6 +19,7 @@ function Harness() {
   return (
     <ThemeEditorContext.Provider value={{ ...draft, ...controls, activeTenant: { id: 't', slug: 's' } as any }}>
       <SystemBarsCard />
+      <MobileNavigation type="customer" activeTab="home" onTabChange={() => {}} theme={draft.draftTheme} />
       <PhonePreview storeSlug="s" theme={draft.draftTheme} />
       <button data-testid="apply" onClick={() => draft.applyTemplate(TEMPLATES[3])}>apply</button>
       <output data-testid="saved">{JSON.stringify(draft.draftTokens.meta?.systemBars ?? null)}</output>
@@ -26,6 +28,19 @@ function Harness() {
 }
 
 describe('editor: cores das barras do celular', () => {
+  it('edita as duas barras independentemente ao vivo e permite herdar o cabeçalho', () => {
+    const ui = render(<Harness />);
+    const tabs = ui.getByTestId('customer-bottom-nav');
+    const before = tabs.style.backgroundColor;
+    fireEvent.click(ui.getByTestId('bar-nav-preset-preto'));
+    expect(tabs.style.backgroundColor).toBe(before);
+    fireEvent.click(ui.getByTestId('bar-icons-preset-dourado'));
+    expect(tabs.style.backgroundColor).toBe('#d4a017');
+    expect(ui.getByTestId('phone-nav-bar').style.backgroundColor).toBe('#0b0b0f');
+    fireEvent.click(ui.getByTestId('bar-icons-auto'));
+    expect(tabs.style.backgroundColor).toBe(before);
+    expect(ui.getByTestId('phone-nav-bar').style.backgroundColor).toBe('#0b0b0f');
+  });
   it('atalho dourado muda a barra de status na prévia antes de salvar; nav é independente', () => {
     const ui = render(<Harness />);
     fireEvent.click(ui.getByTestId('bar-status-preset-dourado'));

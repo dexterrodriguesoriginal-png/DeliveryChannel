@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import React from 'react';
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { PhonePreview, fitScale, PHONE_W, PHONE_H, PHONE_BEZEL, NAV_H } from '../PhonePreview';
 import { createDefaultThemeTokens } from '../../../lib/theme/themeEngine';
+import { PREVIEW_THEME_MSG } from '../../../lib/theme/previewBridge';
 import { tokensToTheme } from '../../../lib/theme/themeEngine';
 
 afterEach(cleanup);
@@ -23,6 +24,21 @@ describe('celular inteiro com barras do Android', () => {
     ui.rerender(<PhonePreview storeSlug="x" theme={withBars({ statusBarColor: '#ffffff', navBarColor: '#ffffff' })} />);
     expect((ui.getByTestId('phone-status-bar') as HTMLElement).style.backgroundColor).toBe(rgb('#ffffff'));
     expect((ui.getByTestId('phone-nav-bar') as HTMLElement).style.backgroundColor).toBe(rgb('#ffffff'));
+  });
+  it.each(['mobile', 'tablet', 'desktop'] as const)('envia cores independentes ao app real no modo %s', mode => {
+    const initial = withBars({ navBarColor: '#121245' });
+    const ui = render(<PhonePreview storeSlug="x" theme={initial} mode={mode} />);
+    const frame = ui.getByTestId('store-replica-frame') as HTMLIFrameElement;
+    const postMessage = vi.fn();
+    Object.defineProperty(frame, 'contentWindow', { value: { postMessage }, configurable: true });
+    const next = structuredClone(initial);
+    next.tokens!.meta!.appTabBarColor = '#ebc934';
+    ui.rerender(<PhonePreview storeSlug="x" theme={next} mode={mode} />);
+    const message = postMessage.mock.calls.at(-1)![0];
+    expect(message.type).toBe(PREVIEW_THEME_MSG);
+    expect(message.theme.tokens.meta.appTabBarColor).toBe('#ebc934');
+    expect(message.theme.tokens.meta.systemBars.navBarColor).toBe('#121245');
+    if (mode === 'mobile') expect(ui.getByTestId('phone-nav-bar').style.backgroundColor).toBe('#121245');
   });
   it('sem escolha, as duas barras seguem a cor do cabeçalho', () => {
     const ui = render(<PhonePreview storeSlug="x" theme={withBars()} />);

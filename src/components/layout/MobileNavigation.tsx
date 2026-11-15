@@ -2,7 +2,7 @@ import React from 'react';
 import { Home, Search, Tag, ShoppingBag, Clock, Bike, User, ClipboardList } from 'lucide-react';
 import type { TenantTheme } from '../../types';
 import { themeToTokens } from '../../lib/theme/themeEngine';
-import { systemBarsFromTokens } from '../../lib/pwa/systemBars';
+import { appTabBarColor } from '../../lib/theme/appTabBar';
 import { readablePaletteInkFor } from '../../lib/theme/contrastGuidance';
 import { cn } from '../../utils/cn';
 
@@ -58,7 +58,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
   }
 
   const tokens = themeToTokens(theme);
-  const background = systemBarsFromTokens(tokens).nav;
+  const background = appTabBarColor(tokens);
   // App do cliente (/app/<slug>): Início, Busca, Ofertas, Sacola, Pedidos e Perfil.
   const customerTabs = [
     { id: 'home', label: 'Início', icon: <Home className="w-5 h-5" /> },

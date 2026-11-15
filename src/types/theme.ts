@@ -81,6 +81,8 @@ export interface ThemeMeta {
   legacyPresetId?: string;
   storeDefault?: Omit<ThemeTokens, 'meta'>;
   /** Cores das barras do sistema Android (status e navegação) do app instalado. Vazio = cor do cabeçalho. */
+  /** Fundo das abas do app. null = cabeçalho; ausente = configuração legada. */
+  appTabBarColor?: string | null;
   systemBars?: { statusBarColor?: string; navBarColor?: string };
 }
 
