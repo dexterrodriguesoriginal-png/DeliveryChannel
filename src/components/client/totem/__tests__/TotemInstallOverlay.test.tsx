@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import React from 'react';
+import { menuThemeContrast } from '../../../../lib/theme/menuTheme';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { persistInstallStart } from '../../../../lib/pwa/installProgress';
@@ -167,4 +168,17 @@ describe('TotemInstallOverlay', () => {
     fireEvent.click(cta);
     await waitFor(() => expect(openInstalledApp).toHaveBeenCalled());
   });
+});
+
+it.each(['prompt', 'done'] as const)('preserves a light CTA and its dark text in %s', phase => {
+  render(<TotemInstallOverlay {...props} accent="#eeeeee" addButtonText="#111111" forcePhase={phase} search="" />);
+  const cta = screen.getByTestId(phase === 'prompt' ? 'totem-install-cta' : 'totem-install-open');
+  expect(cta.getAttribute('style')).toContain('background: #eeeeee');
+  expect(cta.getAttribute('style')).toContain('color: #111111');
+});
+it('repairs a legacy foreground that does not reach AA', () => {
+  render(<TotemInstallOverlay {...props} accent="#eeeeee" addButtonText="#eeeeee" search="" />);
+  const style = screen.getByTestId('totem-install-cta').getAttribute('style')!;
+  const foreground = style.match(/color: (#[a-f0-9]{6})/i)![1];
+  expect(menuThemeContrast(foreground, '#eeeeee')).toBeGreaterThanOrEqual(4.5);
 });

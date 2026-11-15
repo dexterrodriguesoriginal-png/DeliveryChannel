@@ -1,3 +1,4 @@
+import { useChannelThemeRefresh } from '../../lib/theme/useChannelThemeRefresh';
 import { reorderRepository } from '../../repositories/reorderRepository';
 import { repeatItem, type ReorderItem } from '../../lib/customer/dineInReorder';
 import { tableMoveApprovalRepository, type TableMoveRequest } from '../../repositories/tableMoveApprovalRepository';
@@ -140,6 +141,11 @@ export const DineInClientApp: React.FC<{ token: string }> = ({ token }) => {
   const [storeFulfillment, setStoreFulfillment] = useState<{ delivery: boolean; pickup: boolean }>({ delivery: true, pickup: true });
 
   const [storeTenantId, setStoreTenantId] = useState('');
+  useChannelThemeRefresh(`${token}:${resolution?.tenantSlug || ''}`, storeTenantId, async () => {
+    if (!resolution?.tenantSlug) return null;
+    const result = await publicStoreRepository.loadPublicStore(resolution.tenantSlug);
+    return result.status === 'ok' && result.data.tenant.id === storeTenantId ? result.data.menuTheme ?? null : null;
+  }, setMenuTheme);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [firstName, setFirstName] = useState(() => {

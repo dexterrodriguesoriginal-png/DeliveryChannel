@@ -1,3 +1,4 @@
+import { announceThemeSaved } from '../lib/theme/themeLiveUpdate';
 import { supabase } from '../lib/supabase';
 import { requireBackend } from '../lib/backend';
 import type { SecurityContext } from '../services/securityEngine';
@@ -26,6 +27,7 @@ export const menuThemeRepository = {
     const { data, error } = await supabase.rpc('set_menu_theme', { p_tenant: tenantId, p_theme: theme });
     if (error) throw new Error('Não foi possível salvar o design do cardápio. Suas alterações continuam aqui.');
     if (!isValidMenuTheme(data)) throw new Error('O servidor não confirmou o design do cardápio. Recarregue e tente novamente.');
+    void announceThemeSaved(tenantId);
     return normalizeMenuTheme(data);
   },
 };

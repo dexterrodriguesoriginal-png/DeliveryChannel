@@ -1,4 +1,5 @@
 import { ScaledPreview } from '../../../../components/common/ScaledPreview';
+import type { TotemDesign } from '../../../../lib/menu/totemDesign';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Category, Product } from '../../../../types';
@@ -10,6 +11,7 @@ import type { ThemedProductItem } from '../../../../components/storefront/Themed
 import { DineInPremiumMenu } from '../../../../components/client/totem/DineInPremiumMenu';
 
 interface Props {
+  totemDesign?: TotemDesign;
   theme: MenuTheme;
   storeName: string;
   storeLogoUrl?: string;
@@ -35,11 +37,11 @@ export const priceNumber = (value: string | number): number => {
 };
 
 /** The customer menu itself, inside an isolated viewport. Drafts never invoke order callbacks. */
-export function MenuThemePreview({ theme, storeName, storeLogoUrl, storeTagline, products, categories, device, header = DEFAULT_MENU_HEADER, productColumns = 2 }: Props) {
+export function MenuThemePreview({ totemDesign, theme, storeName, storeLogoUrl, storeTagline, products, categories, device, header = DEFAULT_MENU_HEADER, productColumns = 2 }: Props) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [frameDocument, setFrameDocument] = useState<Document | null>(null);
-  const logicalWidth = device === 'phone' ? 390 : 1024;
-  const logicalHeight = device === 'phone' ? 844 : 768;
+  const logicalWidth = totemDesign ? 1024 : device === 'phone' ? 390 : 1024;
+  const logicalHeight = totemDesign ? 768 : device === 'phone' ? 844 : 768;
   useEffect(() => {
     if (!frameDocument) return;
     // Vite dev styles and production stylesheet links are copied; CSS stays scoped to the frame.
@@ -65,16 +67,22 @@ export function MenuThemePreview({ theme, storeName, storeLogoUrl, storeTagline,
     price: priceNumber(item.price), promotionalPrice: item.promotionalPrice ? priceNumber(item.promotionalPrice) : undefined,
     isActive: true, isAvailable: item.isAvailable !== false, stockQuantity: item.stockQuantity ?? 99, unit: item.unit || 'un',
   }));
+  // Local illustration only: never connected to a cart, repository or checkout.
+  const sample = previewProducts[0];
+  const orderLines = totemDesign ? [{ key: 'preview-order', name: sample?.name || 'Produto de exemplo', quantity: 1,
+    unitPriceCents: Math.round((sample?.promotionalPrice ?? sample?.price ?? 19.90) * 100) }] : [];
   return <ScaledPreview width={logicalWidth + 16} height={logicalHeight + 16}><div style={{ width: logicalWidth + 16, height: logicalHeight + 16, maxWidth: 'none', borderWidth: 8 }} className={`menu-design-device menu-design-device-${device}`}>
     <div data-testid="menu-design-preview" data-device={device} data-layout={theme.layout}
       style={{ background: theme.background, fontFamily: resolveFontFamilyCss(theme.fontFamily), '--menu-preview-radius': `${theme.radius}px`, height: logicalHeight, overflow: 'hidden' } as React.CSSProperties}>
-      <iframe ref={frame} title="Prévia real do cardápio" srcDoc={'<!doctype html><html lang="pt-BR"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0"><div id="menu-preview-root"></div></body></html>'}
+      <iframe ref={frame} title={totemDesign ? "Prévia real do totem" : "Prévia real do cardápio"} srcDoc={'<!doctype html><html lang="pt-BR"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0"><div id="menu-preview-root"></div></body></html>'}
         onLoad={() => setFrameDocument(frame.current?.contentDocument || null)}
         style={{ width: logicalWidth, height: logicalHeight, border: 0, transformOrigin: 'top left' }} />
       {frameDocument?.getElementById('menu-preview-root') && createPortal(
-        <DineInPremiumMenu preview tenantId={tenantId} storeName={storeName} storeLogoUrl={storeLogoUrl} storeTagline={storeTagline} tableLabel="Mesa · Prévia" categories={previewCategories} products={previewProducts}
+        <DineInPremiumMenu variant={totemDesign ? "TOTEM" : undefined} totemDesign={totemDesign} preview tenantId={tenantId} storeName={storeName} storeLogoUrl={storeLogoUrl} storeTagline={storeTagline} tableLabel="Mesa · Prévia" categories={previewCategories} products={previewProducts}
           menuTheme={theme} coverUrl={header.coverUrl} categoryMenuMode={header.categoryMenuMode} productColumns={productColumns}
-          cartCount={0} orderingDisabled={false} onGoHome={noop} onOpenCart={noop} onOpenTable={noop} onOpenExpenses={noop} onAddProduct={noop} onOpenProduct={noop} />,
+          orderLines={orderLines} orderSubtotalCents={orderLines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0)}
+          onChangeOrderQuantity={noop} onCheckoutOrder={noop}
+          cartCount={orderLines.length} orderingDisabled={false} onGoHome={noop} onOpenCart={noop} onOpenTable={noop} onOpenExpenses={noop} onAddProduct={noop} onOpenProduct={noop} />,
         frameDocument.getElementById('menu-preview-root')!)}
     </div>
   </div></ScaledPreview>;

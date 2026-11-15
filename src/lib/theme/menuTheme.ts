@@ -37,12 +37,14 @@ export function normalizeMenuTheme(raw: unknown): MenuTheme {
   if (isFont(source.fontFamily)) result.fontFamily = source.fontFamily;
   if (isRadius(source.radius)) result.radius = source.radius;
   if (source.layout === 'comfortable' || source.layout === 'compact') result.layout = source.layout;
+  if (typeof source.followApp === 'boolean') result.followApp = source.followApp;
+  if (typeof source.templateId === 'string' && /^[a-z0-9_-]{1,100}$/.test(source.templateId)) result.templateId = source.templateId;
   return result;
 }
 
 /** Escrita não transforma configurações inválidas em um sucesso aparente. */
 export function isValidMenuTheme(raw: unknown): raw is MenuTheme {
-  return isObject(raw) && Object.keys(raw).every(key => [...MENU_COLOR_KEYS, 'fontFamily', 'radius', 'layout'].includes(key))
+  return isObject(raw) && (raw.followApp === undefined || typeof raw.followApp === 'boolean') && (raw.templateId === undefined || (typeof raw.templateId === 'string' && /^[a-z0-9_-]{1,100}$/.test(raw.templateId))) && Object.keys(raw).every(key => [...MENU_COLOR_KEYS, 'fontFamily', 'radius', 'layout', 'followApp', 'templateId'].includes(key))
     && MENU_COLOR_KEYS.every(key => isMenuColor(raw[key])) && isFont(raw.fontFamily) && isRadius(raw.radius)
     && (raw.layout === 'comfortable' || raw.layout === 'compact');
 }
@@ -65,6 +67,8 @@ export function menuThemeContrastIssues(theme: MenuTheme): string[] {
     [theme.text, theme.background, 'Texto sobre o fundo'],
     [theme.text, theme.surface, 'Texto nos cartões'],
     [theme.accentText, theme.accent, 'Texto dos botões'],
+    [theme.accent, theme.surface, 'Destaques nos cartões'],
+    [theme.accent, theme.background, 'Destaques sobre o fundo'],
     [theme.accentText, theme.categoryActiveBg, 'Texto da categoria selecionada'],
   ].filter(([text, background]) => menuThemeContrast(text, background) < 4.5).map(([, , label]) => label);
 }

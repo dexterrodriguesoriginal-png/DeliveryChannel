@@ -7,6 +7,7 @@ import { ThemedProductItem } from '../../../components/storefront/ThemedProductL
 import { ThemeDialog } from './ThemeDialog';
 
 export interface TemplateCompareDialogProps {
+  renderPreview?: (template: StoreTemplate) => React.ReactNode;
   templates: StoreTemplate[];
   storeSlug?: string;
   identity: TenantTheme;
@@ -18,6 +19,7 @@ export interface TemplateCompareDialogProps {
 }
 export function TemplateCompareDialog({
   templates,
+  renderPreview,
   storeSlug,
   identity,
   products,
@@ -41,14 +43,14 @@ export function TemplateCompareDialog({
                 {template.mode === 'dark' ? 'Escuro' : 'Claro'} · {template.segmentLabel}
               </p>
             </div>
-            <LiveStorePreview
+            {renderPreview ? <div className="menu-design-catalog-preview">{renderPreview(template)}</div> : <LiveStorePreview
               theme={tokensToTheme(template.tokens, identity)}
               storeSlug={storeSlug}
               products={products}
               segmentId={template.segmentId}
               isOpen={isStoreOpen}
               compact
-            />
+            />}
             <button
               type="button"
               aria-label={`Usar este: ${template.name}`}

@@ -1,3 +1,4 @@
+import { announceThemeSaved } from '../lib/theme/themeLiveUpdate';
 import { supabase } from '../lib/supabase';
 import { requireBackend } from '../lib/backend';
 import type { SecurityContext } from '../services/securityEngine';
@@ -27,6 +28,8 @@ export const totemDesignRepository = {
     if (!isValidTotemDesign(clean)) throw new Error('Confira as cores em hexadecimal (#RRGGBB) e o raio do banner.');
     const { data, error } = await supabase.rpc('set_totem_design', { p_tenant: tenantId, p_cfg: clean });
     if (error) throw new Error('Não foi possível salvar o design do totem. Suas alterações continuam aqui.');
-    return normalizeTotemDesign(data ?? clean);
+    if (!isValidTotemDesign(data)) throw new Error('O servidor não confirmou o design do totem. Recarregue e tente novamente.');
+    void announceThemeSaved(tenantId);
+    return normalizeTotemDesign(data);
   },
 };

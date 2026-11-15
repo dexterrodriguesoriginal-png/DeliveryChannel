@@ -1,0 +1,90 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { PGlite } from '@electric-sql/pglite';
+const read = p => fs.readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
+const db = new PGlite();
+const old = '11111111-1111-1111-1111-111111111111';
+const fresh = '33333333-3333-3333-3333-333333333333';
+await db.exec(read('tests/entrega3/stub.sql'));
+await db.exec(`CREATE FUNCTION public.get_public_store(p_slug text) RETURNS jsonb LANGUAGE plpgsql AS $$
+DECLARE v_theme record; v_tenant record;
+BEGIN SELECT t.id INTO v_tenant FROM public.tenants t WHERE slug=$1;
+SELECT 'Loja' AS store_name INTO v_theme;
+RETURN jsonb_build_object('theme', to_jsonb(v_theme), 'tenant',jsonb_build_object('id',v_tenant.id)); END $$;`);
+await db.exec(read('migrations/20261104000900_entrega2_menu_theme.sql'));
+await db.exec(read('migrations/20261109000100_cardapio_capa_menu.sql'));
+await db.exec(read('migrations/20261109000200_totem_salao_capa.sql'));
+// Use the existing crypto/device fixture, retaining the real public menu projection.
+const publicDefinition = (await db.query(`SELECT pg_get_functiondef('public.get_public_store(text)'::regprocedure) s`)).rows[0].s;
+await db.exec(read('tests/totem_access/stub_extra.sql'));
+await db.exec(publicDefinition);
+await db.exec(read('migrations/20261109000300_totem_access_and_design.sql'));
+const definitions = async () => (await db.query(`SELECT oid::regprocedure::text signature, pg_get_functiondef(oid) definition, proacl FROM pg_proc WHERE pronamespace='public'::regnamespace ORDER BY 1`)).rows;
+const originalDefinitions = await definitions();
+const before = (await db.query(`SELECT public._menu_theme_public(menu_theme) theme,totem_design FROM public.tenant_settings WHERE tenant_id=$1`,[old])).rows;
+await db.exec(read('migrations/20261114000200_channel_theme_inheritance.sql'));
+assert.deepEqual((await db.query(`SELECT public._menu_theme_public(menu_theme) theme,totem_design FROM public.tenant_settings WHERE tenant_id=$1`,[old])).rows,before);
+await db.exec(`INSERT INTO public.tenants(id,slug) VALUES('${fresh}','nova');`);
+const value = async sql => (await db.query(sql)).rows[0].j;
+assert.equal((await value(`SELECT public._channel_menu_theme('${old}') j`)).followApp,false);
+assert.equal((await value(`SELECT public._channel_totem_design('${old}') j`)).followApp,false);
+assert.equal((await value(`SELECT public._channel_menu_theme('${fresh}') j`)).followApp,true);
+assert.equal((await value(`SELECT public._channel_totem_design('${fresh}') j`)).followApp,true);
+assert.equal((await value(`SELECT public.get_public_store('nova') j`)).menuTheme.followApp,true);
+await db.exec(`INSERT INTO public.caller VALUES('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','OWNER','${old}')`);
+assert.equal((await value(`SELECT public.get_menu_theme('${old}') j`)).followApp,false);
+for (const channel of ['menu','totem']) {
+ const get = channel==='menu' ? '_channel_menu_theme' : '_channel_totem_design';
+ const set = channel==='menu' ? 'set_menu_theme' : 'set_totem_design';
+ const theme = await value(`SELECT public.${get}('${old}') j`);
+ const saved = (await db.query(`SELECT public.${set}($1,$2::jsonb) j`,[old,JSON.stringify({...theme,followApp:true,templateId:'catalog-1',...(channel==='totem' ? {fontFamily:'Poppins'} : {})})])).rows[0].j;
+ assert.equal(saved.followApp,true);
+ assert.equal(saved.templateId,'catalog-1');
+ await assert.rejects(db.query(`SELECT public.${set}($1,$2::jsonb)`,[old,JSON.stringify({...theme,followApp:'true'})]),/INVALID/);
+}
+const menu = await value(`SELECT public._channel_menu_theme('${old}') j`);
+await assert.rejects(db.query('SELECT public.set_menu_theme($1,$2::jsonb)',[old,JSON.stringify({...menu,followApp:false,text:menu.background})]),/INVALID_MENU_THEME/);
+const totem = await value(`SELECT public._channel_totem_design('${old}') j`);
+await assert.rejects(db.query('SELECT public.set_totem_design($1,$2::jsonb)',[old,JSON.stringify({...totem,followApp:false,colors:{...totem.colors,productCardText:totem.colors.productCardBg}})]),/INVALID_TOTEM_DESIGN/);
+await db.exec(`DELETE FROM public.caller; INSERT INTO public.caller VALUES('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','STAFF','${old}')`);
+await assert.rejects(db.query(`SELECT public.get_menu_theme('${old}')`),/FORBIDDEN/);
+await assert.rejects(db.query(`SELECT public.set_totem_design('${old}',public._totem_design_default())`),/FORBIDDEN/);
+await db.exec('SET ROLE anon');
+await assert.rejects(db.query('SELECT * FROM public._channel_theme_20261114000200_restore'), /permission denied/);
+await assert.rejects(db.query(`SELECT public._channel_menu_theme('${old}')`),/permission denied/);
+await db.exec('RESET ROLE');
+// A later dependency must block rollback atomically, never be removed by CASCADE.
+await db.exec(`UPDATE public.tenant_settings SET address='Rua preservada', phone_whatsapp='11999999999' WHERE tenant_id='${old}';
+INSERT INTO public.tenant_settings(tenant_id,address,phone_whatsapp) VALUES('${fresh}','Sem personalização','11888888888');`);
+const upgradedDefinitions = await definitions();
+const settings = async () => (await db.query('SELECT * FROM public.tenant_settings ORDER BY tenant_id')).rows;
+const upgradedSettings = await settings();
+const normalizedSettings = upgradedSettings.map(row => {
+ const {followApp, templateId, ...menu_theme} = row.menu_theme;
+ const totem_design = row.totem_design === null ? null : Object.fromEntries(
+  Object.entries(row.totem_design).filter(([key]) => !['followApp','templateId','fontFamily'].includes(key))
+ );
+ return {...row, menu_theme, totem_design};
+});
+await db.exec('CREATE VIEW public.channel_theme_dependency AS SELECT channel_theme_default FROM public.tenants');
+await assert.rejects(db.exec(read('rollback/20261114000200_channel_theme_inheritance_down.sql')), /depend/);
+await db.exec('ROLLBACK');
+assert.deepEqual(await definitions(), upgradedDefinitions);
+assert.deepEqual(await settings(), upgradedSettings, 'blocked rollback leaves all saved data intact');
+await db.exec('DROP VIEW public.channel_theme_dependency');
+await db.exec(read('rollback/20261114000200_channel_theme_inheritance_down.sql'));
+assert.deepEqual(await definitions(), originalDefinitions, 'exact function bodies, security settings and ACLs restored');
+assert.equal((await db.query(`SELECT count(*) n FROM information_schema.columns WHERE table_schema='public' AND table_name='tenants' AND column_name='channel_theme_default'`)).rows[0].n, 0);
+assert.equal((await db.query(`SELECT to_regclass('public._channel_theme_20261114000200_restore') r`)).rows[0].r, null);
+assert.deepEqual((await db.query(`SELECT public._menu_theme_public(public._menu_theme_default()) theme`)).rows[0].theme, await value(`SELECT public._menu_theme_default() j`));
+assert.deepEqual(await settings(), normalizedSettings, 'only new channel keys removed; all rows and other settings preserved');
+assert.ok((await db.query(`SELECT public._menu_theme_valid(menu_theme) AND (totem_design IS NULL OR public._totem_design_valid(totem_design)) valid FROM public.tenant_settings`)).rows.every(row => row.valid));
+// Rechecking constraints on every saved row must succeed with the old validators.
+await db.exec('UPDATE public.tenant_settings SET address=address');
+assert.equal((await db.query(`SELECT count(*) n FROM pg_trigger WHERE tgrelid='public.tenant_settings'::regclass AND tgname IN ('menu_theme_write_guard','totem_design_write_guard') AND tgenabled='O'`)).rows[0].n, 2);
+await db.exec(read('migrations/20261114000200_channel_theme_inheritance.sql'));
+assert.deepEqual(await settings(), normalizedSettings, 'reapplying up preserves normalized settings');
+assert.equal((await value(`SELECT public._channel_menu_theme('${old}') j`)).followApp, false);
+assert.equal((await value(`SELECT public._channel_totem_design('${old}') j`)).followApp, false);
+console.log('PASS: exact rollback; migration preserves existing tokens, defaults new stores to follow, round-trips independent selections, validates metadata, retains authorization and reapplies up after normalizing saved channel JSON.');
+await db.close();

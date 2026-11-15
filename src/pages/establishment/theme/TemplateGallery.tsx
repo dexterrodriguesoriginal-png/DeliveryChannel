@@ -26,6 +26,9 @@ import { ThemeDialog } from './ThemeDialog';
 import { resolveSegment } from '../../../lib/theme/previewProducts';
 
 export interface TemplateGalleryProps {
+  selectedTemplateId?: string | null;
+  draftTemplateId?: string | null;
+  renderPreview?: (template: StoreTemplate) => React.ReactNode;
   /** Slug da loja: a prévia mostra o app real do cliente. */
   storeSlug?: string;
   active?: boolean;
@@ -60,6 +63,9 @@ function readFavorites(key: string): string[] {
 }
 export function TemplateGallery({
   storeSlug,
+  renderPreview,
+  selectedTemplateId,
+  draftTemplateId,
   active = true,
   tenantId,
   category,
@@ -104,9 +110,9 @@ export function TemplateGallery({
     },
     []
   );
-  const current = useMemo(() => findClosestTemplate(themeToTokens(savedTheme)), [savedTheme]);
-  const currentId = current.id;
-  const draftId = draftTheme.tokens?.meta?.templateId;
+  const current = useMemo(() => selectedTemplateId !== undefined ? getTemplateById(selectedTemplateId || '') : findClosestTemplate(themeToTokens(savedTheme)), [savedTheme, selectedTemplateId]);
+  const currentId = current?.id || '';
+  const draftId = draftTemplateId !== undefined ? draftTemplateId : draftTheme.tokens?.meta?.templateId;
   useEffect(() => { if (preview?.id === draftId) setPreview(null); }, [draftId, preview?.id]);
   const shades = useMemo(
     () => [...new Set(TEMPLATES.filter((t) => t.colorFamily === family).map((t) => t.shade))],
@@ -373,7 +379,7 @@ export function TemplateGallery({
         )}
       </div>
       {!onlyFavorites &&
-        currentId.includes('-recolor-') &&
+        current && currentId.includes('-recolor-') &&
         !models.some((t) => t.id === currentId) && (
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-700">Seu modelo salvo</h3>
@@ -448,14 +454,14 @@ export function TemplateGallery({
                 Experimente à vontade. Você escolhe quando salvar.
               </p>
             </div>
-            <LiveStorePreview
+            {renderPreview ? <div className="menu-design-catalog-preview">{renderPreview(preview)}</div> : <LiveStorePreview
               theme={tokensToTheme(preview.tokens, draftTheme)}
               storeSlug={storeSlug}
               products={products}
               segmentId={preview.segmentId}
               isOpen={isStoreOpen}
               compact
-            />
+            />}
             <button type="button" className="theme-primary w-full" onClick={() => apply(preview)}>
               Usar modelo
             </button>
@@ -463,6 +469,7 @@ export function TemplateGallery({
         </ThemeDialog>
       )}
       <TemplateCompareDialog
+        renderPreview={renderPreview}
         templates={comparing}
         storeSlug={storeSlug}
         identity={draftTheme}
