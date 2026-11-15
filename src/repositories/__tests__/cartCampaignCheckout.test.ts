@@ -22,13 +22,13 @@ describe('checkout comum com item de oferta (carrossel)', () => {
     const items = cart.map(l => toCheckoutItem(l));
     expect(() => assertCartCampaignLinesSupported(items, true)).not.toThrow();
   });
-  it('n1n6: o payload enviado ao RPC tem só productId/quantity/notes (aceito por _price_items)', () => {
+  it('n1n6: o payload envia a referência da promoção sem enviar preço', () => {
     const payload = toServerItems(cart.map(l => toCheckoutItem(l)));
     expect(payload).toEqual([
-      { productId: REFRI, quantity: 1, notes: null },
+      { productId: REFRI, quantity: 1, notes: null, source: 'campaign', campaignItemId: campaignOrigin.campaignItemId },
       { productId: AGUA, quantity: 2, notes: null },
     ]);
-    for (const it of payload) expect(Object.keys(it).sort()).toEqual(['notes', 'productId', 'quantity']);
+    for (const it of payload) { expect(it).not.toHaveProperty('price'); expect(it).not.toHaveProperty('unit_price'); }
   });
   it('legacy-020: recusa com código próprio (a vitrine converte a linha e mostra aviso fixo)', () => {
     const items = cart.map(l => toCheckoutItem(l));

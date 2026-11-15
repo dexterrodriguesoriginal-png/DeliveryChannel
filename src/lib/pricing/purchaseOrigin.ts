@@ -28,6 +28,7 @@ export interface PurchaseOrigin {
 export const CATALOG_ORIGIN: PurchaseOrigin = { source: 'catalog' };
 
 export interface OriginProduct {
+  carouselOnly?: boolean;
   id: string;
   tenantId?: string;
   price: number;
@@ -44,6 +45,7 @@ export interface OriginCampaignItem {
   isActive: boolean;
   startDate?: string | null;
   endDate?: string | null;
+  remainingUnits?: number;
 }
 
 export interface OriginCampaign {
@@ -64,7 +66,8 @@ export type CampaignInvalidReason =
   | 'CAMPAIGN_NOT_STARTED'
   | 'CAMPAIGN_EXPIRED'
   | 'CAMPAIGN_PRODUCT_MISMATCH'
-  | 'CAMPAIGN_PRICE_INVALID';
+  | 'CAMPAIGN_PRICE_INVALID'
+  | 'CAMPAIGN_UNITS_EXCEEDED';
 
 export const CAMPAIGN_REASON_TEXT: Record<CampaignInvalidReason, string> = {
   CAMPAIGN_ITEM_NOT_FOUND: 'a oferta selecionada não existe mais',
@@ -74,6 +77,7 @@ export const CAMPAIGN_REASON_TEXT: Record<CampaignInvalidReason, string> = {
   CAMPAIGN_EXPIRED: 'a oferta expirou',
   CAMPAIGN_PRODUCT_MISMATCH: 'a oferta não corresponde a este produto',
   CAMPAIGN_PRICE_INVALID: 'o preço da oferta é inválido',
+  CAMPAIGN_UNITS_EXCEEDED: 'a quantidade excede as unidades da promoção',
 };
 
 export function normalizeOrigin(o: Partial<PurchaseOrigin> | null | undefined): PurchaseOrigin {
@@ -121,7 +125,7 @@ export function validateCampaignItem(args: {
   if (i.startDate && new Date(i.startDate) > now) return { ok: false, reason: 'CAMPAIGN_NOT_STARTED' };
   if (i.endDate && new Date(i.endDate) <= now) return { ok: false, reason: 'CAMPAIGN_EXPIRED' };
   const pp = Number(i.promotionalPrice);
-  if (!Number.isFinite(pp) || pp <= 0 || pp >= args.product.price) return { ok: false, reason: 'CAMPAIGN_PRICE_INVALID' };
+  if (!Number.isFinite(pp) || pp <= 0 || pp > args.product.price) return { ok: false, reason: 'CAMPAIGN_PRICE_INVALID' };
   return { ok: true, item: i };
 }
 
@@ -149,6 +153,7 @@ export function priceLineByOrigin(args: {
   }
   const v = validateCampaignItem({ campaigns: args.campaigns, tenantId: args.tenantId, product: args.product, campaignItemId: o.campaignItemId as string, now: args.now });
   if (!v.ok) return v;
+  if (v.item.remainingUnits !== undefined && args.quantity > v.item.remainingUnits) return { ok: false, reason: 'CAMPAIGN_UNITS_EXCEEDED' };
   return {
     ok: true,
     line: {
@@ -215,7 +220,7 @@ export function revalidateOriginCart<P extends OriginProduct>(
       const v = validateCampaignItem({ campaigns, tenantId, product: l.product, campaignItemId: l.origin.campaignItemId as string, now });
       if (!v.ok) {
         converted.push({ productId: l.product.id, reason: v.reason });
-        next = addToOriginCart(next, l.product, CATALOG_ORIGIN, l.quantity);
+        if (!l.product.carouselOnly) next = addToOriginCart(next, l.product, CATALOG_ORIGIN, l.quantity);
         continue;
       }
     }
