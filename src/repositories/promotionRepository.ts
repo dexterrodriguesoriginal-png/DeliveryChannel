@@ -18,7 +18,12 @@ import { isValidUuid } from '../lib/uuid';
 import { BackendError, requireBackend, requireBackendOrLocalDemo, toBackendError } from '../lib/backend';
 import { mapCouponPreview, toServerItems } from './orderMappers';
 
-const CAROUSEL_SELECT = `*, items:promotion_carousel_items(*, product:products(id, name, description, image_url, price, unit, is_active, stock_quantity))`;
+export interface PromotionalProductInput {
+  name: string; description: string; imageUrl: string; price: number; originalPrice?: number;
+  startDate?: string; endDate: string; stock: number;
+}
+
+const CAROUSEL_SELECT = `*, items:promotion_carousel_items(*, product:products(id, name, description, image_url, price, unit, is_active, stock_quantity, carousel_only))`;
 
 /** Preço promocional exibido no painel (prévia); a verdade é _effective_product_price no servidor. */
 export function carouselItemPreviewPrice(basePrice: number, discountType: string, discountValue: number): number {
@@ -46,6 +51,7 @@ function mapCarousel(pc: any): PromotionCarousel {
         const base = Number(i.product?.price ?? 0);
         const promo = carouselItemPreviewPrice(base, i.discount_type, Number(i.discount_value));
         return {
+          unitLimit: i.unit_limit,
           id: i.id,
           carouselId: i.carousel_id,
           productId: i.product_id,
@@ -64,6 +70,7 @@ function mapCarousel(pc: any): PromotionCarousel {
           updatedAt: i.updated_at,
           product: i.product
             ? {
+                carouselOnly: Boolean(i.product.carousel_only),
                 id: i.product.id,
                 tenantId: pc.tenant_id,
                 categoryId: '',
@@ -238,7 +245,15 @@ export const promotionRepository = {
     if (error) throw toBackendError(error, 'Falha ao excluir carrossel.');
   },
 
-  async addProductsToCarousel(context: SecurityContext, tenantId: string, carouselId: string, productIds: string[]): Promise<PromotionCarousel> {
+  async createPromotionalProduct(tenantId: string, carouselId: string, data: PromotionalProductInput, components: Array<{ productId: string; quantity: number }>): Promise<PromotionCarousel> {
+    requireBackend('produto promocional');
+    requireN1N6('Produtos promocionais');
+    const { error } = await supabase.rpc('create_carousel_product', { p_tenant: tenantId, p_carousel: carouselId, p_data: data, p_components: components });
+    if (error) throw toBackendError(error, 'Falha ao criar produto promocional.');
+    return this.getCarousel(tenantId, carouselId);
+  },
+
+  async addProductsToCarousel(context: SecurityContext, tenantId: string, carouselId: string, productIds: string[], promotion?: { price: number; startDate?: string; endDate?: string; unitLimit?: number }): Promise<PromotionCarousel> {
     requireBackend('carrosséis');
     requireN1N6('Carrosséis promocionais');
     const rows = productIds.filter(isValidUuid).map((productId, idx) => ({
@@ -246,8 +261,11 @@ export const promotionRepository = {
       carousel_id: carouselId,
       product_id: productId,
       // Sem desconto até o lojista configurar (o preço continua o do catálogo).
-      discount_type: 'NONE',
-      discount_value: 0,
+      discount_type: promotion ? 'PROMOTIONAL_PRICE' : 'NONE',
+      discount_value: promotion?.price ?? 0,
+      start_at: promotion?.startDate || null,
+      end_at: promotion?.endDate || null,
+      unit_limit: promotion?.unitLimit ?? null,
       display_order: idx,
     }));
     if (rows.length > 0) {
@@ -267,6 +285,7 @@ export const promotionRepository = {
     requireBackend('carrosséis');
     requireN1N6('Carrosséis promocionais');
     const db: Record<string, unknown> = {};
+    if (promotionData.unitLimit !== undefined) db.unit_limit = promotionData.unitLimit;
     if (promotionData.discountType !== undefined) db.discount_type = promotionData.discountType;
     if (promotionData.discountType === 'PROMOTIONAL_PRICE' && promotionData.promotionalPrice !== undefined) {
       db.discount_value = promotionData.promotionalPrice;

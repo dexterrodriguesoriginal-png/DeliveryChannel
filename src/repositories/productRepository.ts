@@ -57,7 +57,7 @@ export const productRepository = {
           return localOnly('produtos', () => dataStore.getProducts(context, tenantId));
         }
 
-        return (data || []).map(mapRowToProduct);
+        return (data || []).filter(row => !row.carousel_only).map(mapRowToProduct);
       } catch (err) {
         console.warn('[productRepository] Falha ao consultar produtos no Supabase:', err);
         return localOnly('produtos', () => dataStore.getProducts(context, tenantId));

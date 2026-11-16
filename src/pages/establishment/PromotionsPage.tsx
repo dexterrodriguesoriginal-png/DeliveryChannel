@@ -6,6 +6,7 @@ import { customerRepository } from '../../repositories/customerRepository';
 import { offerRepository } from '../../repositories/offerRepository';
 import { PromotionCarousel, PromotionCarouselItem, Coupon, Product, Customer, Offer } from '../../types';
 import { CatalogOffersSection } from '../../components/establishment/CatalogOffersSection';
+import { CarouselProductCreator } from '../../components/establishment/CarouselProductCreator';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -73,6 +74,8 @@ export const PromotionsPage: React.FC = () => {
   const [selectedCarouselForProducts, setSelectedCarouselForProducts] = useState<PromotionCarousel | null>(null);
   const [isAddProductsModalOpen, setIsAddProductsModalOpen] = useState(false);
   const [selectedProductIdsToAdd, setSelectedProductIdsToAdd] = useState<string[]>([]);
+  const [addMode, setAddMode] = useState<'catalog' | 'create'>('catalog');
+  const [catalogPromotion, setCatalogPromotion] = useState({ price: '', startDate: '', endDate: '', unitLimit: '' });
   const [productSearchTerm, setProductSearchTerm] = useState('');
 
   // Item Promotion Editor Modal
@@ -85,6 +88,7 @@ export const PromotionsPage: React.FC = () => {
     showPromotionalPrice: true,
     startDate: '',
     endDate: '',
+    unitLimit: '',
     isActive: true,
   });
   const [promoError, setPromoError] = useState<string | null>(null);
@@ -328,6 +332,8 @@ export const PromotionsPage: React.FC = () => {
   // CAROUSEL PRODUCTS HANDLERS
   // --------------------------------------------------------------------------
   const handleOpenAddProductsModal = () => {
+    setAddMode('catalog');
+    setCatalogPromotion({ price: '', startDate: '', endDate: '', unitLimit: '' });
     setSelectedProductIdsToAdd([]);
     setProductSearchTerm('');
     setIsAddProductsModalOpen(true);
@@ -335,12 +341,26 @@ export const PromotionsPage: React.FC = () => {
 
   const handleAddSelectedProducts = async () => {
     if (!activeTenant || !selectedCarouselForProducts || selectedProductIdsToAdd.length === 0) return;
+    if ((catalogPromotion.startDate || catalogPromotion.endDate || catalogPromotion.unitLimit) && !catalogPromotion.price) {
+      showToast({ type: 'error', title: 'Preço obrigatório', message: 'Informe o preço promocional para configurar a validade ou o limite.' });
+      return;
+    }
+    if (catalogPromotion.price && (Number(catalogPromotion.price) <= 0 || selectedProductIdsToAdd.some(id => Number(catalogPromotion.price) >= (products.find(p => p.id === id)?.price || 0)))) {
+      showToast({ type: 'error', title: 'Preço inválido', message: 'O preço promocional deve ser positivo e menor que o preço de cada produto selecionado.' });
+      return;
+    }
     try {
       await promotionRepository.addProductsToCarousel(
         securityContext,
         activeTenant.id,
         selectedCarouselForProducts.id,
-        selectedProductIdsToAdd
+        selectedProductIdsToAdd,
+        catalogPromotion.price ? {
+          price: Number(catalogPromotion.price),
+          startDate: catalogPromotion.startDate ? new Date(catalogPromotion.startDate).toISOString() : undefined,
+          endDate: catalogPromotion.endDate ? new Date(catalogPromotion.endDate).toISOString() : undefined,
+          unitLimit: catalogPromotion.unitLimit ? Number(catalogPromotion.unitLimit) : undefined,
+        } : undefined
       );
       showToast({
         type: 'success',
@@ -398,7 +418,7 @@ export const PromotionsPage: React.FC = () => {
   // ITEM PROMOTION CONFIGURATION & REAL-TIME PREVIEW
   // --------------------------------------------------------------------------
   const handleOpenItemPromotionModal = (item: PromotionCarouselItem) => {
-    const product = products.find(p => p.id === item.productId);
+    const product = item.product || products.find(p => p.id === item.productId);
     if (!product || !selectedCarouselForProducts) return;
 
     setEditingItem({
@@ -415,6 +435,7 @@ export const PromotionsPage: React.FC = () => {
       showPromotionalPrice: item.showPromotionalPrice,
       startDate: item.startDate ? item.startDate.slice(0, 16) : '',
       endDate: item.endDate ? item.endDate.slice(0, 16) : '',
+      unitLimit: item.unitLimit == null ? '' : String(item.unitLimit),
       isActive: item.isActive,
     });
     setPromoError(null);
@@ -448,7 +469,7 @@ export const PromotionsPage: React.FC = () => {
       }
     }
 
-    const isValid = promoPrice > 0 && promoPrice < normalPrice && discountPct < 100 && discountPct > 0;
+    const isValid = promoPrice > 0 && (editingItem.product.carouselOnly ? promoPrice <= normalPrice : promoPrice < normalPrice) && discountPct < 100;
 
     return {
       normalPrice,
@@ -482,6 +503,7 @@ export const PromotionsPage: React.FC = () => {
           showPromotionalPrice: itemPromoForm.showPromotionalPrice,
           startDate: itemPromoForm.startDate ? new Date(itemPromoForm.startDate).toISOString() : undefined,
           endDate: itemPromoForm.endDate ? new Date(itemPromoForm.endDate).toISOString() : undefined,
+          unitLimit: itemPromoForm.unitLimit ? Number(itemPromoForm.unitLimit) : null,
           isActive: itemPromoForm.isActive,
         }
       );
@@ -1030,7 +1052,7 @@ export const PromotionsPage: React.FC = () => {
             ) : (
               <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
                 {selectedCarouselForProducts.items.map((item, index) => {
-                  const product = products.find(p => p.id === item.productId);
+                  const product = item.product || products.find(p => p.id === item.productId);
                   if (!product) return null;
 
                   return (
@@ -1054,7 +1076,7 @@ export const PromotionsPage: React.FC = () => {
                             <span className="text-xs font-black text-emerald-700">
                               {formatBRL(item.promotionalPrice)}
                             </span>
-                            {item.showDiscountBadge && (
+                            {item.showDiscountBadge && item.calculatedDiscountPercentage > 0 && (
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-600 text-white shadow-2xs">
                                 -{item.calculatedDiscountPercentage}%
                               </span>
@@ -1130,6 +1152,24 @@ export const PromotionsPage: React.FC = () => {
         size="lg"
       >
         <div className="space-y-4">
+          <div className="flex gap-2">
+            <Button variant={addMode === 'catalog' ? 'primary' : 'outline'} style={{ background: addMode === 'catalog' ? 'var(--dc-button-bg)' : 'var(--dc-bg-card)', color: addMode === 'catalog' ? 'var(--dc-button-text)' : 'var(--dc-text-main)' }} size="sm" onClick={() => setAddMode('catalog')}>Adicionar do catálogo</Button>
+            <Button variant={addMode === 'create' ? 'primary' : 'outline'} style={{ background: addMode === 'create' ? 'var(--dc-button-bg)' : 'var(--dc-bg-card)', color: addMode === 'create' ? 'var(--dc-button-text)' : 'var(--dc-text-main)' }} size="sm" onClick={() => setAddMode('create')}>Criar produto promocional</Button>
+          </div>
+          {addMode === 'create' && activeTenant && selectedCarouselForProducts ? <CarouselProductCreator
+            tenantId={activeTenant.id} carouselId={selectedCarouselForProducts.id} products={products}
+            onSaved={carousel => { setSelectedCarouselForProducts(carousel); setIsAddProductsModalOpen(false); void loadData(); }}
+          /> : <>
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              ['price', 'Preço promocional (opcional)', 'number'], ['unitLimit', 'Limite de unidades (opcional)', 'number'],
+              ['startDate', 'Data de início', 'datetime-local'], ['endDate', 'Data de fim', 'datetime-local'],
+            ] as const).map(([key, label, type]) => <label className="text-xs space-y-1" key={key}>
+              <span>{label}</span><input type={type} min={key === 'unitLimit' ? '1' : '0.01'} step={key === 'unitLimit' ? '1' : '0.01'}
+                className="w-full border rounded-lg p-2" style={{ borderColor: 'var(--dc-border)', color: 'var(--dc-text-main)', background: 'var(--dc-bg-card)' }}
+                value={catalogPromotion[key]} onChange={e => setCatalogPromotion({ ...catalogPromotion, [key]: e.target.value })} />
+            </label>)}
+          </div>
           <div className="relative">
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -1200,6 +1240,7 @@ export const PromotionsPage: React.FC = () => {
               </Button>
             </div>
           </div>
+          </> }
         </div>
       </Modal>
 
@@ -1288,7 +1329,7 @@ export const PromotionsPage: React.FC = () => {
                 label="Preço Promocional (R$) *"
                 type="number"
                 min={0.01}
-                max={editingItem.product.price - 0.01}
+                max={editingItem.product.carouselOnly ? editingItem.product.price : editingItem.product.price - 0.01}
                 step={0.01}
                 value={itemPromoForm.promotionalPrice}
                 onChange={(e) => setItemPromoForm({ ...itemPromoForm, promotionalPrice: parseFloat(e.target.value) || 0 })}
@@ -1392,6 +1433,8 @@ export const PromotionsPage: React.FC = () => {
               />
             </div>
 
+            <Input label="Limite de unidades (opcional)" type="number" min={1} step={1}
+              value={itemPromoForm.unitLimit} onChange={e => setItemPromoForm({ ...itemPromoForm, unitLimit: e.target.value })} />
             {promoError && (
               <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold text-rose-700 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />

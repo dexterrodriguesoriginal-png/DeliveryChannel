@@ -192,10 +192,11 @@ export function validateStatusChange(
   return { ok: true, note: clean || null };
 }
 
-/** Itens enviados ao servidor: SOMENTE productId, quantity e notes (preço é sempre do servidor). */
-export function toServerItems(items: Array<{ productId: string; quantity: number; notes?: string; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> }>) {
+/** Itens enviados ao servidor: identidade, quantidade, opções e origem da promoção; preço é sempre do servidor. */
+export function toServerItems(items: Array<{ productId: string; quantity: number; notes?: string; source?: 'catalog' | 'campaign'; campaignItemId?: string; options?: Array<{ groupId: string; optionId: string; qty: number; fraction?: number | null }> }>) {
   return items.map(i => ({
     productId: i.productId,
+    ...(i.source === 'campaign' ? { source: i.source, campaignItemId: i.campaignItemId } : {}),
     quantity: Math.trunc(Number(i.quantity)),
     notes: i.notes && i.notes.trim() ? i.notes.trim() : null,
     ...(i.options?.length ? {

@@ -161,6 +161,8 @@ export function mapN6Carousels(raw: unknown, tenantId: string, products: Product
       id: c.id,
       tenantId,
       name: s(c.name) || '',
+      startDate: s(c.startDate),
+      endDate: s(c.endDate),
       description: s(c.description),
       imageUrl: cover?.url,
       isActive: true,
@@ -168,12 +170,19 @@ export function mapN6Carousels(raw: unknown, tenantId: string, products: Product
       displayOrder: n(c.order) ?? 0,
       items: (Array.isArray(c.items) ? c.items : [])
         .map((i: Obj, idx: number) => {
-          const product = byId.get(i.productId);
+          const product = byId.get(i.productId) || (isObj(i.product) ? {
+            ...i.product, categoryId: '', description: s(i.product.description) || '',
+            imageUrl: s(i.product.imageUrl) || '', price: n(i.product.price) ?? 0,
+            stockQuantity: n(i.remainingUnits) ?? 0, carouselOnly: Boolean(i.product.carouselOnly),
+          } as Product : undefined);
           if (!product) return null;
           const price = n(i.price) ?? product.price;
           const eff = n(i.effectivePrice) ?? price;
           return {
-            id: `${c.id}:${i.productId}`,
+            id: s(i.id) || `${c.id}:${i.productId}`,
+            startDate: s(i.startDate),
+            endDate: s(i.endDate),
+            remainingUnits: n(i.remainingUnits),
             carouselId: c.id,
             productId: i.productId,
             tenantId,

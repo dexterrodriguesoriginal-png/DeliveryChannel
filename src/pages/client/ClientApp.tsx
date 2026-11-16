@@ -476,7 +476,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         if (result.status !== 'ok' || !result.data?.theme) return;
         setStoreData(prev => {
           if (!prev || prev.tenant.id !== result.data.tenant.id) return prev;
-          return JSON.stringify(prev.theme) === JSON.stringify(result.data.theme) ? prev : { ...prev, theme: result.data.theme };
+          return { ...prev, theme: result.data.theme, promotionCarousels: result.data.promotionCarousels, serverTimeOffsetMs: result.data.serverTimeOffsetMs };
         });
       }).catch(() => {}).finally(() => { themeFetchingRef.current = false; });
     };
@@ -847,8 +847,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const tenantIdForPricing = storeData?.tenant.id || '';
   const priceCartItem = (item: CartItem) => {
     const r = priceLineByOrigin({ product: item.product, quantity: item.quantity, origin: item.origin, campaigns: campaignsForPricing, tenantId: tenantIdForPricing });
-    // Linha de campanha inválida é convertida pelo efeito de revalidação; até lá, exibe preço de catálogo.
-    const priced = r.ok ? r.line : productToPricingLine(item.product, item.quantity);
+    // Invalid campaign lines are removed with a notice by reconciliation, never repriced as catalogue.
+    const priced = r.ok ? r.line : item.origin.source === 'campaign'
+      ? { productId: item.product.id, quantity: 0, unitPrice: 0, isPromotional: true }
+      : productToPricingLine(item.product, item.quantity);
     return { ...priced, unitPrice: priced.unitPrice + optionPriceCents(item.product.optionGroups || [], item.options || []) / 100 };
   };
   const pricedLines = cart.map(priceCartItem);
@@ -867,7 +869,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       showToast({
         type: 'warning',
         title: 'Oferta indisponível',
-        message: `${names.join(', ')}: o item segue na sacola pelo preço normal do catálogo.`,
+        message: converted.some(c => c.reason === 'CAMPAIGN_UNITS_EXCEEDED')
+          ? `${names.join(', ')}: as linhas com quantidade acima da disponibilidade foram removidas. Confira a sacola e adicione novamente a quantidade disponível.`
+          : `${names.join(', ')}: produtos exclusivos indisponíveis foram removidos; produtos do catálogo seguem pelo preço normal.`,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -917,7 +921,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       const res = await promotionRepository.validatePublicCoupon(
         storeData.tenant.slug,
         clean,
-        cart.map(item => ({ productId: item.product.id, quantity: item.quantity, options: item.options }))
+        cart.map(item => ({ productId: item.product.id, quantity: item.quantity, options: item.options, source: item.origin.source, campaignItemId: item.origin.campaignItemId || undefined }))
       );
       if (res.isValid && res.coupon) {
         setAppliedCoupon(res.coupon);
@@ -1001,6 +1005,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
     // Sempre guarda o produto CANÔNICO do catálogo (o preço da campanha vem da origem, nunca de um produto alterado).
     const canonical = storeData?.products.find((x) => x.id === product.id && x.tenantId === storeData.tenant.id) || product;
+    if (origin.source === 'campaign') {
+      const campaignItem = storeData?.promotionCarousels?.flatMap(c => c.items).find(i => i.id === origin.campaignItemId);
+      const selectedQuantity = cart.filter(l => l.origin.campaignItemId === origin.campaignItemId).reduce((sum, l) => sum + l.quantity, 0);
+      if (campaignItem?.remainingUnits !== undefined && selectedQuantity >= campaignItem.remainingUnits) {
+        showToast({ type: 'warning', title: 'Limite da promoção', message: 'Não há mais unidades disponíveis nesta promoção.' });
+        return;
+      }
+    }
     const fromUpsell = opts?.upsell === true || pendingUpsellProductRef.current === canonical.id;
     const groups = canonical.optionGroups || [];
     if (addonsEnabled && groups.some(group => group.active) && !opts?.selections) {
@@ -1379,6 +1391,12 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const handleFinishOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!storeData) return;
+    const reconciled = revalidateOriginCart<Product>(cart, storeData.promotionCarousels || [], storeData.tenant.id);
+    if (reconciled.converted.length) {
+      setCart(reconciled.cart as CartItem[]);
+      showToast({ type: 'warning', title: 'Sacola atualizada', message: 'Uma promoção ficou indisponível ou não tem a quantidade solicitada. Confira os itens e quantidades antes de finalizar novamente.' });
+      return;
+    }
     if (isSubmittingOrder) return; // Proteção estrita contra múltiplos envios simultâneos
     if (previewMode) {
       showToast({ type: 'info', title: 'Modo prévia', message: 'Na prévia do Design do App nenhum pedido é criado.' });
@@ -2258,7 +2276,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
 
                     {/* Rolagem Horizontal de Cards Promocionais */}
                     <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-0.5">
-                      {carousel.items.map((item) => {
+                      {carousel.items.filter(item => item.isActive && (!item.startDate || new Date(item.startDate).getTime() <= storefrontClockTick + (storeData.serverTimeOffsetMs || 0)) && (!item.endDate || new Date(item.endDate).getTime() > storefrontClockTick + (storeData.serverTimeOffsetMs || 0))).map((item) => {
                         if (!item.product) return null;
                         const p = item.product;
                         const campaignOrigin: PurchaseOrigin = { source: 'campaign', campaignItemId: item.id, carouselId: carousel.id };

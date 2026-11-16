@@ -155,6 +155,7 @@ export interface Category {
 }
 
 export interface Product {
+  carouselOnly?: boolean;
   id: string;
   tenantId: string;
   categoryId: string;
@@ -434,6 +435,8 @@ export interface CampaignAnalyticsSummary {
 }
 
 export interface PromotionCarouselItem {
+  unitLimit?: number | null;
+  remainingUnits?: number;
   id: string;
   carouselId: string;
   productId: string;
