@@ -138,7 +138,7 @@ export function CookieBanner() {
   return (
     <aside
       aria-label="Preferências de cookies"
-      className="fixed bottom-3 left-3 right-3 z-[300] mx-auto max-w-xl bg-white text-gray-900 border border-gray-300 rounded-xl p-4 shadow-xl space-y-2"
+      className="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] left-3 right-3 z-[300] mx-auto max-w-xl bg-white text-gray-900 border border-gray-300 rounded-xl p-4 shadow-xl space-y-2"
     >
       <p className="font-bold">Sua escolha de cookies</p>
       <p className="text-sm">
