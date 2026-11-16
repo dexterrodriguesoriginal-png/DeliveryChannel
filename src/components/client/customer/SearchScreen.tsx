@@ -6,6 +6,7 @@ import { catalogUnitPrice } from '../../../lib/pricing/purchaseOrigin';
 import { clearSearchHistory, defaultKV, loadSearchHistory, pushSearchHistory } from '../../../lib/customer/localStore';
 import { ProductRow } from './ProductRow';
 import { EmptyBlock } from './ui';
+import { SAFE_TOP } from '../../../lib/pwa/edgeToEdge';
 
 /** Aba Busca: busca dentro da loja (nome, descrição, categoria; sem acento), buscas recentes e categorias. */
 export const SearchScreen: React.FC<{
@@ -44,7 +45,7 @@ export const SearchScreen: React.FC<{
 
   return (
     <div className="max-w-lg mx-auto" data-testid="search-screen">
-      <div className="sticky top-[57px] z-20 bg-white/95 backdrop-blur-md px-4 py-3 border-b border-gray-100">
+      <div className="sticky z-20 bg-white/95 backdrop-blur-md px-4 py-3 border-b border-gray-100" style={{ top: `calc(57px + ${SAFE_TOP})` }}>
         <div className="relative">
           <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input ref={inputRef} type="search" value={term} onChange={e => setTerm(e.target.value)} placeholder="Buscar nesta loja"

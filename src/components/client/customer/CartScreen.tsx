@@ -5,6 +5,7 @@ import type { OrderItemOption } from '../../../types';
 import { formatBRL } from '../../../lib/pricing/money';
 import { EmptyBlock, PrimaryButton } from './ui';
 import { cn } from '../../../utils/cn';
+import { SAFE_BOTTOM } from '../../../lib/pwa/edgeToEdge';
 
 export interface CartScreenLine {
   key: string;
@@ -160,7 +161,7 @@ export const CartScreen: React.FC<{
         {belowMin && <p className="text-xs text-amber-700 font-semibold" data-testid="cart-min">Pedido mínimo da loja: {formatBRL(p.minOrderValue)}. Faltam {formatBRL(p.minOrderValue - p.subtotal)}.</p>}
       </div>
 
-      <div className="fixed bottom-[64px] inset-x-0 z-30 pointer-events-none">
+      <div className="fixed inset-x-0 z-30 pointer-events-none" style={{ bottom: `calc(64px + ${SAFE_BOTTOM})` }}>
         <div className="max-w-lg mx-auto px-4 pb-3 pointer-events-auto">
           <PrimaryButton color={p.color} onClick={p.onContinue} disabled={belowMin} data-testid="cart-continue" className="shadow-xl">
             <span className="flex-1 text-left pl-2">Continuar</span>

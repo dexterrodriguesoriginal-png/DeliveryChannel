@@ -5,6 +5,7 @@
  */
 import { storeDisplayName, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
 import { resolveSystemBars } from '../../src/lib/pwa/systemBars';
+import { htmlWithViewportFitCover } from '../../src/lib/pwa/edgeToEdge';
 import { iconVersion, identityVersion } from './routes';
 
 export const GLOBAL_MANIFEST_RE = /<link\b[^>]*rel=["']manifest["'][^>]*>\s*/gi;
@@ -24,7 +25,8 @@ function stripTag(html: string, re: RegExp) { return html.replace(re, ''); }
 
 export function injectStoreHead(html: string, slug: string, store: StoreIdentityInput | null): string {
   const enc = encodeURIComponent(slug);
-  let out = stripTag(html, GLOBAL_MANIFEST_RE);
+  // Edge-to-edge: sem viewport-fit=cover o Chrome não deixa a loja pintar a barra de navegação do Android.
+  let out = htmlWithViewportFitCover(stripTag(html, GLOBAL_MANIFEST_RE));
   // URL do manifesto SEMPRE estável (sem query string variável) para o Chrome/WebAPK detectar atualizações de ícone/nome.
   const tags: string[] = [`<link rel="manifest" href="/app/${enc}/manifest.webmanifest" data-server-injected="1" data-store-slug="${escapeHtml(slug)}" />`];
   if (store) {

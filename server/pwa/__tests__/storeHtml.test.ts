@@ -33,3 +33,12 @@ describe('HTML da vitrine com manifesto da loja', () => {
   });
 });
 
+
+describe('HTML da vitrine em edge-to-edge (barra de navegação do Android com a cor da loja)', () => {
+  it('rotas de loja saem com viewport-fit=cover, preservando o viewport original', () => {
+    const withViewport = html.replace('<title>', '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" /><title>');
+    const out = injectStoreHead(withViewport, 'adega-premium', store);
+    expect(out).toContain('content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"');
+    expect((out.match(/name="viewport"/g) || []).length).toBe(1);
+  });
+});
