@@ -6,7 +6,7 @@ INSERT INTO public._carousel_20261115_restore
 SELECT p.oid::regprocedure::text, pg_get_functiondef(p.oid) FROM pg_proc p
 WHERE p.pronamespace='public'::regnamespace AND p.proname IN
 ('_effective_product_price','_price_items','_insert_order_lines','get_public_store','get_totem_store','create_totem_order',
- 'get_menu_best_sellers','get_session_reorder_items','_upsell_available','_product_option_snapshot_after_order_item');
+ 'get_menu_best_sellers','get_session_reorder_items','_upsell_available','_product_option_snapshot_after_order_item','_restock_order_items');
 ALTER TABLE public.products ADD COLUMN carousel_only boolean NOT NULL DEFAULT false;
 ALTER TABLE public.promotion_carousel_items
  ADD COLUMN unit_limit integer CHECK (unit_limit > 0),
@@ -174,7 +174,8 @@ BEGIN
       SELECT * INTO v_campaign FROM public._carousel_terms(p_tenant, v_agg.campaign_id::uuid, v_agg.pid, v_agg.qty, now(), p_lock);
       v_price.unit_price := v_campaign.unit_price;
       v_price.original_price := v_prod.price;
-      v_price.is_promotional := v_campaign.unit_price < v_prod.price;
+      -- Coupon eligibility follows the validated origin, even without a reference price.
+      v_price.is_promotional := true;
       v_price.price_source := 'CAROUSEL';
       v_plan := v_plan || jsonb_build_object('item', v_agg.campaign_id, 'product', v_agg.pid, 'quantity', v_agg.qty);
     ELSIF v_agg.campaign_id IS NOT NULL OR COALESCE(v_agg.source, 'catalog') <> 'catalog' OR v_prod.carousel_only THEN
@@ -197,6 +198,71 @@ BEGIN
 END;
 $$;
 
+-- Immutable quantities actually consumed per order, independent of later recipe edits/removal.
+CREATE TABLE public.carousel_kit_order_consumptions (
+ tenant_id uuid NOT NULL, order_id uuid NOT NULL, product_id uuid NOT NULL,
+ quantity integer NOT NULL CHECK(quantity > 0), restored_at timestamptz,
+ PRIMARY KEY(order_id,product_id),
+ FOREIGN KEY(tenant_id,order_id) REFERENCES public.orders(tenant_id,id),
+ FOREIGN KEY(tenant_id,product_id) REFERENCES public.products(tenant_id,id)
+);
+ALTER TABLE public.carousel_kit_order_consumptions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY carousel_kit_consumption_manager ON public.carousel_kit_order_consumptions FOR SELECT TO authenticated
+ USING(public.is_tenant_owner_or_manager(tenant_id));
+REVOKE ALL ON public.carousel_kit_order_consumptions FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.carousel_kit_order_consumptions TO authenticated;
+
+CREATE FUNCTION public._carousel_restock_components(p_order_id uuid,p_actor text)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE tenant uuid; component record; previous numeric; restored integer:=0;
+BEGIN
+ -- Serialize both cancellation paths and repeated restock calls on the same order.
+ SELECT tenant_id INTO tenant FROM public.orders WHERE id=p_order_id FOR UPDATE;
+ IF NOT FOUND THEN RETURN 0; END IF;
+ FOR component IN SELECT * FROM public.carousel_kit_order_consumptions
+ WHERE tenant_id=tenant AND order_id=p_order_id AND restored_at IS NULL ORDER BY product_id FOR UPDATE LOOP
+  SELECT stock_quantity INTO STRICT previous FROM public.products
+  WHERE tenant_id=tenant AND id=component.product_id FOR UPDATE;
+  UPDATE public.products SET stock_quantity=previous+component.quantity,updated_at=now()
+  WHERE tenant_id=tenant AND id=component.product_id;
+  -- Do not use ESTORNO: the legacy writer uses any ESTORNO as its whole-order marker.
+  INSERT INTO public.inventory_movements(tenant_id,product_id,product_name,quantity,type,reference_id,reason,previous_stock,new_stock,created_by_name)
+  SELECT tenant,id,name,component.quantity,'CANCEL_RELEASE',p_order_id::text,
+   'Devolução de componentes de kit promocional',previous,previous+component.quantity,COALESCE(p_actor,'Sistema')
+  FROM public.products WHERE tenant_id=tenant AND id=component.product_id;
+  UPDATE public.carousel_kit_order_consumptions SET restored_at=now()
+  WHERE order_id=p_order_id AND product_id=component.product_id;
+  restored:=restored+1;
+ END LOOP;
+ RETURN restored;
+END $$;
+REVOKE ALL ON FUNCTION public._carousel_restock_components(uuid,text) FROM PUBLIC,anon,authenticated;
+DO $$ DECLARE d text; BEGIN
+ SELECT definition INTO d FROM public._carousel_20261115_restore WHERE signature LIKE '%_restock_order_items(%';
+ IF d IS NULL THEN RAISE EXCEPTION 'MISSING_RESTOCK_WRITER'; END IF;
+ EXECUTE replace(d,'public._restock_order_items(', 'public._carousel_restock_base(');
+END $$;
+REVOKE ALL ON FUNCTION public._carousel_restock_base(uuid,text) FROM PUBLIC,anon,authenticated;
+CREATE OR REPLACE FUNCTION public._restock_order_items(p_order_id uuid,p_actor text)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE restored integer;
+BEGIN
+ PERFORM 1 FROM public.orders WHERE id=p_order_id FOR UPDATE;
+ restored:=public._carousel_restock_base(p_order_id,p_actor);
+ RETURN restored+public._carousel_restock_components(p_order_id,p_actor);
+END $$;
+CREATE FUNCTION public._carousel_cancel_components() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+BEGIN
+ IF NEW.status='CANCELLED' AND OLD.status IS DISTINCT FROM NEW.status THEN
+  PERFORM public._carousel_restock_components(NEW.id,'Sistema');
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public._carousel_cancel_components() FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER carousel_cancel_components AFTER UPDATE OF status ON public.orders
+ FOR EACH ROW EXECUTE FUNCTION public._carousel_cancel_components();
+
 -- Reuse the order writer, adding atomic campaign counters and component inventory first.
 DO $$ DECLARE d text; BEGIN
  SELECT definition INTO d FROM public._carousel_20261115_restore WHERE signature LIKE '%_insert_order_lines(%';
@@ -218,6 +284,8 @@ BEGIN
  GROUP BY c.product_id ORDER BY c.product_id LOOP
   SELECT stock_quantity INTO previous FROM public.products WHERE tenant_id=p_tenant AND id=k.product_id AND is_active FOR UPDATE;
   IF previous IS NULL OR previous<k.qty THEN RAISE EXCEPTION 'OUT_OF_STOCK: componentes do kit.'; END IF;
+  INSERT INTO public.carousel_kit_order_consumptions(tenant_id,order_id,product_id,quantity)
+  VALUES(p_tenant,p_order_id,k.product_id,k.qty);
   UPDATE public.products SET stock_quantity=previous-k.qty WHERE tenant_id=p_tenant AND id=k.product_id;
   INSERT INTO public.inventory_movements(tenant_id,product_id,product_name,quantity,type,reference_id,reason,previous_stock,new_stock,created_by_name)
   SELECT p_tenant,id,name,-k.qty,'VENDA',p_order_id::text,'Componentes de kit promocional',previous,previous-k.qty,p_actor
@@ -243,7 +311,7 @@ REVOKE ALL ON FUNCTION public._carousel_order_guard() FROM PUBLIC,anon,authentic
 -- Filter all non-carousel discovery paths, including recommendations and reorder history.
 -- Keep exact definitions for rollback, without changing function identities or grants.
 DO $$ DECLARE r record; d text; BEGIN
- FOR r IN SELECT * FROM public._carousel_20261115_restore WHERE signature NOT LIKE '%_price_items(%' AND signature NOT LIKE '%_insert_order_lines(%' LOOP
+ FOR r IN SELECT * FROM public._carousel_20261115_restore WHERE signature NOT LIKE '%_price_items(%' AND signature NOT LIKE '%_insert_order_lines(%' AND signature NOT LIKE '%_restock_order_items(%' LOOP
   d:=regexp_replace(r.definition,'(FROM|JOIN) public[.]products([[:space:]])','\1 (SELECT * FROM public.products WHERE NOT carousel_only)\2','gi');
   IF r.signature LIKE '%_product_option_snapshot_after_order_item(%' THEN
    d:=replace(r.definition, 'NEW.product_id::text || '':'' || public._normalize_product_option_selections',
