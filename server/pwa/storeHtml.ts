@@ -6,6 +6,7 @@
 import { storeDisplayName, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
 import { resolveSystemBars } from '../../src/lib/pwa/systemBars';
 import { htmlWithViewportFitCover } from '../../src/lib/pwa/edgeToEdge';
+import { readMesaParam } from '../../src/lib/salon/tableQr';
 import { iconVersion, identityVersion } from './routes';
 
 export const GLOBAL_MANIFEST_RE = /<link\b[^>]*rel=["']manifest["'][^>]*>\s*/gi;
@@ -23,10 +24,22 @@ export function storeSlugFromPath(p: string): string | null {
 
 function stripTag(html: string, re: RegExp) { return html.replace(re, ''); }
 
-export function injectStoreHead(html: string, slug: string, store: StoreIdentityInput | null): string {
+export interface StoreHeadOptions {
+  /** Liga viewport-fit=cover (só o app de delivery da loja; o cardápio da mesa ainda não trata as áreas seguras). */
+  edgeToEdge?: boolean;
+}
+
+/** Edge-to-edge só no app de delivery: o QR da mesa (/app/<slug>?mesa=<token>) abre o DineInClientApp. */
+export function storeHeadOptionsForUrl(originalUrl: string): StoreHeadOptions {
+  const i = originalUrl.indexOf('?');
+  return { edgeToEdge: !readMesaParam(i >= 0 ? originalUrl.slice(i) : '') };
+}
+
+export function injectStoreHead(html: string, slug: string, store: StoreIdentityInput | null, opts: StoreHeadOptions = {}): string {
   const enc = encodeURIComponent(slug);
   // Edge-to-edge: sem viewport-fit=cover o Chrome não deixa a loja pintar a barra de navegação do Android.
-  let out = htmlWithViewportFitCover(stripTag(html, GLOBAL_MANIFEST_RE));
+  let out = stripTag(html, GLOBAL_MANIFEST_RE);
+  if (opts.edgeToEdge) out = htmlWithViewportFitCover(out);
   // URL do manifesto SEMPRE estável (sem query string variável) para o Chrome/WebAPK detectar atualizações de ícone/nome.
   const tags: string[] = [`<link rel="manifest" href="/app/${enc}/manifest.webmanifest" data-server-injected="1" data-store-slug="${escapeHtml(slug)}" />`];
   if (store) {

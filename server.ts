@@ -16,7 +16,7 @@ import { createReceiptsRouter } from './server/receipts/routes';
 import path from 'node:path';
 import { createPwaRouter, staticAssetCacheControl } from './server/pwa/routes';
 import fs from 'node:fs/promises';
-import { injectStoreHead, storeSlugFromPath, withTimeout } from './server/pwa/storeHtml';
+import { injectStoreHead, storeHeadOptionsForUrl, storeSlugFromPath, withTimeout } from './server/pwa/storeHtml';
 import { injectTotemHead, isTotemRoute, totemSlugFromPath } from './src/lib/pwa/totemManifest';
 import { demoResolver, StoreResolver, supabaseEnvFrom, supabaseResolver } from './server/pwa/storeSource';
 
@@ -53,7 +53,7 @@ async function start() {
   /** HTML das vitrines (/app/<slug>...) já sai com o manifesto da loja no <head> (nunca o global). */
   async function storeHtml(req: express.Request, rawHtml: string, slug: string): Promise<string> {
     const store = await withTimeout(pwa.lookupStore(slug), 1500, null);
-    return injectStoreHead(rawHtml, slug, store);
+    return injectStoreHead(rawHtml, slug, store, storeHeadOptionsForUrl(req.originalUrl));
   }
   const isHtmlNav = (req: express.Request) => req.method === 'GET' && !path.extname(req.path);
 
