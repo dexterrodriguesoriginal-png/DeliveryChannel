@@ -835,8 +835,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const tenantIdForPricing = storeData?.tenant.id || '';
   const priceCartItem = (item: CartItem) => {
     const r = priceLineByOrigin({ product: item.product, quantity: item.quantity, origin: item.origin, campaigns: campaignsForPricing, tenantId: tenantIdForPricing });
-    // Linha de campanha inválida é convertida pelo efeito de revalidação; até lá, exibe preço de catálogo.
-    const priced = r.ok ? r.line : productToPricingLine(item.product, item.quantity);
+    // Invalid campaign lines are removed with a notice by reconciliation, never repriced as catalogue.
+    const priced = r.ok ? r.line : item.origin.source === 'campaign'
+      ? { productId: item.product.id, quantity: 0, unitPrice: 0, isPromotional: true }
+      : productToPricingLine(item.product, item.quantity);
     return { ...priced, unitPrice: priced.unitPrice + optionPriceCents(item.product.optionGroups || [], item.options || []) / 100 };
   };
   const pricedLines = cart.map(priceCartItem);
@@ -855,7 +857,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       showToast({
         type: 'warning',
         title: 'Oferta indisponível',
-        message: `${names.join(', ')}: produtos exclusivos indisponíveis foram removidos; produtos do catálogo seguem pelo preço normal.`,
+        message: converted.some(c => c.reason === 'CAMPAIGN_UNITS_EXCEEDED')
+          ? `${names.join(', ')}: as linhas com quantidade acima da disponibilidade foram removidas. Confira a sacola e adicione novamente a quantidade disponível.`
+          : `${names.join(', ')}: produtos exclusivos indisponíveis foram removidos; produtos do catálogo seguem pelo preço normal.`,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1375,6 +1379,12 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const handleFinishOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!storeData) return;
+    const reconciled = revalidateOriginCart<Product>(cart, storeData.promotionCarousels || [], storeData.tenant.id);
+    if (reconciled.converted.length) {
+      setCart(reconciled.cart as CartItem[]);
+      showToast({ type: 'warning', title: 'Sacola atualizada', message: 'Uma promoção ficou indisponível ou não tem a quantidade solicitada. Confira os itens e quantidades antes de finalizar novamente.' });
+      return;
+    }
     if (isSubmittingOrder) return; // Proteção estrita contra múltiplos envios simultâneos
     if (previewMode) {
       showToast({ type: 'info', title: 'Modo prévia', message: 'Na prévia do Design do App nenhum pedido é criado.' });

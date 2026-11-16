@@ -34,6 +34,23 @@ describe('produtos exclusivos do carrossel', () => {
     const cart = [{ key: 'promo::campaign::item', product, quantity: 1, origin }];
     expect(revalidateOriginCart(cart, campaigns, 'loja', new Date('2026-11-16')).cart).toEqual([]);
   });
+  it.each([true, false])('remove a linha quando a disponibilidade cai de 2 para 1 (exclusivo: %s)', carouselOnly => {
+    const refreshed = campaigns.map(c => ({ ...c, items: c.items.map(i => ({ ...i, remainingUnits: 1 })) }));
+    const cart = [{ key: 'promo::campaign::item', product: { ...product, carouselOnly }, quantity: 2, origin }];
+    const reconciled = revalidateOriginCart(cart, refreshed, 'loja', now);
+    expect(reconciled.cart).toEqual([]);
+    expect(reconciled.converted).toEqual([{ productId: 'promo', reason: 'CAMPAIGN_UNITS_EXCEEDED' }]);
+    expect(priceLineByOrigin({ product, quantity: 2, origin, campaigns: refreshed, tenantId: 'loja', now })).toEqual({ ok: false, reason: 'CAMPAIGN_UNITS_EXCEEDED' });
+  });
+  it('soma configurações da mesma campanha e mantém linhas válidas com preço e elegibilidade promocionais', () => {
+    const refreshed = campaigns.map(c => ({ ...c, items: c.items.map(i => ({ ...i, remainingUnits: 1 })) }));
+    const cart = ['a', 'b'].map(key => ({ key, product, quantity: 1, origin }));
+    expect(revalidateOriginCart(cart, refreshed, 'loja', now).cart).toEqual([]);
+    const valid = revalidateOriginCart(cart.slice(0, 1), refreshed, 'loja', now);
+    expect(valid.cart).toEqual(cart.slice(0, 1));
+    expect(valid.converted).toEqual([]);
+    expect(priceLineByOrigin({ product, quantity: 1, origin, campaigns: refreshed, tenantId: 'loja', now })).toMatchObject({ ok: true, line: { unitPrice: 12, isPromotional: true, source: 'campaign' } });
+  });
   it('preserva a origem no pedido e descarta qualquer preço adulterado', () => {
     const input = { ...toCheckoutItem({ product, quantity: 1, origin }), price: 0.01, unit_price: 0.01 };
     expect(toServerItems([input])).toEqual([{ productId: 'promo', quantity: 1, notes: null, source: 'campaign', campaignItemId: 'item' }]);

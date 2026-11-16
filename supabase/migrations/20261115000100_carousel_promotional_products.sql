@@ -330,6 +330,23 @@ DO $$ DECLARE r record; d text; BEGIN
  SELECT pg_get_functiondef('public.get_public_store(text)'::regprocedure) INTO d;
  EXECUTE replace(d,'public.get_public_store(', 'public._carousel_store_base(');
 END $$;
+-- The totem has a separate direct order-item writer. Campaigns must never reach it.
+DO $$ DECLARE d text; BEGIN
+ SELECT pg_get_functiondef('public.create_totem_order(text,jsonb,uuid)'::regprocedure) INTO d;
+ EXECUTE replace(d,'public.create_totem_order(', 'public._carousel_totem_base(');
+END $$;
+REVOKE ALL ON FUNCTION public._carousel_totem_base(text,jsonb,uuid) FROM PUBLIC,anon,authenticated;
+CREATE OR REPLACE FUNCTION public.create_totem_order(p_token text,p_items jsonb,p_idempotency_key uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+BEGIN
+ IF jsonb_typeof(p_items)='array' THEN
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_items) e
+   WHERE e->>'source'='campaign' OR e ? 'campaignItemId') THEN
+   RAISE EXCEPTION 'CAMPAIGN_SOURCE_UNAVAILABLE: produtos de campanha não são vendidos no totem.' USING ERRCODE='22023';
+  END IF;
+ END IF;
+ RETURN public._carousel_totem_base(p_token,p_items,p_idempotency_key);
+END $$;
 REVOKE ALL ON FUNCTION public._carousel_store_base(text) FROM PUBLIC,anon,authenticated;
 CREATE OR REPLACE FUNCTION public.get_public_store(p_slug text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$

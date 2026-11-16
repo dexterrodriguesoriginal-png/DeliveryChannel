@@ -93,6 +93,18 @@ CREATE FUNCTION public._checkout_order_summary(uuid,boolean) RETURNS jsonb LANGU
 `);
 const checkout=read('supabase/migrations/20261017001700_delivery_fee_split.sql');
 await db.exec(checkout.slice(checkout.indexOf('CREATE OR REPLACE FUNCTION public._checkout_core('),checkout.indexOf('CREATE OR REPLACE FUNCTION public.process_promotional_checkout_atomic(')));
+// Use the actual alternate totem writer, including its direct order-item inserts.
+await db.exec(`
+ALTER TABLE orders ADD COLUMN totem_device_id uuid;
+CREATE TABLE totem_payment_settings(tenant_id uuid,timeout_seconds int,provider text);
+CREATE TABLE totem_payment_attempts(tenant_id uuid,order_id uuid,device_id uuid,provider text,amount numeric,expires_at timestamptz);
+CREATE FUNCTION public._totem_device_ok(text) RETURNS TABLE(o_device uuid,o_tenant uuid,o_label text) LANGUAGE sql AS $$
+ SELECT '80000000-0000-0000-0000-000000000001'::uuid,'${tenant}'::uuid,'Totem teste'::text $$;
+CREATE FUNCTION public._totem_payment_response(uuid,uuid,uuid) RETURNS jsonb LANGUAGE sql AS $$ SELECT jsonb_build_object('orderId',$1) $$;
+CREATE FUNCTION public._rate_limit_hit(text,text,uuid,int,int) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;
+`);
+const totemWriter=read('supabase/migrations/20261112000100_reorder_best_sellers.sql');
+await db.exec(totemWriter.slice(totemWriter.indexOf('CREATE OR REPLACE FUNCTION public.create_totem_order('),totemWriter.indexOf("NOTIFY pgrst,'reload schema';")));
 const migration=read('supabase/migrations/20261115000100_carousel_promotional_products.sql');
 const rollback=read('supabase/rollback/20261115000100_carousel_promotional_products_down.sql');
 const definitions=async()=> (await db.query(`SELECT oid::regprocedure::text signature,pg_get_functiondef(oid) definition,proacl FROM pg_proc WHERE pronamespace='public'::regnamespace ORDER BY 1`)).rows;
@@ -148,9 +160,30 @@ assert.equal(storefront.products.length,1);
 assert.equal(storefront.carousels[0].items[0].productId,promoProduct);
 assert.equal(storefront.carousels[0].items[0].effectivePrice,12,'price without optional reference price');
 assert.equal((await db.query("SELECT get_totem_store('loja') j")).rows[0].j.carousels,undefined);
-await assert.rejects(db.query('SELECT create_totem_order($1,$2,$3)',['token',[{productId:promoProduct}],crypto.randomUUID()]),/PRODUCT_NOT_FOUND/);
+await assert.rejects(db.query('SELECT create_totem_order($1,$2,$3)',['token',[{productId:promoProduct,quantity:1}],crypto.randomUUID()]),/CAMPAIGN_ITEM_INVALID/);
 await assert.rejects(price([{productId:promoProduct,quantity:1}]),/CAMPAIGN_ITEM_INVALID/);
 const promoLine={productId:promoProduct,quantity:1,source:'campaign',campaignItemId:promoItem};
+// P1: authenticated totem cannot use a validated campaign origin to bypass the official writer.
+await db.query('UPDATE promotion_carousel_items SET unit_limit=3 WHERE id=$1',[promoItem]);
+const beforeTotem={
+ orders:Number((await db.query('SELECT count(*) n FROM orders')).rows[0].n),
+ stock:Number((await db.query('SELECT stock_quantity FROM products WHERE id=$1',[product])).rows[0].stock_quantity),
+ kitStock:Number((await db.query('SELECT stock_quantity FROM products WHERE id=$1',[promoProduct])).rows[0].stock_quantity),
+};
+for (const attack of [promoLine,{...line},{productId:product,quantity:1,campaignItemId:item}]) {
+ await assert.rejects(db.query('SELECT create_totem_order($1,$2,$3)',['token',[attack],crypto.randomUUID()]),/CAMPAIGN_SOURCE_UNAVAILABLE/);
+}
+assert.equal(Number((await db.query('SELECT count(*) n FROM orders')).rows[0].n),beforeTotem.orders);
+assert.equal(Number((await db.query('SELECT stock_quantity FROM products WHERE id=$1',[product])).rows[0].stock_quantity),beforeTotem.stock);
+assert.equal(Number((await db.query('SELECT stock_quantity FROM products WHERE id=$1',[promoProduct])).rows[0].stock_quantity),beforeTotem.kitStock);
+assert.equal((await db.query('SELECT units_sold FROM promotion_carousel_items WHERE id=$1',[promoItem])).rows[0].units_sold,0);
+assert.equal((await db.query('SELECT count(*) n FROM carousel_kit_order_consumptions')).rows[0].n,0);
+await db.exec('BEGIN');
+const normalTotem=(await db.query('SELECT create_totem_order($1,$2,$3)',['token',[{productId:product,quantity:1}],crypto.randomUUID()])).rows[0].create_totem_order;
+assert.ok(normalTotem.orderId,'regular totem catalogue checkout remains functional');
+await db.exec('ROLLBACK');
+// Remove the test quota before the independent cancellation scenarios below.
+await db.query('UPDATE promotion_carousel_items SET unit_limit=NULL WHERE id=$1',[promoItem]);
 await purchase([promoLine]);
 assert.equal((await db.query('SELECT stock_quantity FROM products WHERE id=$1',[product])).rows[0].stock_quantity,46,'kit component stock decremented');
 assert.equal((await db.query('SELECT stock_quantity FROM products WHERE id=$1',[promoProduct])).rows[0].stock_quantity,2,'kit stock decremented');

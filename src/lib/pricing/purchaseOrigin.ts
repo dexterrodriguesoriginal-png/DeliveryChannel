@@ -208,19 +208,27 @@ export function hydrateOriginCart<P extends OriginProduct>(raw: any[]): OriginCa
 
 /**
  * Revalida as linhas de campanha. Linhas inválidas viram catálogo (mesclando com uma linha de catálogo
- * já existente do mesmo produto) e são reportadas para o aviso ao cliente.
+ * já existente do mesmo produto) e são reportadas para o aviso ao cliente. Quantidade acima
+ * da disponibilidade invalida/remove a linha inteira, preservando a origem no aviso, sem virar catálogo.
  */
 export function revalidateOriginCart<P extends OriginProduct>(
   cart: OriginCartLine<P>[], campaigns: OriginCampaign[], tenantId: string, now?: Date,
 ): { cart: OriginCartLine<P>[]; converted: Array<{ productId: string; reason: CampaignInvalidReason }> } {
   const converted: Array<{ productId: string; reason: CampaignInvalidReason }> = [];
   let next: OriginCartLine<P>[] = [];
+  // Different option configurations share the campaign's remaining-unit budget.
+  const campaignQuantities = new Map<string, number>();
+  for (const l of cart) {
+    if (l.origin.source === 'campaign' && l.origin.campaignItemId) {
+      campaignQuantities.set(l.origin.campaignItemId, (campaignQuantities.get(l.origin.campaignItemId) || 0) + l.quantity);
+    }
+  }
   for (const l of cart) {
     if (l.origin.source === 'campaign') {
-      const v = validateCampaignItem({ campaigns, tenantId, product: l.product, campaignItemId: l.origin.campaignItemId as string, now });
+      const v = priceLineByOrigin({ campaigns, tenantId, product: l.product, origin: l.origin, quantity: campaignQuantities.get(l.origin.campaignItemId || '') || l.quantity, now });
       if (!v.ok) {
         converted.push({ productId: l.product.id, reason: v.reason });
-        if (!l.product.carouselOnly) next = addToOriginCart(next, l.product, CATALOG_ORIGIN, l.quantity);
+        if (!l.product.carouselOnly && v.reason !== 'CAMPAIGN_UNITS_EXCEEDED') next = addToOriginCart(next, l.product, CATALOG_ORIGIN, l.quantity);
         continue;
       }
     }

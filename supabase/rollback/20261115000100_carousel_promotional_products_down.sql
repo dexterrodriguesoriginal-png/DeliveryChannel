@@ -19,6 +19,7 @@ DROP TABLE public.carousel_kit_order_consumptions;
 DROP TRIGGER carousel_order_guard ON public.order_items;
 DROP FUNCTION public._carousel_order_guard();
 DROP FUNCTION public._carousel_store_base(text);
+DROP FUNCTION public._carousel_totem_base(text,jsonb,uuid);
 DROP FUNCTION public._carousel_insert_base(uuid,uuid,jsonb,numeric,numeric,text);
 DROP FUNCTION public.create_carousel_product(uuid,uuid,jsonb,jsonb);
 DROP FUNCTION public._carousel_terms(uuid,uuid,uuid,int,timestamptz,boolean);
