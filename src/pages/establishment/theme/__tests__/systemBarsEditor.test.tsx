@@ -8,7 +8,11 @@ import { useThemeDraft } from '../useThemeDraft';
 import { useThemeControls } from '../useThemeControls';
 import { MobileNavigation } from '../../../../components/layout/MobileNavigation';
 import { PhonePreview } from '../../../../components/common/PhonePreview';
-import { DEFAULT_DELIVERY_CHANNEL_THEME } from '../../../../lib/theme/themeEngine';
+import { DEFAULT_DELIVERY_CHANNEL_THEME, themeToTokens, tokensToTheme } from '../../../../lib/theme/themeEngine';
+import { systemBarsFromTokens } from '../../../../lib/pwa/systemBars';
+import { appTabBarColor } from '../../../../lib/theme/appTabBar';
+
+const themeFromTemplate = (t: (typeof TEMPLATES)[number]) => tokensToTheme({ ...t.tokens, meta: { ...(t.tokens.meta || {}), appTabBarColor: t.tokens.meta?.appTabBarColor ?? null } } as any, { storeName: 'Loja' });
 import { applySystemBarMeta } from '../../../../lib/pwa/applyStoreIdentity';
 import { TEMPLATES } from '../../../../lib/theme/templates';
 
@@ -55,11 +59,19 @@ describe('editor: cores das barras do celular', () => {
     fireEvent.click(ui.getByTestId('bar-status-auto'));
     expect(ui.getByTestId('saved').textContent).toBe('null');
   });
-  it('trocar de modelo preserva as cores de barra escolhidas pela loja', () => {
+  it('"Usar este tema" aplica as barras de status, navegação e ícones do tema, substituindo as escolhas manuais', () => {
     const ui = render(<Harness />);
     fireEvent.click(ui.getByTestId('bar-status-preset-dourado'));
+    fireEvent.click(ui.getByTestId('bar-nav-preset-preto'));
+    fireEvent.click(ui.getByTestId('bar-icons-preset-vermelho'));
     fireEvent.click(ui.getByTestId('apply'));
-    expect(JSON.parse(ui.getByTestId('saved').textContent!).statusBarColor).toBe('#d4a017');
+    const template = TEMPLATES[3];
+    const expected = systemBarsFromTokens(template.tokens as any);
+    expect(ui.getByTestId('saved').textContent).toBe(JSON.stringify(template.tokens.meta?.systemBars ?? null));
+    expect((ui.getByTestId('phone-status-bar') as HTMLElement).style.backgroundColor).toBe(expected.status);
+    expect((ui.getByTestId('phone-nav-bar') as HTMLElement).style.backgroundColor).toBe(expected.nav);
+    expect(ui.getByTestId('customer-bottom-nav').style.backgroundColor).toBe(appTabBarColor(themeToTokens(themeFromTemplate(template))));
+    expect(ui.getByTestId('customer-bottom-nav').style.backgroundColor).not.toBe('#b91c1c');
   });
   it('meta theme-color e color-scheme são atualizados em tempo de execução', () => {
     applySystemBarMeta('#d4a017', 'dark');

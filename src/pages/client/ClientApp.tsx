@@ -54,6 +54,9 @@ import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POL
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
+import { enableEdgeToEdgeViewport, SAFE_BOTTOM, SAFE_TOP } from '../../lib/pwa/edgeToEdge';
+import { resolveSystemBars } from '../../lib/pwa/systemBars';
+import { SystemBarFills } from '../../components/client/SystemBarFills';
 import { THEME_REFRESH_MIN_MS, subscribeThemeRefresh } from '../../lib/theme/silentThemeRefresh';
 import { SAFE_FONT_FAMILIES, themeToTokens, generateCssVariables, getSurfaceBackgroundStyle } from '../../lib/theme/themeEngine';
 import { ThemedProductList } from '../../components/storefront/ThemedProductList';
@@ -529,6 +532,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   useEffect(() => {
     const t = storeData?.tenant;
     if (!t || previewMode) return;
+    enableEdgeToEdgeViewport();
     applyStoreIdentity({ id: t.id, slug: t.slug, name: t.name, theme: identityTheme(storeData?.theme) }).catch(err => {
       console.warn('[ClientApp] Falha ao aplicar identidade PWA da loja:', err);
     });
@@ -800,6 +804,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const borderRadius = theme.borderRadius || '1rem';
   const activeTokens = useMemo(() => themeToTokens(theme), [theme]);
   const activeCssVars = useMemo(() => generateCssVariables(activeTokens) as React.CSSProperties, [activeTokens]);
+  // Mesmas cores do theme-color/manifesto: status em cima e barra de navegação do Android embaixo (edge-to-edge).
+  const systemBars = useMemo(() => {
+    const t = identityTheme(theme as TenantTheme);
+    return resolveSystemBars({
+      statusBarColor: t?.statusBarColor, navBarColor: t?.navBarColor,
+      headerColor: t?.headerColor, primaryColor: t?.primaryColor, backgroundColor: t?.backgroundColor,
+    });
+  }, [theme]);
 
   // Carregamento dinâmico de Google Fonts homologadas (texto corrido e títulos)
   useEffect(() => {
@@ -1841,11 +1853,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       className="min-h-screen pb-44 font-sans text-gray-900 transition-colors client-store-container"
       style={{ 
         ...activeCssVars,
+        // Edge-to-edge: o conteúdo começa abaixo da barra de status (0 quando o Chrome não desenha atrás dela).
+        paddingTop: SAFE_TOP,
         // Fundo geral completo do tema (sólido, gradiente ou imagem), não só a cor.
         ...getSurfaceBackgroundStyle(activeTokens.backgrounds.general, activeTokens.palette.bgGeneral || theme.backgroundColor || '#f8fafc'),
         fontFamily: 'var(--dc-font-family, Inter, sans-serif)',
       }}
     >
+      {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
       {!previewMode && <InstallStoreAppHint
         tenantId={storeData.tenant.id}
         storeName={theme.storeName || storeData.tenant.name}
@@ -1882,6 +1897,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       <div 
         className="sticky top-0 z-30 shadow-xs px-4 py-3 flex items-center justify-between border-b border-black/5 backdrop-blur-md"
         style={{
+          top: SAFE_TOP,
           backgroundColor: 'var(--dc-bg-header-color, #ffffff)',
           backgroundImage: 'var(--dc-bg-header, none)',
         }}
@@ -2485,7 +2501,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       </footer>
       {/* Floating Bottom Cart Bar */}
       {cart.length > 0 && !isCheckoutOpen && (navTab === 'home' || navTab === 'search' || navTab === 'offers') && (
-        <div className="fixed bottom-16 left-0 right-0 z-40 p-4 max-w-lg mx-auto pointer-events-none">
+        <div className="fixed left-0 right-0 z-40 p-4 max-w-lg mx-auto pointer-events-none" style={{ bottom: `calc(4rem + ${SAFE_BOTTOM})` }}>
           <div
             onClick={() => setNavTab('cart')}
             data-testid="floating-cart"

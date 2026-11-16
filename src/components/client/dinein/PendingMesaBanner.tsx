@@ -17,7 +17,7 @@ export const PendingMesaBanner: React.FC<{ slug: string }> = ({ slug }) => {
     : tableAppUrl(window.location.origin, slug, pending.token);
   if (!href) return null;
   return (
-    <div role="status" data-testid="pending-mesa-banner" className="fixed inset-x-3 top-3 z-[100] mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-emerald-700 p-3 text-white shadow-2xl">
+    <div role="status" data-testid="pending-mesa-banner" className="fixed inset-x-3 top-[calc(0.75rem+env(safe-area-inset-top,0px))] z-[100] mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-emerald-700 p-3 text-white shadow-2xl">
       <Utensils className="h-5 w-5 shrink-0" aria-hidden="true" />
       <p className="min-w-0 flex-1 text-sm font-semibold">{pending.inviteCode ? 'Você tinha um convite de mesa. Quer entrar na mesa?' : 'Você estava abrindo uma mesa. Quer continuar?'}</p>
       <a href={href} className="shrink-0 rounded-xl bg-white px-3 py-2 text-sm font-black text-emerald-800">Continuar</a>

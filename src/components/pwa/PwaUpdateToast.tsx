@@ -16,7 +16,7 @@ export const PwaUpdateToast: React.FC = () => {
       data-testid="pwa-update-toast"
       role="status"
       aria-live="polite"
-      className="fixed inset-x-0 top-3 z-[140] flex justify-center px-3 pointer-events-none"
+      className="fixed inset-x-0 top-[calc(0.75rem+env(safe-area-inset-top,0px))] z-[140] flex justify-center px-3 pointer-events-none"
     >
       <button
         type="button"

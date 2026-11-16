@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { injectStoreHead, storeSlugFromPath, withTimeout } from '../storeHtml';
+import { injectStoreHead, storeHeadOptionsForUrl, storeSlugFromPath, withTimeout } from '../storeHtml';
 
 const html = `<html><head><title>ADEGAFOOD</title><meta name="theme-color" content="#15803d" /><meta name="apple-mobile-web-app-title" content="AdegaFood" /><link rel="manifest" href="/manifest.json" /></head><body></body></html>`;
 const store = { id: 'tid-1', slug: 'adega-premium', name: 'Adega Premium', theme: { storeName: 'Adega <Premium> & "Co"', primaryColor: '#7c2d12' } } as any;
@@ -33,3 +33,28 @@ describe('HTML da vitrine com manifesto da loja', () => {
   });
 });
 
+
+describe('HTML da vitrine em edge-to-edge (barra de navegação do Android com a cor da loja)', () => {
+  it('rotas de loja saem com viewport-fit=cover, preservando o viewport original', () => {
+    const withViewport = html.replace('<title>', '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" /><title>');
+    const out = injectStoreHead(withViewport, 'adega-premium', store, { edgeToEdge: true });
+    expect(out).toContain('content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"');
+    expect((out.match(/name="viewport"/g) || []).length).toBe(1);
+  });
+  it('sem edge-to-edge (QR da mesa) o viewport fica como estava', () => {
+    const withViewport = html.replace('<title>', '<meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>');
+    const out = injectStoreHead(withViewport, 'adega-premium', store);
+    expect(out).toContain('content="width=device-width, initial-scale=1.0"');
+    expect(out).not.toContain('viewport-fit');
+  });
+});
+
+describe('edge-to-edge por URL', () => {
+  it('liga no app de delivery e desliga no QR da mesa', () => {
+    expect(storeHeadOptionsForUrl('/app/adega')).toEqual({ edgeToEdge: true });
+    expect(storeHeadOptionsForUrl('/app/adega?utm=x')).toEqual({ edgeToEdge: true });
+    const token = 'a'.repeat(32);
+    const mesa = storeHeadOptionsForUrl(`/app/adega?mesa=${token}`);
+    expect(mesa.edgeToEdge).toBe(false);
+  });
+});

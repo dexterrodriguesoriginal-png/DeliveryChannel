@@ -43,7 +43,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <ToastContext.Provider value={{ toasts, showToast, removeToast }}>
       {children}
       {/* Toast Render Container */}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md w-full pointer-events-none px-4">
+      <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] right-4 z-50 flex flex-col gap-2 max-w-md w-full pointer-events-none px-4">
         {toasts.map(t => {
           const icons = {
             success: <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />,

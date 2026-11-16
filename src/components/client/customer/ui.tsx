@@ -2,10 +2,11 @@ import { createPortal } from 'react-dom';
 import React, { useId, useRef, useState } from 'react';
 import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { SAFE_TOP } from '../../../lib/pwa/edgeToEdge';
 
 /** Cabeçalho de tela interna (seta voltar + título), fixo no topo como no app do iFood. */
 export const ScreenHeader: React.FC<{ title: string; onBack?: () => void; right?: React.ReactNode }> = ({ title, onBack, right }) => (
-  <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-100 px-2 h-14 flex items-center gap-1">
+  <div className="sticky z-30 bg-white/95 backdrop-blur-md border-b border-gray-100 px-2 h-14 flex items-center gap-1" style={{ top: SAFE_TOP }}>
     {onBack ? (
       <button type="button" onClick={onBack} aria-label="Voltar" className="w-10 h-10 rounded-full flex items-center justify-center text-gray-800 hover:bg-gray-100 active:bg-gray-200 cursor-pointer">
         <ArrowLeft className="w-5 h-5" />

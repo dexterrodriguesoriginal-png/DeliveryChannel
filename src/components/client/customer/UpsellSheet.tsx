@@ -35,7 +35,7 @@ export function UpsellSheet({ offer, title = 'Leve também', busy = false, error
     return () => { document.removeEventListener('keydown', key); if (previous?.isConnected) previous.focus(); };
   }, [offer?.offerToken, busy, onClose]);
   if (!offer?.suggestions.length) return null;
-  return <div className="fixed inset-0 z-[1200] flex items-end justify-center bg-slate-950/40 p-3 backdrop-blur-[2px] sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+  return <div className="fixed inset-0 z-[1200] flex items-end justify-center bg-slate-950/40 p-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] backdrop-blur-[2px] sm:items-center" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
     <section ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={id} aria-describedby={`${id}-hint`} className="w-full max-w-xl overflow-hidden rounded-3xl border border-white/80 bg-white text-slate-950 shadow-2xl">
       <header className="flex items-start justify-between gap-4 border-b border-slate-100 p-5 sm:px-6">
         <div><span className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider text-emerald-800"><Sparkles size={13} aria-hidden="true" /> Uma boa combinação</span><h2 id={id} className="text-xl font-black tracking-tight">{title}</h2><p id={`${id}-hint`} className="mt-1 text-sm text-slate-500">Um toque para completar seu pedido. Você escolhe.</p></div>

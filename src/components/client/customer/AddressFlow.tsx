@@ -9,6 +9,7 @@ import {
 } from '../../../lib/customer/localStore';
 import { DEFAULT_CENTER, GeoPoint, ReverseAddress, extractHouseNumber, getCurrentPosition, reverseGeocode } from '../../../lib/customer/geocode';
 import { cn } from '../../../utils/cn';
+import { SAFE_BOTTOM, SAFE_TOP } from '../../../lib/pwa/edgeToEdge';
 
 type Step = 'list' | 'search' | 'map' | 'details';
 
@@ -214,7 +215,7 @@ export const AddressFlow: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-[1150] bg-white flex flex-col dc-screen-in" data-testid="address-flow" data-step={step}>
+    <div className="fixed inset-0 z-[1150] bg-white flex flex-col dc-screen-in" style={{ paddingTop: SAFE_TOP, paddingBottom: SAFE_BOTTOM }} data-testid="address-flow" data-step={step}>
       <div className="w-full max-w-lg mx-auto flex flex-col flex-1 min-h-0">
         {step === 'list' && (
           <>

@@ -68,15 +68,15 @@ export function useThemeDraft(savedTheme: TenantTheme) {
   );
   const applyTemplate = useCallback(
     (template: StoreTemplate) => {
-      updateTokens((prev) => ({
-        ...copy(template.tokens),
-        // O modelo troca o visual, mas as cores das barras do sistema escolhidas pela loja são preservadas.
-        meta: {
-          ...copy(template.tokens.meta || {}),
-          templateId: template.id,
-          ...(prev.meta?.systemBars ? { systemBars: copy(prev.meta.systemBars) } : {}),
-        },
-      }));
+      // "Usar este tema" aplica o tema inteiro, igual a "Ver na minha loja": barra de status, barra de navegação
+      // do Android e barra de ícones passam a seguir o modelo (escolhas manuais anteriores são substituídas;
+      // a loja pode personalizá-las de novo depois em Cores).
+      updateTokens(() => {
+        const meta = { ...copy(template.tokens.meta || {}), templateId: template.id };
+        if (!meta.systemBars) delete meta.systemBars;
+        if (meta.appTabBarColor === undefined) meta.appTabBarColor = null;
+        return { ...copy(template.tokens), meta };
+      });
     },
     [updateTokens]
   );
