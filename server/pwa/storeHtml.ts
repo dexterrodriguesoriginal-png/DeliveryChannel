@@ -9,6 +9,7 @@ import { htmlWithViewportFitCover, navBarCanvasStyleTag } from '../../src/lib/pw
 import { readMesaParam } from '../../src/lib/salon/tableQr';
 import { bootScreenHtml } from '../../src/lib/pwa/bootScreen';
 import { iconVersion, identityVersion } from './routes';
+import { APP_IDENTITY_META } from '../../src/lib/pwa/appIdentity';
 
 export const GLOBAL_MANIFEST_RE = /<link\b[^>]*rel=["']manifest["'][^>]*>\s*/gi;
 
@@ -30,6 +31,9 @@ export interface StoreHeadOptions {
   edgeToEdge?: boolean;
   /** Tela "Delivery Channel apresenta" (#dc-boot) logo após <body>: só no app de delivery (fora da mesa e da prévia do painel). */
   bootScreen?: boolean;
+  /** EXPERIMENTO de identidade (só lojas de teste): manifesto da versão da logo e meta com a versão atual. */
+  manifestHref?: string;
+  appIdentity?: string;
 }
 
 /** Edge-to-edge só no app de delivery: o QR da mesa (/app/<slug>?mesa=<token>) abre o DineInClientApp. */
@@ -48,7 +52,9 @@ export function injectStoreHead(html: string, slug: string, store: StoreIdentity
   let out = stripTag(html, GLOBAL_MANIFEST_RE);
   if (opts.edgeToEdge) out = htmlWithViewportFitCover(out);
   // URL do manifesto SEMPRE estável (sem query string variável) para o Chrome/WebAPK detectar atualizações de ícone/nome.
-  const tags: string[] = [`<link rel="manifest" href="/app/${enc}/manifest.webmanifest" data-server-injected="1" data-store-slug="${escapeHtml(slug)}" />`];
+  const manifestHref = opts.manifestHref || `/app/${enc}/manifest.webmanifest`;
+  const tags: string[] = [`<link rel="manifest" href="${escapeHtml(manifestHref)}" data-server-injected="1" data-store-slug="${escapeHtml(slug)}" />`];
+  if (opts.appIdentity) tags.push(`<meta name="${APP_IDENTITY_META}" content="${escapeHtml(opts.appIdentity)}" />`);
   if (store) {
     const name = escapeHtml(storeDisplayName(store));
     const bars = resolveSystemBars({

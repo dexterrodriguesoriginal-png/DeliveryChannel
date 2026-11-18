@@ -1,4 +1,5 @@
 import { isDriverRoute } from './driverManifest';
+import { splitStoreSegment } from './appIdentity';
 import { isWaiterRoute } from './waiterManifest';
 
 declare const __PWA_BUILD_VERSION__: string | undefined;
@@ -130,13 +131,16 @@ export function resolvePwaScope(pathname: string): string {
 }
 
 export function extractStoreSlugFromPath(pathname: string): string | null {
-  const m = /^\/(?:app|totem)\/([^/]+)/.exec(pathname);
+  const m = /^\/(app|totem)\/([^/]+)/.exec(pathname);
   if (!m) return null;
+  let seg: string;
   try {
-    return decodeURIComponent(m[1]);
+    seg = decodeURIComponent(m[2]);
   } catch {
-    return m[1];
+    seg = m[2];
   }
+  // "/app/<slug>~<versão>/" (experimento de identidade) consulta a versão da mesma loja.
+  return m[1] === 'app' ? splitStoreSegment(seg).slug : seg;
 }
 
 export const pwaVersionStorageKey = (scope: string) => `deliverychannel_pwa_version_${scope}`;
