@@ -2,13 +2,15 @@
  * Service Worker mínimo do Delivery Channel.
  * - Não intercepta /api/*, pagamentos, webhooks nem requisições de outras origens.
  * - Não faz cache permanente de HTML nem de manifestos (.webmanifest / manifest.json).
- * - Atualiza mediante comando explícito do usuário (mensagem SKIP_WAITING -> skipWaiting + clients.claim).
+ * - Não faz cache de nada: HTML, manifesto e arquivos vêm sempre da rede (o app abre sempre na versão mais nova).
+ * - Worker novo ativa na hora (skipWaiting + clients.claim); a página recarrega uma vez, só quando é seguro
+ *   (registerSw.ts: sem checkout/campo em edição, com anti-loop). Mensagem SKIP_WAITING mantida para workers antigos.
  */
 
-const SW_VERSION = 'dc-sw-v1';
+const SW_VERSION = 'dc-sw-v2';
 
 self.addEventListener('install', () => {
-  // Permanece em waiting até o comando SKIP_WAITING do usuário quando já existe controller ativo.
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {

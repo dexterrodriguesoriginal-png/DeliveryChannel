@@ -1,4 +1,3 @@
-import { systemBarsFromTokens } from '../pwa/systemBars';
 /**
  * Motor Central de Design do App (DeliveryChannel)
  * Matemática de contraste WCAG AA, serialização de tokens, CSS Custom Properties e conversão bi-direcional.
@@ -709,12 +708,10 @@ export function themeToTokens(theme?: Partial<TenantTheme> | null): ThemeTokens 
         categoryStyle: rawComp?.categoryStyle || 'solid',
       },
       layout: sanitizeLayoutConfig(theme.tokens.layout),
-      // Snapshot the old effective tab color once, before either bar can be edited.
+      // Sem cor própria da barra de ícones (null/ausente): segue a barra de navegação (appTabBar.ts).
       meta: {
         ...theme.tokens.meta,
-        appTabBarColor: theme.tokens.meta?.appTabBarColor === undefined
-          ? systemBarsFromTokens({ palette: mergedPalette, meta: theme.tokens.meta }).nav
-          : theme.tokens.meta.appTabBarColor,
+        appTabBarColor: theme.tokens.meta?.appTabBarColor ?? null,
       },
     };
   }

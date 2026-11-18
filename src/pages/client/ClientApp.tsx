@@ -50,10 +50,12 @@ import { AddressAutocompleteInput, ParsedAddress } from '../../components/onboar
 import { Card } from '../../components/ui/Card';
 import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
+import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
+import { setPwaAutoReloadBlocked } from '../../lib/pwa/registerSw';
 import { applyNavBarCanvasColor, enableEdgeToEdgeViewport, SAFE_BOTTOM, SAFE_TOP } from '../../lib/pwa/edgeToEdge';
 import { resolveSystemBars } from '../../lib/pwa/systemBars';
 import { SystemBarFills } from '../../components/client/SystemBarFills';
@@ -992,6 +994,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     onAcceptProduct: product => handleAddToCart(product, CATALOG_ORIGIN, { upsell: true }),
   });
 
+  // Versão nova do app: nunca recarregar sozinho com checkout, login, endereço ou pedido recém-feito na tela.
+  const reloadUnsafe = isCheckoutOpen || isPromoCheckoutOpen || isAuthModalOpen || isAccountOpen
+    || addressFlow.open || isSubmittingOrder || Boolean(completedOrder);
+  useEffect(() => {
+    setPwaAutoReloadBlocked('client-app', reloadUnsafe);
+    return () => setPwaAutoReloadBlocked('client-app', false);
+  }, [reloadUnsafe]);
+
   // Normalização de telefone / WhatsApp com máscara brasileira
   const handlePhoneChange = (val: string) => {
     setCustomerPhone(formatBRPhone(val));
@@ -1885,6 +1895,11 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       }}
     >
       {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
+      {!previewMode && <StoreVisualUpdateNotice
+        slug={storeData.tenant.slug}
+        tenantId={storeData.tenant.id}
+        hidden={reloadUnsafe || navTab === 'cart'}
+      />}
       {!previewMode && <InstallStoreAppHint
         tenantId={storeData.tenant.id}
         storeName={theme.storeName || storeData.tenant.name}

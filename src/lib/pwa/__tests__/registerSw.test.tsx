@@ -5,11 +5,20 @@ import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyStoreIdentity, identityHash } from '../applyStoreIdentity';
 import {
+  AUTO_RELOAD_GUARD_KEY,
+  AUTO_RELOAD_GUARD_MS,
   PWA_UPDATE_TOAST_TEXT,
+  RESUME_CHECK_MIN_MS,
+  applySwUpdate,
+  claimAutoReload,
+  isAutoReloadSafe,
+  isSwUpdateAvailable,
   pwaVersionStorageKey,
   registerPwaServiceWorker,
   resetSwUpdateState,
   resolvePwaScope,
+  setPwaAutoReloadBlocked,
+  type AutoUpdateWindowLike,
   type SwContainerLike,
   type SwRegistrationLike,
   type SwWorkerLike,
@@ -99,87 +108,168 @@ describe('applyStoreIdentity em runtime — URL estável do manifesto e atualiza
   });
 });
 
-describe('registro do Service Worker e toast "Nova versão disponível — atualizar"', () => {
-  it('exibe toast quando /api/pwa/version muda ou há worker em waiting, e envia SKIP_WAITING ao clicar', async () => {
-    const { PwaUpdateToast } = await import('../../../components/pwa/PwaUpdateToast');
-    await act(() => {
-      root.render(<PwaUpdateToast />);
-    });
-
-    const swListeners: Record<string, (() => void)[]> = {};
-    const waitingWorker: SwWorkerLike = {
-      state: 'installed',
-      postMessage: vi.fn(),
-    };
-    const reg: SwRegistrationLike = {
-      scope: '/app/adega-premium/',
-      waiting: null,
-      update: vi.fn().mockResolvedValue(undefined),
-    };
+describe('registro do Service Worker: versão nova em toda abertura, recarga automática segura', () => {
+  type Listeners = Record<string, ((e?: any) => void)[]>;
+  function setup(opts: { controller?: boolean; pathname?: string; search?: string; active?: unknown } = {}) {
+    const swListeners: Listeners = {};
+    const docListeners: Listeners = {};
+    const winListeners: Listeners = {};
+    const reg: SwRegistrationLike = { scope: '/app/adega-premium/', waiting: null, update: vi.fn().mockResolvedValue(undefined) };
     const sw: SwContainerLike = {
-      controller: {},
+      controller: opts.controller === false ? null : {},
       register: vi.fn().mockResolvedValue(reg),
-      addEventListener: (type, fn) => {
-        (swListeners[type] ??= []).push(fn);
-      },
+      addEventListener: (type, fn) => { (swListeners[type] ??= []).push(fn); },
+    };
+    const doc = {
+      visibilityState: 'visible',
+      activeElement: opts.active ?? null,
+      addEventListener: (type: string, fn: () => void) => { (docListeners[type] ??= []).push(fn); },
+    };
+    const self = {};
+    const win: AutoUpdateWindowLike = {
+      location: { pathname: opts.pathname ?? '/app/adega-premium/', search: opts.search ?? '' },
+      document: doc,
+      addEventListener: (type, fn) => { (winListeners[type] ??= []).push(fn); },
+      top: self, self,
     };
     const reload = vi.fn();
-
-    // 1ª abertura grava a versão inicial sem abrir toast
-    const fetchV1 = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ version: 'build-1', identityVersion: 'id-1' }), { status: 200 }),
-    );
-    await act(async () => {
-      await registerPwaServiceWorker({
-        pathname: '/app/adega-premium',
-        serviceWorker: sw,
-        fetchImpl: fetchV1 as unknown as typeof fetch,
-        storage: localStorage,
-        reload,
-      });
+    let now = 1_000_000;
+    let remote = { version: 'build-1', identityVersion: 'id-1' };
+    const fetchImpl = vi.fn().mockImplementation(async () => new Response(JSON.stringify(remote), { status: 200 }));
+    const run = () => registerPwaServiceWorker({
+      pathname: win.location!.pathname!, serviceWorker: sw, fetchImpl: fetchImpl as unknown as typeof fetch,
+      storage: localStorage, session: sessionStorage, reload, win, now: () => now,
     });
+    const resume = async () => { docListeners.visibilitychange?.forEach(fn => fn()); await new Promise(r => setTimeout(r, 0)); await new Promise(r => setTimeout(r, 0)); };
+    return {
+      reg, sw, doc, win, reload, fetchImpl, run, resume, swListeners, docListeners, winListeners,
+      setRemote: (v: typeof remote) => { remote = v; },
+      advance: (ms: number) => { now += ms; },
+    };
+  }
 
-    expect(sw.register).toHaveBeenCalledWith('/sw.js', {
-      scope: '/app/adega-premium/',
-      updateViaCache: 'none',
-    });
-    expect(container.querySelector('[data-testid="pwa-update-toast"]')).toBeNull();
+  it('abertura: registra o SW sem cache HTTP, procura sw.js novo e grava a versão (página recém-carregada já é a nova)', async () => {
+    const t = setup();
+    await t.run();
+    expect(t.sw.register).toHaveBeenCalledWith('/sw.js', { scope: '/app/adega-premium/', updateViaCache: 'none' });
+    expect(t.reg.update).toHaveBeenCalled();
     expect(localStorage.getItem(pwaVersionStorageKey('/app/adega-premium/'))).toBe('build-1:id-1');
-
-    // 2ª abertura com versão nova na API + worker em waiting -> exibe o toast
-    reg.waiting = waitingWorker;
-    const fetchV2 = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ version: 'build-2', identityVersion: 'id-2' }), { status: 200 }),
-    );
-    await act(async () => {
-      await registerPwaServiceWorker({
-        pathname: '/app/adega-premium',
-        serviceWorker: sw,
-        fetchImpl: fetchV2 as unknown as typeof fetch,
-        storage: localStorage,
-        reload,
-      });
-    });
-
-    const toast = container.querySelector('[data-testid="pwa-update-toast"]');
-    expect(toast).not.toBeNull();
-    expect(toast?.textContent).toContain(PWA_UPDATE_TOAST_TEXT);
-
-    // Usuário clica para atualizar -> envia SKIP_WAITING e recarrega no controllerchange
-    await act(() => {
-      container.querySelector<HTMLElement>('[data-testid="pwa-update-action"]')!.click();
-    });
-    expect(waitingWorker.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
-    expect(localStorage.getItem(pwaVersionStorageKey('/app/adega-premium/'))).toBe('build-2:id-2');
-
-    await act(() => {
-      swListeners.controllerchange?.forEach(fn => fn());
-    });
-    expect(reload).toHaveBeenCalledOnce();
+    // Nova abertura (cold start) com versão nova: só atualiza o registro, sem toast e sem recarregar.
+    t.setRemote({ version: 'build-2', identityVersion: 'id-1' });
+    await t.run();
+    expect(localStorage.getItem(pwaVersionStorageKey('/app/adega-premium/'))).toBe('build-2:id-1');
+    expect(isSwUpdateAvailable()).toBe(false);
+    expect(t.reload).not.toHaveBeenCalled();
   });
 
-  it('public/sw.js tem skipWaiting, clients.claim e ignora /api/* e pagamentos', () => {
+  it('ao voltar para o app com versão nova: confere de novo e recarrega UMA vez (anti-loop), sem nova recarga em seguida', async () => {
+    const t = setup();
+    await t.run();
+    t.advance(RESUME_CHECK_MIN_MS + 1);
+    t.setRemote({ version: 'build-2', identityVersion: 'id-1' });
+    await t.resume();
+    expect(t.reload).toHaveBeenCalledOnce();
+    expect(localStorage.getItem(pwaVersionStorageKey('/app/adega-premium/'))).toBe('build-2:id-1');
+    expect(Number(sessionStorage.getItem(AUTO_RELOAD_GUARD_KEY))).toBeGreaterThan(0);
+    // Outra versão logo depois (ainda na janela anti-loop): não recarrega de novo, mostra o toast.
+    t.advance(RESUME_CHECK_MIN_MS + 1);
+    t.setRemote({ version: 'build-3', identityVersion: 'id-1' });
+    await t.resume();
+    expect(t.reload).toHaveBeenCalledOnce();
+    expect(isSwUpdateAvailable()).toBe(true);
+  });
+
+  it('verificações ao voltar são espaçadas (sem rajada ao alternar apps)', async () => {
+    const t = setup();
+    await t.run();
+    const calls = t.fetchImpl.mock.calls.length;
+    await t.resume();
+    expect(t.fetchImpl.mock.calls.length).toBe(calls);
+    t.advance(RESUME_CHECK_MIN_MS + 1);
+    await t.resume();
+    expect(t.fetchImpl.mock.calls.length).toBe(calls + 1);
+  });
+
+  it.each([
+    ['checkout aberto', () => setPwaAutoReloadBlocked('client-app', true), {}],
+    ['campo de texto em edição', () => {}, { active: { tagName: 'INPUT', type: 'text' } }],
+    ['QR de mesa (?mesa=)', () => {}, { search: '?mesa=abc' }],
+    ['painel (fora do app da loja)', () => {}, { pathname: '/' }],
+  ])('não recarrega sozinho com %s: mostra o toast e só atualiza ao clicar', async (_label, block, o) => {
+    const t = setup(o as any);
+    block();
+    await t.run();
+    t.advance(RESUME_CHECK_MIN_MS + 1);
+    t.setRemote({ version: 'build-2', identityVersion: 'id-1' });
+    await t.resume();
+    expect(t.reload).not.toHaveBeenCalled();
+    expect(isSwUpdateAvailable()).toBe(true);
+    applySwUpdate();
+    expect(t.reload).toHaveBeenCalledOnce();
+  });
+
+  it('worker novo em waiting: ativa na hora (SKIP_WAITING) e recarrega uma vez no controllerchange', async () => {
+    const t = setup();
+    const waiting: SwWorkerLike = { state: 'installed', postMessage: vi.fn() };
+    t.reg.waiting = waiting;
+    await t.run();
+    expect(waiting.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+    t.swListeners.controllerchange?.forEach(fn => fn());
+    expect(t.reload).toHaveBeenCalledOnce();
+    // Segundo controllerchange (ex.: outro worker) não recarrega de novo.
+    t.swListeners.controllerchange?.forEach(fn => fn());
+    expect(t.reload).toHaveBeenCalledOnce();
+  });
+
+  it('primeira instalação do SW (sem controller): clients.claim não recarrega a página', async () => {
+    const t = setup({ controller: false });
+    await t.run();
+    t.swListeners.controllerchange?.forEach(fn => fn());
+    expect(t.reload).not.toHaveBeenCalled();
+  });
+
+  it('toast manual continua funcionando: clique envia SKIP_WAITING e recarrega no controllerchange', async () => {
+    const { PwaUpdateToast } = await import('../../../components/pwa/PwaUpdateToast');
+    await act(() => { root.render(<PwaUpdateToast />); });
+    const t = setup();
+    setPwaAutoReloadBlocked('client-app', true);
+    const waiting: SwWorkerLike = { state: 'installed', postMessage: vi.fn() };
+    await act(async () => { await t.run(); });
+    t.reg.waiting = waiting;
+    t.advance(RESUME_CHECK_MIN_MS + 1);
+    t.setRemote({ version: 'build-2', identityVersion: 'id-2' });
+    await act(async () => { await t.resume(); });
+    const toast = container.querySelector('[data-testid="pwa-update-toast"]');
+    expect(toast?.textContent).toContain(PWA_UPDATE_TOAST_TEXT);
+    await act(() => { container.querySelector<HTMLElement>('[data-testid="pwa-update-action"]')!.click(); });
+    expect(waiting.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+    await act(() => { t.swListeners.controllerchange?.forEach(fn => fn()); });
+    expect(t.reload).toHaveBeenCalledOnce();
+  });
+
+  it('claimAutoReload: no máximo uma recarga por janela; sem sessionStorage não recarrega', () => {
+    expect(claimAutoReload(sessionStorage, 10_000)).toBe(true);
+    expect(claimAutoReload(sessionStorage, 10_000 + AUTO_RELOAD_GUARD_MS - 1)).toBe(false);
+    expect(claimAutoReload(sessionStorage, 10_000 + AUTO_RELOAD_GUARD_MS)).toBe(true);
+    expect(claimAutoReload(null, 1)).toBe(false);
+  });
+
+  it('isAutoReloadSafe: só no app da loja visível, fora de iframe (prévia do painel)', () => {
+    const self = {};
+    const base = { location: { pathname: '/app/x/', search: '' }, document: { visibilityState: 'visible', activeElement: null }, top: self, self };
+    expect(isAutoReloadSafe(base)).toBe(true);
+    expect(isAutoReloadSafe({ ...base, top: {} })).toBe(false);
+    expect(isAutoReloadSafe({ ...base, document: { visibilityState: 'hidden' } })).toBe(false);
+    expect(isAutoReloadSafe({ ...base, document: { visibilityState: 'visible', activeElement: { tagName: 'TEXTAREA' } } })).toBe(false);
+    expect(isAutoReloadSafe({ ...base, document: { visibilityState: 'visible', activeElement: { tagName: 'BUTTON' } } })).toBe(true);
+    expect(isAutoReloadSafe(null)).toBe(false);
+  });
+
+  it('public/sw.js ativa na hora (skipWaiting no install), clients.claim, não faz cache e ignora /api/* e pagamentos', () => {
     const swCode = readFileSync('public/sw.js', 'utf8');
+    expect(swCode).toMatch(/addEventListener\('install', \(\) => \{\s*self\.skipWaiting\(\);/);
+    expect(swCode).not.toContain('respondWith');
+    expect(swCode).not.toContain('caches.open');
     expect(swCode).toContain('skipWaiting');
     expect(swCode).toContain('clients.claim');
     expect(swCode).toContain("url.pathname.startsWith('/api/')");

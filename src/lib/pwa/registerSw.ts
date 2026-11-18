@@ -38,6 +38,77 @@ export interface RegisterSwOptions {
   fetchImpl?: typeof fetch;
   storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
   reload?: () => void;
+  /** Guarda anti-loop da recarga automática (sessionStorage por padrão). */
+  session?: Pick<Storage, 'getItem' | 'setItem'> | null;
+  /** Ambiente para ouvir visibilitychange/pageshow e saber se a recarga é segura (window por padrão). */
+  win?: AutoUpdateWindowLike | null;
+  now?: () => number;
+}
+
+export interface AutoUpdateWindowLike {
+  location?: { pathname?: string; search?: string };
+  document?: {
+    visibilityState?: string;
+    activeElement?: unknown;
+    addEventListener?: (type: string, listener: () => void) => void;
+  };
+  addEventListener?: (type: string, listener: (e: { persisted?: boolean }) => void) => void;
+  top?: unknown;
+  self?: unknown;
+}
+
+/** Intervalo mínimo entre verificações ao voltar para o app (evita rajadas ao alternar apps). */
+export const RESUME_CHECK_MIN_MS = 15_000;
+/** Janela anti-loop: no máximo uma recarga automática neste intervalo por aba. */
+export const AUTO_RELOAD_GUARD_MS = 60_000;
+export const AUTO_RELOAD_GUARD_KEY = 'deliverychannel_pwa_auto_reload_at';
+
+const reloadBlockers = new Set<string>();
+/**
+ * Telas com dados digitados que uma recarga perderia (checkout, endereço) bloqueiam a recarga automática;
+ * nesses casos fica o toast "Nova versão disponível — atualizar" para o cliente decidir.
+ */
+export function setPwaAutoReloadBlocked(key: string, blocked: boolean): void {
+  if (blocked) reloadBlockers.add(key); else reloadBlockers.delete(key);
+}
+
+function isEditable(el: unknown): boolean {
+  if (!el || typeof el !== 'object') return false;
+  const e = el as { tagName?: string; isContentEditable?: boolean; type?: string };
+  const tag = (e.tagName || '').toUpperCase();
+  if (e.isContentEditable) return true;
+  if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (tag === 'INPUT') return !/^(button|submit|reset|checkbox|radio|range|color|file|image|hidden)$/i.test(e.type || '');
+  return false;
+}
+
+/**
+ * Recarga automática só no app da loja (/app/<slug>), fora do QR de mesa (?mesa=) e da prévia do painel (iframe),
+ * com a página visível, sem campo de texto em edição e sem tela de checkout/endereço aberta.
+ * O carrinho e a sessão ficam no localStorage e sobrevivem à recarga.
+ */
+export function isAutoReloadSafe(w: AutoUpdateWindowLike | null | undefined): boolean {
+  if (!w) return false;
+  const pathname = w.location?.pathname || '';
+  if (!/^\/app\/[^/]+/.test(pathname)) return false;
+  if (/[?&]mesa=/.test(w.location?.search || '')) return false;
+  if (w.top !== undefined && w.self !== undefined && w.top !== w.self) return false;
+  if (w.document?.visibilityState && w.document.visibilityState !== 'visible') return false;
+  if (isEditable(w.document?.activeElement)) return false;
+  return reloadBlockers.size === 0;
+}
+
+/** Anti-loop: permite uma recarga automática por janela de AUTO_RELOAD_GUARD_MS (marca antes de recarregar). */
+export function claimAutoReload(session: Pick<Storage, 'getItem' | 'setItem'> | null | undefined, now: number): boolean {
+  if (!session) return false;
+  try {
+    const last = Number(session.getItem(AUTO_RELOAD_GUARD_KEY));
+    if (last > 0 && now - last >= 0 && now - last < AUTO_RELOAD_GUARD_MS) return false;
+    session.setItem(AUTO_RELOAD_GUARD_KEY, String(now));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -77,6 +148,10 @@ let pendingVersion: string | null = null;
 let activeStorage: Pick<Storage, 'getItem' | 'setItem'> | null = null;
 let activeReload: (() => void) | null = null;
 let userRequestedUpdate = false;
+let autoReloadPending = false;
+let activeWin: AutoUpdateWindowLike | null = null;
+let activeSession: Pick<Storage, 'getItem' | 'setItem'> | null = null;
+let activeNow: () => number = () => Date.now();
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -99,7 +174,29 @@ export function resetSwUpdateState(): void {
   waitingWorker = null;
   pendingVersion = null;
   userRequestedUpdate = false;
+  autoReloadPending = false;
+  reloadBlockers.clear();
   notify();
+}
+
+/**
+ * Versão nova encontrada com o app aberto: recarrega UMA vez se for seguro; senão, mostra o toast.
+ * Retorna true se recarregou.
+ */
+function autoReloadOrToast(worker?: SwWorkerLike | null, nextVersion?: string | null): boolean {
+  if (nextVersion && activeStorage) {
+    // Grava antes de recarregar: a página nova já encontra a versão igual (sem loop).
+    try { activeStorage.setItem(pwaVersionStorageKey(currentScope), nextVersion); } catch { /* ignora */ }
+  }
+  if (isAutoReloadSafe(activeWin) && claimAutoReload(activeSession, activeNow())) {
+    updateAvailable = false;
+    pendingVersion = null;
+    notify();
+    activeReload?.();
+    return true;
+  }
+  triggerSwUpdateToast(worker, nextVersion);
+  return false;
 }
 
 export function triggerSwUpdateToast(worker?: SwWorkerLike | null, nextVersion?: string | null): void {
@@ -142,7 +239,13 @@ export async function checkPwaVersion(opts: {
   fetchImpl: typeof fetch;
   storage: Pick<Storage, 'getItem' | 'setItem'> | null;
   registration?: SwRegistrationLike | null;
+  /**
+   * 'startup': a página acabou de carregar da rede (HTML/manifesto no-cache, SW sem cache), então já é a
+   * versão nova; só registra a versão. 'resume': app voltou do segundo plano com a página antiga em memória.
+   */
+  mode?: 'startup' | 'resume' | 'manual';
 }): Promise<boolean> {
+  const mode = opts.mode ?? 'manual';
   const slug = extractStoreSlugFromPath(opts.pathname);
   const url = slug ? `/api/pwa/version?slug=${encodeURIComponent(slug)}` : '/api/pwa/version';
   try {
@@ -167,9 +270,17 @@ export async function checkPwaVersion(opts: {
       return false;
     }
     if (previous !== remote) {
+      if (mode === 'startup') {
+        try { opts.storage?.setItem(key, remote); } catch { /* ignora */ }
+        return false;
+      }
       pendingVersion = remote;
       await opts.registration?.update?.().catch(() => {});
-      triggerSwUpdateToast(opts.registration?.waiting ?? waitingWorker, remote);
+      if (mode === 'resume') {
+        autoReloadOrToast(opts.registration?.waiting ?? waitingWorker, remote);
+      } else {
+        triggerSwUpdateToast(opts.registration?.waiting ?? waitingWorker, remote);
+      }
       return true;
     }
     return false;
@@ -196,36 +307,69 @@ export async function registerPwaServiceWorker(opts: RegisterSwOptions = {}): Pr
   activeReload = opts.reload ?? (() => {
     if (typeof window !== 'undefined') window.location.reload();
   });
+  activeWin = opts.win !== undefined ? opts.win : typeof window !== 'undefined' ? (window as unknown as AutoUpdateWindowLike) : null;
+  activeSession = opts.session !== undefined ? opts.session : typeof sessionStorage !== 'undefined' ? sessionStorage : null;
+  activeNow = opts.now ?? (() => Date.now());
+  const win = activeWin;
 
   let reg: SwRegistrationLike | null = null;
   if (sw && typeof sw.register === 'function') {
+    // Sem controller = primeira instalação do SW: o clients.claim não deve recarregar a página.
+    const hadController = !!sw.controller;
     try {
       reg = await sw.register('/sw.js', { scope, updateViaCache: 'none' });
-      if (reg.waiting) {
-        triggerSwUpdateToast(reg.waiting);
+      const r = reg;
+      // Worker novo já baixado (versões antigas do sw.js esperavam o clique): ativa agora.
+      if (r.waiting) {
+        autoReloadPending = hadController;
+        r.waiting.postMessage({ type: 'SKIP_WAITING' });
       }
-      reg.addEventListener?.('updatefound', () => {
-        const installing = reg?.installing;
+      r.addEventListener?.('updatefound', () => {
+        const installing = r.installing;
         if (!installing) return;
+        // Atualização (já havia SW controlando): o worker novo ativa sozinho (skipWaiting) e recarregamos 1 vez.
+        if (sw.controller) autoReloadPending = true;
         installing.addEventListener?.('statechange', () => {
-          if (installing.state === 'installed' && (sw.controller || reg?.active)) {
-            triggerSwUpdateToast(reg?.waiting ?? installing);
+          if (installing.state === 'installed' && (sw.controller || r.active)) {
+            autoReloadPending = true;
+            // O sw.js novo já chama skipWaiting no install; a mensagem cobre workers que ainda esperam.
+            (r.waiting ?? installing).postMessage({ type: 'SKIP_WAITING' });
           }
         });
       });
       sw.addEventListener?.('controllerchange', () => {
         if (userRequestedUpdate) {
           userRequestedUpdate = false;
+          autoReloadPending = false;
           activeReload?.();
+          return;
+        }
+        if (autoReloadPending && hadController) {
+          autoReloadPending = false;
+          autoReloadOrToast(null, null);
         }
       });
+      // Procura sw.js novo a cada abertura.
+      void r.update?.()?.catch?.(() => {});
     } catch {
       reg = null;
     }
   }
 
   if (fetchImpl) {
-    await checkPwaVersion({ pathname, scope, fetchImpl, storage, registration: reg });
+    await checkPwaVersion({ pathname, scope, fetchImpl, storage, registration: reg, mode: 'startup' });
+    // Ao voltar para o app (WebAPK/aba em segundo plano), confere versão e sw.js de novo.
+    let lastResumeCheck = activeNow();
+    const onResume = () => {
+      if (win?.document?.visibilityState && win.document.visibilityState !== 'visible') return;
+      const t = activeNow();
+      if (t - lastResumeCheck < RESUME_CHECK_MIN_MS) return;
+      lastResumeCheck = t;
+      void reg?.update?.()?.catch?.(() => {});
+      void checkPwaVersion({ pathname, scope, fetchImpl, storage, registration: reg, mode: 'resume' });
+    };
+    win?.document?.addEventListener?.('visibilitychange', onResume);
+    win?.addEventListener?.('pageshow', (e) => { if (e?.persisted) { lastResumeCheck = 0; onResume(); } });
   }
 
   return reg;

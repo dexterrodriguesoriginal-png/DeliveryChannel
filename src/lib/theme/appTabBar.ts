@@ -1,9 +1,15 @@
 import type { ThemeTokens } from '../../types/theme';
 import { normalizeBarColor, systemBarsFromTokens } from '../pwa/systemBars';
 
-/** Legacy themes retain their published color; normalized themes store it independently. */
+/**
+ * Cor da barra de ícones (abas do app). Sem cor própria salva (null/undefined/inválida), segue a cor da
+ * barra de navegação da loja (que por padrão é a do cabeçalho). Cor escolhida pela loja é sempre respeitada.
+ */
 export function appTabBarColor(tokens: ThemeTokens): string {
-  const color = tokens.meta?.appTabBarColor;
-  if (color === undefined) return systemBarsFromTokens(tokens).nav;
-  return normalizeBarColor(color) || systemBarsFromTokens({ palette: tokens.palette }).nav;
+  return normalizeBarColor(tokens.meta?.appTabBarColor) || systemBarsFromTokens(tokens).nav;
+}
+
+/** true quando a loja escolheu uma cor própria para a barra de ícones. */
+export function hasCustomAppTabBarColor(tokens: ThemeTokens): boolean {
+  return !!normalizeBarColor(tokens.meta?.appTabBarColor);
 }
