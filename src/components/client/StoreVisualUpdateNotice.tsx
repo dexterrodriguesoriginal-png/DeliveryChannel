@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { SAFE_TOP } from '../../lib/pwa/edgeToEdge';
-import { isStandalone, subscribeInstall, wasAppInstalledEvent } from '../../lib/pwa/installState';
+import { detectPlatform, isStandalone, subscribeInstall, wasAppInstalledEvent } from '../../lib/pwa/installState';
 import {
   dismissVisualNotice, evaluateVisualNotice, fetchCurrentVisualFingerprint, recordInstalledVisual,
 } from '../../lib/pwa/webApkVisual';
@@ -22,22 +22,26 @@ interface Props {
   fetchImpl?: typeof fetch;
   storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
   standalone?: boolean;
+  /** Só Android (WebAPK); padrão: navigator.userAgent. */
+  android?: boolean;
 }
 
 /**
  * Aviso no app instalado (WebAPK) quando a barra de navegação / tela de abertura gravadas na instalação
  * ficaram diferentes do visual atual da loja. Só no app da loja (/app/<slug>/), nunca no QR de mesa.
  */
-export const StoreVisualUpdateNotice: React.FC<Props> = ({ slug, tenantId, hidden, fetchImpl, storage, standalone }) => {
+export const StoreVisualUpdateNotice: React.FC<Props> = ({ slug, tenantId, hidden, fetchImpl, storage, standalone, android }) => {
   const [current, setCurrent] = useState<string | null>(null);
   const [show, setShow] = useState(false);
   const [help, setHelp] = useState(false);
   const kv = storage !== undefined ? storage : (typeof localStorage !== 'undefined' ? localStorage : null);
-  const isApp = standalone ?? (typeof window !== 'undefined' && isStandalone(window));
+  // Aviso e passos são do WebAPK do Android (iPhone/desktop instalam de outro jeito e não congelam assim).
+  const isAndroid = android ?? (typeof navigator !== 'undefined' && detectPlatform(navigator.userAgent || '').startsWith('android'));
+  const isApp = isAndroid && (standalone ?? (typeof window !== 'undefined' && isStandalone(window)));
 
   // Instalado agora (aba do Chrome): grava o visual com que o app foi instalado.
   useEffect(() => {
-    if (!slug || !tenantId) return;
+    if (!slug || !tenantId || !isAndroid) return;
     let done = false;
     let cancelled = false;
     const record = () => {
@@ -50,7 +54,7 @@ export const StoreVisualUpdateNotice: React.FC<Props> = ({ slug, tenantId, hidde
     record();
     const unsub = subscribeInstall(record);
     return () => { cancelled = true; unsub(); };
-  }, [slug, tenantId, fetchImpl, kv]);
+  }, [slug, tenantId, isAndroid, fetchImpl, kv]);
 
   // Aberto pelo ícone: compara com o visual instalado.
   useEffect(() => {

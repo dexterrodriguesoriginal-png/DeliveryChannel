@@ -994,13 +994,12 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     onAcceptProduct: product => handleAddToCart(product, CATALOG_ORIGIN, { upsell: true }),
   });
 
-  // Versão nova do app: nunca recarregar sozinho com produto sendo montado (opções só no estado), oferta,
-  // checkout, login, conta, endereço ou pedido recém-feito na tela — nesses casos fica o toast.
-  const reloadUnsafe = Boolean(selectedProductModal) || Boolean(selectedPromoOffer)
+  // Versão nova do app: recarga automática só na tela inicial sem nada aberto. Nas outras abas (sacola com
+  // retirada/observações, perfil com formulários, pedidos, busca) e com produto, oferta, checkout, login, conta,
+  // endereço ou pedido recém-feito na tela, rascunhos ficam só no estado — nesses casos fica o toast.
+  const reloadUnsafe = navTab !== 'home' || Boolean(selectedProductModal) || Boolean(selectedPromoOffer)
     || isCheckoutOpen || isPromoCheckoutOpen || isAuthModalOpen || isAccountOpen
-    || addressFlow.open || isSubmittingOrder || Boolean(completedOrder)
-    // Sacola: retirada/entrega e observações ficam só no estado até o pedido.
-    || navTab === 'cart';
+    || addressFlow.open || isSubmittingOrder || Boolean(completedOrder);
   useEffect(() => {
     setPwaAutoReloadBlocked('client-app', reloadUnsafe);
     return () => setPwaAutoReloadBlocked('client-app', false);
@@ -1902,7 +1901,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       {!previewMode && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
         tenantId={storeData.tenant.id}
-        hidden={reloadUnsafe}
+        hidden={Boolean(selectedProductModal) || Boolean(selectedPromoOffer) || isCheckoutOpen || isPromoCheckoutOpen
+          || isAuthModalOpen || isAccountOpen || addressFlow.open || isSubmittingOrder || navTab === 'cart'}
       />}
       {!previewMode && <InstallStoreAppHint
         tenantId={storeData.tenant.id}
