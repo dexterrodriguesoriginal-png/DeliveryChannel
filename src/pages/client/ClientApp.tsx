@@ -994,8 +994,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     onAcceptProduct: product => handleAddToCart(product, CATALOG_ORIGIN, { upsell: true }),
   });
 
-  // Versão nova do app: nunca recarregar sozinho com checkout, login, endereço ou pedido recém-feito na tela.
-  const reloadUnsafe = isCheckoutOpen || isPromoCheckoutOpen || isAuthModalOpen || isAccountOpen
+  // Versão nova do app: nunca recarregar sozinho com produto sendo montado (opções só no estado), oferta,
+  // checkout, login, conta, endereço ou pedido recém-feito na tela — nesses casos fica o toast.
+  const reloadUnsafe = Boolean(selectedProductModal) || Boolean(selectedPromoOffer)
+    || isCheckoutOpen || isPromoCheckoutOpen || isAuthModalOpen || isAccountOpen
     || addressFlow.open || isSubmittingOrder || Boolean(completedOrder);
   useEffect(() => {
     setPwaAutoReloadBlocked('client-app', reloadUnsafe);
