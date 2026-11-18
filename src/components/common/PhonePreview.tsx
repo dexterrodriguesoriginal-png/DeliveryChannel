@@ -3,7 +3,8 @@ import { Offer, TenantTheme } from '../../types';
 import { themeToTokens } from '../../lib/theme/themeEngine';
 import { readablePaletteInkFor } from '../../lib/theme/contrastGuidance';
 import { systemBarsFromTokens } from '../../lib/pwa/systemBars';
-import { isPreviewReadyMessage, previewUrl, sendPreviewCard, sendPreviewTheme } from '../../lib/theme/previewBridge';
+import { isPreviewReadyMessage, previewUrl, sendPreviewCard, sendPreviewPresentation, sendPreviewTheme, PRESENTATION_PREVIEW_EVENT } from '../../lib/theme/previewBridge';
+import type { StorePresentation } from '../../lib/pwa/presentation';
 
 /** Celular de referência: tela lógica 390×844 (proporção ~9:19,5). Modo computador: 1280×800. */
 export const PHONE_W = 390;
@@ -84,6 +85,15 @@ export function PhonePreview({ storeSlug, theme, card, mode = 'mobile', fill = f
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
   }, [origin]); // eslint-disable-line react-hooks/exhaustive-deps
+  // "Ver abertura" (card da tela inicial personalizada): toca a abertura dentro do app embutido.
+  useEffect(() => {
+    const onReplay = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ presentation: StorePresentation | null }>).detail;
+      sendPreviewPresentation(frameRef.current?.contentWindow ?? null, detail?.presentation ?? null, origin);
+    };
+    window.addEventListener(PRESENTATION_PREVIEW_EVENT, onReplay);
+    return () => window.removeEventListener(PRESENTATION_PREVIEW_EVENT, onReplay);
+  }, [origin]);
 
   const availH = fill && box.h > 0 ? box.h : Math.max(320, winH - reservedHeight);
   const scale = fitScale(box.w, availH, outerW, outerH);
