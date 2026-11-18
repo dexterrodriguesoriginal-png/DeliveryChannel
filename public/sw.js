@@ -1,13 +1,13 @@
 /**
  * Service Worker mínimo do Delivery Channel.
- * - Não intercepta NENHUMA requisição (sem handler de fetch): /api/*, pagamentos, webhooks e outras origens vão direto à rede.
+ * - Não intercepta /api/*, pagamentos, webhooks nem requisições de outras origens.
  * - Não faz cache permanente de HTML nem de manifestos (.webmanifest / manifest.json).
  * - Não faz cache de nada: HTML, manifesto e arquivos vêm sempre da rede (o app abre sempre na versão mais nova).
  * - Worker novo ativa na hora (skipWaiting + clients.claim); a página recarrega uma vez, só quando é seguro
  *   (registerSw.ts: sem checkout/campo em edição, com anti-loop). Mensagem SKIP_WAITING mantida para workers antigos.
  */
 
-const SW_VERSION = 'dc-sw-v3';
+const SW_VERSION = 'dc-sw-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -36,5 +36,38 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Sem handler de 'fetch' de propósito: ele não respondia nada, mas obrigava o Chrome a ligar o worker a cada
-// abertura do app (atraso na partida a frio). Tudo vai direto à rede; /api/*, pagamentos e manifestos nunca passam pelo SW.
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (!req || req.method !== 'GET') return;
+
+  let url;
+  try {
+    url = new URL(req.url);
+  } catch {
+    return;
+  }
+
+  // Nunca interceptar outras origens (Supabase, provedores de pagamento, mapas, fontes)
+  if (url.origin !== self.location.origin) return;
+
+  // Nunca interceptar /api/* nem fluxos de pagamento
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.includes('/payments') ||
+    url.pathname.includes('/webhooks')
+  ) {
+    return;
+  }
+
+  // Nunca cachear HTML, manifestos ou o próprio SW para sempre
+  if (
+    req.mode === 'navigate' ||
+    url.pathname.endsWith('.html') ||
+    url.pathname.endsWith('.webmanifest') ||
+    url.pathname.endsWith('manifest.json') ||
+    url.pathname.endsWith('/sw.js')
+  ) {
+    return;
+  }
+});
+
