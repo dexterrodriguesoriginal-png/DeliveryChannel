@@ -84,6 +84,7 @@ import { isMarketingTab } from './lib/marketingTabs';
 import { waiterPanelTarget } from './lib/waiter/panelRedirect';
 import { ScreenErrorBoundary } from './components/common/ScreenErrorBoundary';
 import { WaiterPanelRedirect } from './components/common/WaiterPanelRedirect';
+import { DcMark } from './components/brand/DcMark';
 
 function AppContent() {
   // Mantém o convite em memória após remover o token da URL e do storage.
@@ -379,9 +380,7 @@ function AppContent() {
   if (authState === 'AUTHENTICATING' || authState === 'AUTHENTICATED_RESOLVING_MEMBERSHIP') {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="w-12 h-12 rounded-2xl bg-emerald-700 flex items-center justify-center text-white font-black text-xl shadow-md animate-pulse mb-4">
-          AF
-        </div>
+        <DcMark size={48} className="shadow-md animate-pulse mb-4" />
         <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
           <RefreshCw className="w-4 h-4 animate-spin text-emerald-700" />
           <span>Carregando sua sessão e permissões...</span>
@@ -560,9 +559,7 @@ function AppContent() {
   if (authState === 'AUTHENTICATED_WITH_MEMBERSHIP' && !activeTenant && activeRole !== 'CEO' && activeRole !== 'SUPER_ADMIN') {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="w-12 h-12 rounded-2xl bg-emerald-700 flex items-center justify-center text-white font-black text-xl shadow-md animate-pulse mb-4">
-          AF
-        </div>
+        <DcMark size={48} className="shadow-md animate-pulse mb-4" />
         <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
           <RefreshCw className="w-4 h-4 animate-spin text-emerald-700" />
           <span>Carregando dados do estabelecimento...</span>

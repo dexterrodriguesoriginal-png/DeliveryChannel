@@ -13,10 +13,13 @@
  *
  * Desligado por padrão (lista vazia). Ativado em produção só pela lista abaixo / env PWA_SPLASH_TEST_SLUGS.
  */
+import { DC_PRESENTS_BACKGROUND } from '../../src/lib/pwa/bootScreen';
+
 export const SPLASH_TEST_SLUGS_ENV = 'PWA_SPLASH_TEST_SLUGS';
 /** Lojas de teste do experimento quando a env não está definida (nunca lojas reais). */
 export const DEFAULT_SPLASH_TEST_SLUGS: readonly string[] = ['mercado-teste-dc'];
-export const SPLASH_TEST_COLOR = '#121212';
+/** Mesmo cinza da apresentação do Delivery Channel (src/lib/pwa/bootScreen.ts). */
+export const SPLASH_TEST_COLOR = DC_PRESENTS_BACKGROUND;
 /** Versão (?v=) do ícone do Delivery Channel na splash; troque se o arquivo da marca mudar. */
 export const DC_SPLASH_ICON_VERSION = 'dc1';
 /** Arquivo da marca Delivery Channel (o mesmo do manifesto global /manifest.json). */

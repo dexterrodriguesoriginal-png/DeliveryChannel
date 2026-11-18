@@ -7,6 +7,7 @@ import { storeDisplayName, StoreIdentityInput } from '../../src/lib/pwa/storeMan
 import { resolveSystemBars } from '../../src/lib/pwa/systemBars';
 import { htmlWithViewportFitCover, navBarCanvasStyleTag } from '../../src/lib/pwa/edgeToEdge';
 import { readMesaParam } from '../../src/lib/salon/tableQr';
+import { bootScreenHtml } from '../../src/lib/pwa/bootScreen';
 import { iconVersion, identityVersion } from './routes';
 
 export const GLOBAL_MANIFEST_RE = /<link\b[^>]*rel=["']manifest["'][^>]*>\s*/gi;
@@ -27,12 +28,18 @@ function stripTag(html: string, re: RegExp) { return html.replace(re, ''); }
 export interface StoreHeadOptions {
   /** Liga viewport-fit=cover (só o app de delivery da loja; o cardápio da mesa ainda não trata as áreas seguras). */
   edgeToEdge?: boolean;
+  /** Tela "Delivery Channel apresenta" (#dc-boot) logo após <body>: só no app de delivery (fora da mesa e da prévia do painel). */
+  bootScreen?: boolean;
 }
 
 /** Edge-to-edge só no app de delivery: o QR da mesa (/app/<slug>?mesa=<token>) abre o DineInClientApp. */
 export function storeHeadOptionsForUrl(originalUrl: string): StoreHeadOptions {
   const i = originalUrl.indexOf('?');
-  return { edgeToEdge: !readMesaParam(i >= 0 ? originalUrl.slice(i) : '') };
+  const search = i >= 0 ? originalUrl.slice(i) : '';
+  const delivery = !readMesaParam(search);
+  let preview = false;
+  try { preview = new URLSearchParams(search).get('preview') === '1'; } catch { preview = false; }
+  return { edgeToEdge: delivery, bootScreen: delivery && !preview };
 }
 
 export function injectStoreHead(html: string, slug: string, store: StoreIdentityInput | null, opts: StoreHeadOptions = {}): string {
@@ -65,7 +72,10 @@ export function injectStoreHead(html: string, slug: string, store: StoreIdentity
     // bars.nav é sempre um hex normalizado (#rrggbb), seguro dentro do CSS.
     if (opts.edgeToEdge) tags.push(navBarCanvasStyleTag(bars.nav));
   }
-  return out.replace(/<\/head>/i, `    ${tags.join('\n    ')}\n  </head>`);
+  out = out.replace(/<\/head>/i, `    ${tags.join('\n    ')}\n  </head>`);
+  // Também sem loja (falha/timeout da consulta): a apresentação é da plataforma, não depende da loja.
+  if (opts.bootScreen) out = out.replace(/<body\b[^>]*>/i, (m) => `${m}\n    ${bootScreenHtml()}`);
+  return out;
 }
 
 export function withTimeout<T>(p: Promise<T>, ms: number, fb: T): Promise<T> {

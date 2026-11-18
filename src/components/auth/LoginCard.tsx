@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { DcMark } from '../brand/DcMark';
 
 export interface LoginCardProps {
   onSuccess?: () => void;
@@ -191,9 +192,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
     <div className="w-full max-w-md mx-auto bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 shadow-xl border border-gray-200/80 text-left transition-all">
       {/* Brand Header */}
       <div className="text-center pb-5 border-b border-gray-100">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-emerald-700 text-white font-black text-lg shadow-sm shadow-emerald-700/20 mb-3 tracking-wider">
-          AF
-        </div>
+        <DcMark size={48} className="shadow-sm shadow-emerald-700/20 mb-3" />
         <h2 className="text-xl sm:text-2xl font-extrabold text-gray-950 tracking-tight">
           {mode === 'LOGIN' && 'Bem-vindo de volta'}
           {mode === 'SIGNUP' && 'Crie sua conta no Delivery Channel'}

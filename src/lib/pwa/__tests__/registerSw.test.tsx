@@ -351,16 +351,19 @@ describe('registro do Service Worker: versão nova em toda abertura, recarga aut
     expect(isAutoReloadSafe(null)).toBe(false);
   });
 
-  it('public/sw.js ativa na hora (skipWaiting no install), clients.claim, não faz cache e ignora /api/* e pagamentos', () => {
+  it('public/sw.js ativa na hora (skipWaiting no install), clients.claim, não faz cache e não intercepta nada (sem handler de fetch)', () => {
     const swCode = readFileSync('public/sw.js', 'utf8');
     expect(swCode).toMatch(/addEventListener\('install', \(\) => \{\s*self\.skipWaiting\(\);/);
     expect(swCode).not.toContain('respondWith');
     expect(swCode).not.toContain('caches.open');
     expect(swCode).toContain('skipWaiting');
     expect(swCode).toContain('clients.claim');
-    expect(swCode).toContain("url.pathname.startsWith('/api/')");
-    expect(swCode).toContain("url.pathname.includes('/payments')");
-    expect(swCode).toContain("url.pathname.endsWith('.webmanifest')");
+    // Partida a frio: sem 'fetch' o Chrome não liga o worker a cada navegação; /api/* e pagamentos vão direto à rede.
+    expect(swCode).not.toMatch(/addEventListener\(\s*['"]fetch['"]/);
+    expect(swCode).not.toMatch(/onfetch/);
+    // Aviso de atualização (PR #59/#60): continua avisando a página e aceitando SKIP_WAITING de workers antigos.
+    expect(swCode).toContain("type: 'SW_ACTIVATED'");
+    expect(swCode).toContain("data.type === 'SKIP_WAITING'");
   });
 });
 

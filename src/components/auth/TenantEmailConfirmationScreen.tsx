@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, CheckCircle2, ArrowLeft, RefreshCw, Clock, Sparkles, Store, ShieldCheck } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { DcMark } from '../brand/DcMark';
 
 export interface TenantEmailConfirmationScreenProps {
   tenantName: string;
@@ -96,9 +97,7 @@ export const TenantEmailConfirmationScreen: React.FC<TenantEmailConfirmationScre
 
         {/* Badge Oficial da Marca */}
         <div className="mx-auto flex flex-col items-center pt-2">
-          <div className="w-16 h-16 rounded-2xl bg-emerald-700 text-white flex items-center justify-center text-2xl font-black shadow-lg shadow-emerald-700/25 mb-3">
-            AF
-          </div>
+          <DcMark size={64} className="shadow-lg shadow-emerald-700/25 mb-3" />
           <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3.5 py-1 rounded-full border border-emerald-200/80 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
             Delivery Channel

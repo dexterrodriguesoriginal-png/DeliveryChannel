@@ -131,6 +131,8 @@ import {
   toCheckoutItem,
 } from '../../lib/pricing/purchaseOrigin';
 import { StoreLogo } from '../../components/client/StoreLogo';
+import { DcBootScreen } from '../../components/pwa/DcBootScreen';
+import { hideBootScreen } from '../../lib/pwa/bootScreen';
 import { newIdempotencyKey } from '../../lib/pricing/idempotency';
 import { searchProducts } from '../../lib/customer/search';
 import { buildReorderCart } from '../../lib/customer/reorder';
@@ -253,6 +255,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // 2. Estados de Carregamento e Dados do Catálogo Real
   const [storeData, setStoreData] = useState<PublicStoreData | null>(null);
   const [isLoadingStore, setIsLoadingStore] = useState(true);
+  // "Delivery Channel apresenta" do servidor (#dc-boot) fica até a vitrine terminar de carregar (ou falhar).
+  useEffect(() => { if (!isLoadingStore) hideBootScreen(); }, [isLoadingStore]);
   const [storeNotFound, setStoreNotFound] = useState(false);
   // Falha técnica ao carregar a vitrine (ex.: RPC com erro) — distinta de "loja não encontrada".
   const [storeLoadError, setStoreLoadError] = useState<string | null>(null);
@@ -1640,18 +1644,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // ESTADO DE CARREGAMENTO INICIAL DO CATÁLOGO
   // --------------------------------------------------------------------------
   if (isLoadingStore) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="w-14 h-14 rounded-2xl bg-emerald-700 flex items-center justify-center text-white font-black text-xl shadow-md animate-pulse mb-4">
-          AF
-        </div>
-        <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-          <Loader2 className="w-4 h-4 animate-spin text-emerald-700" />
-          <span>Carregando cardápio oficial...</span>
-        </div>
-        <p className="text-xs text-gray-400 mt-1 font-medium font-mono">/app/{slug}</p>
-      </div>
-    );
+    // Mesma apresentação do servidor (sem iniciais de outra loja): some quando a vitrine chega.
+    return <DcBootScreen />;
   }
 
   // --------------------------------------------------------------------------

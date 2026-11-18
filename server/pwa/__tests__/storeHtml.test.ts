@@ -64,10 +64,11 @@ describe('HTML da vitrine em edge-to-edge (barra de navegação do Android com a
 
 describe('edge-to-edge por URL', () => {
   it('liga no app de delivery e desliga no QR da mesa', () => {
-    expect(storeHeadOptionsForUrl('/app/adega')).toEqual({ edgeToEdge: true });
-    expect(storeHeadOptionsForUrl('/app/adega?utm=x')).toEqual({ edgeToEdge: true });
+    expect(storeHeadOptionsForUrl('/app/adega')).toEqual({ edgeToEdge: true, bootScreen: true });
+    expect(storeHeadOptionsForUrl('/app/adega?utm=x')).toEqual({ edgeToEdge: true, bootScreen: true });
     const token = 'a'.repeat(32);
     const mesa = storeHeadOptionsForUrl(`/app/adega?mesa=${token}`);
     expect(mesa.edgeToEdge).toBe(false);
+    expect(mesa.bootScreen).toBe(false);
   });
 });

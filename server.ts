@@ -15,6 +15,7 @@ import { createPaymentsRouter } from './server/payments/routes';
 import { createReceiptsRouter } from './server/receipts/routes';
 import path from 'node:path';
 import { createPwaRouter, staticAssetCacheControl } from './server/pwa/routes';
+import { precompressedStatic, sendCompressedHtml } from './server/http/compression';
 import { resolveSplashTestSlugs } from './server/pwa/splashTest';
 import fs from 'node:fs/promises';
 import { injectStoreHead, storeHeadOptionsForUrl, storeSlugFromPath, withTimeout } from './server/pwa/storeHtml';
@@ -53,7 +54,8 @@ async function start() {
 
   /** HTML das vitrines (/app/<slug>...) já sai com o manifesto da loja no <head> (nunca o global). */
   async function storeHtml(req: express.Request, rawHtml: string, slug: string): Promise<string> {
-    const store = await withTimeout(pwa.lookupStore(slug), 1500, null);
+    // Última leitura da loja na hora (atualiza em segundo plano); sem cache, espera no máximo 1,5 s como antes.
+    const store = await withTimeout(pwa.lookupStoreForHtml(slug), 1500, null);
     return injectStoreHead(rawHtml, slug, store, storeHeadOptionsForUrl(req.originalUrl));
   }
   const isHtmlNav = (req: express.Request) => req.method === 'GET' && !path.extname(req.path);
@@ -105,6 +107,10 @@ async function start() {
     let indexHtml: Promise<string> | undefined;
     // Nunca servir o bundle do servidor como arquivo estático.
     app.use((req, res, next) => (isRuntimeArtifactPath(req.path) ? res.status(404).end() : next()));
+    // Texto do build (js/css/svg/json) em brotli/gzip; imagens e o resto seguem no express.static.
+    const compressed = precompressedStatic(distDir, { cacheControl: staticAssetCacheControl, defaultCacheControl: 'public, max-age=3600' });
+    app.use(compressed);
+    void compressed.warmup('assets');
     app.use(express.static(distDir, { index: false, maxAge: '1h', setHeaders: (res, file) => {
       const cc = staticAssetCacheControl(file);
       if (cc) res.setHeader('Cache-Control', cc);
@@ -136,7 +142,7 @@ async function start() {
       }
       if (!slug) { res.sendFile(path.join(distDir, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } }); return; }
       indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
-      indexHtml.then((raw) => storeHtml(req, raw, slug)).then((h) => res.set('Cache-Control', 'no-cache').type('html').send(h), next);
+      indexHtml.then((raw) => storeHtml(req, raw, slug)).then((h) => { res.set('Cache-Control', 'no-cache'); return sendCompressedHtml(req, res, h); }).catch(next);
     });
   }
 
