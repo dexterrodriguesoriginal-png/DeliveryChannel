@@ -27,6 +27,8 @@ export interface PwaRouteOptions {
   publicDir: string;
   fetchLogo?: (url: string) => Promise<{ bytes: Buffer; contentType: string }>;
   ttlMs?: number;
+  /** Idade máxima da leitura em cache servida ao HTML enquanto atualiza (padrão DEFAULT_HTML_STALE_MS). */
+  htmlStaleMs?: number;
   logoTtlMs?: number;
   maxLogoCacheEntries?: number;
   maxLogoCacheBytes?: number;
@@ -185,7 +187,14 @@ export function serverTotemManifest(store: StoreIdentityInput) {
   return { ...manifest, icons };
 }
 
-export type PwaRouter = Router & { lookupStore: (slug: string) => Promise<StoreIdentityInput | null> };
+export type PwaRouter = Router & {
+  lookupStore: (slug: string) => Promise<StoreIdentityInput | null>;
+  /** Para o HTML da vitrine: devolve na hora a última leitura (até staleMs) e atualiza em segundo plano. */
+  lookupStoreForHtml: (slug: string) => Promise<StoreIdentityInput | null>;
+};
+
+/** Quanto tempo o HTML da vitrine pode usar a última leitura da loja enquanto busca a nova (manifesto/ícones não usam). */
+export const DEFAULT_HTML_STALE_MS = 10 * 60 * 1000;
 
 interface CachedLogoEntry {
   at: number;
@@ -208,13 +217,41 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   const splashTestSlugs = new Set(opts.splashTestSlugs ?? []);
   let dcSplashPng: Buffer | null = null;
 
+  const htmlStaleMs = opts.htmlStaleMs ?? DEFAULT_HTML_STALE_MS;
+  const inflight = new Map<string, Promise<Awaited<ReturnType<StoreResolver>>>>();
+
+  /** Uma consulta por loja por vez (pedidos simultâneos dividem a mesma resposta). */
+  function refresh(slug: string) {
+    let job = inflight.get(slug);
+    if (!job) {
+      job = opts.resolveStore(slug).then((v) => {
+        if (v.status !== 'error') storeCache.set(slug, { at: Date.now(), v });
+        if (storeCache.size > 500) storeCache.delete(storeCache.keys().next().value as string);
+        return v;
+      }).finally(() => inflight.delete(slug));
+      inflight.set(slug, job);
+    }
+    return job;
+  }
+
   async function lookup(slug: string) {
     const hit = storeCache.get(slug);
     if (hit && Date.now() - hit.at < ttl) return hit.v;
-    const v = await opts.resolveStore(slug);
-    if (v.status !== 'error') storeCache.set(slug, { at: Date.now(), v });
-    if (storeCache.size > 500) storeCache.delete(storeCache.keys().next().value as string);
-    return v;
+    return refresh(slug);
+  }
+
+  /** Stale-while-revalidate só para o HTML: o manifesto e os ícones continuam sempre com a leitura fresca. */
+  async function lookupForHtml(slug: string) {
+    const hit = storeCache.get(slug);
+    if (hit) {
+      const age = Date.now() - hit.at;
+      if (age < ttl) return hit.v;
+      if (age < htmlStaleMs) {
+        void refresh(slug).catch(() => undefined);
+        return hit.v;
+      }
+    }
+    return refresh(slug);
   }
 
   function evictLogoCacheEntry(key: string) {
@@ -407,6 +444,11 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     const r = await lookup(slug);
     return r.status === 'ok' && r.store.slug === slug ? r.store : null;
   };
-  return Object.assign(router, { lookupStore });
+  const lookupStoreForHtml = async (slug: string) => {
+    if (!isValidSlug(slug)) return null;
+    const r = await lookupForHtml(slug);
+    return r.status === 'ok' && r.store.slug === slug ? r.store : null;
+  };
+  return Object.assign(router, { lookupStore, lookupStoreForHtml });
 }
 

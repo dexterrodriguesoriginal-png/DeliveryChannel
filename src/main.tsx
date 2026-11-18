@@ -13,6 +13,7 @@ import { captureInstallEvents } from './lib/pwa/installState';
 import { registerPwaServiceWorker } from './lib/pwa/registerSw';
 import { storeAppCanonicalPath } from './lib/pwa/storeScopeUrl';
 import { PwaUpdateToast } from './components/pwa/PwaUpdateToast';
+import { BOOT_SCREEN_MAX_MS, hideBootScreen } from './lib/pwa/bootScreen';
 
 // O retorno do Google usa URL sem token; normaliza para dentro do escopo do entregador.
 if (window.location.pathname === '/convite-entregador') {
@@ -48,6 +49,9 @@ detachGlobalManifestForStoreRoute(window.location.pathname);
 if (isTotemRoute(window.location.pathname)) {
   document.head.querySelectorAll('link[rel="manifest"]:not([data-totem])').forEach(l => l.remove());
 }
+
+// Rede de segurança: a vitrine tira a tela "Delivery Channel apresenta" ao carregar; se algo travar antes, ela sai sozinha.
+window.setTimeout(() => hideBootScreen(), BOOT_SCREEN_MAX_MS);
 
 // Registra o Service Worker mínimo com escopo isolado por app e checa versão ao abrir.
 void registerPwaServiceWorker();

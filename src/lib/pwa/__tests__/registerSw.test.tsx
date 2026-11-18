@@ -361,6 +361,9 @@ describe('registro do Service Worker: versão nova em toda abertura, recarga aut
     expect(swCode).toContain("url.pathname.startsWith('/api/')");
     expect(swCode).toContain("url.pathname.includes('/payments')");
     expect(swCode).toContain("url.pathname.endsWith('.webmanifest')");
+    // Mantido de propósito: o Chrome ainda exige handler de fetch para disparar beforeinstallprompt
+    // (botão "Instalar" do InstallStoreAppHint usa prompt()). Revisão Codex do PR #62.
+    expect(swCode).toMatch(/addEventListener\('fetch'/);
   });
 });
 
