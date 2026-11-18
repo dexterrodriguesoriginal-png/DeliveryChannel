@@ -6,8 +6,10 @@ import { useThemeEditorContext } from '../ThemeEditorContext';
 import { presentationRepository, PresentationSettings } from '../../../../repositories/presentationRepository';
 import { requestPresentationPreview } from '../../../../lib/theme/previewBridge';
 import {
-  clampImageSeconds, PRESENTATION_DEFAULT_IMAGE_SECONDS, PRESENTATION_MAX_IMAGE_SECONDS, PRESENTATION_MIN_IMAGE_SECONDS,
+  clampImageSeconds, prefersReducedMotion, presentationPlan, PresentationPlan, PRESENTATION_DEFAULT_IMAGE_SECONDS,
+  PRESENTATION_MAX_IMAGE_SECONDS, PRESENTATION_MIN_IMAGE_SECONDS, PRESENTATION_PREVIEW_BOOT_MS, StorePresentation,
 } from '../../../../lib/pwa/presentation';
+import { StorePresentationSequence } from '../../../../components/pwa/StorePresentationScreen';
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/webm';
 
@@ -16,7 +18,7 @@ const ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/webm';
  * apresenta". Grava na hora (separado do "Salvar" do tema). Sem tela: padrão do tema (fundo + logo/nome).
  */
 export function PresentationScreenCard() {
-  const { activeTenant } = useThemeEditorContext();
+  const { activeTenant, draftTheme, draftTokens } = useThemeEditorContext();
   const tenantId = activeTenant.id;
   const [settings, setSettings] = useState<PresentationSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,6 +27,8 @@ export function PresentationScreenCard() {
   const [seconds, setSeconds] = useState(PRESENTATION_DEFAULT_IMAGE_SECONDS);
   const [oncePerDay, setOncePerDay] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Sem prévia do celular visível (painel no celular): a abertura toca em tela cheia aqui mesmo.
+  const [localRun, setLocalRun] = useState<{ plan: PresentationPlan; key: number } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -53,9 +57,13 @@ export function PresentationScreenCard() {
     });
   };
 
-  const preview = () => requestPresentationPreview(settings?.url
-    ? { url: settings.url, mediaType: settings.mediaType, imageSeconds: clampImageSeconds(seconds), oncePerDay }
-    : null);
+  const preview = () => {
+    const p: StorePresentation | null = settings?.url
+      ? { url: settings.url, mediaType: settings.mediaType, imageSeconds: clampImageSeconds(seconds), oncePerDay }
+      : null;
+    if (requestPresentationPreview(p)) return;
+    setLocalRun({ plan: presentationPlan(p, { reducedMotion: prefersReducedMotion() }), key: Date.now() });
+  };
 
   return (
     <Card className="theme-tab-card p-5 space-y-4" data-testid="presentation-screen-card">
@@ -137,6 +145,19 @@ export function PresentationScreenCard() {
             )}
           </div>
         </div>
+      )}
+      {localRun && (
+        <StorePresentationSequence
+          key={localRun.key}
+          withBoot
+          bootMs={PRESENTATION_PREVIEW_BOOT_MS}
+          plan={localRun.plan}
+          background={draftTokens?.palette?.bgGeneral || draftTheme?.backgroundColor}
+          textColor={draftTokens?.palette?.textMain || draftTheme?.textColor}
+          storeName={draftTheme?.storeName || activeTenant.name}
+          logoUrl={draftTheme?.logoUrl}
+          onDone={() => setLocalRun(null)}
+        />
       )}
     </Card>
   );

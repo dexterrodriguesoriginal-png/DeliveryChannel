@@ -19,8 +19,12 @@ describe('prévia da tela inicial (painel → app embutido)', () => {
   it('"Ver abertura" vira evento local e mensagem só para a mesma origem', () => {
     const seen = vi.fn();
     window.addEventListener(PRESENTATION_PREVIEW_EVENT, (e) => seen((e as CustomEvent).detail));
-    requestPresentationPreview(null);
-    expect(seen).toHaveBeenCalledWith({ presentation: null });
+    expect(requestPresentationPreview(null)).toBe(false);
+    expect(seen).toHaveBeenCalledWith({ presentation: null, handled: false });
+    const handler = (e: Event) => { (e as CustomEvent).detail.handled = true; };
+    window.addEventListener(PRESENTATION_PREVIEW_EVENT, handler);
+    expect(requestPresentationPreview(null)).toBe(true);
+    window.removeEventListener(PRESENTATION_PREVIEW_EVENT, handler);
     const frame = { postMessage: vi.fn() } as any;
     sendPreviewPresentation(frame, { url: 'https://cdn/v.mp4', mediaType: 'VIDEO', imageSeconds: 2.5, oncePerDay: false }, 'https://app.test');
     expect(frame.postMessage).toHaveBeenCalledWith({ type: PREVIEW_PRESENTATION_MSG, presentation: expect.objectContaining({ mediaType: 'VIDEO' }) }, 'https://app.test');

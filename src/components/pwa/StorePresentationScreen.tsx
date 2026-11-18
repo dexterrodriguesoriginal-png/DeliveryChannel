@@ -139,7 +139,8 @@ export function StorePresentationScreen({ plan, background, textColor, storeName
           top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
           right: 'calc(env(safe-area-inset-right, 0px) + 12px)',
           padding: '8px 16px', borderRadius: 999, border: 0, fontWeight: 700, fontSize: 14, cursor: 'pointer',
-          background: `var(--dc-primary, ${bg})`, color: `var(--dc-button-text, ${fg})`,
+          // Cor de destaque do tema quando disponível (app da loja); fora dele, texto/fundo invertidos (contraste).
+          background: `var(--dc-primary, ${fg})`, color: `var(--dc-button-text, ${bg})`,
         }}
       >
         Pular

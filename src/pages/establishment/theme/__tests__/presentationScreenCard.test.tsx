@@ -9,7 +9,7 @@ import { ThemeEditorContext } from '../ThemeEditorContext';
 import { PRESENTATION_PREVIEW_EVENT } from '../../../../lib/theme/previewBridge';
 
 const renderCard = () => render(
-  <ThemeEditorContext.Provider value={{ activeTenant: { id: 't1', slug: 'loja' } } as any}><PresentationScreenCard /></ThemeEditorContext.Provider>,
+  <ThemeEditorContext.Provider value={{ activeTenant: { id: 't1', slug: 'loja', name: 'Loja' }, draftTheme: { storeName: 'Loja', backgroundColor: '#fafafa', textColor: '#111111' }, draftTokens: undefined } as any}><PresentationScreenCard /></ThemeEditorContext.Provider>,
 );
 beforeEach(() => { vi.resetAllMocks(); });
 afterEach(cleanup);
@@ -23,7 +23,19 @@ describe('Aparência → Tela inicial personalizada', () => {
     await waitFor(() => expect(ui.getByTestId('presentation-status').textContent).toMatch(/padrão do tema/));
     expect(ui.queryByTestId('presentation-clear')).toBeNull();
     fireEvent.click(ui.getByTestId('presentation-preview'));
-    expect(seen).toHaveBeenLastCalledWith({ presentation: null });
+    expect(seen).toHaveBeenLastCalledWith(expect.objectContaining({ presentation: null }));
+    // Nenhuma prévia do celular visível (painel no celular): a abertura toca aqui mesmo, com a #dc-boot antes.
+    expect(ui.getByTestId('store-presentation-boot')).toBeTruthy();
+  });
+  it('com prévia do celular visível atendendo, não abre a tela cheia no painel', async () => {
+    m.get.mockResolvedValue({ assetId: 'a1', mediaType: 'VIDEO', imageSeconds: 2.5, oncePerDay: false, enabled: true, url: 'https://cdn/v.mp4' });
+    const handler = (e: Event) => { (e as CustomEvent).detail.handled = true; };
+    window.addEventListener(PRESENTATION_PREVIEW_EVENT, handler);
+    const ui = renderCard();
+    await waitFor(() => expect(ui.getByTestId('presentation-status').textContent).toMatch(/Vídeo da loja/));
+    fireEvent.click(ui.getByTestId('presentation-preview'));
+    expect(ui.queryByTestId('store-presentation-boot')).toBeNull();
+    window.removeEventListener(PRESENTATION_PREVIEW_EVENT, handler);
   });
   it('envia, ajusta o tempo e o 1×/dia, e remove', async () => {
     m.get.mockResolvedValue(null);

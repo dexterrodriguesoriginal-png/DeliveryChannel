@@ -66,9 +66,18 @@ export function sendPreviewCard(frame: Window | null, card: Partial<Offer> | nul
   frame.postMessage({ type: PREVIEW_CARD_MSG, card: card ? JSON.parse(JSON.stringify(card)) : null }, origin);
 }
 
-/** "Ver abertura" no painel: pede ao PhonePreview para tocar a abertura (null = padrão do tema). */
-export function requestPresentationPreview(presentation: StorePresentation | null, w: Window | undefined = typeof window !== 'undefined' ? window : undefined) {
-  w?.dispatchEvent(new CustomEvent(PRESENTATION_PREVIEW_EVENT, { detail: { presentation } }));
+export interface PresentationPreviewRequest { presentation: StorePresentation | null; handled: boolean }
+
+/**
+ * "Ver abertura" no painel: pede ao PhonePreview VISÍVEL e pronto para tocar a abertura (null = padrão do
+ * tema). Devolve false quando nenhuma prévia visível atendeu (ex.: celular, onde a coluna de prévia some) —
+ * aí o painel mostra a abertura ele mesmo.
+ */
+export function requestPresentationPreview(presentation: StorePresentation | null, w: Window | undefined = typeof window !== 'undefined' ? window : undefined): boolean {
+  if (!w) return false;
+  const detail: PresentationPreviewRequest = { presentation, handled: false };
+  w.dispatchEvent(new CustomEvent(PRESENTATION_PREVIEW_EVENT, { detail }));
+  return detail.handled;
 }
 
 export function sendPreviewPresentation(frame: Window | null, presentation: StorePresentation | null, origin: string) {
