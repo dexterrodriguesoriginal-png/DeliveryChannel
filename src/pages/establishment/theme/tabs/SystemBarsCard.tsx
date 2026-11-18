@@ -9,9 +9,9 @@ import { useThemeEditorContext } from '../ThemeEditorContext';
 
 type Which = 'statusBarColor' | 'navBarColor' | 'appTabBarColor';
 const FIELDS: { key: Which; label: string; hint: string; testId: string }[] = [
-  { key: 'appTabBarColor', label: 'Cor da barra de ícones', hint: 'Barra de abas do app: Início, Busca, Ofertas, Sacola, Pedidos e Perfil. Por padrão segue a cor da barra de navegação.', testId: 'bar-icons' },
+  { key: 'appTabBarColor', label: 'Cor da barra de ícones', hint: 'Barra de abas do app: Início, Busca, Ofertas, Sacola, Pedidos e Perfil.', testId: 'bar-icons' },
   { key: 'statusBarColor', label: 'Cor da barra de status', hint: 'Barra de cima do celular (hora, sinal, bateria).', testId: 'bar-status' },
-  { key: 'navBarColor', label: 'Cor da barra de navegação', hint: 'Barra de baixo do Android (voltar, início, recentes). Também é a cor da tela de abertura do app.', testId: 'bar-nav' },
+  { key: 'navBarColor', label: 'Cor da barra de navegação', hint: 'Barra de baixo do Android (voltar, início, recentes).', testId: 'bar-nav' },
 ];
 
 /** Cores das barras do sistema do app instalado. Padrão: cor do cabeçalho do tema. */
@@ -49,7 +49,7 @@ export function SystemBarsCard() {
               onClick={() => update(f.key, null)}
               className="theme-secondary text-[11px]"
             >
-              {f.key === 'appTabBarColor' ? 'Usar cor da barra de navegação' : 'Usar cor do cabeçalho'}
+              Usar cor do cabeçalho
             </button>
           </div>
           {f.key === 'navBarColor' && (

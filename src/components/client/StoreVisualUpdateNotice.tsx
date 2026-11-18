@@ -2,17 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { SAFE_TOP } from '../../lib/pwa/edgeToEdge';
 import { detectPlatform, isStandalone, subscribeInstall, wasAppInstalledEvent } from '../../lib/pwa/installState';
+import { refreshInstalledApp } from '../../lib/pwa/registerSw';
 import {
   dismissVisualNotice, evaluateVisualNotice, fetchCurrentVisualFingerprint, recordInstalledVisual,
 } from '../../lib/pwa/webApkVisual';
 
-export const VISUAL_NOTICE_TEXT =
-  'O visual da loja foi atualizado. Para atualizar a barra de navegação e a tela de abertura, remova o app e instale de novo pelo link da loja.';
-export const VISUAL_NOTICE_STEPS = [
-  'Toque e segure o ícone do app na tela inicial e escolha "Desinstalar" (ou "Remover").',
-  'Abra o link da loja no Chrome.',
-  'Toque em "Instalar app" (não use "Criar atalho").',
-];
+export const VISUAL_UPDATE_BUTTON = 'Atualizar app';
+export const VISUAL_BAR_HELP_LINK = 'barra não mudou?';
+export const VISUAL_BAR_HELP_TEXT = 'A barra de baixo só muda quando o Chrome atualiza o app. Para mudar já, remova o app e instale de novo pelo link da loja.';
 
 interface Props {
   slug: string;
@@ -24,18 +21,21 @@ interface Props {
   standalone?: boolean;
   /** Só Android (WebAPK); padrão: navigator.userAgent. */
   android?: boolean;
+  /** Ação do botão (padrão: ativa o SW novo, limpa o Cache Storage e recarrega). */
+  onRefresh?: () => void | Promise<void>;
 }
 
 /**
- * Aviso no app instalado (WebAPK) quando a barra de navegação / tela de abertura gravadas na instalação
- * ficaram diferentes do visual atual da loja. Só no app da loja (/app/<slug>/), nunca no QR de mesa.
+ * Botão compacto "Atualizar app" no app instalado (WebAPK) quando o visual congelado na instalação
+ * (barra de navegação / tela de abertura / ícone) ficou diferente do atual. Tocar em "Atualizar app" ou no X
+ * marca este visual como resolvido (não volta depois da recarga). Só Android, só /app/<slug>/, só tokens do tema.
  */
-export const StoreVisualUpdateNotice: React.FC<Props> = ({ slug, tenantId, hidden, fetchImpl, storage, standalone, android }) => {
+export const StoreVisualUpdateNotice: React.FC<Props> = ({ slug, tenantId, hidden, fetchImpl, storage, standalone, android, onRefresh }) => {
   const [current, setCurrent] = useState<string | null>(null);
   const [show, setShow] = useState(false);
   const [help, setHelp] = useState(false);
+  const [busy, setBusy] = useState(false);
   const kv = storage !== undefined ? storage : (typeof localStorage !== 'undefined' ? localStorage : null);
-  // Aviso e passos são do WebAPK do Android (iPhone/desktop instalam de outro jeito e não congelam assim).
   const isAndroid = android ?? (typeof navigator !== 'undefined' && detectPlatform(navigator.userAgent || '').startsWith('android'));
   const isApp = isAndroid && (standalone ?? (typeof window !== 'undefined' && isStandalone(window)));
 
@@ -70,10 +70,16 @@ export const StoreVisualUpdateNotice: React.FC<Props> = ({ slug, tenantId, hidde
 
   if (!show || hidden) return null;
 
-  const dismiss = () => {
+  const close = () => {
     dismissVisualNotice(kv, slug, current);
     setShow(false);
-    setHelp(false);
+  };
+  const refresh = async () => {
+    if (busy) return;
+    setBusy(true);
+    // Resolvido para este visual: depois da recarga não aparece de novo (mesmo se a barra ainda não mudou).
+    dismissVisualNotice(kv, slug, current);
+    try { await (onRefresh ? onRefresh() : refreshInstalledApp()); } finally { setBusy(false); }
   };
 
   return (
@@ -81,53 +87,54 @@ export const StoreVisualUpdateNotice: React.FC<Props> = ({ slug, tenantId, hidde
       data-testid="visual-update-notice"
       role="status"
       aria-live="polite"
-      className="fixed inset-x-0 z-[120] flex justify-center px-3 pointer-events-none"
+      className="fixed inset-x-0 z-[120] flex flex-col items-center gap-1 px-3 pointer-events-none"
       style={{ top: `calc(${SAFE_TOP} + 0.5rem)` }}
     >
       <div
-        className="pointer-events-auto w-full max-w-md border shadow-lg p-3 text-xs"
-        style={{
-          backgroundColor: 'var(--dc-bg-card-color, var(--dc-bg-card))',
-          color: 'var(--dc-text-main)',
-          borderColor: 'var(--dc-border)',
-          borderRadius: 'var(--dc-card-radius, var(--dc-radius))',
-          fontFamily: 'var(--dc-font-family, inherit)',
-        }}
+        className="pointer-events-auto inline-flex items-center gap-1 rounded-full border shadow-lg p-1"
+        style={{ backgroundColor: 'var(--dc-bg-card-color, var(--dc-bg-card))', borderColor: 'var(--dc-border)', fontFamily: 'var(--dc-font-family, inherit)' }}
       >
-        <div className="flex items-start gap-2">
-          <RefreshCw className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--dc-primary)' }} aria-hidden />
-          <p className="flex-1 leading-snug">{VISUAL_NOTICE_TEXT}</p>
-          <button type="button" onClick={dismiss} aria-label="Fechar aviso" data-testid="visual-update-close" className="shrink-0 p-0.5 opacity-70">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        {help && (
-          <ol data-testid="visual-update-steps" className="mt-2 ml-6 list-decimal space-y-1" style={{ color: 'var(--dc-text-secondary)' }}>
-            {VISUAL_NOTICE_STEPS.map((s) => <li key={s}>{s}</li>)}
-          </ol>
-        )}
-        <div className="mt-2 flex justify-end gap-2">
-          <button
-            type="button"
-            data-testid="visual-update-help"
-            aria-expanded={help}
-            onClick={() => setHelp((h) => !h)}
-            className="px-3 py-1.5 font-bold border"
-            style={{ borderColor: 'var(--dc-border)', borderRadius: 'var(--dc-button-radius, var(--dc-radius))', color: 'var(--dc-text-main)' }}
-          >
-            Como fazer
-          </button>
-          <button
-            type="button"
-            data-testid="visual-update-dismiss"
-            onClick={dismiss}
-            className="px-3 py-1.5 font-bold"
-            style={{ backgroundColor: 'var(--dc-button-bg)', color: 'var(--dc-button-text)', borderRadius: 'var(--dc-button-radius, var(--dc-radius))' }}
-          >
-            Agora não
-          </button>
-        </div>
+        <button
+          type="button"
+          data-testid="visual-update-refresh"
+          onClick={refresh}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold disabled:opacity-70"
+          style={{ backgroundColor: 'var(--dc-button-bg)', color: 'var(--dc-button-text)' }}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} aria-hidden />
+          {VISUAL_UPDATE_BUTTON}
+        </button>
+        <button
+          type="button"
+          data-testid="visual-update-help"
+          aria-expanded={help}
+          onClick={() => setHelp((h) => !h)}
+          className="px-1.5 text-[10px] underline"
+          style={{ color: 'var(--dc-text-secondary)' }}
+        >
+          {VISUAL_BAR_HELP_LINK}
+        </button>
+        <button
+          type="button"
+          onClick={close}
+          aria-label="Fechar"
+          data-testid="visual-update-close"
+          className="p-1 rounded-full"
+          style={{ color: 'var(--dc-text-secondary)' }}
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
       </div>
+      {help && (
+        <p
+          data-testid="visual-update-help-text"
+          className="pointer-events-auto max-w-xs rounded-lg border px-2.5 py-1.5 text-[11px] leading-snug shadow"
+          style={{ backgroundColor: 'var(--dc-bg-card-color, var(--dc-bg-card))', borderColor: 'var(--dc-border)', color: 'var(--dc-text-main)' }}
+        >
+          {VISUAL_BAR_HELP_TEXT}
+        </p>
+      )}
     </div>
   );
 };

@@ -32,25 +32,26 @@ function Harness() {
 }
 
 describe('editor: cores das barras do celular', () => {
-  it('barra de ícones segue a barra de navegação por padrão; cor própria é independente e "auto" volta a seguir', () => {
+  it('edita as duas barras independentemente ao vivo e permite herdar o cabeçalho', () => {
     const ui = render(<Harness />);
     const tabs = ui.getByTestId('customer-bottom-nav');
+    const before = tabs.style.backgroundColor;
     fireEvent.click(ui.getByTestId('bar-nav-preset-preto'));
-    expect(tabs.style.backgroundColor).toBe('#0b0b0f');
+    expect(tabs.style.backgroundColor).toBe(before);
     fireEvent.click(ui.getByTestId('bar-icons-preset-dourado'));
     expect(tabs.style.backgroundColor).toBe('#d4a017');
-    fireEvent.click(ui.getByTestId('bar-nav-preset-azul'));
-    expect(tabs.style.backgroundColor).toBe('#d4a017');
-    expect(ui.getByTestId('phone-nav-bar').style.backgroundColor).toBe('#1d4ed8');
+    expect(ui.getByTestId('phone-nav-bar').style.backgroundColor).toBe('#0b0b0f');
     fireEvent.click(ui.getByTestId('bar-icons-auto'));
-    expect(tabs.style.backgroundColor).toBe('#1d4ed8');
-    expect(ui.getByTestId('bar-icons-auto').textContent).toBe('Usar cor da barra de navegação');
+    expect(tabs.style.backgroundColor).toBe(before);
+    expect(ui.getByTestId('phone-nav-bar').style.backgroundColor).toBe('#0b0b0f');
   });
-  it('mostra o aviso do app instalado junto da cor da barra de navegação / tela de abertura', () => {
+  it('mostra o aviso do app instalado junto da cor da barra de navegação (sem dizer que a barra de ícones segue)', () => {
     const ui = render(<Harness />);
     const hint = ui.getByTestId('installed-app-bars-hint');
     expect(hint.textContent).toBe('No app instalado no Android, a barra de navegação e a tela de abertura atualizam quando o Chrome atualiza o app ou ao reinstalar; seus clientes verão um aviso.');
     expect(ui.getByTestId('bar-nav-field').contains(hint)).toBe(true);
+    expect(ui.getByTestId('bar-icons-auto').textContent).toBe('Usar cor do cabeçalho');
+    expect(ui.getByTestId('system-bars-card').textContent).not.toMatch(/segue a cor da barra de navegação/);
   });
   it('atalho dourado muda a barra de status na prévia antes de salvar; nav é independente', () => {
     const ui = render(<Harness />);

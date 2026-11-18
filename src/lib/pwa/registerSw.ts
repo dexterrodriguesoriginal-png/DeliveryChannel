@@ -149,6 +149,7 @@ let activeStorage: Pick<Storage, 'getItem' | 'setItem'> | null = null;
 let activeReload: (() => void) | null = null;
 let userRequestedUpdate = false;
 let autoReloadPending = false;
+let activeRegistration: SwRegistrationLike | null = null;
 /** Versão (build:identidade) com que este documento carregou; só a recarga troca. */
 let documentVersion: string | null = null;
 let activeWin: AutoUpdateWindowLike | null = null;
@@ -178,6 +179,7 @@ export function resetSwUpdateState(): void {
   userRequestedUpdate = false;
   autoReloadPending = false;
   documentVersion = null;
+  activeRegistration = null;
   reloadBlockers.clear();
   notify();
 }
@@ -234,6 +236,47 @@ export function applySwUpdate(): void {
   }
   updateAvailable = false;
   notify();
+  reload();
+}
+
+export interface CacheStorageLike { keys: () => Promise<string[]>; delete: (key: string) => Promise<boolean> }
+
+/** Tempo máximo esperando o worker novo assumir antes de recarregar mesmo assim. */
+export const REFRESH_FALLBACK_MS = 3000;
+
+/**
+ * Botão "Atualizar app": procura sw.js novo, ativa o worker em espera, limpa o Cache Storage do app e recarrega
+ * (uma vez). Nunca mexe em localStorage/sessionStorage/IndexedDB: carrinho e sessão continuam.
+ */
+export async function refreshInstalledApp(opts: {
+  cacheStorage?: CacheStorageLike | null;
+  reload?: () => void;
+  fallbackMs?: number;
+} = {}): Promise<void> {
+  const reload = opts.reload ?? activeReload ?? (() => { if (typeof window !== 'undefined') window.location.reload(); });
+  const reg = activeRegistration;
+  try { await reg?.update?.(); } catch { /* segue */ }
+  const cs = opts.cacheStorage !== undefined ? opts.cacheStorage : (typeof caches !== 'undefined' ? (caches as unknown as CacheStorageLike) : null);
+  if (cs) {
+    try { const keys = await cs.keys(); await Promise.all(keys.map((k) => cs.delete(k).catch(() => false))); } catch { /* segue */ }
+  }
+  if (pendingVersion && activeStorage) {
+    try { activeStorage.setItem(pwaVersionStorageKey(currentScope), pendingVersion); } catch { /* ignora */ }
+  }
+  updateAvailable = false;
+  notify();
+  const waiting = reg?.waiting ?? waitingWorker;
+  if (waiting && waiting.state !== 'activated' && waiting.state !== 'activating' && waiting.state !== 'redundant') {
+    // controllerchange recarrega (userRequestedUpdate); se não vier, recarrega mesmo assim — só uma vez.
+    userRequestedUpdate = true;
+    waiting.postMessage({ type: 'SKIP_WAITING' });
+    setTimeout(() => {
+      if (!userRequestedUpdate) return;
+      userRequestedUpdate = false;
+      reload();
+    }, opts.fallbackMs ?? REFRESH_FALLBACK_MS);
+    return;
+  }
   reload();
 }
 
@@ -330,6 +373,7 @@ export async function registerPwaServiceWorker(opts: RegisterSwOptions = {}): Pr
     const hadController = !!sw.controller;
     try {
       reg = await sw.register('/sw.js', { scope, updateViaCache: 'none' });
+      activeRegistration = reg;
       const r = reg;
       // Worker novo já baixado (versões antigas do sw.js esperavam o clique): ativa agora.
       if (r.waiting) {
