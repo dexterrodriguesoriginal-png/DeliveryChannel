@@ -155,7 +155,8 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
     }, REINSTALL_PROGRESS_MS);
   }, [runPrompt, slug, current, android]);
 
-  if (status === 'current' || dismissed) return null;
+  // Experimento só no Android (WebAPK do Chrome); iPhone e outros seguem como hoje.
+  if (!android || status === 'current' || dismissed) return null;
 
   const overlay = (children: React.ReactNode) => (
     <div data-testid="identity-overlay" role="dialog" aria-modal="true" aria-label="Atualizando aplicativo"

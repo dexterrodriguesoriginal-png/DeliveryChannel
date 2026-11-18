@@ -63,6 +63,18 @@ describe('AppIdentityUpdate', () => {
     expect(localStorage.getItem('dc:app-identity:mercado-teste-dc')).toBe(CUR);
   });
 
+  it('fora do Android (iPhone): nada aparece', async () => {
+    Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1', configurable: true });
+    history.replaceState(null, '', '/app/mercado-teste-dc/');
+    const { AppIdentityUpdate } = await load();
+    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
+    expect(container.innerHTML).toBe('');
+    standalone = false;
+    history.replaceState(null, '', `/app/mercado-teste-dc~${CUR}/?reinstall=1`);
+    await render(<AppIdentityUpdate key="b" slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
+    expect(container.innerHTML).toBe('');
+  });
+
   it('navegador comum sem pedido: nada aparece', async () => {
     standalone = false;
     history.replaceState(null, '', '/app/mercado-teste-dc/');
