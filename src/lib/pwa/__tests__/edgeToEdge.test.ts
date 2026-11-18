@@ -38,7 +38,7 @@ describe('edge-to-edge (barra de navegação do Android)', () => {
   it('pinta o fundo da página com a cor da barra de navegação e desfaz ao sair da loja', () => {
     const doc = document.implementation.createHTMLDocument('x');
     doc.head.insertAdjacentHTML('beforeend', navBarCanvasStyleTag('#db0c2b'));
-    expect(doc.head.querySelector('style[data-store-nav-canvas]')?.textContent).toBe('html{background-color:#db0c2b}');
+    expect(doc.head.querySelector('style[data-store-nav-canvas]')?.textContent).toBe('html{background-color:#db0c2b}body{min-height:100vh}');
     const undo = applyNavBarCanvasColor('#1d4ed8', doc);
     expect(doc.documentElement.style.backgroundColor).toBe('#1d4ed8');
     undo();

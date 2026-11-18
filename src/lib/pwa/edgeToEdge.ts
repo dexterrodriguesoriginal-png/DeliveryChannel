@@ -52,9 +52,13 @@ export function htmlWithViewportFitCover(html: string): string {
  */
 export const NAV_CANVAS_ATTR = 'data-store-nav-canvas';
 
-/** <style> para o servidor injetar no HTML da loja: a cor vale desde a primeira pintura (antes do JS). */
+/**
+ * <style> para o servidor injetar no HTML da loja: a cor vale desde a primeira pintura (antes do JS).
+ * body com altura mínima da tela: enquanto o app carrega, a tela continua com o fundo do <body> (sem "piscar"
+ * a cor da barra na tela toda); o Chrome usa o fundo do <html> para a barra de navegação.
+ */
 export function navBarCanvasStyleTag(color: string): string {
-  return `<style ${NAV_CANVAS_ATTR}="1">html{background-color:${color}}</style>`;
+  return `<style ${NAV_CANVAS_ATTR}="1">html{background-color:${color}}body{min-height:100vh}</style>`;
 }
 
 /** Aplica a cor da barra de navegação no fundo do documento; devolve a função que desfaz (ao sair da loja). */
