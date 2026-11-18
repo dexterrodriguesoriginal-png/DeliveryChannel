@@ -209,13 +209,17 @@ export function fallbackIcons(name: string, color: string): ManifestIcon[] {
  */
 export function buildStoreManifest(store: StoreIdentityInput, origin: string, icons?: ManifestIcon[]): StoreManifest {
   const name = storeDisplayName(store);
-  // theme_color = barra de status; background_color = barra de navegação/splash (Android deriva ambos do manifesto).
+  // App instalado (WebAPK): o Chrome pinta a barra de navegação do Android com o theme_color GRAVADO no app na
+  // instalação/atualização (não lê o <meta theme-color> em tempo real). A barra de status, ao contrário, segue o
+  // <meta theme-color> ao vivo. Por isso theme_color = cor da barra de NAVEGAÇÃO; a de status vem do meta.
   const bars = resolveSystemBars({
     statusBarColor: store.theme?.statusBarColor, navBarColor: store.theme?.navBarColor,
     headerColor: store.theme?.headerColor, primaryColor: store.theme?.primaryColor, backgroundColor: store.theme?.backgroundColor,
   });
-  const theme = bars.status;
+  const theme = bars.nav;
   const bg = bars.nav;
+  // Ícone de iniciais (loja sem logo) continua na cor de status: trocar o ícone faria o Android pedir confirmação.
+  const iconColor = bars.status;
   const o = origin.replace(/\/$/, '');
   return {
     id: `${o}${storeAppId(store.id)}`,
@@ -229,7 +233,7 @@ export function buildStoreManifest(store: StoreIdentityInput, origin: string, ic
     background_color: bg,
     theme_color: theme,
     lang: 'pt-BR',
-    icons: icons && icons.length ? icons : fallbackIcons(name, theme),
+    icons: icons && icons.length ? icons : fallbackIcons(name, iconColor),
     launch_handler: { client_mode: ['navigate-existing', 'auto'] },
     handle_links: 'preferred',
     related_applications: [{ platform: 'webapp', url: `${o}${storeManifestPath(store.slug)}` }],

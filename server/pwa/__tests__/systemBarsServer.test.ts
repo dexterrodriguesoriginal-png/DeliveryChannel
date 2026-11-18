@@ -26,11 +26,12 @@ describe('barras do sistema no servidor (manifesto + HTML de /app/<slug>)', () =
     expect(m.theme_color).toBe('#111827');
     expect(m.background_color).toBe('#111827');
   });
-  it('cores escolhidas vão para theme_color (status) e background_color (navegação)', () => {
+  it('cor da barra de navegação vai para theme_color/background_color; status segue no <meta theme-color>', () => {
     const s = identityFromPayload(payload({ statusBarColor: '#d4a017', navBarColor: '#0b0b0f' }), 'adegashow')!;
     const m = serverManifest(s);
-    expect(m.theme_color).toBe('#d4a017');
+    expect(m.theme_color).toBe('#0b0b0f');
     expect(m.background_color).toBe('#0b0b0f');
+    expect(injectStoreHead(html, 'adegashow', s)).toContain('<meta name="theme-color" content="#d4a017" />');
   });
   it('cor inválida é ignorada (sem injeção) e cai no cabeçalho', () => {
     const s = identityFromPayload(payload({ statusBarColor: 'red;}</style>', navBarColor: 'url(x)' }), 'adegashow')!;

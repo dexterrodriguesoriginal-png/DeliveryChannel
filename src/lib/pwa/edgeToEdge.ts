@@ -2,7 +2,8 @@
  * Edge-to-edge no Android: o Chrome só pinta a barra de navegação do sistema (◁ ○ □ ou a barrinha de gestos)
  * com a cor da página quando a página declara `viewport-fit=cover`. Sem isso:
  *  - aba do Chrome: a barra fica com a cor do próprio Chrome;
- *  - app instalado (WebAPK): o Chrome usa o theme-color (a mesma cor da barra de status) nas duas barras.
+ *  - app instalado (WebAPK): o Chrome usa o theme_color do manifesto gravado no app (= cor da barra de navegação,
+ *    ver storeManifest.ts); só muda quando o Chrome atualiza o app instalado ou ao reinstalar.
  * `background_color` do manifesto só pinta a tela de abertura (splash), nunca a barra de navegação.
  * Com `viewport-fit=cover` a página desenha atrás das barras e preenchemos as áreas seguras
  * (env(safe-area-inset-*)) com a cor escolhida pela loja. Onde o Chrome não desenha atrás das barras,

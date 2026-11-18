@@ -27,9 +27,10 @@ export function SystemBarsCard() {
           Barras do celular
         </h3>
         <p className="text-xs text-gray-500">
-          Combine as barras do Android com o visual da sua loja. Por padrão usam a cor do cabeçalho. As cores
-          aparecem ao abrir a loja no celular com o Chrome atualizado; no app instalado, feche e abra o app de novo.
-          Em celulares com Chrome antigo, a barra de navegação pode seguir a cor da barra de status.
+          Combine as barras do Android com o visual da sua loja. Por padrão usam a cor do cabeçalho. No Chrome as
+          cores mudam na hora. No app instalado na tela inicial, a barra de status muda na hora, mas o Android só
+          troca a cor da barra de navegação quando o Chrome atualiza o app (em até 1 dia, depois de fechar e abrir
+          o app) ou ao remover e instalar o app de novo.
         </p>
       </div>
       {FIELDS.map((f) => (
