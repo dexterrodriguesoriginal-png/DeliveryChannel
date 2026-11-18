@@ -54,7 +54,7 @@ import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POL
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
-import { enableEdgeToEdgeViewport, SAFE_BOTTOM, SAFE_TOP } from '../../lib/pwa/edgeToEdge';
+import { applyNavBarCanvasColor, enableEdgeToEdgeViewport, SAFE_BOTTOM, SAFE_TOP } from '../../lib/pwa/edgeToEdge';
 import { resolveSystemBars } from '../../lib/pwa/systemBars';
 import { SystemBarFills } from '../../components/client/SystemBarFills';
 import { THEME_REFRESH_MIN_MS, subscribeThemeRefresh } from '../../lib/theme/silentThemeRefresh';
@@ -812,6 +812,12 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       headerColor: t?.headerColor, primaryColor: t?.primaryColor, backgroundColor: t?.backgroundColor,
     });
   }, [theme]);
+
+  // Barra de navegação do Android quando o Chrome não desenha atrás dela (3 botões, tablet): segue o fundo da página.
+  useEffect(() => {
+    if (previewMode || !storeData?.tenant) return;
+    return applyNavBarCanvasColor(systemBars.nav);
+  }, [systemBars.nav, previewMode, storeData?.tenant]);
 
   // Carregamento dinâmico de Google Fonts homologadas (texto corrido e títulos)
   useEffect(() => {

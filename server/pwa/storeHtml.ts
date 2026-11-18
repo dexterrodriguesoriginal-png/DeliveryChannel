@@ -5,7 +5,7 @@
  */
 import { storeDisplayName, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
 import { resolveSystemBars } from '../../src/lib/pwa/systemBars';
-import { htmlWithViewportFitCover } from '../../src/lib/pwa/edgeToEdge';
+import { htmlWithViewportFitCover, navBarCanvasStyleTag } from '../../src/lib/pwa/edgeToEdge';
 import { readMesaParam } from '../../src/lib/salon/tableQr';
 import { iconVersion, identityVersion } from './routes';
 
@@ -61,6 +61,9 @@ export function injectStoreHead(html: string, slug: string, store: StoreIdentity
       `<link rel="apple-touch-icon" href="${icon}" />`,
       `<link rel="icon" href="${icon}" />`,
     );
+    // Aba do Chrome sem edge-to-edge (3 botões, tablet): a barra de navegação usa a cor de fundo da página.
+    // bars.nav é sempre um hex normalizado (#rrggbb), seguro dentro do CSS.
+    if (opts.edgeToEdge) tags.push(navBarCanvasStyleTag(bars.nav));
   }
   return out.replace(/<\/head>/i, `    ${tags.join('\n    ')}\n  </head>`);
 }

@@ -41,3 +41,29 @@ export function htmlWithViewportFitCover(html: string): string {
   const content = /content=["']([^"']*)["']/i.exec(m[0])?.[1] || '';
   return html.replace(re, `<meta name="viewport" content="${withViewportFitCover(content)}" />`);
 }
+
+/**
+ * Cor do "fundo da página" (canvas) = cor da barra de navegação nos casos em que o Chrome NÃO desenha a página
+ * atrás dela: navegação de 3 botões (◁ ○ □), tablets/telas grandes e aparelhos sem o edge-to-edge do Chrome 135+.
+ * Desde o Chrome 129 a barra de navegação de uma aba é pintada com a cor de fundo da página (fundo do <html>,
+ * ou do <body> quando o <html> não tem fundo). Sem isto ela ficava com o cinza-claro do <body> (bg-gray-50)
+ * e não seguia a "Cor da barra de navegação" da loja. O conteúdo do app cobre a tela inteira, então essa cor
+ * só aparece nas bordas que o próprio Chrome usa para a barra.
+ */
+export const NAV_CANVAS_ATTR = 'data-store-nav-canvas';
+
+/** <style> para o servidor injetar no HTML da loja: a cor vale desde a primeira pintura (antes do JS). */
+export function navBarCanvasStyleTag(color: string): string {
+  return `<style ${NAV_CANVAS_ATTR}="1">html{background-color:${color}}</style>`;
+}
+
+/** Aplica a cor da barra de navegação no fundo do documento; devolve a função que desfaz (ao sair da loja). */
+export function applyNavBarCanvasColor(color: string, doc: Document = document): () => void {
+  const root = doc.documentElement;
+  const previous = root.style.backgroundColor;
+  root.style.backgroundColor = color;
+  return () => {
+    root.style.backgroundColor = previous;
+    doc.head.querySelectorAll(`style[${NAV_CANVAS_ATTR}]`).forEach((el) => el.remove());
+  };
+}
