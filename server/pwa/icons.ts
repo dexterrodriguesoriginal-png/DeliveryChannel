@@ -18,6 +18,18 @@ export const ICON_VARIANTS: Record<IconVariant, { size: number; maskable: boolea
   'maskable-512': { size: 512, maskable: true },
 };
 
+/** Variantes só do experimento de splash (servidas apenas para lojas na lista de teste). */
+export type SplashTestIconVariant = 'splash-store-maskable-332' | 'splash-dc-maskable-1024';
+export const SPLASH_TEST_ICON_VARIANTS: Record<SplashTestIconVariant, { size: number; maskable: boolean }> = {
+  'splash-store-maskable-332': { size: 332, maskable: true },
+  'splash-dc-maskable-1024': { size: 1024, maskable: true },
+};
+type AnyIconVariant = IconVariant | SplashTestIconVariant;
+function spec(variant: AnyIconVariant): { size: number; maskable: boolean } {
+  return (ICON_VARIANTS as Record<string, { size: number; maskable: boolean }>)[variant]
+    ?? SPLASH_TEST_ICON_VARIANTS[variant as SplashTestIconVariant];
+}
+
 const FONT_FILE = path.resolve(process.cwd(), 'server/assets/Roboto-Bold.ttf');
 const FONT_FAMILY = 'Roboto';
 
@@ -38,8 +50,8 @@ export function initialsSvg(name: string, color: string, size: number, maskable:
     `<text x="50%" y="50%" dy=".35em" text-anchor="middle" font-family="${FONT_FAMILY}" font-weight="700" font-size="${fs_}" fill="#ffffff">${initials}</text></svg>`;
 }
 
-export function renderInitialsPng(name: string, color: string, variant: IconVariant): Buffer {
-  const { size, maskable } = ICON_VARIANTS[variant];
+export function renderInitialsPng(name: string, color: string, variant: AnyIconVariant): Buffer {
+  const { size, maskable } = spec(variant);
   return render(initialsSvg(name, color, size, maskable), size);
 }
 
@@ -58,8 +70,8 @@ export function looksLikeSvg(bytes: Buffer): boolean {
 }
 
 /** Logo (PNG/JPEG/WebP/GIF/SVG) centralizado (contain); maskable usa área segura de 80%. */
-export function renderLogoPng(bytes: Buffer, contentType: string, variant: IconVariant, background = '#ffffff'): Buffer {
-  const { size, maskable } = ICON_VARIANTS[variant];
+export function renderLogoPng(bytes: Buffer, contentType: string, variant: AnyIconVariant, background = '#ffffff'): Buffer {
+  const { size, maskable } = spec(variant);
   const box = maskable ? Math.round(size * 0.8) : size;
   const off = Math.round((size - box) / 2);
   const href = `data:${contentType};base64,${bytes.toString('base64')}`;
@@ -73,10 +85,10 @@ export function renderLogoPng(bytes: Buffer, contentType: string, variant: IconV
 export async function renderStoreIconPng(
   bytes: Buffer,
   contentType: string,
-  variant: IconVariant,
+  variant: AnyIconVariant,
   background = '#ffffff',
 ): Promise<Buffer> {
-  const { size, maskable } = ICON_VARIANTS[variant];
+  const { size, maskable } = spec(variant);
   const box = maskable ? Math.round(size * 0.8) : size;
   const pad = Math.round((size - box) / 2);
   const ct = (contentType || '').split(';')[0].trim().toLowerCase();
