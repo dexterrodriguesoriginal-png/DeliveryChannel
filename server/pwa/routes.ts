@@ -11,7 +11,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Request, Response, Router } from 'express';
 import express from 'express';
-import { buildStoreManifest, ManifestIcon, iconFallbackColor, storeDisplayName, storeIconVersion, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
+import { buildStoreManifest, ManifestIcon, iconFallbackColor, storeDisplayName, storeIconVersion, storeIdentityVersion, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
 import { buildTotemManifest } from '../../src/lib/pwa/totemManifest';
 import { ICON_VARIANTS, IconVariant, isNearlyFlatPng, renderInitialsPng, renderStoreIconPng } from './icons';
 import { fetchPublicImage } from './safeFetch';
@@ -130,16 +130,16 @@ export function resolveBuildVersion(publicDir?: string, env: NodeJS.ProcessEnv =
 }
 
 /**
- * Versão única do ícone e da identidade da loja (mesmo valor usado em storeHtml.ts,
- * applyStoreIdentity.identityHash e serverManifest).
- * Calculada apenas com metadados (logoUrl, updatedAt, cores, nomes) para nunca exigir download em /api/pwa/version.
+ * Versão do ícone (?v=), igual em storeHtml.ts, applyStoreIdentity.identityHash e serverManifest.
+ * Só muda quando a imagem do ícone muda (logo, ou nome/cor do ícone de iniciais). Só metadados, sem download.
  */
 export function iconVersion(store: StoreIdentityInput): string {
   return storeIconVersion(store);
 }
 
+/** Versão da identidade (inclui cores/barras) para /api/pwa/version; nunca usada em URL de ícone. */
 export function identityVersion(store: StoreIdentityInput): string {
-  return storeIconVersion(store);
+  return storeIdentityVersion(store);
 }
 
 export function serverManifest(store: StoreIdentityInput) {

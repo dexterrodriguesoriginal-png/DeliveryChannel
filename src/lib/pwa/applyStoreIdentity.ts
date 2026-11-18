@@ -55,7 +55,7 @@ export async function buildLogoIcons(logoUrl: string | undefined, bg: string): P
   }
 }
 
-/** Hash curto e estável da identidade visível (logo, cores, barras, nome e updatedAt): versão única dos ícones. */
+/** Versão do ícone (?v=): muda só quando a imagem do ícone muda (logo, ou nome/cor do ícone de iniciais). */
 export function identityHash(store: StoreIdentityInput): string {
   return storeIconVersion(store);
 }
