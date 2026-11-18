@@ -306,8 +306,9 @@ export const InstallStoreAppHint: React.FC<Props> = ({ tenantId, storeName, colo
         {platform === 'android-other' && <p className="mb-2 text-neutral-300">Funciona melhor no <b>Google Chrome</b>.</p>}
         <ol className="space-y-2">
           <li className="flex items-center gap-2.5"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10"><MoreVertical className="h-4 w-4" /></span><span><b>1.</b> Toque em <b>⋮</b> no canto superior direito</span></li>
-          <li className="flex items-center gap-2.5"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10"><Download className="h-4 w-4" /></span><span><b>2.</b> Toque em <b>“Instalar app”</b> ou <b>“Adicionar à tela inicial”</b></span></li>
+          <li className="flex items-center gap-2.5"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10"><Download className="h-4 w-4" /></span><span><b>2.</b> Toque em <b>“Instalar app”</b></span></li>
         </ol>
+        <p data-testid="install-not-shortcut" className="mt-2 text-xs text-neutral-300">Se o Chrome perguntar, escolha <b>“Instalar”</b> (não “Criar atalho”): assim o app recebe as novidades da loja.</p>
       </>}
       {platform === 'ios-safari' && <p className="flex flex-wrap items-center gap-1">No Safari, toque em <Share className="inline h-4 w-4" /> <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</p>}
       {platform === 'ios-other' && <p>No iPhone, a instalação é feita pelo <b>Safari</b>. Abra este link no Safari, toque em <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b>.</p>}

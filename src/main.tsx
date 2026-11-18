@@ -11,6 +11,7 @@ import { detachGlobalManifestForStoreRoute } from './lib/pwa/applyStoreIdentity'
 import { isTotemRoute } from './lib/pwa/totemManifest';
 import { captureInstallEvents } from './lib/pwa/installState';
 import { registerPwaServiceWorker } from './lib/pwa/registerSw';
+import { storeAppCanonicalPath } from './lib/pwa/storeScopeUrl';
 import { PwaUpdateToast } from './components/pwa/PwaUpdateToast';
 
 // O retorno do Google usa URL sem token; normaliza para dentro do escopo do entregador.
@@ -34,6 +35,10 @@ if (isWaiterRoute(window.location.pathname)) {
 // /modulos e /ferramentas abrem a página Ferramentas do painel (o endereço antigo continua funcionando).
 const toolsTarget = toolsPathRedirect(window.location.pathname);
 if (toolsTarget) window.history.replaceState(null, '', toolsTarget);
+
+// App da loja sempre no endereço do scope (/app/<slug>/): fora dele o Chrome não instala como WebAPK de verdade.
+const storeCanonical = storeAppCanonicalPath(window.location.pathname, window.location.search);
+if (storeCanonical) window.history.replaceState(window.history.state, '', storeCanonical + window.location.hash);
 
 // Captura beforeinstallprompt/appinstalled antes do React montar.
 captureInstallEvents(window);

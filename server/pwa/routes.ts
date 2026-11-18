@@ -13,6 +13,7 @@ import type { Request, Response, Router } from 'express';
 import express from 'express';
 import { buildStoreManifest, ManifestIcon, iconFallbackColor, storeDisplayName, storeIconVersion, storeIdentityVersion, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
 import { buildTotemManifest } from '../../src/lib/pwa/totemManifest';
+import { storeAppCanonicalPath } from '../../src/lib/pwa/storeScopeUrl';
 import { ICON_VARIANTS, IconVariant, isNearlyFlatPng, renderInitialsPng, renderStoreIconPng } from './icons';
 import { fetchPublicImage } from './safeFetch';
 import { isValidSlug, StoreResolver } from './storeSource';
@@ -279,6 +280,16 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       version: buildVersion,
       ...(slug && storeVer ? { slug, identityVersion: storeVer } : {}),
     });
+  });
+
+  // Vitrine sempre dentro do scope do manifesto (/app/<slug>/): instalar de "/app/<slug>" (fora do scope e
+  // sem Service Worker) deixava o app da loja como atalho comum em vez de WebAPK. Mantém a query (mesa, preview, OAuth).
+  router.get('/app/:slug', (req, res, next) => {
+    const q = req.originalUrl.indexOf('?');
+    const target = storeAppCanonicalPath(req.path, q >= 0 ? req.originalUrl.slice(q) : '');
+    if (!target) return next();
+    res.set('Cache-Control', 'no-cache');
+    res.redirect(302, target);
   });
 
   router.get('/app/:slug/manifest.webmanifest', async (req, res) => {
