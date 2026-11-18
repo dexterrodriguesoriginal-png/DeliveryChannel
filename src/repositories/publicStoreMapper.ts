@@ -16,6 +16,7 @@
  * Nada aqui usa `any` ou cast frouxo: cada campo é lido e validado; o que não pertence
  * ao tenant do slug é descartado (defesa em profundidade além do filtro do servidor).
  */
+import type { StorePresentation } from '../lib/pwa/presentation';
 import { fulfillmentFieldsFromRaw } from '../lib/pricing/fulfillmentPricing';
 import { resolveMenuTheme } from '../lib/theme/channelThemes';
 import type { MenuTheme } from '../types/menuTheme';
@@ -67,6 +68,8 @@ export interface PublicStoreData {
   campaigns: Campaign[];
   /** serverTime − relógio local no recebimento (ms). Usado para filtrar expiração com o relógio do servidor. */
   serverTimeOffsetMs: number;
+  /** Tela inicial personalizada publicada (N1–N6). Ausente = padrão do tema. */
+  presentation?: StorePresentation;
 }
 
 export class PublicStorePayloadError extends Error {

@@ -40,7 +40,7 @@ export function classifyMediaFile(file: { name: string; type: string }): { media
   throw new BackendError('MEDIA_TYPE_INVALID', 'Formato não suportado. Use JPG, PNG, WEBP, MP4 ou WEBM.');
 }
 
-function readDimensions(file: File, mediaType: 'IMAGE' | 'VIDEO'): Promise<{ width?: number; height?: number; duration?: number }> {
+export function readMediaDimensions(file: File, mediaType: 'IMAGE' | 'VIDEO'): Promise<{ width?: number; height?: number; duration?: number }> {
   return new Promise(resolve => {
     try {
       const url = URL.createObjectURL(file);
@@ -96,7 +96,7 @@ export const mediaRepository = {
     const { mediaType, extension } = classifyMediaFile(file);
     const sizeError = mediaSizeError(mediaType, file.size);
     if (sizeError) throw new BackendError('MEDIA_TOO_LARGE', sizeError);
-    const dims = await readDimensions(file, mediaType);
+    const dims = await readMediaDimensions(file, mediaType);
     if (mediaType === 'VIDEO') {
       const durationError = videoDurationError(dims.duration);
       if (durationError) throw new BackendError('MEDIA_TOO_LONG', durationError);

@@ -5,10 +5,12 @@
  *  - carrosséis vêm em `carousels` com preço efetivo calculado no servidor;
  *  - campanhas N5 (campaign_cards) viram cards da vitrine com campaignCardId/campaignId, e o
  *    checkout promocional envia p_card_id (a cadeia tenant→campanha→card→oferta→produto é do servidor);
+ *  - tela inicial personalizada em `presentation` (só se ativa e com mídia PUBLICADA);
  *  - sem e-mail, PIX, custo, estoque, contadores ou limites internos.
  */
 import { Offer, Product, PromotionCarousel } from '../types';
 import { mapPublicStorePayload, PublicStoreData, PublicStorePayloadError } from './publicStoreMapper';
+import { mapPresentation } from '../lib/pwa/presentation';
 
 export type MediaUrlResolver = (bucket: 'marketing-public', path: string) => string;
 
@@ -227,5 +229,6 @@ export function mapN6PublicStore(raw: unknown, resolve: MediaUrlResolver, receiv
     offers: [...offers, ...campaignCards],
     promotionCarousels: mapN6Carousels(raw.carousels, tenantId, base.products, resolve),
     campaigns: [],
+    presentation: mapPresentation(raw.presentation, resolve),
   };
 }

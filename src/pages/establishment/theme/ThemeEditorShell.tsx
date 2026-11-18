@@ -32,6 +32,7 @@ import { ThemeDialog } from './ThemeDialog';
 import { IdentityTab } from './tabs/IdentityTab';
 import { ColorsTab } from './tabs/ColorsTab';
 import { SystemBarsCard } from './tabs/SystemBarsCard';
+import { PresentationScreenCard } from './tabs/PresentationScreenCard';
 import { BackgroundsTab } from './tabs/BackgroundsTab';
 import { FontsTab } from './tabs/FontsTab';
 import { StyleTab } from './tabs/StyleTab';
@@ -258,7 +259,12 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
                   onPreviewChange={setGalleryPreview}
                 />
               </div>
-              {tab === 'identity' && <IdentityTab />}
+              {tab === 'identity' && (
+                <div className="space-y-4">
+                  <IdentityTab />
+                  <PresentationScreenCard />
+                </div>
+              )}
               {tab === 'colors' && (
                 <div className="space-y-4">
                   <ColorsTab />

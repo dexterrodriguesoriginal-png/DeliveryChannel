@@ -52,7 +52,7 @@ import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
 import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
-import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
+import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewPresentationMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
 import { setPwaAutoReloadBlocked } from '../../lib/pwa/registerSw';
@@ -133,6 +133,10 @@ import {
 import { StoreLogo } from '../../components/client/StoreLogo';
 import { DcBootScreen } from '../../components/pwa/DcBootScreen';
 import { hideBootScreen } from '../../lib/pwa/bootScreen';
+import { StorePresentationSequence } from '../../components/pwa/StorePresentationScreen';
+import {
+  markPresentationShown, prefersReducedMotion, presentationPlan, PresentationPlan, PRESENTATION_PREVIEW_BOOT_MS, shouldShowPresentation,
+} from '../../lib/pwa/presentation';
 import { newIdempotencyKey } from '../../lib/pricing/idempotency';
 import { searchProducts } from '../../lib/customer/search';
 import { buildReorderCart } from '../../lib/customer/reorder';
@@ -246,6 +250,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     const onMsg = (ev: MessageEvent) => {
       const t = parsePreviewThemeMessage(ev, window); if (t) setPreviewTheme(t);
       const c = parsePreviewCardMessage(ev, window); if (c) setPreviewCard(c.card);
+      // "Ver abertura" no painel: simula #dc-boot → tela da loja (ou padrão do tema), sob demanda.
+      const pr = parsePreviewPresentationMessage(ev, window);
+      if (pr) setPresentationRun({ plan: presentationPlan(pr.presentation, { reducedMotion: prefersReducedMotion() }), withBoot: true, key: Date.now() });
     };
     window.addEventListener('message', onMsg);
     try { window.parent.postMessage({ type: PREVIEW_READY_MSG }, window.location.origin); } catch { /* sem pai */ }
@@ -257,6 +264,21 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const [isLoadingStore, setIsLoadingStore] = useState(true);
   // "Delivery Channel apresenta" do servidor (#dc-boot) fica até a vitrine terminar de carregar (ou falhar).
   useEffect(() => { if (!isLoadingStore) hideBootScreen(); }, [isLoadingStore]);
+  // Tela inicial personalizada da loja, logo depois da #dc-boot: 1× por abertura do app (sessionStorage por loja)
+  // e, se a loja quiser, 1× por dia (localStorage). Só aqui (/app/<slug>/ delivery); mesa/totem usam outros apps.
+  const [presentationRun, setPresentationRun] = useState<{ plan: PresentationPlan; withBoot: boolean; key: number } | null>(null);
+  const presentationSlugRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (previewMode || isLoadingStore || !slug || storeData?.tenant?.slug !== slug) return;
+    if (presentationSlugRef.current === slug) return;
+    presentationSlugRef.current = slug;
+    const store = (k: 'sessionStorage' | 'localStorage') => { try { return window[k]; } catch { return null; } };
+    const session = store('sessionStorage'), local = store('localStorage');
+    const p = storeData.presentation;
+    if (!shouldShowPresentation({ slug, oncePerDay: Boolean(p?.oncePerDay), session, local })) return;
+    markPresentationShown({ slug, session, local });
+    setPresentationRun({ plan: presentationPlan(p, { reducedMotion: prefersReducedMotion() }), withBoot: false, key: Date.now() });
+  }, [previewMode, isLoadingStore, slug, storeData]);
   const [storeNotFound, setStoreNotFound] = useState(false);
   // Falha técnica ao carregar a vitrine (ex.: RPC com erro) — distinta de "loja não encontrada".
   const [storeLoadError, setStoreLoadError] = useState<string | null>(null);
@@ -1891,6 +1913,19 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         fontFamily: 'var(--dc-font-family, Inter, sans-serif)',
       }}
     >
+      {presentationRun && (
+        <StorePresentationSequence
+          key={presentationRun.key}
+          plan={presentationRun.plan}
+          withBoot={presentationRun.withBoot}
+          bootMs={PRESENTATION_PREVIEW_BOOT_MS}
+          background={activeTokens.palette.bgGeneral || theme.backgroundColor}
+          textColor={activeTokens.palette.textMain || theme.textColor}
+          storeName={theme.storeName || storeData.tenant.name}
+          logoUrl={theme.logoUrl}
+          onDone={() => setPresentationRun(null)}
+        />
+      )}
       {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
       {!previewMode && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
