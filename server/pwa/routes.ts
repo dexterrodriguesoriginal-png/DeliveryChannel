@@ -14,7 +14,8 @@ import express from 'express';
 import { buildStoreManifest, ManifestIcon, iconFallbackColor, storeDisplayName, storeIconVersion, storeIdentityVersion, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
 import { buildTotemManifest } from '../../src/lib/pwa/totemManifest';
 import { storeAppCanonicalPath } from '../../src/lib/pwa/storeScopeUrl';
-import { ICON_VARIANTS, IconVariant, isNearlyFlatPng, renderInitialsPng, renderStoreIconPng } from './icons';
+import { ICON_VARIANTS, IconVariant, isNearlyFlatPng, renderInitialsPng, renderStoreIconPng, SPLASH_TEST_ICON_VARIANTS, SplashTestIconVariant } from './icons';
+import { DC_BRAND_SVG, DC_SPLASH_ICON_VERSION, SPLASH_TEST_COLOR } from './splashTest';
 import { fetchPublicImage } from './safeFetch';
 import { isValidSlug, StoreResolver } from './storeSource';
 
@@ -30,6 +31,8 @@ export interface PwaRouteOptions {
   maxLogoCacheEntries?: number;
   maxLogoCacheBytes?: number;
   buildVersion?: string;
+  /** Experimento da splash (server/pwa/splashTest.ts): slugs de TESTE. Padrão: nenhum. */
+  splashTestSlugs?: Iterable<string>;
 }
 
 const MIME_BY_EXT: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml' };
@@ -143,9 +146,10 @@ export function identityVersion(store: StoreIdentityInput): string {
   return storeIdentityVersion(store);
 }
 
-export function serverManifest(store: StoreIdentityInput) {
+export function serverManifest(store: StoreIdentityInput, opts: { splashTest?: boolean } = {}) {
   const base = `/app/${encodeURIComponent(store.slug)}/icons`;
   const v = iconVersion(store);
+  if (opts.splashTest) return splashTestManifest(store, base, v);
   const icons: ManifestIcon[] = [
     { src: `${base}/icon-192.png?v=${v}`, sizes: '192x192', type: 'image/png', purpose: 'any' },
     { src: `${base}/icon-512.png?v=${v}`, sizes: '512x512', type: 'image/png', purpose: 'any' },
@@ -153,6 +157,20 @@ export function serverManifest(store: StoreIdentityInput) {
   ];
   // origin '' => id/start_url/scope relativos à mesma origem do manifesto (HTTPS do app).
   return buildStoreManifest(store, '', icons);
+}
+
+/**
+ * EXPERIMENTO (só slugs de teste): launcher = logo da loja (maskable 332), splash = Delivery Channel
+ * (maskable 1024) em #121212. Ver server/pwa/splashTest.ts para a regra de escolha do Chrome.
+ */
+function splashTestManifest(store: StoreIdentityInput, base: string, v: string) {
+  const icons: ManifestIcon[] = [
+    { src: `${base}/icon-192.png?v=${v}`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: `${base}/icon-512.png?v=${v}`, sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: `${base}/splash-store-maskable-332.png?v=${v}`, sizes: '332x332', type: 'image/png', purpose: 'maskable' },
+    { src: `${base}/splash-dc-maskable-1024.png?v=${DC_SPLASH_ICON_VERSION}`, sizes: '1024x1024', type: 'image/png', purpose: 'maskable' },
+  ];
+  return { ...buildStoreManifest(store, '', icons), theme_color: SPLASH_TEST_COLOR, background_color: SPLASH_TEST_COLOR };
 }
 
 export function serverTotemManifest(store: StoreIdentityInput) {
@@ -187,6 +205,8 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   let logoCacheBytes = 0;
   const iconCache = new Map<string, Buffer>();
   const fetchLogo = opts.fetchLogo ?? ((u: string) => fetchPublicImage(u));
+  const splashTestSlugs = new Set(opts.splashTestSlugs ?? []);
+  let dcSplashPng: Buffer | null = null;
 
   async function lookup(slug: string) {
     const hit = storeCache.get(slug);
@@ -299,7 +319,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     // Sempre revalidado: tema/logo/barras novos chegam ao app logo após a loja salvar.
     res.set('Cache-Control', 'no-cache');
     res.set('X-Content-Type-Options', 'nosniff');
-    res.send(JSON.stringify(serverManifest(store)));
+    res.send(JSON.stringify(serverManifest(store, { splashTest: splashTestSlugs.has(store.slug) })));
   });
 
   router.get('/totem/:slug/manifest.webmanifest', async (req, res) => {
@@ -313,9 +333,11 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
 
   router.get('/app/:slug/icons/:variant.png', async (req, res) => {
     const variant = String(req.params.variant) as IconVariant;
-    if (!(variant in ICON_VARIANTS)) { res.status(404).type('text/plain').send('Ícone não encontrado'); return; }
+    const testVariant = variant in SPLASH_TEST_ICON_VARIANTS && splashTestSlugs.has(String(req.params.slug));
+    if (!(variant in ICON_VARIANTS) && !testVariant) { res.status(404).type('text/plain').send('Ícone não encontrado'); return; }
     const store = await guard(req, res);
     if (!store) return;
+    if (testVariant) { await sendSplashTestIcon(res, store, variant as unknown as SplashTestIconVariant); return; }
     const ver = iconVersion(store);
     const key = `${store.id}|${ver}|${variant}`;
     let png = iconCache.get(key);
@@ -349,6 +371,36 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     res.set('X-Content-Type-Options', 'nosniff');
     res.send(png);
   });
+
+  /** Ícones do experimento da splash (sempre no-cache: é teste). */
+  async function sendSplashTestIcon(res: Response, store: StoreIdentityInput, variant: SplashTestIconVariant) {
+    let png: Buffer | undefined;
+    if (variant === 'splash-dc-maskable-1024') {
+      if (!dcSplashPng) {
+        try {
+          const svg = await fs.readFile(path.resolve(publicRoot, DC_BRAND_SVG));
+          dcSplashPng = await renderStoreIconPng(svg, 'image/svg+xml', variant, SPLASH_TEST_COLOR);
+        } catch {
+          res.status(503).set('Cache-Control', 'no-store').type('text/plain').send('Indisponível');
+          return;
+        }
+      }
+      png = dcSplashPng;
+    } else {
+      const logo = await loadLogo(store.id, store.theme?.logoUrl);
+      if (logo) {
+        try {
+          const p = await renderStoreIconPng(logo.bytes, logo.contentType, variant);
+          if (!(await isNearlyFlatPng(p))) png = p;
+        } catch { png = undefined; }
+      }
+      if (!png) png = renderInitialsPng(storeDisplayName(store), iconFallbackColor(store.theme), variant);
+    }
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'no-cache');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.send(png);
+  }
 
   const lookupStore = async (slug: string) => {
     if (!isValidSlug(slug)) return null;

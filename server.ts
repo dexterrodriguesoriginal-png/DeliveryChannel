@@ -15,6 +15,7 @@ import { createPaymentsRouter } from './server/payments/routes';
 import { createReceiptsRouter } from './server/receipts/routes';
 import path from 'node:path';
 import { createPwaRouter, staticAssetCacheControl } from './server/pwa/routes';
+import { resolveSplashTestSlugs } from './server/pwa/splashTest';
 import fs from 'node:fs/promises';
 import { injectStoreHead, storeHeadOptionsForUrl, storeSlugFromPath, withTimeout } from './server/pwa/storeHtml';
 import { injectTotemHead, isTotemRoute, totemSlugFromPath } from './src/lib/pwa/totemManifest';
@@ -38,7 +39,7 @@ async function start() {
   const distDir = path.resolve(process.cwd(), 'dist');
   const { resolver, mode } = pickResolver();
 
-  const pwa = createPwaRouter({ resolveStore: resolver, publicDir: isProd ? distDir : path.resolve(process.cwd(), 'public') });
+  const pwa = createPwaRouter({ resolveStore: resolver, publicDir: isProd ? distDir : path.resolve(process.cwd(), 'public'), splashTestSlugs: resolveSplashTestSlugs(process.env) });
   app.use(pwa);
   app.use((req, res, next) => {
     if (req.path === '/sw.js') {
