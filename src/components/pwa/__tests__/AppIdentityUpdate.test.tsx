@@ -86,6 +86,27 @@ describe('AppIdentityUpdate', () => {
     await act(async () => { vi.advanceTimersByTime(1300); await Promise.resolve(); await Promise.resolve(); });
     expect(hrefSet).toHaveBeenCalledWith(`intent://deliverychannel.com.br/app/mercado-teste-dc~${CUR}/?reinstall=1#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(`https://deliverychannel.com.br/app/mercado-teste-dc~${CUR}/?reinstall=1`)};end`);
     expect(container.textContent).toContain('Abrindo o Chrome');
+    // voltou do Chrome (cancelou lá): a loja fica livre de novo
+    const vis = vi.spyOn(document, 'visibilityState', 'get');
+    vis.mockReturnValue('hidden');
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    vis.mockReturnValue('visible');
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(container.querySelector('[data-testid="identity-overlay"]')).toBeNull();
+    expect(container.textContent).toContain('Nova versão do app disponível');
+  });
+
+  it('tela "Abrindo o Chrome" tem Voltar à loja', async () => {
+    vi.useFakeTimers();
+    history.replaceState(null, '', '/app/mercado-teste-dc/');
+    const { AppIdentityUpdate } = await load();
+    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
+    const loc = window.location;
+    vi.stubGlobal('location', { ...loc, origin: 'https://x.com', pathname: loc.pathname, search: loc.search, set href(_v: string) {}, get href() { return loc.href; } });
+    await act(async () => { (container.querySelector('[data-testid="identity-update"]') as HTMLButtonElement).click(); });
+    await act(async () => { vi.advanceTimersByTime(1300); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { (container.querySelector('[data-testid="identity-back"]') as HTMLButtonElement).click(); });
+    expect(container.querySelector('[data-testid="identity-overlay"]')).toBeNull();
   });
 
   it('ícone antigo com convite no próprio app: usa o prompt nativo', async () => {

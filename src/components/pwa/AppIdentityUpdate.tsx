@@ -110,6 +110,18 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
     return () => clearTimeout(t);
   }, [phase]);
 
+  // Instalação seguiu na aba do Chrome: ao voltar para este app, libera a loja (os eventos de lá não chegam aqui).
+  useEffect(() => {
+    if (phase !== 'opening-chrome') return;
+    let left = false;
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') left = true;
+      else if (left) setPhase('idle');
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [phase]);
+
   const openNewApp = useCallback(() => {
     const url = `${window.location.origin}${versionedStartUrl(slug, current)}`;
     // Sem package: o Android entrega ao app (WebAPK) que abre esse endereço.
@@ -186,6 +198,9 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
           <p style={{ fontSize: 13, margin: '12px 0 0' }}>
             {phase === 'opening-chrome' ? 'Abrindo o Chrome para instalar a nova versão. Toque em Instalar quando aparecer.' : 'Preparando a nova versão do app.'}
           </p>
+          {phase === 'opening-chrome' && (
+            <button type="button" style={{ ...secondaryBtn, marginTop: 14 }} onClick={() => setPhase('idle')} data-testid="identity-back">Voltar à loja</button>
+          )}
         </div>
       ));
     }

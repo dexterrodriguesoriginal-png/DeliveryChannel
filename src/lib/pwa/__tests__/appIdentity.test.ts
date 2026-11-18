@@ -4,6 +4,7 @@ import {
   versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope,
 } from '../appIdentity';
 import { extractStoreSlugFromPath, resolvePwaScope } from '../registerSw';
+import { emailRedirectUrl } from '../../auth/authRedirect';
 
 describe('appIdentity', () => {
   it('separa slug e versão', () => {
@@ -15,6 +16,7 @@ describe('appIdentity', () => {
     expect(extractStoreSlugFromPath('/app/loja~0123456789/')).toBe('loja');
     expect(extractStoreSlugFromPath('/totem/loja/')).toBe('loja');
     expect(resolvePwaScope('/app/loja~0123456789/')).toBe('/app/loja~0123456789/');
+    expect(emailRedirectUrl({ origin: 'https://x.com', pathname: '/app/mercado-teste-dc~bbbbbbbbbb/' })).toBe('https://x.com/app/mercado-teste-dc');
   });
   it('endereços da versão', () => {
     expect(versionedStoreScope('a', '0123456789')).toBe('/app/a~0123456789/');
