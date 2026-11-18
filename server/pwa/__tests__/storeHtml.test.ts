@@ -46,6 +46,19 @@ describe('HTML da vitrine em edge-to-edge (barra de navegação do Android com a
     const out = injectStoreHead(withViewport, 'adega-premium', store);
     expect(out).toContain('content="width=device-width, initial-scale=1.0"');
     expect(out).not.toContain('viewport-fit');
+    expect(out).not.toContain('data-store-nav-canvas');
+  });
+  it('fundo da página com a "Cor da barra de navegação" da loja (aba do Chrome com 3 botões / sem edge-to-edge)', () => {
+    const s2 = { ...store, theme: { ...store.theme, statusBarColor: '#12E43F', navBarColor: '#DB0C2B' } };
+    const out = injectStoreHead(html, 'adega-premium', s2, { edgeToEdge: true });
+    expect(out).toContain('<style data-store-nav-canvas="1">html{background-color:#db0c2b}body{min-height:100vh}</style>');
+    expect(out).toContain('<meta name="theme-color" content="#12e43f" />');
+  });
+  it('cor inválida nunca vai crua para o CSS (cai no padrão do tema)', () => {
+    const evil = { ...store, theme: { ...store.theme, navBarColor: 'red}</style><script>alert(1)</script>' } };
+    const out = injectStoreHead(html, 'adega-premium', evil, { edgeToEdge: true });
+    expect(out).not.toContain('<script>alert(1)');
+    expect(out).toMatch(/<style data-store-nav-canvas="1">html\{background-color:#[0-9a-f]{6}\}body\{min-height:100vh\}<\/style>/);
   });
 });
 
