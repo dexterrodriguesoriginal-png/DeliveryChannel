@@ -13,11 +13,13 @@ export function readAppIdentityMeta(doc: Document | undefined = typeof document 
 
 export const REINSTALL_PROGRESS_MS = 1200;
 export const REINSTALL_PROMPT_WAIT_MS = 8000;
+/** Aceitar o convite não é instalar: espera o appinstalled antes de mandar remover o ícone antigo. */
+export const REINSTALL_CONFIRM_WAIT_MS = 45000;
 
 const safeGet = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
 const safeSet = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
 
-type Phase = 'idle' | 'progress' | 'opening-chrome' | 'waiting-prompt' | 'ready' | 'installed' | 'no-prompt';
+type Phase = 'idle' | 'progress' | 'opening-chrome' | 'waiting-prompt' | 'ready' | 'pending-install' | 'slow-install' | 'installed' | 'no-prompt';
 
 const card: React.CSSProperties = {
   background: 'var(--dc-bg-card-color)', color: 'var(--dc-text-main)', border: '1px solid var(--dc-border)',
@@ -99,8 +101,14 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
   const deferred = getDeferredPrompt();
   useEffect(() => {
     if (status === 'reinstall' && (phase === 'waiting-prompt' || phase === 'no-prompt') && deferred) setPhase('ready');
-    if (wasAppInstalledEvent() && phase !== 'installed' && phase !== 'idle') setPhase('installed');
+    if (wasAppInstalledEvent() && phase !== 'installed' && phase !== 'idle' && phase !== 'progress') setPhase('installed');
   });
+
+  useEffect(() => {
+    if (phase !== 'pending-install') return;
+    const t = setTimeout(() => setPhase(p => (p === 'pending-install' ? 'slow-install' : p)), REINSTALL_CONFIRM_WAIT_MS);
+    return () => clearTimeout(t);
+  }, [phase]);
 
   const openNewApp = useCallback(() => {
     const url = `${window.location.origin}${versionedStartUrl(slug, current)}`;
@@ -115,7 +123,8 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
       await d.prompt();
       const choice = await d.userChoice;
       clearDeferredPrompt(); // o evento só serve uma vez
-      setPhase(choice.outcome === 'accepted' ? 'installed' : (status === 'reinstall' ? 'ready' : 'idle'));
+      // Aceito ≠ instalado: fica "Instalando..." até o appinstalled. Recusado: aba do Chrome vai para o menu ⋮.
+      setPhase(wasAppInstalledEvent() ? 'installed' : choice.outcome === 'accepted' ? 'pending-install' : (status === 'reinstall' ? 'no-prompt' : 'idle'));
       return true;
     } catch {
       return false;
@@ -143,7 +152,22 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
     </div>
   );
 
+  const pendingView = phase === 'slow-install' ? (
+    <div data-testid="identity-slow">
+      <p style={{ fontWeight: 800, fontSize: 17, margin: 0 }}>Instalando nova versão...</p>
+      <p style={{ fontSize: 13, margin: '6px 0 0' }}>O Android ainda está terminando. Quando o ícone novo de {storeName} aparecer na tela inicial, abra por ele. Só depois remova o ícone antigo.</p>
+      <button type="button" style={{ ...secondaryBtn, marginTop: 14 }} onClick={() => setDismissed(true)}>Fechar</button>
+    </div>
+  ) : (
+    <div data-testid="identity-pending">
+      <p style={{ fontWeight: 800, fontSize: 17, margin: '0 0 12px' }}>Instalando nova versão...</p>
+      <ProgressBar indeterminate />
+      <p style={{ fontSize: 13, margin: '12px 0 0' }}>Aguarde o Android terminar de instalar o ícone novo.</p>
+    </div>
+  );
+
   if (status === 'update-available') {
+    if (phase === 'pending-install' || phase === 'slow-install') return overlay(pendingView);
     if (phase === 'progress' || phase === 'opening-chrome' || phase === 'installed') {
       return overlay(phase === 'installed' ? (
         <div data-testid="identity-installed">
@@ -202,12 +226,14 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
           <button type="button" style={secondaryBtn} onClick={() => setDismissed(true)}>Fechar</button>
         </div>
       </div>
-    ) : phase === 'ready' ? (
+    ) : phase === 'pending-install' || phase === 'slow-install' ? pendingView : phase === 'ready' ? (
       <div data-testid="identity-ready">
         <p style={{ fontWeight: 800, fontSize: 17, margin: '0 0 12px' }}>Atualizando aplicativo...</p>
         <ProgressBar value={95} />
         <p style={{ fontSize: 13, margin: '12px 0 14px' }}>Falta um toque: instale a nova versão de {storeName}.</p>
-        <button type="button" style={{ ...primaryBtn, width: '100%' }} onClick={() => { void runPrompt(); }} data-testid="identity-install">Instalar nova versão</button>
+        <button type="button" style={{ ...primaryBtn, width: '100%' }} data-testid="identity-install"
+          onClick={() => { void runPrompt().then(ok => { if (!ok) setPhase('no-prompt'); }); }}>Instalar nova versão</button>
+        <button type="button" style={{ ...secondaryBtn, width: '100%', marginTop: 8 }} onClick={() => setDismissed(true)}>Agora não</button>
       </div>
     ) : phase === 'no-prompt' ? (
       <div data-testid="identity-no-prompt">
