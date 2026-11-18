@@ -180,6 +180,17 @@ describe('instalação compartilhada do entregador e do cliente', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('Android Chrome sem evento: passos levam a “Instalar app” e avisam para não criar atalho', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36');
+    await render('customer');
+    await act(() => { query('install-primary')!.click(); });
+    await advance(8100);
+    const text = query('install-instructions')?.textContent || '';
+    expect(text).toContain('Instalar app');
+    expect(text).not.toContain('Adicionar à tela inicial');
+    expect(query('install-not-shortcut')?.textContent).toContain('Criar atalho');
+  });
+
   it('falha no prompt nativo permite tentar novamente sem instruções intermediárias', async () => {
     await render();
     const { event } = await offer();
