@@ -149,15 +149,42 @@ export function storeAppId(tenantId: string): string {
   return `/app-id/${encodeURIComponent(tenantId)}`;
 }
 
+function shortHash(src: string): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < src.length; i++) {
+    const c = src.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ (c + i), 0x85ebca6b) >>> 0;
+  }
+  return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).slice(0, 10);
+}
+
 /**
- * Versão determinística única da identidade/ícone da loja (compartilhada entre
- * serverManifest, storeHtml.ts iconVersion e applyStoreIdentity identityHash).
- * Calculada apenas com metadados da identidade (logoUrl, updatedAt, cores e nomes),
- * sem baixar a imagem remota.
+ * Versão do ÍCONE (?v= dos PNGs em manifesto, <link rel="icon">, apple-touch-icon e totem).
+ * Depende só do que muda a imagem do ícone:
+ *  - com logo: o endereço do logo (o upload do painel sempre grava um arquivo novo, com timestamp);
+ *  - sem logo: o ícone de iniciais = nome exibido + cor usada para desenhá-lo (iconFallbackColor).
+ * Cores de barras/tema e updatedAt NÃO entram: o Chrome procura o hash antigo do ícone do app instalado
+ * pela URL; ?v= novo a cada troca de cor fazia cada mudança de cor parecer troca de ícone (atualizações
+ * extras do app instalado, que o Chrome passa a espaçar).
+ * Mesmo valor em serverManifest, storeHtml.ts (iconVersion), applyStoreIdentity (identityHash) e totem.
  */
 export function storeIconVersion(store: StoreIdentityInput): string {
+  const logo = (store.theme?.logoUrl || '').trim();
+  const src = logo
+    ? ['logo', store.id, logo]
+    : ['initials', store.id, storeDisplayName(store), iconFallbackColor(store.theme)];
+  return shortHash(src.join('|'));
+}
+
+/**
+ * Versão da IDENTIDADE visível (nome, logo, cores, barras, updatedAt) para /api/pwa/version:
+ * avisa o app aberto que a loja mudou. Não é usada em URLs de ícone.
+ */
+export function storeIdentityVersion(store: StoreIdentityInput): string {
   const t = store.theme || {};
-  const src = [
+  return shortHash([
     store.id,
     storeDisplayName(store),
     t.shortName || '',
@@ -169,15 +196,7 @@ export function storeIconVersion(store: StoreIdentityInput): string {
     t.navBarColor || '',
     t.tagline || '',
     t.updatedAt || store.updatedAt || '',
-  ].join('|');
-  let h1 = 0x811c9dc5;
-  let h2 = 0x01000193;
-  for (let i = 0; i < src.length; i++) {
-    const c = src.charCodeAt(i);
-    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
-    h2 = Math.imul(h2 ^ (c + i), 0x85ebca6b) >>> 0;
-  }
-  return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).slice(0, 10);
+  ].join('|'));
 }
 
 /** Ícone de fallback (SVG) com iniciais da loja e cor do tema — sem marca da plataforma. */

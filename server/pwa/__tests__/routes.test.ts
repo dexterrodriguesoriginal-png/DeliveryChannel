@@ -109,7 +109,8 @@ describe('rotas PWA por loja', () => {
     const vLogoChanged = iconVersion({ ...baseStore, theme: { ...baseStore.theme, logoUrl: 'https://cdn.example/logo-v2.png' } });
     const vUpdatedChanged = iconVersion({ ...baseStore, theme: { ...baseStore.theme, updatedAt: '2026-11-03T12:00:00Z' } });
     expect(vLogoChanged).not.toBe(v1);
-    expect(vUpdatedChanged).not.toBe(v1);
+    // updatedAt (qualquer salvamento do tema) não muda a imagem do ícone: ?v= fica igual.
+    expect(vUpdatedChanged).toBe(v1);
 
     // Item 3: único valor de versão em storeHtml, applyStoreIdentity (identityHash) e serverManifest
     expect(identityHash(baseStore)).toBe(v1);
