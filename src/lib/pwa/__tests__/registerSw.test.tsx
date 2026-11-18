@@ -179,6 +179,26 @@ describe('registro do Service Worker: versão nova em toda abertura, recarga aut
     expect(isSwUpdateAvailable()).toBe(true);
   });
 
+  it('outra aba aberta depois do deploy grava a versão nova: esta página antiga ainda detecta ao voltar', async () => {
+    const t = setup();
+    await t.run();
+    // Outra aba (documento novo) já gravou a versão nova no localStorage compartilhado.
+    localStorage.setItem(pwaVersionStorageKey('/app/adega-premium/'), 'build-2:id-1');
+    t.advance(RESUME_CHECK_MIN_MS + 1);
+    t.setRemote({ version: 'build-2', identityVersion: 'id-1' });
+    await t.resume();
+    expect(t.reload).toHaveBeenCalledOnce();
+  });
+
+  it('versão igual à carregada ao voltar: não recarrega nem mostra toast', async () => {
+    const t = setup();
+    await t.run();
+    t.advance(RESUME_CHECK_MIN_MS + 1);
+    await t.resume();
+    expect(t.reload).not.toHaveBeenCalled();
+    expect(isSwUpdateAvailable()).toBe(false);
+  });
+
   it('verificações ao voltar são espaçadas (sem rajada ao alternar apps)', async () => {
     const t = setup();
     await t.run();

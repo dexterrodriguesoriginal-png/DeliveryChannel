@@ -149,6 +149,8 @@ let activeStorage: Pick<Storage, 'getItem' | 'setItem'> | null = null;
 let activeReload: (() => void) | null = null;
 let userRequestedUpdate = false;
 let autoReloadPending = false;
+/** Versão (build:identidade) com que este documento carregou; só a recarga troca. */
+let documentVersion: string | null = null;
 let activeWin: AutoUpdateWindowLike | null = null;
 let activeSession: Pick<Storage, 'getItem' | 'setItem'> | null = null;
 let activeNow: () => number = () => Date.now();
@@ -175,6 +177,7 @@ export function resetSwUpdateState(): void {
   pendingVersion = null;
   userRequestedUpdate = false;
   autoReloadPending = false;
+  documentVersion = null;
   reloadBlockers.clear();
   notify();
 }
@@ -256,13 +259,25 @@ export async function checkPwaVersion(opts: {
     const remote = [data?.version, data?.identityVersion].filter(Boolean).join(':');
     if (!remote) return false;
     const key = pwaVersionStorageKey(opts.scope);
+    if (mode === 'startup') {
+      // Versão com que ESTE documento carregou (memória): outra aba que abrir depois de um deploy
+      // não apaga a diferença desta página antiga.
+      documentVersion = remote;
+      try { opts.storage?.setItem(key, remote); } catch { /* ignora */ }
+      return false;
+    }
     let previous: string | null = null;
-    try {
-      previous = opts.storage?.getItem(key) ?? null;
-    } catch {
-      previous = null;
+    if (mode === 'resume' && documentVersion) {
+      previous = documentVersion;
+    } else {
+      try {
+        previous = opts.storage?.getItem(key) ?? null;
+      } catch {
+        previous = null;
+      }
     }
     if (!previous) {
+      if (mode === 'resume') documentVersion = remote;
       try {
         opts.storage?.setItem(key, remote);
       } catch {
@@ -271,10 +286,6 @@ export async function checkPwaVersion(opts: {
       return false;
     }
     if (previous !== remote) {
-      if (mode === 'startup') {
-        try { opts.storage?.setItem(key, remote); } catch { /* ignora */ }
-        return false;
-      }
       pendingVersion = remote;
       await opts.registration?.update?.().catch(() => {});
       if (mode === 'resume') {
