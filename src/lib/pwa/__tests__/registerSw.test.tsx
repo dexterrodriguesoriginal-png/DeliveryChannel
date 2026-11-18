@@ -8,7 +8,9 @@ import {
   AUTO_RELOAD_GUARD_KEY,
   AUTO_RELOAD_GUARD_MS,
   PWA_UPDATE_TOAST_TEXT,
+  REFRESH_FALLBACK_MS,
   RESUME_CHECK_MIN_MS,
+  refreshInstalledApp,
   applySwUpdate,
   claimAutoReload,
   isAutoReloadSafe,
@@ -284,6 +286,51 @@ describe('registro do Service Worker: versão nova em toda abertura, recarga aut
     applySwUpdate();
     expect(waiting.postMessage).not.toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
     expect(t.reload).toHaveBeenCalledOnce();
+  });
+
+  it('refreshInstalledApp ("Atualizar app"): ativa o worker em espera, limpa o Cache Storage, mantém localStorage e recarrega uma vez', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      await t.run();
+      localStorage.setItem('adegafood_cart_tenant-1', '[{"id":"p1"}]');
+      localStorage.setItem('sb-qjm-auth-token', 'sessao');
+      const waiting: SwWorkerLike = { state: 'installed', postMessage: vi.fn() };
+      t.reg.waiting = waiting;
+      const cacheStorage = { keys: vi.fn().mockResolvedValue(['a', 'b']), delete: vi.fn().mockResolvedValue(true) };
+      await refreshInstalledApp({ cacheStorage, reload: t.reload });
+      expect(t.reg.update).toHaveBeenCalled();
+      expect(cacheStorage.delete).toHaveBeenCalledWith('a');
+      expect(cacheStorage.delete).toHaveBeenCalledWith('b');
+      expect(waiting.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+      expect(t.reload).not.toHaveBeenCalled();
+      t.swListeners.controllerchange?.forEach(fn => fn());
+      expect(t.reload).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(REFRESH_FALLBACK_MS + 1);
+      expect(t.reload).toHaveBeenCalledOnce();
+      expect(localStorage.getItem('adegafood_cart_tenant-1')).toBe('[{"id":"p1"}]');
+      expect(localStorage.getItem('sb-qjm-auth-token')).toBe('sessao');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refreshInstalledApp sem worker em espera recarrega na hora; sem controllerchange recarrega pelo tempo limite', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      await t.run();
+      await refreshInstalledApp({ cacheStorage: null, reload: t.reload });
+      expect(t.reload).toHaveBeenCalledOnce();
+      const waiting: SwWorkerLike = { state: 'installed', postMessage: vi.fn() };
+      t.reg.waiting = waiting;
+      await refreshInstalledApp({ cacheStorage: null, reload: t.reload });
+      expect(t.reload).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(REFRESH_FALLBACK_MS + 1);
+      expect(t.reload).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('claimAutoReload: no máximo uma recarga por janela; sem sessionStorage não recarrega', () => {
