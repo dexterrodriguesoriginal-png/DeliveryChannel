@@ -21,9 +21,13 @@ describe('cores das barras do sistema', () => {
     expect(b.status).toBe('#d4a017');
     expect(b.nav).toBe('#101010');
   });
-  it('manifesto: theme_color = status, background_color = navegação', () => {
+  it('manifesto: theme_color = navegação (o WebAPK pinta a barra de navegação com ele); status vem do meta ao vivo', () => {
     const m = buildStoreManifest({ id: 't', slug: 's', name: 'S', theme: { primaryColor: '#b91c1c', headerColor: '#111827', statusBarColor: '#d4a017', navBarColor: '#0b0b0f' } }, 'https://x.app');
-    expect(m.theme_color).toBe('#d4a017');
+    expect(m.theme_color).toBe('#0b0b0f');
     expect(m.background_color).toBe('#0b0b0f');
+  });
+  it('manifesto: ícone de iniciais (sem logo) continua na cor de status', () => {
+    const m = buildStoreManifest({ id: 't', slug: 's', name: 'S', theme: { headerColor: '#111827', statusBarColor: '#d4a017', navBarColor: '#0b0b0f' } }, 'https://x.app');
+    expect(decodeURIComponent(m.icons[0].src)).toContain('#d4a017');
   });
 });

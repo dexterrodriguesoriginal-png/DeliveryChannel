@@ -18,7 +18,7 @@ describe('manifesto PWA por loja', () => {
     expect(a.start_url.startsWith(a.scope)).toBe(true);
     expect(a.id).toBe('https://exemplo.app/app-id/tenant-adega-01');
     expect(a.id).not.toBe(p.id);
-    expect(a.theme_color).toBe('#15803d');
+    expect(a.theme_color).toBe('#f8fafc'); // = barra de navegação (sem cabeçalho/escolha: fundo geral)
     expect(p.background_color).toBe('#fffbeb');
     expect(a.display).toBe('standalone');
     expect(a.icons).toBe(png);
