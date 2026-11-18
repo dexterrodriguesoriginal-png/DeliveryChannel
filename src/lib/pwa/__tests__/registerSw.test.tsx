@@ -247,6 +247,25 @@ describe('registro do Service Worker: versão nova em toda abertura, recarga aut
     expect(t.reload).toHaveBeenCalledOnce();
   });
 
+  it('worker que esperava já ativou sozinho com o checkout aberto: o clique no toast recarrega na hora', async () => {
+    const t = setup();
+    setPwaAutoReloadBlocked('client-app', true);
+    await t.run();
+    const waiting: SwWorkerLike = { state: 'installed', postMessage: vi.fn() };
+    t.reg.waiting = waiting;
+    t.advance(RESUME_CHECK_MIN_MS + 1);
+    t.setRemote({ version: 'build-2', identityVersion: 'id-1' });
+    await t.resume();
+    expect(isSwUpdateAvailable()).toBe(true);
+    waiting.state = 'activated';
+    t.reg.waiting = null;
+    t.swListeners.controllerchange?.forEach(fn => fn());
+    expect(t.reload).not.toHaveBeenCalled();
+    applySwUpdate();
+    expect(waiting.postMessage).not.toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+    expect(t.reload).toHaveBeenCalledOnce();
+  });
+
   it('claimAutoReload: no máximo uma recarga por janela; sem sessionStorage não recarrega', () => {
     expect(claimAutoReload(sessionStorage, 10_000)).toBe(true);
     expect(claimAutoReload(sessionStorage, 10_000 + AUTO_RELOAD_GUARD_MS - 1)).toBe(false);

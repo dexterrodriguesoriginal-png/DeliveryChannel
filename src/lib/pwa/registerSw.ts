@@ -222,7 +222,8 @@ export function applySwUpdate(): void {
   const reload = activeReload ?? (() => {
     if (typeof window !== 'undefined') window.location.reload();
   });
-  if (waitingWorker) {
+  // Worker já ativado (ativação automática): não há outro controllerchange a esperar — recarrega já.
+  if (waitingWorker && waitingWorker.state !== 'activated' && waitingWorker.state !== 'activating' && waitingWorker.state !== 'redundant') {
     waitingWorker.postMessage({ type: 'SKIP_WAITING' });
     updateAvailable = false;
     notify();
@@ -338,6 +339,8 @@ export async function registerPwaServiceWorker(opts: RegisterSwOptions = {}): Pr
         });
       });
       sw.addEventListener?.('controllerchange', () => {
+        // O worker que esperava já assumiu: o toast, se aparecer, só precisa recarregar.
+        waitingWorker = null;
         if (userRequestedUpdate) {
           userRequestedUpdate = false;
           autoReloadPending = false;

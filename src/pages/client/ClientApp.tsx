@@ -998,7 +998,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // checkout, login, conta, endereço ou pedido recém-feito na tela — nesses casos fica o toast.
   const reloadUnsafe = Boolean(selectedProductModal) || Boolean(selectedPromoOffer)
     || isCheckoutOpen || isPromoCheckoutOpen || isAuthModalOpen || isAccountOpen
-    || addressFlow.open || isSubmittingOrder || Boolean(completedOrder);
+    || addressFlow.open || isSubmittingOrder || Boolean(completedOrder)
+    // Sacola: retirada/entrega e observações ficam só no estado até o pedido.
+    || navTab === 'cart';
   useEffect(() => {
     setPwaAutoReloadBlocked('client-app', reloadUnsafe);
     return () => setPwaAutoReloadBlocked('client-app', false);
@@ -1900,7 +1902,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       {!previewMode && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
         tenantId={storeData.tenant.id}
-        hidden={reloadUnsafe || navTab === 'cart'}
+        hidden={reloadUnsafe}
       />}
       {!previewMode && <InstallStoreAppHint
         tenantId={storeData.tenant.id}
