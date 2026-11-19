@@ -134,7 +134,7 @@ import {
 import { StoreLogo } from '../../components/client/StoreLogo';
 import { StoreLoadingScreen } from '../../components/pwa/StoreLoadingScreen';
 import { hideBootScreen } from '../../lib/pwa/bootScreen';
-import { storeSlugFromAppPath } from '../../lib/pwa/appIdentity';
+import { storeSlugFromAppPath, versionedStartUrl } from '../../lib/pwa/appIdentity';
 import { AppIdentityUpdate, readAppIdentityMeta } from '../../components/pwa/AppIdentityUpdate';
 import { newIdempotencyKey } from '../../lib/pricing/idempotency';
 import { searchProducts } from '../../lib/customer/search';
@@ -1913,6 +1913,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         hidden={isCheckoutOpen || isPromoCheckoutOpen || addressFlow.open || navTab === 'cart'}
         busy={pushPromptOpen}
         bottomOffset={installHintBottomOffset({ bottomNav: true, floatingCartBar: cart.length > 0 && !isCheckoutOpen && (navTab === 'home' || navTab === 'search' || navTab === 'offers') })}
+        // Loja da lista de teste: o app instalado é o da versão atual (/app/<slug>~<versão>/); "Abrir app" vai para ele.
+        startPath={appIdentity ? versionedStartUrl(storeData.tenant.slug, appIdentity) : undefined}
       />}
       {/* Barra de Retorno ao Painel: só para a equipe autenticada DESTE estabelecimento. */}
       {!previewMode && isStaffPreview(!!supabaseUser, activeTenant?.id, storeData.tenant.id) && (

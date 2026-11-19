@@ -38,3 +38,15 @@ describe('logo definitiva', () => {
     expect(logoChangedAfterConfirmation(t(A), t(A, ''))).toBe(false);
   });
 });
+
+import fs from 'node:fs';
+import path from 'node:path';
+describe('ClientApp: convite "Instalar app"', () => {
+  const src = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
+  it('só aparece com a logo definitiva confirmada', () => {
+    expect(src).toMatch(/\{!previewMode && isLogoConfirmed\(theme\) && <InstallStoreAppHint/);
+  });
+  it('loja da lista de teste: "Abrir app" vai para o app da versão atual', () => {
+    expect(src).toMatch(/startPath=\{appIdentity \? versionedStartUrl\(storeData\.tenant\.slug, appIdentity\) : undefined\}/);
+  });
+});
