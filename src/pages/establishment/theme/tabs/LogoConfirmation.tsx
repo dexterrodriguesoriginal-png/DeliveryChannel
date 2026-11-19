@@ -2,26 +2,12 @@ import { useEffect, useState } from 'react';
 import { BadgeCheck, TriangleAlert } from 'lucide-react';
 import { useThemeEditorContext } from '../ThemeEditorContext';
 import { isDraftLogoConfirmed, logoChangedAfterConfirmation } from '../../../../lib/pwa/logoConfirmation';
-import { APP_IDENTITY_RE } from '../../../../lib/pwa/appIdentity';
 
 const safeGet = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
 const safeSet = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
+/** Mesmo texto para todas as lojas (pedido do David, 19/11/2026). */
+export const LOGO_CHANGE_WARNING_TEXT = 'Dentro do app, tudo atualiza na hora. Porém o ícone com a sua logo, que fica na tela do celular do cliente, continua com a logo antiga até o Android atualizar ou o cliente baixar a nova versão do app.';
 export const logoWarningKey = (tenantId: string, logoUrl: string) => `dc:logo-change-warning:${tenantId}:${logoUrl}`;
-
-/** A loja tem o botão "Baixar versão atualizada" no app do cliente? (o servidor só manda appIdentity para essas lojas) */
-function useHasAppUpdateButton(slug: string | undefined): boolean {
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    if (!slug) return;
-    let alive = true;
-    fetch(`/api/pwa/version?slug=${encodeURIComponent(slug)}`, { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (alive) setOn(!!j && typeof j.appIdentity === 'string' && APP_IDENTITY_RE.test(j.appIdentity)); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [slug]);
-  return on;
-}
 
 /**
  * "Confirmar logo definitiva": o convite "Instalar app" só aparece para os clientes depois da confirmação
@@ -33,7 +19,6 @@ export function LogoConfirmation() {
   const logo = (draftTheme.logoUrl || '').trim();
   const confirmed = isDraftLogoConfirmed(draftTheme, saved);
   const changed = logoChangedAfterConfirmation(draftTheme, saved);
-  const hasUpdateButton = useHasAppUpdateButton(activeTenant.slug);
   const warnKey = logoWarningKey(activeTenant.id, logo);
   const [warnSeen, setWarnSeen] = useState(() => !!safeGet(warnKey));
   useEffect(() => { setWarnSeen(!!safeGet(warnKey)); }, [warnKey]);
@@ -45,11 +30,7 @@ export function LogoConfirmation() {
       {changed && !warnSeen && (
         <div data-testid="logo-change-warning" role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
           <p className="flex items-center gap-1.5 font-bold"><TriangleAlert className="h-3.5 w-3.5" /> Você trocou a logo</p>
-          <p className="mt-0.5">
-            {hasUpdateButton
-              ? <>Quem já instalou o app vai ver um botão <b>Baixar versão atualizada</b>. Dentro do app, tudo atualiza na hora.</>
-              : <>Dentro do app, tudo atualiza na hora. O ícone na tela do celular de quem já instalou pode continuar com a logo antiga.</>}
-          </p>
+          <p className="mt-0.5">{LOGO_CHANGE_WARNING_TEXT}</p>
           <button type="button" className="mt-1.5 font-bold underline" onClick={() => { safeSet(warnKey, '1'); setWarnSeen(true); }}>Entendi</button>
         </div>
       )}
