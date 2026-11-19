@@ -92,7 +92,7 @@ describe('AppIdentityUpdate', () => {
     const open = vi.spyOn(window, 'open').mockReturnValue({} as Window);
     await act(async () => { (container.querySelector('[data-testid="identity-update"]') as HTMLButtonElement).click(); });
     expect(open).toHaveBeenCalledWith(`${window.location.origin}/app/mercado-teste-dc~${CUR}/?reinstall=1`, '_blank');
-    expect(container.textContent).toContain('Atualizando aplicativo...');
+    expect(container.textContent).toContain('Página de instalação aberta');
     expect(container.querySelector('[data-testid="identity-back"]')).not.toBeNull();
     // voltou (cancelou lá): a loja fica livre de novo
     const vis = vi.spyOn(document, 'visibilityState', 'get');
@@ -157,9 +157,10 @@ describe('AppIdentityUpdate', () => {
     history.replaceState(null, '', `/app/mercado-teste-dc~${CUR}/?reinstall=1`);
     const { AppIdentityUpdate } = await load();
     await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
-    expect(container.querySelector('[data-testid="identity-waiting"]')).not.toBeNull();
-    await act(async () => { vi.advanceTimersByTime(8100); });
-    expect(container.textContent).toContain('Abrir no Chrome');
+    expect(container.querySelector('[data-testid="identity-reinstall"]')).not.toBeNull();
+    expect(container.textContent).toContain('Instalar app');
+    expect(container.textContent).toContain('Baixar pelo Google Chrome');
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
     expect(localStorage.getItem('dc:app-identity:mercado-teste-dc')).toBeNull();
   });
 
@@ -188,12 +189,12 @@ describe('AppIdentityUpdate', () => {
     const { AppIdentityUpdate, st } = await load();
     st.captureInstallEvents(window);
     await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
-    expect(container.querySelector('[data-testid="identity-waiting"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="identity-reinstall"]')).not.toBeNull();
     const prompt = vi.fn(async () => {});
     await act(async () => {
       window.dispatchEvent(Object.assign(new Event('beforeinstallprompt'), { prompt, userChoice: Promise.resolve({ outcome: 'accepted' as const }) }));
     });
-    expect(container.querySelector('[data-testid="identity-ready"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="identity-install"]')).not.toBeNull();
     await act(async () => { (container.querySelector('[data-testid="identity-install"]') as HTMLButtonElement).click(); for (let i = 0; i < 5; i++) await Promise.resolve(); });
     expect(prompt).toHaveBeenCalled();
     expect(container.querySelector('[data-testid="identity-pending"]')).not.toBeNull();
@@ -226,21 +227,62 @@ describe('AppIdentityUpdate', () => {
     st.captureInstallEvents(window);
     await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
     await act(async () => { window.dispatchEvent(Object.assign(new Event('beforeinstallprompt'), { prompt: async () => {}, userChoice: Promise.resolve({ outcome: 'dismissed' as const }) })); });
-    expect(container.textContent).toContain('Agora não');
+    expect(container.textContent).toContain('Instalar app');
     await act(async () => { (container.querySelector('[data-testid="identity-install"]') as HTMLButtonElement).click(); for (let i = 0; i < 5; i++) await Promise.resolve(); });
     expect(container.querySelector('[data-testid="identity-no-prompt"]')).not.toBeNull();
     await act(async () => { (Array.from(container.querySelectorAll('button')).find(b => b.textContent === 'Fechar') as HTMLButtonElement).click(); });
     expect(container.innerHTML).toBe('');
   });
 
-  it('aba do Chrome sem convite em 8 s: instruções do menu ⋮', async () => {
+  it('reinstall: nome da loja e dois botões aparecem imediatamente, sem barra nem mensagem de atualização', async () => {
+    standalone = false;
+    history.replaceState(null, '', `/app/mercado-teste-dc~${CUR}/?reinstall=1`);
+    const { AppIdentityUpdate } = await load();
+    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
+    expect(container.textContent).toContain('Mercado');
+    expect(container.querySelector('[data-testid="identity-install"]')?.textContent).toBe('Instalar app');
+    expect(container.querySelector('[data-testid="identity-chrome"]')?.textContent?.trim()).toBe('Baixar pelo Google Chrome');
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    expect(container.textContent).not.toContain('Atualizando aplicativo');
+  });
+
+  it('página ?reinstall=1: instalado pelo menu ⋮ (appinstalled sem tocar no botão) mostra Pronto e marca a versão', async () => {
+    standalone = false;
+    history.replaceState(null, '', `/app/mercado-teste-dc~${CUR}/?reinstall=1`);
+    const { AppIdentityUpdate, st } = await load();
+    st.captureInstallEvents(window);
+    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
+    await act(async () => { window.dispatchEvent(new Event('appinstalled')); });
+    expect(container.querySelector('[data-testid="identity-installed"]')).not.toBeNull();
+    expect(localStorage.getItem('dc:app-identity:mercado-teste-dc')).toBe(CUR);
+  });
+
+  it('link Android abre Chrome com package e fallback HTTPS original', async () => {
+    standalone = false;
+    history.replaceState(null, '', `/app/mercado-teste-dc~${CUR}/?reinstall=1`);
+    const loc = window.location;
+    vi.stubGlobal('location', { ...loc, origin: 'https://deliverychannel.ai.studio', pathname: loc.pathname, search: loc.search, href: loc.href });
+    const { AppIdentityUpdate } = await load();
+    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
+    const href = (container.querySelector('[data-testid="identity-chrome"]') as HTMLAnchorElement).getAttribute('href')!;
+    const https = `https://deliverychannel.ai.studio/app/mercado-teste-dc~${CUR}/?reinstall=1`;
+    expect(href).toBe(`intent://deliverychannel.ai.studio/app/mercado-teste-dc~${CUR}/?reinstall=1#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(https)};end`);
+    expect(href).toContain('package=com.android.chrome');
+    expect(href).toContain(`S.browser_fallback_url=${encodeURIComponent(https)}`);
+    expect(href).toMatch(/^intent:\/\//);
+  });
+
+  it('sem convite: ao clicar Instalar espera 3 s e então orienta pelo menu ⋮', async () => {
     vi.useFakeTimers();
     standalone = false;
     history.replaceState(null, '', `/app/mercado-teste-dc~${CUR}/?reinstall=1`);
     const { AppIdentityUpdate } = await load();
     await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
-    await act(async () => { vi.advanceTimersByTime(8100); });
+    await act(async () => { (container.querySelector('[data-testid="identity-install"]') as HTMLButtonElement).click(); });
+    expect(container.querySelector('[data-testid="identity-no-prompt"]')).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(3100); await Promise.resolve(); });
     expect(container.querySelector('[data-testid="identity-no-prompt"]')).not.toBeNull();
-    expect(container.textContent).toContain('Instalar app');
+    expect(container.textContent).toContain('⋮');
+    expect(localStorage.getItem('dc:app-identity:mercado-teste-dc')).toBeNull();
   });
 });
