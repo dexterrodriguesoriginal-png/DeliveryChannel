@@ -18,7 +18,7 @@ import { ICON_VARIANTS, IconVariant, isNearlyFlatPng, renderInitialsPng, renderS
 import { DC_BRAND_SVG, DC_SPLASH_ICON_VERSION, SPLASH_TEST_COLOR } from './splashTest';
 import { fetchPublicImage } from './safeFetch';
 import { isValidSlug, StoreResolver } from './storeSource';
-import { hasAppBaseLogo, logoChangedSinceBaseApp } from '../../src/lib/pwa/appBaseLogo';
+import { hasAppBaseLogo, offerUpdatedApp } from '../../src/lib/pwa/appBaseLogo';
 import { splitStoreSegment, versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope } from '../../src/lib/pwa/appIdentity';
 
 declare const __PWA_BUILD_VERSION__: string | undefined;
@@ -341,8 +341,8 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   }
   /** Loja aceita /app/<slug>~<versão>/: lista de teste ou já trocou a logo depois do fluxo (appBaseLogoUrl gravado). */
   const identityEnabled = (store: StoreIdentityInput) => identityTestSlugs.has(store.slug) || hasAppBaseLogo(store);
-  /** App versionado agora: lista de teste (sempre) ou logo diferente da do app sem versão. */
-  const versionedNow = (store: StoreIdentityInput) => identityTestSlugs.has(store.slug) || logoChangedSinceBaseApp(store);
+  /** App versionado agora: lista de teste (sempre) ou logo diferente da do app sem versão E confirmada como definitiva. */
+  const versionedNow = (store: StoreIdentityInput) => identityTestSlugs.has(store.slug) || offerUpdatedApp(store);
 
   async function guard(req: Request, res: Response): Promise<StoreIdentityInput | null> {
     const slug = parseSegment(String(req.params.slug || '')).slug;

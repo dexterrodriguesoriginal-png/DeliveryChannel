@@ -46,6 +46,7 @@ export function identityFromPayload(payload: unknown, slug: string): StoreIdenti
     name,
     updatedAt,
     ...(typeof meta?.appBaseLogoUrl === 'string' ? { appBaseLogoUrl: meta.appBaseLogoUrl.trim() } : {}),
+    ...(typeof meta?.logoConfirmedUrl === 'string' ? { logoConfirmedUrl: meta.logoConfirmedUrl.trim() } : {}),
     theme: {
       storeName: pick(theme, 'storeName', 'store_name') || name,
       shortName: pick(theme, 'shortName', 'short_name') || undefined,

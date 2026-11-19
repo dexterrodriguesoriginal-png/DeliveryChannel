@@ -161,6 +161,16 @@ describe('todas as lojas: botão só depois de a loja TROCAR a logo (appBaseLogo
     expect(await fetch(`${srv.base}/app/loja-nova/manifest.webmanifest`).then(x => x.text())).toBe(JSON.stringify(serverManifest(changed)));
   });
 
+  it('logo trocada mas NÃO confirmada como definitiva: sem botão; apps versionados mantêm o manifesto', async () => {
+    const pending: StoreIdentityInput = { ...changed, slug: 'loja-pendente', logoConfirmedUrl: base };
+    all[pending.slug] = pending;
+    expect(r.identityHeadOptions(pending, null)).toEqual({});
+    expect(r.identityHeadOptions(pending, 'aaaaaaaaaa')).toEqual({ manifestHref: '/app/loja-pendente~aaaaaaaaaa/manifest.webmanifest' });
+    const j = await fetch(`${srv.base}/api/pwa/version?slug=loja-pendente`).then(x => x.json());
+    expect(j.appIdentity).toBeUndefined();
+    expect(r.identityHeadOptions({ ...pending, logoConfirmedUrl: pending.theme!.logoUrl }, null).appIdentity).toBe(iconVersion(pending));
+  });
+
   it('voltou para a logo original: app versionado mantém o manifesto dele, sem botão', () => {
     expect(r.identityHeadOptions(unchanged, 'aaaaaaaaaa')).toEqual({ manifestHref: '/app/loja-igual~aaaaaaaaaa/manifest.webmanifest' });
   });

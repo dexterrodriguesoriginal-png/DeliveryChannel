@@ -25,3 +25,18 @@ describe('logo do app instalado sem versão', () => {
     expect('appBaseLogoUrl' in identityFromPayload(p({}), 's')!).toBe(false);
   });
 });
+
+import { offerUpdatedApp } from '../appBaseLogo';
+describe('botão só com a logo nova confirmada como definitiva', () => {
+  it('trocada e não confirmada: sem botão; confirmada: com botão; loja antiga sem campo: vale a atual', () => {
+    expect(offerUpdatedApp({ appBaseLogoUrl: 'a', logoConfirmedUrl: 'a', theme: { logoUrl: 'b' } })).toBe(false);
+    expect(offerUpdatedApp({ appBaseLogoUrl: 'a', logoConfirmedUrl: 'b', theme: { logoUrl: 'b' } })).toBe(true);
+    expect(offerUpdatedApp({ appBaseLogoUrl: 'a', theme: { logoUrl: 'b' } })).toBe(true);
+    expect(offerUpdatedApp({ appBaseLogoUrl: 'a', logoConfirmedUrl: '', theme: { logoUrl: '' } })).toBe(false);
+    expect(offerUpdatedApp({ theme: { logoUrl: 'b' } })).toBe(false);
+  });
+  it('servidor lê logoConfirmedUrl', () => {
+    const p = { tenant: { id: 't', slug: 's', name: 'S' }, theme: { theme_tokens: { meta: { logoConfirmedUrl: 'x' } } } };
+    expect(identityFromPayload(p, 's')!.logoConfirmedUrl).toBe('x');
+  });
+});

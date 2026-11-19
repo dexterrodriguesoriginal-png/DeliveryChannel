@@ -10,7 +10,7 @@
  */
 const clean = (u: unknown) => (typeof u === 'string' ? u.trim() : '');
 
-export interface AppBaseLogoInput { appBaseLogoUrl?: string; theme?: { logoUrl?: string } }
+export interface AppBaseLogoInput { appBaseLogoUrl?: string; logoConfirmedUrl?: string; theme?: { logoUrl?: string } }
 
 /** A loja já entrou no fluxo (aceita endereços /app/<slug>~<versão>/). */
 export function hasAppBaseLogo(store: AppBaseLogoInput | null | undefined): boolean {
@@ -20,6 +20,17 @@ export function hasAppBaseLogo(store: AppBaseLogoInput | null | undefined): bool
 /** A logo atual é diferente da do app sem versão: oferecer a versão atualizada. */
 export function logoChangedSinceBaseApp(store: AppBaseLogoInput | null | undefined): boolean {
   return hasAppBaseLogo(store) && clean(store!.appBaseLogoUrl) !== clean(store!.theme?.logoUrl);
+}
+
+/**
+ * Oferecer "Baixar versão atualizada": logo trocada E confirmada como definitiva (mesma regra do "Instalar app";
+ * logoConfirmedUrl ausente = loja antiga, a logo atual vale).
+ */
+export function offerUpdatedApp(store: AppBaseLogoInput | null | undefined): boolean {
+  if (!logoChangedSinceBaseApp(store)) return false;
+  const logo = clean(store!.theme?.logoUrl);
+  if (!logo) return false;
+  return typeof store!.logoConfirmedUrl === 'string' ? clean(store!.logoConfirmedUrl) === logo : true;
 }
 
 /**
