@@ -63,7 +63,10 @@ export type IdentityStatus =
 export function identityStatus(o: {
   standalone: boolean; runningIdentity: string | null; currentIdentity: string; newestLaunched: string | null; reinstallRequested: boolean;
 }): IdentityStatus {
-  if (!o.standalone) return o.reinstallRequested ? 'reinstall' : 'current';
+  // Página de instalação (?reinstall=1): sempre a tela de instalar, mesmo se o Chrome a abrir dentro da janela
+  // do app antigo (lá ela "parece" instalada pelo display-mode, mas não é).
+  if (o.reinstallRequested) return 'reinstall';
+  if (!o.standalone) return 'current';
   if (o.runningIdentity === o.currentIdentity) return 'current';
   return o.newestLaunched === o.currentIdentity ? 'old-icon' : 'update-available';
 }
