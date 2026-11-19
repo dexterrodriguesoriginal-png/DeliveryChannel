@@ -246,13 +246,27 @@ describe('AppIdentityUpdate', () => {
     expect(container.textContent).not.toContain('Atualizando aplicativo');
   });
 
+  it('página ?reinstall=1: instalado pelo menu ⋮ (appinstalled sem tocar no botão) mostra Pronto e marca a versão', async () => {
+    standalone = false;
+    history.replaceState(null, '', `/app/mercado-teste-dc~${CUR}/?reinstall=1`);
+    const { AppIdentityUpdate, st } = await load();
+    st.captureInstallEvents(window);
+    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
+    await act(async () => { window.dispatchEvent(new Event('appinstalled')); });
+    expect(container.querySelector('[data-testid="identity-installed"]')).not.toBeNull();
+    expect(localStorage.getItem('dc:app-identity:mercado-teste-dc')).toBe(CUR);
+  });
+
   it('link Android abre Chrome com package e fallback HTTPS original', async () => {
     standalone = false;
     history.replaceState(null, '', `/app/mercado-teste-dc~${CUR}/?reinstall=1`);
+    const loc = window.location;
+    vi.stubGlobal('location', { ...loc, origin: 'https://deliverychannel.ai.studio', pathname: loc.pathname, search: loc.search, href: loc.href });
     const { AppIdentityUpdate } = await load();
     await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
     const href = (container.querySelector('[data-testid="identity-chrome"]') as HTMLAnchorElement).getAttribute('href')!;
-    const https = `${window.location.origin}/app/mercado-teste-dc~${CUR}/?reinstall=1`;
+    const https = `https://deliverychannel.ai.studio/app/mercado-teste-dc~${CUR}/?reinstall=1`;
+    expect(href).toBe(`intent://deliverychannel.ai.studio/app/mercado-teste-dc~${CUR}/?reinstall=1#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(https)};end`);
     expect(href).toContain('package=com.android.chrome');
     expect(href).toContain(`S.browser_fallback_url=${encodeURIComponent(https)}`);
     expect(href).toMatch(/^intent:\/\//);

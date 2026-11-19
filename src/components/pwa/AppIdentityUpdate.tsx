@@ -65,6 +65,10 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
 
   const status = identityStatus({ standalone, runningIdentity: running, currentIdentity: current, newestLaunched: safeGet(newestLaunchedKey(slug)), reinstallRequested });
 
+  // appinstalled (pelo botão, pelo menu ⋮ ou depois de "Instalando..."): mostra "Pronto!".
+  useEffect(() => {
+    if (wasAppInstalledEvent() && phase !== 'installed' && (status === 'reinstall' || phase === 'pending-install' || phase === 'slow-install')) setPhase('installed');
+  });
   // Só o appinstalled confirma a versão nova instalada (libera "Abrir a nova" no ícone antigo).
   useEffect(() => {
     if ((status === 'reinstall' || status === 'update-available') && phase === 'installed') safeSet(newestLaunchedKey(slug), current);
