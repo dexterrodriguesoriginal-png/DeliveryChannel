@@ -2,7 +2,7 @@
 import React from 'react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, act } from '@testing-library/react';
-import { LogoConfirmation } from '../tabs/LogoConfirmation';
+import { LogoConfirmation, LOGO_CHANGE_WARNING_TEXT } from '../tabs/LogoConfirmation';
 import { ThemeEditorContext } from '../ThemeEditorContext';
 import { useThemeDraft } from '../useThemeDraft';
 import { useThemeControls } from '../useThemeControls';
@@ -50,8 +50,8 @@ describe('painel: confirmar logo definitiva', () => {
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     fireEvent.click(ui.getByTestId('set-b'));
     const warn = ui.getByTestId('logo-change-warning');
-    expect(warn.textContent).toContain('Baixar versão atualizada');
-    expect(warn.textContent).toContain('Dentro do app, tudo atualiza na hora');
+    expect(warn.textContent!.trim()).toBe(`Você trocou a logo${LOGO_CHANGE_WARNING_TEXT}Entendi`);
+    expect(LOGO_CHANGE_WARNING_TEXT).toBe('Dentro do app, tudo atualiza na hora. Porém o ícone com a sua logo, que fica na tela do celular do cliente, continua com a logo antiga até o Android atualizar ou o cliente baixar a nova versão do app.');
     expect(ui.queryByTestId('logo-unconfirmed')).not.toBeNull();
     fireEvent.click(ui.getByText('Entendi'));
     expect(ui.queryByTestId('logo-change-warning')).toBeNull();
@@ -65,12 +65,11 @@ describe('painel: confirmar logo definitiva', () => {
     expect(again.queryByTestId('logo-change-warning')).toBeNull();
   });
 
-  it('loja sem o botão de atualizar no app: aviso honesto sobre o ícone', async () => {
+  it('mesmo texto para lojas fora da lista de teste', async () => {
     const ui = render(<Harness saved={{ ...base, logoUrl: A }} />);
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     fireEvent.click(ui.getByTestId('set-b'));
     const warn = ui.getByTestId('logo-change-warning');
-    expect(warn.textContent).not.toContain('Baixar versão atualizada');
-    expect(warn.textContent).toContain('Dentro do app, tudo atualiza na hora');
+    expect(warn.textContent).toContain(LOGO_CHANGE_WARNING_TEXT);
   });
 });
