@@ -96,7 +96,7 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
   });
   // Só o appinstalled confirma a versão nova instalada (libera "Abrir a nova" no ícone antigo).
   useEffect(() => {
-    if (status === 'reinstall' && phase === 'installed') safeSet(newestLaunchedKey(slug), current);
+    if ((status === 'reinstall' || status === 'update-available') && phase === 'installed') safeSet(newestLaunchedKey(slug), current);
   }, [status, phase, slug, current]);
 
   useEffect(() => {
@@ -210,6 +210,8 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
   }
 
   if (status === 'old-icon') {
+    // Acabou de instalar pelo convite no próprio app antigo: mantém o "Pronto!" (já marcado como instalado).
+    if (phase === 'installed') return overlay(installedView);
     return (
       <div data-testid="identity-old-icon" role="alert"
         style={{ ...card, position: 'fixed', left: 12, right: 12, top: 'calc(env(safe-area-inset-top, 0px) + 10px)', zIndex: 2147482000,

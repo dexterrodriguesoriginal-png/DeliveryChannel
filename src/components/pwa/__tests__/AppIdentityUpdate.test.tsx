@@ -143,6 +143,8 @@ describe('AppIdentityUpdate', () => {
     vi.stubGlobal('location', { ...loc, origin: 'https://deliverychannel.ai.studio', pathname: loc.pathname, search: loc.search, set href(v: string) { hrefSet(v); }, get href() { return loc.href; } });
     await act(async () => { window.dispatchEvent(new Event('appinstalled')); });
     expect(container.textContent).toContain('Pronto!');
+    // appinstalled pelo convite do próprio app antigo também confirma a versão nova
+    expect(localStorage.getItem('dc:app-identity:mercado-teste-dc')).toBe(CUR);
     expect(container.textContent).not.toMatch(/Desinstalar|Remover|toque e segure/i);
     // "Abrir a nova": link https comum (o Chrome entrega ao app instalado dono do endereço), nunca intent://
     await act(async () => { (container.querySelector('[data-testid="identity-open-new"]') as HTMLButtonElement).click(); });
