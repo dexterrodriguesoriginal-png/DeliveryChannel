@@ -142,7 +142,7 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
     // Ainda no toque: janela nova fora do app (o intent:// para o Chrome só navegava a janela do próprio app, onde
     // o Chrome nunca oferece instalar). Se bloquearem, abre aqui mesmo; a página de instalação mostra o caminho.
     // Se o próprio app já tem o convite nativo (raro), instala aqui mesmo.
-    if (getDeferredPrompt()) { setPhase('progress'); void runPrompt(); return; }
+    if (getDeferredPrompt()) { setPhase('progress'); void runPrompt().then(ok => { if (!ok) setPhase('idle'); }); return; }
     const url = reinstallUrl(window.location.origin, slug, current);
     let w: Window | null = null;
     try { w = window.open(url, '_blank'); } catch { w = null; }
