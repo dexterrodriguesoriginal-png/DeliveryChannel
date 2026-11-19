@@ -50,7 +50,7 @@ if (isTotemRoute(window.location.pathname)) {
   document.head.querySelectorAll('link[rel="manifest"]:not([data-totem])').forEach(l => l.remove());
 }
 
-// Rede de segurança: a vitrine tira a tela "Delivery Channel apresenta" ao carregar; se algo travar antes, ela sai sozinha.
+// Rede de segurança: a vitrine tira a abertura com a logo da loja ao carregar; se algo travar antes, ela sai sozinha.
 window.setTimeout(() => hideBootScreen(), BOOT_SCREEN_MAX_MS);
 
 // Registra o Service Worker mínimo com escopo isolado por app e checa versão ao abrir.

@@ -7,7 +7,7 @@ import { storeDisplayName, StoreIdentityInput } from '../../src/lib/pwa/storeMan
 import { resolveSystemBars } from '../../src/lib/pwa/systemBars';
 import { htmlWithViewportFitCover, navBarCanvasStyleTag } from '../../src/lib/pwa/edgeToEdge';
 import { readMesaParam } from '../../src/lib/salon/tableQr';
-import { bootScreenHtml } from '../../src/lib/pwa/bootScreen';
+import { storeBootScreenHtml } from '../../src/lib/pwa/bootScreen';
 import { iconVersion, identityVersion } from './routes';
 import { APP_IDENTITY_META } from '../../src/lib/pwa/appIdentity';
 
@@ -29,7 +29,7 @@ function stripTag(html: string, re: RegExp) { return html.replace(re, ''); }
 export interface StoreHeadOptions {
   /** Liga viewport-fit=cover (só o app de delivery da loja; o cardápio da mesa ainda não trata as áreas seguras). */
   edgeToEdge?: boolean;
-  /** Tela "Delivery Channel apresenta" (#dc-boot) logo após <body>: só no app de delivery (fora da mesa e da prévia do painel). */
+  /** Abertura com a logo da loja (#store-boot) logo após <body>: só no app de delivery (fora da mesa e da prévia do painel). */
   bootScreen?: boolean;
   /** EXPERIMENTO de identidade (só lojas de teste): manifesto da versão da logo e meta com a versão atual. */
   manifestHref?: string;
@@ -50,6 +50,7 @@ export function injectStoreHead(html: string, slug: string, store: StoreIdentity
   const enc = encodeURIComponent(slug);
   // Edge-to-edge: sem viewport-fit=cover o Chrome não deixa a loja pintar a barra de navegação do Android.
   let out = stripTag(html, GLOBAL_MANIFEST_RE);
+  let boot = '';
   if (opts.edgeToEdge) out = htmlWithViewportFitCover(out);
   // URL do manifesto SEMPRE estável (sem query string variável) para o Chrome/WebAPK detectar atualizações de ícone/nome.
   const manifestHref = opts.manifestHref || `/app/${enc}/manifest.webmanifest`;
@@ -77,10 +78,12 @@ export function injectStoreHead(html: string, slug: string, store: StoreIdentity
     // Aba do Chrome sem edge-to-edge (3 botões, tablet): a barra de navegação usa a cor de fundo da página.
     // bars.nav é sempre um hex normalizado (#rrggbb), seguro dentro do CSS.
     if (opts.edgeToEdge) tags.push(navBarCanvasStyleTag(bars.nav));
+    // Fundo = background_color do manifesto (bars.nav): a splash do sistema emenda na logo da loja.
+    if (opts.bootScreen) boot = storeBootScreenHtml({ background: bars.nav, iconUrl: icon, name: storeDisplayName(store) });
   }
   out = out.replace(/<\/head>/i, `    ${tags.join('\n    ')}\n  </head>`);
-  // Também sem loja (falha/timeout da consulta): a apresentação é da plataforma, não depende da loja.
-  if (opts.bootScreen) out = out.replace(/<body\b[^>]*>/i, (m) => `${m}\n    ${bootScreenHtml()}`);
+  // Sem loja (falha/timeout da consulta) não há logo nem cor da loja: nenhuma tela (nunca marca ou cor fixa).
+  if (boot) out = out.replace(/<body\b[^>]*>/i, (m) => `${m}\n    ${boot}`);
   return out;
 }
 

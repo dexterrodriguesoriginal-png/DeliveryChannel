@@ -83,12 +83,13 @@ describe('AppIdentityUpdate', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('ícone antigo: pílula → Atualizar → barra "Atualizando aplicativo..." → abre o Chrome', async () => {
+  it('ícone antigo: pílula → Baixar versão atualizada → barra "Atualizando aplicativo..." → abre o Chrome', async () => {
     vi.useFakeTimers();
     history.replaceState(null, '', '/app/mercado-teste-dc/?source=pwa');
     const { AppIdentityUpdate } = await load();
     await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
-    expect(container.textContent).toContain('Nova versão do app disponível');
+    expect(container.textContent).toContain('Nova versão do app');
+    expect(container.querySelector('[data-testid="identity-update"]')!.textContent).toBe('Baixar versão atualizada');
     const hrefSet = vi.fn();
     const loc = window.location;
     vi.stubGlobal('location', { ...loc, origin: 'https://deliverychannel.com.br', pathname: loc.pathname, search: loc.search, set href(v: string) { hrefSet(v); }, get href() { return loc.href; } });
@@ -97,7 +98,7 @@ describe('AppIdentityUpdate', () => {
     expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
     await act(async () => { vi.advanceTimersByTime(1300); await Promise.resolve(); await Promise.resolve(); });
     expect(hrefSet).toHaveBeenCalledWith(`intent://deliverychannel.com.br/app/mercado-teste-dc~${CUR}/?reinstall=1#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(`https://deliverychannel.com.br/app/mercado-teste-dc~${CUR}/?reinstall=1`)};end`);
-    expect(container.textContent).toContain('Abrindo o Chrome');
+    expect(container.querySelector('[data-testid="identity-back"]')).not.toBeNull();
     // voltou do Chrome (cancelou lá): a loja fica livre de novo
     const vis = vi.spyOn(document, 'visibilityState', 'get');
     vis.mockReturnValue('hidden');
@@ -105,7 +106,7 @@ describe('AppIdentityUpdate', () => {
     vis.mockReturnValue('visible');
     await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
     expect(container.querySelector('[data-testid="identity-overlay"]')).toBeNull();
-    expect(container.textContent).toContain('Nova versão do app disponível');
+    expect(container.querySelector('[data-testid="identity-pill"]')).not.toBeNull();
   });
 
   it('tela "Abrindo o Chrome" tem Voltar à loja', async () => {
@@ -136,22 +137,30 @@ describe('AppIdentityUpdate', () => {
     // aceito ≠ instalado: só manda remover o antigo depois do appinstalled
     expect(container.querySelector('[data-testid="identity-pending"]')).not.toBeNull();
     expect(container.textContent).not.toContain('Pronto!');
+    const hrefSet = vi.fn();
+    const loc = window.location;
+    vi.stubGlobal('location', { ...loc, origin: 'https://deliverychannel.com.br', pathname: loc.pathname, search: loc.search, set href(v: string) { hrefSet(v); }, get href() { return loc.href; } });
     await act(async () => { window.dispatchEvent(new Event('appinstalled')); });
-    expect(container.textContent).toContain('Pronto! Nova versão instalada');
-    expect(container.querySelector('[data-testid="identity-remove-steps"]')).not.toBeNull();
+    expect(container.textContent).toContain('Pronto!');
+    // sem passo a passo para o cliente
+    expect(container.textContent).not.toMatch(/Desinstalar|Remover|toque e segure/i);
+    // abre o app novo sozinho (intent sem package: o Android entrega ao app novo)
+    await act(async () => { vi.advanceTimersByTime(1300); });
+    expect(hrefSet).toHaveBeenCalledWith(`intent://deliverychannel.com.br/app/mercado-teste-dc~${CUR}/?source=pwa#Intent;scheme=https;S.browser_fallback_url=${encodeURIComponent(`https://deliverychannel.com.br/app/mercado-teste-dc~${CUR}/?source=pwa`)};end`);
   });
 
-  it('ícone antigo depois de abrir o novo: "Este ícone é antigo" com abrir novo / remover', async () => {
+  it('ícone antigo depois de abrir o novo: uma linha "pode apagar" + Abrir a nova, sem instruções', async () => {
     history.replaceState(null, '', '/app/mercado-teste-dc/');
     localStorage.setItem('dc:app-identity:mercado-teste-dc', CUR);
     const { AppIdentityUpdate } = await load();
     await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
-    expect(container.textContent).toContain('Este ícone é antigo');
-    expect(container.textContent).toContain('Desinstalar');
-    expect(container.querySelector('[data-testid="identity-open-new"]')).not.toBeNull();
+    expect(container.textContent).toContain('Esta versão é antiga, pode apagar');
+    expect(container.textContent).not.toMatch(/Desinstalar|toque e segure/i);
+    expect(container.querySelector('[data-testid="identity-open-new"]')!.textContent).toBe('Abrir a nova');
+    expect(container.querySelector('ol')).toBeNull();
   });
 
-  it('aba do Chrome com ?reinstall=1: espera o convite e mostra "Instalar nova versão"', async () => {
+  it('aba do Chrome com ?reinstall=1: espera o convite e mostra "Instalar"', async () => {
     standalone = false;
     history.replaceState(null, '', `/app/mercado-teste-dc~${CUR}/?reinstall=1`);
     const { AppIdentityUpdate, st } = await load();

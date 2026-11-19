@@ -15,6 +15,8 @@ export const REINSTALL_PROGRESS_MS = 1200;
 export const REINSTALL_PROMPT_WAIT_MS = 8000;
 /** Aceitar o convite não é instalar: espera o appinstalled antes de mandar remover o ícone antigo. */
 export const REINSTALL_CONFIRM_WAIT_MS = 45000;
+/** Depois do appinstalled, abre o app novo sozinho (tempo do Android registrar o ícone novo). */
+export const OPEN_NEW_APP_DELAY_MS = 1200;
 
 const safeGet = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
 const safeSet = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
@@ -46,19 +48,10 @@ function ProgressBar({ indeterminate, value }: { indeterminate?: boolean; value?
   );
 }
 
-function RemoveOldIconSteps() {
-  return (
-    <ol data-testid="identity-remove-steps" style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13, lineHeight: 1.5 }}>
-      <li>Na tela inicial, toque e segure o ícone <b>antigo</b> da loja.</li>
-      <li>Toque em <b>Desinstalar</b> (ou <b>Remover</b>). No Android 9, arraste até <b>Desinstalar</b>.</li>
-      <li>Use só o ícone novo daqui para a frente.</li>
-    </ol>
-  );
-}
-
 /**
- * EXPERIMENTO (só lojas de teste): "Nova versão do app disponível" quando a logo mudou.
- * O Android não deixa um site apagar outro app: o botão instala a versão nova e orienta a remover o ícone antigo.
+ * Só lojas da lista de teste: "Nova versão do app" quando a logo mudou. Um toque em "Baixar versão atualizada":
+ * barra "Atualizando aplicativo...", convite nativo de instalar e o app novo abre sozinho. Sem passo a passo:
+ * o Android não deixa um site apagar outro app, então o ícone antigo, se aberto, só diz que pode ser apagado.
  */
 export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: string; storeName: string; initialIdentity: string }) {
   const [current, setCurrent] = useState(initialIdentity);
@@ -155,62 +148,65 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
     }, REINSTALL_PROGRESS_MS);
   }, [runPrompt, slug, current, android]);
 
+  // Instalou: abre o app novo direto (uma vez); o botão "Abrir a nova" fica de reserva.
+  useEffect(() => {
+    if (phase !== 'installed') return;
+    const t = setTimeout(openNewApp, OPEN_NEW_APP_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [phase, openNewApp]);
+
   // Experimento só no Android (WebAPK do Chrome); iPhone e outros seguem como hoje.
   if (!android || status === 'current' || dismissed) return null;
 
   const overlay = (children: React.ReactNode) => (
-    <div data-testid="identity-overlay" role="dialog" aria-modal="true" aria-label="Atualizando aplicativo"
+    <div data-testid="identity-overlay" role="dialog" aria-modal="true" aria-label={`Atualizando ${storeName}`}
       style={{ position: 'fixed', inset: 0, zIndex: 2147482000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: 'var(--dc-bg-general-color)' }}>
       <div style={{ ...card, width: '100%', maxWidth: 380, padding: 20 }}>{children}</div>
     </div>
   );
+  const title = (t: string) => <p style={{ fontWeight: 800, fontSize: 17, margin: '0 0 12px' }}>{t}</p>;
+  const close = (label = 'Agora não') => (
+    <button type="button" style={{ ...secondaryBtn, width: '100%', marginTop: 8 }} onClick={() => setDismissed(true)}>{label}</button>
+  );
 
-  const pendingView = phase === 'slow-install' ? (
-    <div data-testid="identity-slow">
-      <p style={{ fontWeight: 800, fontSize: 17, margin: 0 }}>Instalando nova versão...</p>
-      <p style={{ fontSize: 13, margin: '6px 0 0' }}>O Android ainda está terminando. Quando o ícone novo de {storeName} aparecer na tela inicial, abra por ele. Só depois remova o ícone antigo.</p>
-      <button type="button" style={{ ...secondaryBtn, marginTop: 14 }} onClick={() => setDismissed(true)}>Fechar</button>
+  const installedView = (
+    <div data-testid="identity-installed">
+      {title('Pronto!')}
+      <ProgressBar value={100} />
+      <button type="button" style={{ ...primaryBtn, width: '100%', marginTop: 14 }} onClick={openNewApp} data-testid="identity-open-new">Abrir a nova</button>
     </div>
-  ) : (
-    <div data-testid="identity-pending">
-      <p style={{ fontWeight: 800, fontSize: 17, margin: '0 0 12px' }}>Instalando nova versão...</p>
+  );
+  const pendingView = (
+    <div data-testid={phase === 'slow-install' ? 'identity-slow' : 'identity-pending'}>
+      {title('Atualizando aplicativo...')}
       <ProgressBar indeterminate />
-      <p style={{ fontSize: 13, margin: '12px 0 0' }}>Aguarde o Android terminar de instalar o ícone novo.</p>
+      {phase === 'slow-install' && (<>
+        <button type="button" style={{ ...primaryBtn, width: '100%', marginTop: 14 }} onClick={openNewApp} data-testid="identity-open-new">Abrir a nova</button>
+        {close('Fechar')}
+      </>)}
     </div>
   );
 
   if (status === 'update-available') {
+    if (phase === 'installed') return overlay(installedView);
     if (phase === 'pending-install' || phase === 'slow-install') return overlay(pendingView);
-    if (phase === 'progress' || phase === 'opening-chrome' || phase === 'installed') {
-      return overlay(phase === 'installed' ? (
-        <div data-testid="identity-installed">
-          <p style={{ fontWeight: 800, fontSize: 17, margin: 0 }}>Pronto! Nova versão instalada</p>
-          <p style={{ fontSize: 13, margin: '6px 0 0' }}>Abra {storeName} pelo ícone novo e remova este ícone antigo:</p>
-          <RemoveOldIconSteps />
-          <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-            <button type="button" style={primaryBtn} onClick={openNewApp}>Abrir app novo</button>
-            <button type="button" style={secondaryBtn} onClick={() => setDismissed(true)}>Agora não</button>
-          </div>
-        </div>
-      ) : (
+    if (phase === 'progress' || phase === 'opening-chrome') {
+      return overlay(
         <div data-testid="identity-progress">
-          <p style={{ fontWeight: 800, fontSize: 17, margin: '0 0 12px' }}>Atualizando aplicativo...</p>
+          {title('Atualizando aplicativo...')}
           <ProgressBar value={progress} />
-          <p style={{ fontSize: 13, margin: '12px 0 0' }}>
-            {phase === 'opening-chrome' ? 'Abrindo o Chrome para instalar a nova versão. Toque em Instalar quando aparecer.' : 'Preparando a nova versão do app.'}
-          </p>
           {phase === 'opening-chrome' && (
-            <button type="button" style={{ ...secondaryBtn, marginTop: 14 }} onClick={() => setPhase('idle')} data-testid="identity-back">Voltar à loja</button>
+            <button type="button" style={{ ...secondaryBtn, width: '100%', marginTop: 14 }} onClick={() => setPhase('idle')} data-testid="identity-back">Voltar à loja</button>
           )}
-        </div>
-      ));
+        </div>,
+      );
     }
     return (
       <div data-testid="identity-pill" role="status"
         style={{ ...card, position: 'fixed', left: 12, right: 12, top: 'calc(env(safe-area-inset-top, 0px) + 10px)', zIndex: 2147482000,
-          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px 10px 16px', borderRadius: 999 }}>
-        <span style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>Nova versão do app disponível</span>
-        <button type="button" style={primaryBtn} onClick={startUpdate} data-testid="identity-update">Atualizar</button>
+          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px 8px 16px', borderRadius: 999 }}>
+        <span style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>Nova versão do app</span>
+        <button type="button" style={{ ...primaryBtn, padding: '9px 14px', fontSize: 13 }} onClick={startUpdate} data-testid="identity-update">Baixar versão atualizada</button>
       </div>
     );
   }
@@ -218,50 +214,39 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
   if (status === 'old-icon') {
     return (
       <div data-testid="identity-old-icon" role="alert"
-        style={{ ...card, position: 'fixed', left: 12, right: 12, top: 'calc(env(safe-area-inset-top, 0px) + 10px)', zIndex: 2147482000, padding: 16 }}>
-        <p style={{ fontWeight: 800, fontSize: 15, margin: 0 }}>Este ícone é antigo</p>
-        <p style={{ fontSize: 13, margin: '4px 0 0' }}>Você já tem a versão nova de {storeName}. Abra pelo ícone novo e remova este:</p>
-        <RemoveOldIconSteps />
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <button type="button" style={primaryBtn} onClick={openNewApp} data-testid="identity-open-new">Abrir app novo</button>
-          <button type="button" style={secondaryBtn} onClick={() => setDismissed(true)}>Fechar</button>
-        </div>
+        style={{ ...card, position: 'fixed', left: 12, right: 12, top: 'calc(env(safe-area-inset-top, 0px) + 10px)', zIndex: 2147482000,
+          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px 8px 16px', borderRadius: 999 }}>
+        <span style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>Esta versão é antiga, pode apagar</span>
+        <button type="button" style={{ ...primaryBtn, padding: '9px 14px', fontSize: 13 }} onClick={openNewApp} data-testid="identity-open-new">Abrir a nova</button>
+        <button type="button" aria-label="Fechar" onClick={() => setDismissed(true)}
+          style={{ background: 'transparent', border: 0, color: 'var(--dc-text-main)', fontSize: 20, lineHeight: 1, padding: '4px 8px', cursor: 'pointer' }}>×</button>
       </div>
     );
   }
 
-  // status === 'reinstall' (aba do Chrome)
+  // status === 'reinstall' (aba do Chrome aberta pelo botão): um toque em "Instalar" (o Chrome exige um toque).
   return overlay(
-    phase === 'installed' ? (
-      <div data-testid="identity-installed">
-        <p style={{ fontWeight: 800, fontSize: 17, margin: 0 }}>Pronto! Nova versão instalada</p>
-        <p style={{ fontSize: 13, margin: '6px 0 0' }}>O ícone novo de {storeName} está na tela inicial. Agora remova o ícone antigo:</p>
-        <RemoveOldIconSteps />
-        <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-          <button type="button" style={primaryBtn} onClick={openNewApp}>Abrir app novo</button>
-          <button type="button" style={secondaryBtn} onClick={() => setDismissed(true)}>Fechar</button>
-        </div>
-      </div>
-    ) : phase === 'pending-install' || phase === 'slow-install' ? pendingView : phase === 'ready' ? (
+    phase === 'installed' ? installedView
+    : phase === 'pending-install' || phase === 'slow-install' ? pendingView
+    : phase === 'ready' ? (
       <div data-testid="identity-ready">
-        <p style={{ fontWeight: 800, fontSize: 17, margin: '0 0 12px' }}>Atualizando aplicativo...</p>
+        {title('Atualizando aplicativo...')}
         <ProgressBar value={95} />
-        <p style={{ fontSize: 13, margin: '12px 0 14px' }}>Falta um toque: instale a nova versão de {storeName}.</p>
-        <button type="button" style={{ ...primaryBtn, width: '100%' }} data-testid="identity-install"
-          onClick={() => { void runPrompt().then(ok => { if (!ok) setPhase('no-prompt'); }); }}>Instalar nova versão</button>
-        <button type="button" style={{ ...secondaryBtn, width: '100%', marginTop: 8 }} onClick={() => setDismissed(true)}>Agora não</button>
+        <button type="button" style={{ ...primaryBtn, width: '100%', marginTop: 14 }} data-testid="identity-install"
+          onClick={() => { void runPrompt().then(ok => { if (!ok) setPhase('no-prompt'); }); }}>Instalar</button>
+        {close()}
       </div>
     ) : phase === 'no-prompt' ? (
       <div data-testid="identity-no-prompt">
-        <p style={{ fontWeight: 800, fontSize: 17, margin: 0 }}>Quase lá</p>
-        <p style={{ fontSize: 13, margin: '6px 0 0' }}>Se o pedido de instalação não apareceu, toque em <b>⋮</b> (menu do Chrome) → <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>). Depois remova o ícone antigo.</p>
-        <button type="button" style={{ ...secondaryBtn, marginTop: 14 }} onClick={() => setDismissed(true)}>Fechar</button>
+        {title('Atualizando aplicativo...')}
+        <ProgressBar value={95} />
+        <p style={{ fontSize: 13, margin: '12px 0 0' }}>Toque em <b>⋮</b> e em <b>Instalar app</b>.</p>
+        {close('Fechar')}
       </div>
     ) : (
       <div data-testid="identity-waiting">
-        <p style={{ fontWeight: 800, fontSize: 17, margin: '0 0 12px' }}>Atualizando aplicativo...</p>
+        {title('Atualizando aplicativo...')}
         <ProgressBar indeterminate />
-        <p style={{ fontSize: 13, margin: '12px 0 0' }}>Preparando a instalação da nova versão.</p>
       </div>
     ),
   );

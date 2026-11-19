@@ -50,6 +50,7 @@ import { AddressAutocompleteInput, ParsedAddress } from '../../components/onboar
 import { Card } from '../../components/ui/Card';
 import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
+import { isLogoConfirmed } from '../../lib/pwa/logoConfirmation';
 import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
@@ -131,7 +132,7 @@ import {
   toCheckoutItem,
 } from '../../lib/pricing/purchaseOrigin';
 import { StoreLogo } from '../../components/client/StoreLogo';
-import { DcBootScreen } from '../../components/pwa/DcBootScreen';
+import { StoreLoadingScreen } from '../../components/pwa/StoreLoadingScreen';
 import { hideBootScreen } from '../../lib/pwa/bootScreen';
 import { storeSlugFromAppPath } from '../../lib/pwa/appIdentity';
 import { AppIdentityUpdate, readAppIdentityMeta } from '../../components/pwa/AppIdentityUpdate';
@@ -259,7 +260,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // 2. Estados de Carregamento e Dados do Catálogo Real
   const [storeData, setStoreData] = useState<PublicStoreData | null>(null);
   const [isLoadingStore, setIsLoadingStore] = useState(true);
-  // "Delivery Channel apresenta" do servidor (#dc-boot) fica até a vitrine terminar de carregar (ou falhar).
+  // Abertura com a logo da loja (#store-boot, do servidor) fica até a vitrine terminar de carregar (ou falhar).
   useEffect(() => { if (!isLoadingStore) hideBootScreen(); }, [isLoadingStore]);
   const [storeNotFound, setStoreNotFound] = useState(false);
   // Falha técnica ao carregar a vitrine (ex.: RPC com erro) — distinta de "loja não encontrada".
@@ -1648,8 +1649,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // ESTADO DE CARREGAMENTO INICIAL DO CATÁLOGO
   // --------------------------------------------------------------------------
   if (isLoadingStore) {
-    // Mesma apresentação do servidor (sem iniciais de outra loja): some quando a vitrine chega.
-    return <DcBootScreen />;
+    // Neutro, por baixo da logo da loja do servidor (sem marca do Delivery Channel nem iniciais de outra loja).
+    return <StoreLoadingScreen />;
   }
 
   // --------------------------------------------------------------------------
@@ -1903,7 +1904,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         hidden={Boolean(selectedProductModal) || Boolean(selectedPromoOffer) || isCheckoutOpen || isPromoCheckoutOpen
           || isAuthModalOpen || isAccountOpen || addressFlow.open || isSubmittingOrder || navTab === 'cart'}
       />}
-      {!previewMode && <InstallStoreAppHint
+      {/* "Instalar app" só depois que a loja confirma a logo definitiva (ícone do app nasce com ela). */}
+      {!previewMode && isLogoConfirmed(theme) && <InstallStoreAppHint
         tenantId={storeData.tenant.id}
         storeName={theme.storeName || storeData.tenant.name}
         color={theme.primaryColor || '#334155'}
