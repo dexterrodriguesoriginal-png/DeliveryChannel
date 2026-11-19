@@ -8,6 +8,8 @@
 import { resolveSystemBars } from './systemBars';
 import { buildStoreManifest, deriveShortName, storeAppId, storeIconVersion, fallbackIconSvg, manifestDataUrl, ManifestIcon, safeColor, FALLBACK_THEME_COLOR, StoreIdentityInput, storeDisplayName, svgDataUrl } from './storeManifest';
 
+import { isOwnManifestHref } from './appIdentity';
+
 const GLOBAL_MANIFEST_HREF = '/manifest.json';
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -119,6 +121,16 @@ export async function applyStoreIdentity(store: StoreIdentityInput): Promise<App
   // Manifesto já injetado pelo servidor no HTML desta loja: manter URL estável (sem ?v= que quebre o WebAPK).
   const injected = document.head.querySelector('link[rel="manifest"][data-server-injected]') as HTMLLinkElement | null;
   const ownHref = `/app/${encodeURIComponent(store.slug)}/manifest.webmanifest`;
+  // Experimento de identidade (só lojas de teste): o servidor pode injetar o manifesto da versão da logo
+  // (/app/<slug>~<versão>/manifest.webmanifest); ele também é desta loja e fica como está.
+  const injectedHref = injected?.getAttribute('href') || '';
+  const versioned = injectedHref !== ownHref && injectedHref.split('?')[0] !== ownHref && isOwnManifestHref(injectedHref, store.slug);
+  if (injected && versioned) {
+    injected.setAttribute('data-store-id', store.id);
+    const touch = `/app/${encodeURIComponent(store.slug)}/icons/icon-192.png?v=${identityHash(store)}`;
+    applyHeadMeta(name, shortName, themeColor, touch);
+    return { manifestHref: injectedHref, usedFallbackIcon: false, served: true };
+  }
   if (injected && (injected.getAttribute('href') || '').split('?')[0] === ownHref) {
     injected.setAttribute('data-store-id', store.id);
     if (injected.getAttribute('href') !== ownHref) injected.setAttribute('href', ownHref);

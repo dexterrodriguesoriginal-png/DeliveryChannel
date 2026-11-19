@@ -25,6 +25,7 @@ import { useBottomActionsOffset, useFloatingLeftOf } from '../../../lib/ui/botto
 import { LiveStorePreview } from '../../../components/establishment/theme/LiveStorePreview';
 import { ThemedProductItem } from '../../../components/storefront/ThemedProductList';
 import { useThemeDraft } from './useThemeDraft';
+import { logoConfirmedUrlToSave } from '../../../lib/pwa/logoConfirmation';
 import { useThemeControls } from './useThemeControls';
 import { ThemeEditorContext } from './ThemeEditorContext';
 import { TemplateGallery } from './TemplateGallery';
@@ -127,11 +128,13 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
       };
     }
     try {
+      // Logo definitiva (theme_tokens.meta, sem migração): libera o "Instalar app" para os clientes.
+      const logoConfirmedUrl = cleanImage(logoConfirmedUrlToSave({ logoUrl: submitted.logoUrl, tokens: draft.draftTokens }, tenant.theme));
       const saved = await themeService.updateTheme(securityContext, tenant.id, {
         ...submitted,
         logoUrl: cleanImage(submitted.logoUrl),
         bannerUrl: cleanImage(submitted.bannerUrl),
-        tokens: { ...draft.draftTokens, backgrounds },
+        tokens: { ...draft.draftTokens, backgrounds, meta: { ...draft.draftTokens.meta, logoConfirmedUrl } },
       });
       draft.markSaved(saved, submitted);
       setActiveTenant({ ...tenant, theme: saved });
@@ -166,6 +169,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
         tagline: draft.draftTheme.tagline,
         logoUrl: draft.draftTheme.logoUrl,
         bannerUrl: draft.draftTheme.bannerUrl,
+        logoConfirmedUrl: logoConfirmedUrlToSave({ logoUrl: draft.draftTheme.logoUrl, tokens: draft.draftTokens }, tenant.theme),
       });
       draft.markSaved(restored, draft.draftTheme);
       void announceThemeSaved(tenant.id);

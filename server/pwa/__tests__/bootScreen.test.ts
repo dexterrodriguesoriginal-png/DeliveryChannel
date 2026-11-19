@@ -1,54 +1,68 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
+import { injectStoreHead, storeHeadOptionsForUrl } from '../storeHtml';
+import { storeBootScreenHtml, STORE_BOOT_LOGO_SIZE_PX, STORE_BOOT_SCREEN_ID } from '../../../src/lib/pwa/bootScreen';
+import { DEFAULT_SPLASH_TEST_SLUGS, resolveSplashTestSlugs } from '../splashTest';
+import { serverManifest } from '../routes';
 import fs from 'node:fs';
 import path from 'node:path';
-import { injectStoreHead, storeHeadOptionsForUrl } from '../storeHtml';
-import { bootScreenHtml, DC_BOOT_MARK_SIZE_PX, DC_BOOT_SCREEN_ID, DC_PRESENTS_BACKGROUND, DC_PRESENTS_TEXT } from '../../../src/lib/pwa/bootScreen';
 import { DC_MARK_SVG } from '../../../src/lib/brand/dcMark';
-import { SPLASH_TEST_COLOR } from '../splashTest';
 
 const html = '<html><head><title>X</title><link rel="manifest" href="/manifest.json" /></head><body class="bg-gray-50"><div id="root"></div></body></html>';
-const store = { id: 't1', slug: 'mercado-teste-dc', name: 'Mercado Teste DC', theme: { storeName: 'Mercado Teste DC', primaryColor: '#15803d' } } as any;
+const store = { id: 't1', slug: 'mercado-teste-dc', name: 'Mercado Teste DC', theme: { storeName: 'Mercado Teste DC', primaryColor: '#15803d', headerColor: '#0a5c36' } } as any;
+const opts = storeHeadOptionsForUrl('/app/mercado-teste-dc/?source=pwa');
 
-describe('tela "Delivery Channel apresenta" (#dc-boot) no HTML do servidor', () => {
-  it('vem logo depois do <body>, antes do #root, com e sem loja resolvida', () => {
+describe('abertura só com a logo da loja (#store-boot), sem "Delivery Channel apresenta"', () => {
+  it('vem logo depois do <body>, antes do #root, com o ícone da loja e o fundo do manifesto', () => {
+    const out = injectStoreHead(html, 'mercado-teste-dc', store, opts);
+    const body = out.indexOf('<body'); const boot = out.indexOf(`id="${STORE_BOOT_SCREEN_ID}"`); const root = out.indexOf('id="root"');
+    expect(boot).toBeGreaterThan(body);
+    expect(boot).toBeLessThan(root);
+    expect((out.match(/id="store-boot"/g) || []).length).toBe(1);
+    const m = serverManifest(store);
+    expect(out).toContain(`background:${m.background_color}`);
+    expect(out).toMatch(/<img src="\/app\/mercado-teste-dc\/icons\/icon-192\.png\?v=[^"]+" width="96" height="96"/);
+    expect(out).toContain('aria-label="Mercado Teste DC"');
+  });
+
+  it('nenhuma marca do Delivery Channel na abertura', () => {
     for (const s of [store, null]) {
-      const out = injectStoreHead(html, 'mercado-teste-dc', s, storeHeadOptionsForUrl('/app/mercado-teste-dc/?source=pwa'));
-      const body = out.indexOf('<body'); const boot = out.indexOf(`id="${DC_BOOT_SCREEN_ID}"`); const root = out.indexOf('id="root"');
-      expect(boot).toBeGreaterThan(body);
-      expect(boot).toBeLessThan(root);
-      expect((out.match(/id="dc-boot"/g) || []).length).toBe(1);
+      const out = injectStoreHead(html, 'mercado-teste-dc', s, opts);
+      expect(out).not.toContain('dc-boot');
+      expect(out).not.toContain('Delivery Channel apresenta');
+      expect(out).not.toContain('#121212');
     }
+  });
+
+  it('sem loja resolvida (falha/timeout): nenhuma tela (nada de cor fixa)', () => {
+    expect(injectStoreHead(html, 'x', null, opts)).not.toContain('store-boot');
   });
 
   it('não aparece no cardápio da mesa (?mesa=) nem na prévia do painel (?preview=1)', () => {
     expect(storeHeadOptionsForUrl('/app/x/?source=pwa')).toEqual({ edgeToEdge: true, bootScreen: true });
     expect(storeHeadOptionsForUrl('/app/x/?preview=1').bootScreen).toBe(false);
     expect(storeHeadOptionsForUrl('/app/x/?mesa=' + 'a'.repeat(32))).toEqual({ edgeToEdge: false, bootScreen: false });
-    expect(injectStoreHead(html, 'x', store, { edgeToEdge: false, bootScreen: false })).not.toContain('dc-boot');
-    expect(injectStoreHead(html, 'x', store)).not.toContain('dc-boot');
+    expect(injectStoreHead(html, 'x', store, { edgeToEdge: false, bootScreen: false })).not.toContain('store-boot');
+    expect(injectStoreHead(html, 'x', store)).not.toContain('store-boot');
   });
 
-  it('autocontida: só data: URI, sem requisições externas; marca >= 64 px (o Chrome conta como pintura não vazia)', () => {
-    const b = bootScreenHtml();
-    expect(b).toContain(DC_PRESENTS_TEXT);
-    expect(b).toContain('Delivery Channel apresenta');
-    expect(b).toContain(`background:${DC_PRESENTS_BACKGROUND}`);
-    expect(b).toMatch(/<img src="data:image\/svg\+xml,[^"]+"/);
-    expect(DC_BOOT_MARK_SIZE_PX).toBeGreaterThanOrEqual(64);
-    expect(b).toContain(`width="${DC_BOOT_MARK_SIZE_PX}" height="${DC_BOOT_MARK_SIZE_PX}"`);
-    expect(b).not.toMatch(/https?:\/\//i);
-    expect(b).not.toMatch(/(src|href)="\//);
-    expect(b).not.toMatch(/url\(/);
+  it('marcação segura: sem script, só ícone do próprio app, nome escapado, cor validada', () => {
+    const b = storeBootScreenHtml({ background: '#ABC', iconUrl: '/app/x/icons/icon-192.png?v=1', name: '<b>"Loja"</b>' });
+    expect(b).toContain('background:#aabbcc');
     expect(b).not.toContain('<script');
+    expect(b).not.toMatch(/https?:\/\//i);
+    expect(b).toContain('aria-label="&lt;b&gt;&quot;Loja&quot;&lt;/b&gt;"');
+    expect(STORE_BOOT_LOGO_SIZE_PX).toBeGreaterThanOrEqual(64);
+    expect(storeBootScreenHtml({ background: 'red;}body{x', iconUrl: '/app/x/i.png', name: 'L' })).toBe('');
+    expect(storeBootScreenHtml({ background: '#000000', iconUrl: 'https://evil/x.png', name: 'L' })).toBe('');
   });
 
-  it('cor da apresentação é uma constante só (a splash de teste usa a mesma)', () => {
-    expect(DC_PRESENTS_BACKGROUND).toBe('#121212');
-    expect(SPLASH_TEST_COLOR).toBe(DC_PRESENTS_BACKGROUND);
+  it('splash com a marca do Delivery Channel (experimento) desligada por padrão', () => {
+    expect(DEFAULT_SPLASH_TEST_SLUGS).toEqual([]);
+    expect(resolveSplashTestSlugs({})).toEqual([]);
   });
 
-  it('marca inline é o mesmo desenho de public/icon-512.svg', () => {
+  it('marca inline do painel é o mesmo desenho de public/icon-512.svg', () => {
     const file = fs.readFileSync(path.resolve(__dirname, '../../../public/icon-512.svg'), 'utf8');
     const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
     expect(norm(DC_MARK_SVG)).toBe(norm(file));

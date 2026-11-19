@@ -1,4 +1,5 @@
 import { confirmPendingDesignNavigation } from './lib/ui/useUnsavedChanges';
+import { storeSlugFromAppPath } from './lib/pwa/appIdentity';
 import { TvScreen } from './components/pickup/TvScreen';
 import { InstallDriverAppHint } from './components/driver/InstallDriverAppHint';
 import { LegalBoundary, CookieBanner } from './components/legal/LegalUI';
@@ -260,7 +261,8 @@ function AppContent() {
 
   // 1. Catálogo Público PWA da Adega/Loja: /app/:slug
   if (pathname.startsWith('/app/')) {
-    const slug = pathname.replace('/app/', '').split('/')[0];
+    // "/app/<slug>~<versão>/" (experimento de identidade, só lojas de teste) abre a mesma loja.
+    const slug = storeSlugFromAppPath(pathname);
     return <><ClientApp forcedSlug={slug} /><PendingMesaBanner slug={slug} /></>;
   }
 

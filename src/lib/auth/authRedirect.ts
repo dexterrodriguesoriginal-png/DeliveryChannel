@@ -5,6 +5,8 @@
  * tiver a URL na allow-list, ele cai no Site URL (raiz); por isso a raiz oferece "Voltar para a loja"
  * usando a última loja visitada (localStorage).
  */
+import { splitStoreSegment } from '../pwa/appIdentity';
+
 export const DEFAULT_APP_ORIGIN = 'https://deliverychannel.ai.studio';
 export const LAST_STORE_SLUG_KEY = 'deliverychannel_last_store_slug';
 
@@ -14,6 +16,8 @@ export function storeSlugFromPath(pathname: string | null | undefined): string |
   if (!m) return null;
   let slug: string;
   try { slug = decodeURIComponent(m[1]); } catch { return null; }
+  // "/app/<slug>~<versão>/" (experimento de identidade do app) é a mesma loja.
+  slug = splitStoreSegment(slug).slug;
   return /^[a-z0-9][a-z0-9-]{0,99}$/i.test(slug) ? slug : null;
 }
 

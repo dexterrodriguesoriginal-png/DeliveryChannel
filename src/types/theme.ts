@@ -84,6 +84,8 @@ export interface ThemeMeta {
   /** Fundo das abas do app. null = cabeçalho; ausente = configuração legada. */
   appTabBarColor?: string | null;
   systemBars?: { statusBarColor?: string; navBarColor?: string };
+  /** Logo que a loja confirmou como definitiva ('' = não confirmou; ausente = loja antiga, logo atual vale). Ver src/lib/pwa/logoConfirmation.ts. */
+  logoConfirmedUrl?: string;
 }
 
 export interface ComponentStyles {

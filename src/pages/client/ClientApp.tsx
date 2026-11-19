@@ -50,6 +50,7 @@ import { AddressAutocompleteInput, ParsedAddress } from '../../components/onboar
 import { Card } from '../../components/ui/Card';
 import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
+import { isLogoConfirmed } from '../../lib/pwa/logoConfirmation';
 import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
@@ -131,8 +132,10 @@ import {
   toCheckoutItem,
 } from '../../lib/pricing/purchaseOrigin';
 import { StoreLogo } from '../../components/client/StoreLogo';
-import { DcBootScreen } from '../../components/pwa/DcBootScreen';
+import { StoreLoadingScreen } from '../../components/pwa/StoreLoadingScreen';
 import { hideBootScreen } from '../../lib/pwa/bootScreen';
+import { storeSlugFromAppPath, versionedStartUrl } from '../../lib/pwa/appIdentity';
+import { AppIdentityUpdate, readAppIdentityMeta } from '../../components/pwa/AppIdentityUpdate';
 import { newIdempotencyKey } from '../../lib/pricing/idempotency';
 import { searchProducts } from '../../lib/customer/search';
 import { buildReorderCart } from '../../lib/customer/reorder';
@@ -231,7 +234,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     if (forcedSlug) return forcedSlug;
     const path = window.location.pathname;
     if (path.startsWith('/app/')) {
-      return path.replace('/app/', '').split('/')[0];
+      return storeSlugFromAppPath(path);
     }
     return '';
   }, [forcedSlug]);
@@ -239,6 +242,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // Prévia do Design do App (iframe no painel): tema em rascunho por postMessage, sem pedidos,
   // sem carrinho persistente, sem analytics, sem notificações/som e sem mexer no PWA.
   const previewMode = useMemo(() => typeof window !== 'undefined' && isEmbeddedPreview(window), []);
+  // EXPERIMENTO "reinstalar em 1 toque": o servidor só injeta a meta para lojas de teste.
+  const appIdentity = useMemo(() => readAppIdentityMeta(), []);
   const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
   const [previewCard, setPreviewCard] = useState<Partial<Offer> | null>(null);
   useEffect(() => {
@@ -255,7 +260,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // 2. Estados de Carregamento e Dados do Catálogo Real
   const [storeData, setStoreData] = useState<PublicStoreData | null>(null);
   const [isLoadingStore, setIsLoadingStore] = useState(true);
-  // "Delivery Channel apresenta" do servidor (#dc-boot) fica até a vitrine terminar de carregar (ou falhar).
+  // Abertura com a logo da loja (#store-boot, do servidor) fica até a vitrine terminar de carregar (ou falhar).
   useEffect(() => { if (!isLoadingStore) hideBootScreen(); }, [isLoadingStore]);
   const [storeNotFound, setStoreNotFound] = useState(false);
   // Falha técnica ao carregar a vitrine (ex.: RPC com erro) — distinta de "loja não encontrada".
@@ -1644,8 +1649,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // ESTADO DE CARREGAMENTO INICIAL DO CATÁLOGO
   // --------------------------------------------------------------------------
   if (isLoadingStore) {
-    // Mesma apresentação do servidor (sem iniciais de outra loja): some quando a vitrine chega.
-    return <DcBootScreen />;
+    // Neutro, por baixo da logo da loja do servidor (sem marca do Delivery Channel nem iniciais de outra loja).
+    return <StoreLoadingScreen />;
   }
 
   // --------------------------------------------------------------------------
@@ -1892,13 +1897,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       }}
     >
       {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
-      {!previewMode && <StoreVisualUpdateNotice
+      {!previewMode && appIdentity && <AppIdentityUpdate slug={storeData.tenant.slug} storeName={storeData.tenant.name} initialIdentity={appIdentity} />}
+      {!previewMode && !appIdentity && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
         tenantId={storeData.tenant.id}
         hidden={Boolean(selectedProductModal) || Boolean(selectedPromoOffer) || isCheckoutOpen || isPromoCheckoutOpen
           || isAuthModalOpen || isAccountOpen || addressFlow.open || isSubmittingOrder || navTab === 'cart'}
       />}
-      {!previewMode && <InstallStoreAppHint
+      {/* "Instalar app" só depois que a loja confirma a logo definitiva (ícone do app nasce com ela). */}
+      {!previewMode && isLogoConfirmed(theme) && <InstallStoreAppHint
         tenantId={storeData.tenant.id}
         storeName={theme.storeName || storeData.tenant.name}
         color={theme.primaryColor || '#334155'}
@@ -1906,6 +1913,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         hidden={isCheckoutOpen || isPromoCheckoutOpen || addressFlow.open || navTab === 'cart'}
         busy={pushPromptOpen}
         bottomOffset={installHintBottomOffset({ bottomNav: true, floatingCartBar: cart.length > 0 && !isCheckoutOpen && (navTab === 'home' || navTab === 'search' || navTab === 'offers') })}
+        // Loja da lista de teste: o app instalado é o da versão atual (/app/<slug>~<versão>/); "Abrir app" vai para ele.
+        startPath={appIdentity ? versionedStartUrl(storeData.tenant.slug, appIdentity) : undefined}
       />}
       {/* Barra de Retorno ao Painel: só para a equipe autenticada DESTE estabelecimento. */}
       {!previewMode && isStaffPreview(!!supabaseUser, activeTenant?.id, storeData.tenant.id) && (

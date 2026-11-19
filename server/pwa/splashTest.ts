@@ -11,15 +11,16 @@
  *  Truque: dois maskable de tamanhos diferentes. Loja 332px (>= 83dp até densidade 4.0 e < 128dp
  *  a partir de ~2.6) e Delivery Channel 1024px. Launcher escolhe 332 (loja); splash escolhe 1024 (DC).
  *
- * Desligado por padrão (lista vazia). Ativado em produção só pela lista abaixo / env PWA_SPLASH_TEST_SLUGS.
+ * Desligado por padrão (lista vazia). Só a env PWA_SPLASH_TEST_SLUGS liga, e apenas em loja de teste.
  */
-import { DC_PRESENTS_BACKGROUND } from '../../src/lib/pwa/bootScreen';
-
 export const SPLASH_TEST_SLUGS_ENV = 'PWA_SPLASH_TEST_SLUGS';
-/** Lojas de teste do experimento quando a env não está definida (nunca lojas reais). */
-export const DEFAULT_SPLASH_TEST_SLUGS: readonly string[] = ['mercado-teste-dc'];
-/** Mesmo cinza da apresentação do Delivery Channel (src/lib/pwa/bootScreen.ts). */
-export const SPLASH_TEST_COLOR = DC_PRESENTS_BACKGROUND;
+/**
+ * Lojas do experimento quando a env não está definida. DESLIGADO: decisão do David (18/11/2026) de abrir só com
+ * a logo da loja, sem marca do Delivery Channel na splash. Religar só pela env, em loja de teste.
+ */
+export const DEFAULT_SPLASH_TEST_SLUGS: readonly string[] = [];
+/** Cinza da marca Delivery Channel usado só por este experimento (desligado). */
+export const SPLASH_TEST_COLOR = '#121212';
 /** Versão (?v=) do ícone do Delivery Channel na splash; troque se o arquivo da marca mudar. */
 export const DC_SPLASH_ICON_VERSION = 'dc1';
 /** Arquivo da marca Delivery Channel (o mesmo do manifesto global /manifest.json). */

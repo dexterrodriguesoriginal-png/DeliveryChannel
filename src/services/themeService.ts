@@ -42,9 +42,13 @@ export const themeService = {
   async resetToDeliveryChannelDefault(
     context: SecurityContext,
     tenantId: string,
-    identity: { storeName: string; tagline?: string; logoUrl?: string; bannerUrl?: string }
+    identity: { storeName: string; tagline?: string; logoUrl?: string; bannerUrl?: string; logoConfirmedUrl?: string }
   ): Promise<TenantTheme> {
-    const defaultTokens = createDefaultThemeTokens(DEFAULT_DELIVERY_CHANNEL_THEME);
+    const baseTokens = createDefaultThemeTokens(DEFAULT_DELIVERY_CHANNEL_THEME);
+    // A logo é mantida: a confirmação de "logo definitiva" também.
+    const defaultTokens = identity.logoConfirmedUrl === undefined
+      ? baseTokens
+      : { ...baseTokens, meta: { ...baseTokens.meta, logoConfirmedUrl: identity.logoConfirmedUrl } };
     const restoredTheme: TenantTheme = {
       ...DEFAULT_DELIVERY_CHANNEL_THEME,
       storeName: identity.storeName,

@@ -39,9 +39,9 @@ beforeAll(async () => {
 afterAll(async () => { await Promise.all([withList, without].map(s => new Promise<void>(r => s.server.close(() => r())))); });
 
 describe('lista de slugs do experimento da splash', () => {
-  it('padrão só a loja de teste; env definida substitui (vazia desliga)', () => {
-    expect(DEFAULT_SPLASH_TEST_SLUGS).toEqual(['mercado-teste-dc']);
-    expect(resolveSplashTestSlugs({})).toEqual(['mercado-teste-dc']);
+  it('padrão desligado (abertura só com a logo da loja); env definida liga', () => {
+    expect(DEFAULT_SPLASH_TEST_SLUGS).toEqual([]);
+    expect(resolveSplashTestSlugs({})).toEqual([]);
     expect(resolveSplashTestSlugs({ PWA_SPLASH_TEST_SLUGS: '' })).toEqual([]);
     expect(resolveSplashTestSlugs({ PWA_SPLASH_TEST_SLUGS: ' a-teste, b-teste  c ' })).toEqual(['a-teste', 'b-teste', 'c']);
   });

@@ -17,6 +17,8 @@ import path from 'node:path';
 import { createPwaRouter, staticAssetCacheControl } from './server/pwa/routes';
 import { precompressedStatic, sendCompressedHtml } from './server/http/compression';
 import { resolveSplashTestSlugs } from './server/pwa/splashTest';
+import { resolveIdentityTestSlugs } from './server/pwa/identityTest';
+import { splitStoreSegment } from './src/lib/pwa/appIdentity';
 import fs from 'node:fs/promises';
 import { injectStoreHead, storeHeadOptionsForUrl, storeSlugFromPath, withTimeout } from './server/pwa/storeHtml';
 import { injectTotemHead, isTotemRoute, totemSlugFromPath } from './src/lib/pwa/totemManifest';
@@ -40,7 +42,7 @@ async function start() {
   const distDir = path.resolve(process.cwd(), 'dist');
   const { resolver, mode } = pickResolver();
 
-  const pwa = createPwaRouter({ resolveStore: resolver, publicDir: isProd ? distDir : path.resolve(process.cwd(), 'public'), splashTestSlugs: resolveSplashTestSlugs(process.env) });
+  const pwa = createPwaRouter({ resolveStore: resolver, publicDir: isProd ? distDir : path.resolve(process.cwd(), 'public'), splashTestSlugs: resolveSplashTestSlugs(process.env), identityTestSlugs: resolveIdentityTestSlugs(process.env) });
   app.use(pwa);
   app.use((req, res, next) => {
     if (req.path === '/sw.js') {
@@ -55,8 +57,10 @@ async function start() {
   /** HTML das vitrines (/app/<slug>...) já sai com o manifesto da loja no <head> (nunca o global). */
   async function storeHtml(req: express.Request, rawHtml: string, slug: string): Promise<string> {
     // Última leitura da loja na hora (atualiza em segundo plano); sem cache, espera no máximo 1,5 s como antes.
-    const store = await withTimeout(pwa.lookupStoreForHtml(slug), 1500, null);
-    return injectStoreHead(rawHtml, slug, store, storeHeadOptionsForUrl(req.originalUrl));
+    // EXPERIMENTO de identidade: /app/<slug>~<versão>/ (só lojas de teste; nas demais o roteador já redirecionou).
+    const seg = splitStoreSegment(slug);
+    const store = await withTimeout(pwa.lookupStoreForHtml(seg.slug), 1500, null);
+    return injectStoreHead(rawHtml, seg.slug, store, { ...storeHeadOptionsForUrl(req.originalUrl), ...pwa.identityHeadOptions(store, seg.identity) });
   }
   const isHtmlNav = (req: express.Request) => req.method === 'GET' && !path.extname(req.path);
 

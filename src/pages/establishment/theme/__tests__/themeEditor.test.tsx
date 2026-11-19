@@ -80,6 +80,8 @@ describe('editor e salvamento', () => {
     );
     for (const key of Object.keys(identity) as Array<keyof typeof identity>)
       expect(saved[key]).toBe(identity[key]);
+    // loja antiga: a logo que já estava fica gravada como definitiva (theme_tokens.meta, sem migração)
+    expect(saved.tokens.meta.logoConfirmedUrl).toBe(identity.logoUrl);
     expect(mocks.setTenant).toHaveBeenCalledWith(
       expect.objectContaining({ id: tenant.id, theme: saved })
     );
@@ -120,7 +122,7 @@ describe('editor e salvamento', () => {
 });
 
 describe('restaurar padrão Delivery Channel', () => {
-  it('pede confirmação e restaura mantendo nome, slogan, logo e capa', async () => {
+  it('pede confirmação e restaura mantendo nome, slogan, logo, capa e a logo definitiva confirmada', async () => {
     mocks.reset.mockImplementation(async (_c, _t, id) => ({ ...DEFAULT_DELIVERY_CHANNEL_THEME, ...id }));
     render(<ThemeEditorShell tenant={tenant} />);
     fireEvent.click(screen.getAllByRole('button', { name: /Estilo/ })[0]);
@@ -128,7 +130,7 @@ describe('restaurar padrão Delivery Channel', () => {
     expect(mocks.reset).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('confirm-restore-dc-default'));
     await waitFor(() => expect(mocks.reset).toHaveBeenCalledTimes(1));
-    expect(mocks.reset.mock.calls[0][2]).toEqual(identity);
+    expect(mocks.reset.mock.calls[0][2]).toEqual({ ...identity, logoConfirmedUrl: identity.logoUrl });
     await waitFor(() => expect(mocks.setTenant).toHaveBeenCalled());
   });
 });

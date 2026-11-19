@@ -4,29 +4,29 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { render } from '@testing-library/react';
 import React from 'react';
-import { bootScreenHtml, DC_BOOT_FADE_MS, DC_BOOT_HIDE_CLASS, DC_BOOT_SCREEN_ID, DC_PRESENTS_TEXT, hideBootScreen } from '../bootScreen';
-import { DcBootScreen } from '../../../components/pwa/DcBootScreen';
+import { storeBootScreenHtml, STORE_BOOT_FADE_MS, STORE_BOOT_HIDE_CLASS, STORE_BOOT_SCREEN_ID, hideBootScreen } from '../bootScreen';
+import { StoreLoadingScreen } from '../../../components/pwa/StoreLoadingScreen';
 
 afterEach(() => { document.body.innerHTML = ''; vi.useRealTimers(); });
 
 describe('hideBootScreen', () => {
-  it('faz fade e remove a #dc-boot do servidor; sem tela, não faz nada', () => {
+  it('faz fade e remove a #store-boot do servidor; sem tela, não faz nada', () => {
     vi.useFakeTimers();
-    document.body.innerHTML = bootScreenHtml() + '<div id="root"></div>';
-    const el = document.getElementById(DC_BOOT_SCREEN_ID)!;
+    document.body.innerHTML = storeBootScreenHtml({ background: '#0a5c36', iconUrl: '/app/x/icons/icon-192.png?v=1', name: 'Loja' }) + '<div id="root"></div>';
+    const el = document.getElementById(STORE_BOOT_SCREEN_ID)!;
     hideBootScreen(document);
-    expect(el.classList.contains(DC_BOOT_HIDE_CLASS)).toBe(true);
-    vi.advanceTimersByTime(DC_BOOT_FADE_MS + 60);
-    expect(document.getElementById(DC_BOOT_SCREEN_ID)).toBeNull();
+    expect(el.classList.contains(STORE_BOOT_HIDE_CLASS)).toBe(true);
+    vi.advanceTimersByTime(STORE_BOOT_FADE_MS + 60);
+    expect(document.getElementById(STORE_BOOT_SCREEN_ID)).toBeNull();
     expect(() => hideBootScreen(document)).not.toThrow();
   });
 });
 
-describe('DcBootScreen (React) e fim do "AF"', () => {
-  it('mostra a mesma apresentação, sem iniciais de outra loja', () => {
-    const v = render(<DcBootScreen />);
-    expect(v.getByText(DC_PRESENTS_TEXT)).toBeTruthy();
-    expect(v.container.textContent).not.toMatch(/\bAF\b/);
+describe('StoreLoadingScreen (React) e fim do "AF"', () => {
+  it('neutro: sem "Delivery Channel apresenta" nem iniciais de outra loja', () => {
+    const v = render(<StoreLoadingScreen />);
+    expect(v.container.textContent).toBe('');
+    expect(v.container.innerHTML).not.toContain('Delivery Channel');
   });
 
   it('nenhuma tela usa mais o selo "AF" fixo', () => {
@@ -40,7 +40,7 @@ describe('DcBootScreen (React) e fim do "AF"', () => {
   it('ClientApp tira a tela do servidor quando a vitrine termina de carregar', () => {
     const src = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
     expect(src).toMatch(/useEffect\(\(\) => \{ if \(!isLoadingStore\) hideBootScreen\(\); \}, \[isLoadingStore\]\);/);
-    expect(src).toMatch(/if \(isLoadingStore\) \{[\s\S]{0,200}return <DcBootScreen \/>;/);
+    expect(src).toMatch(/if \(isLoadingStore\) \{[\s\S]{0,200}return <StoreLoadingScreen \/>;/);
   });
 
   it('Google Fonts não seguram a primeira pintura (preload + troca para stylesheet, com noscript)', () => {
