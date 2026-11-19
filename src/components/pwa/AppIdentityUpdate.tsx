@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  APP_IDENTITY_META, APP_IDENTITY_RE, chromeIntentUrl, identityStatus, newestLaunchedKey, reinstallUrl, REINSTALL_PARAM,
+  APP_IDENTITY_META, APP_IDENTITY_RE, identityStatus, newestLaunchedKey, reinstallUrl, REINSTALL_PARAM,
   splitStoreSegment, storeSegmentFromPath, versionedStartUrl,
 } from '../../lib/pwa/appIdentity';
 import { clearDeferredPrompt, detectPlatform, getDeferredPrompt, isStandalone, subscribeInstall, wasAppInstalledEvent } from '../../lib/pwa/installState';
@@ -15,8 +15,6 @@ export const REINSTALL_PROGRESS_MS = 1200;
 export const REINSTALL_PROMPT_WAIT_MS = 8000;
 /** Aceitar o convite não é instalar: espera o appinstalled antes de mandar remover o ícone antigo. */
 export const REINSTALL_CONFIRM_WAIT_MS = 45000;
-/** Depois do appinstalled, abre o app novo sozinho (tempo do Android registrar o ícone novo). */
-export const OPEN_NEW_APP_DELAY_MS = 1200;
 
 const safeGet = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
 const safeSet = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
@@ -79,8 +77,8 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
 
   // Aberto pelo ícone da versão atual: avisa os ícones antigos (armazenamento do Chrome é comum à origem).
   useEffect(() => {
-    if (standalone && running === current) safeSet(newestLaunchedKey(slug), current);
-  }, [standalone, running, current, slug]);
+    if (standalone && !reinstallRequested && running === current && !document.referrer) safeSet(newestLaunchedKey(slug), current);
+  }, [standalone, reinstallRequested, running, current, slug]);
 
   const status = identityStatus({ standalone, runningIdentity: running, currentIdentity: current, newestLaunched: safeGet(newestLaunchedKey(slug)), reinstallRequested });
 
@@ -96,6 +94,10 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
     if (status === 'reinstall' && (phase === 'waiting-prompt' || phase === 'no-prompt') && deferred) setPhase('ready');
     if (wasAppInstalledEvent() && phase !== 'installed' && phase !== 'idle' && phase !== 'progress') setPhase('installed');
   });
+  // Só o appinstalled confirma a versão nova instalada (libera "Abrir a nova" no ícone antigo).
+  useEffect(() => {
+    if ((status === 'reinstall' || status === 'update-available') && phase === 'installed') safeSet(newestLaunchedKey(slug), current);
+  }, [status, phase, slug, current]);
 
   useEffect(() => {
     if (phase !== 'pending-install') return;
@@ -116,10 +118,10 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
   }, [phase]);
 
   const openNewApp = useCallback(() => {
-    const url = `${window.location.origin}${versionedStartUrl(slug, current)}`;
-    // Sem package: o Android entrega ao app (WebAPK) que abre esse endereço.
-    window.location.href = chromeIntentUrl(url, { android, package: null });
-  }, [slug, current, android]);
+    // Link https comum (no toque do cliente): o Chrome abre o app instalado que é o único dono desse endereço
+    // (WebApkSelfOwnedRendererNavLaunch). intent:// para o Chrome só navegava a janela atual.
+    window.location.href = `${window.location.origin}${versionedStartUrl(slug, current)}`;
+  }, [slug, current]);
 
   const runPrompt = useCallback(async () => {
     const d = getDeferredPrompt();
@@ -137,23 +139,18 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
   }, [status]);
 
   const startUpdate = useCallback(() => {
-    setPhase('progress');
+    // Ainda no toque: janela nova fora do app (o intent:// para o Chrome só navegava a janela do próprio app, onde
+    // o Chrome nunca oferece instalar). Se bloquearem, abre aqui mesmo; a página de instalação mostra o caminho.
+    // Se o próprio app já tem o convite nativo (raro), instala aqui mesmo.
+    if (getDeferredPrompt()) { setPhase('progress'); void runPrompt().then(ok => { if (!ok) setPhase('idle'); }); return; }
+    const url = reinstallUrl(window.location.origin, slug, current);
+    let w: Window | null = null;
+    try { w = window.open(url, '_blank'); } catch { w = null; }
+    if (!w) { window.location.href = url; return; }
+    setPhase('opening-chrome');
     setProgress(0);
     requestAnimationFrame(() => setProgress(90));
-    setTimeout(async () => {
-      // Se o próprio app já recebeu o convite (versão nova fora do scope deste ícone), instala aqui mesmo.
-      if (await runPrompt()) return;
-      setPhase('opening-chrome');
-      window.location.href = chromeIntentUrl(reinstallUrl(window.location.origin, slug, current), { android });
-    }, REINSTALL_PROGRESS_MS);
-  }, [runPrompt, slug, current, android]);
-
-  // Instalou: abre o app novo direto (uma vez); o botão "Abrir a nova" fica de reserva.
-  useEffect(() => {
-    if (phase !== 'installed') return;
-    const t = setTimeout(openNewApp, OPEN_NEW_APP_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [phase, openNewApp]);
+  }, [runPrompt, slug, current]);
 
   // Experimento só no Android (WebAPK do Chrome); iPhone e outros seguem como hoje.
   if (!android || status === 'current' || dismissed) return null;
@@ -173,6 +170,7 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
     <div data-testid="identity-installed">
       {title('Pronto!')}
       <ProgressBar value={100} />
+      <p style={{ fontSize: 13, margin: '12px 0 0' }}>A nova versão está na tela inicial.</p>
       <button type="button" style={{ ...primaryBtn, width: '100%', marginTop: 14 }} onClick={openNewApp} data-testid="identity-open-new">Abrir a nova</button>
     </div>
   );
@@ -212,6 +210,8 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
   }
 
   if (status === 'old-icon') {
+    // Acabou de instalar pelo convite no próprio app antigo: mantém o "Pronto!" (já marcado como instalado).
+    if (phase === 'installed') return overlay(installedView);
     return (
       <div data-testid="identity-old-icon" role="alert"
         style={{ ...card, position: 'fixed', left: 12, right: 12, top: 'calc(env(safe-area-inset-top, 0px) + 10px)', zIndex: 2147482000,
@@ -240,7 +240,7 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
       <div data-testid="identity-no-prompt">
         {title('Atualizando aplicativo...')}
         <ProgressBar value={95} />
-        <p style={{ fontSize: 13, margin: '12px 0 0' }}>Toque em <b>⋮</b> e em <b>Instalar app</b>.</p>
+        <p style={{ fontSize: 13, margin: '12px 0 0' }}>Toque em <b>⋮</b> e em <b>Abrir no Chrome</b> ou <b>Instalar app</b>.</p>
         {close('Fechar')}
       </div>
     ) : (

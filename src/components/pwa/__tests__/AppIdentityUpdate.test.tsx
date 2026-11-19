@@ -83,23 +83,18 @@ describe('AppIdentityUpdate', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('ícone antigo: pílula → Baixar versão atualizada → barra "Atualizando aplicativo..." → abre o Chrome', async () => {
-    vi.useFakeTimers();
+  it('ícone antigo: pílula → Baixar versão atualizada → abre janela nova fora do app (não intent://) com a página de instalação', async () => {
     history.replaceState(null, '', '/app/mercado-teste-dc/?source=pwa');
     const { AppIdentityUpdate } = await load();
     await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
     expect(container.textContent).toContain('Nova versão do app');
     expect(container.querySelector('[data-testid="identity-update"]')!.textContent).toBe('Baixar versão atualizada');
-    const hrefSet = vi.fn();
-    const loc = window.location;
-    vi.stubGlobal('location', { ...loc, origin: 'https://deliverychannel.com.br', pathname: loc.pathname, search: loc.search, set href(v: string) { hrefSet(v); }, get href() { return loc.href; } });
+    const open = vi.spyOn(window, 'open').mockReturnValue({} as Window);
     await act(async () => { (container.querySelector('[data-testid="identity-update"]') as HTMLButtonElement).click(); });
+    expect(open).toHaveBeenCalledWith(`${window.location.origin}/app/mercado-teste-dc~${CUR}/?reinstall=1`, '_blank');
     expect(container.textContent).toContain('Atualizando aplicativo...');
-    expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
-    await act(async () => { vi.advanceTimersByTime(1300); await Promise.resolve(); await Promise.resolve(); });
-    expect(hrefSet).toHaveBeenCalledWith(`intent://deliverychannel.com.br/app/mercado-teste-dc~${CUR}/?reinstall=1#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(`https://deliverychannel.com.br/app/mercado-teste-dc~${CUR}/?reinstall=1`)};end`);
     expect(container.querySelector('[data-testid="identity-back"]')).not.toBeNull();
-    // voltou do Chrome (cancelou lá): a loja fica livre de novo
+    // voltou (cancelou lá): a loja fica livre de novo
     const vis = vi.spyOn(document, 'visibilityState', 'get');
     vis.mockReturnValue('hidden');
     await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
@@ -109,21 +104,29 @@ describe('AppIdentityUpdate', () => {
     expect(container.querySelector('[data-testid="identity-pill"]')).not.toBeNull();
   });
 
-  it('tela "Abrindo o Chrome" tem Voltar à loja', async () => {
-    vi.useFakeTimers();
+  it('janela nova bloqueada: abre a página de instalação aqui mesmo (https comum)', async () => {
     history.replaceState(null, '', '/app/mercado-teste-dc/');
     const { AppIdentityUpdate } = await load();
     await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const hrefSet = vi.fn();
     const loc = window.location;
-    vi.stubGlobal('location', { ...loc, origin: 'https://x.com', pathname: loc.pathname, search: loc.search, set href(_v: string) {}, get href() { return loc.href; } });
+    vi.stubGlobal('location', { ...loc, origin: 'https://deliverychannel.ai.studio', pathname: loc.pathname, search: loc.search, set href(v: string) { hrefSet(v); }, get href() { return loc.href; } });
     await act(async () => { (container.querySelector('[data-testid="identity-update"]') as HTMLButtonElement).click(); });
-    await act(async () => { vi.advanceTimersByTime(1300); await Promise.resolve(); await Promise.resolve(); });
+    expect(hrefSet).toHaveBeenCalledWith(`https://deliverychannel.ai.studio/app/mercado-teste-dc~${CUR}/?reinstall=1`);
+  });
+
+  it('tela de abertura tem Voltar à loja', async () => {
+    history.replaceState(null, '', '/app/mercado-teste-dc/');
+    const { AppIdentityUpdate } = await load();
+    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
+    vi.spyOn(window, 'open').mockReturnValue({} as Window);
+    await act(async () => { (container.querySelector('[data-testid="identity-update"]') as HTMLButtonElement).click(); });
     await act(async () => { (container.querySelector('[data-testid="identity-back"]') as HTMLButtonElement).click(); });
     expect(container.querySelector('[data-testid="identity-overlay"]')).toBeNull();
   });
 
-  it('ícone antigo com convite no próprio app: usa o prompt nativo', async () => {
-    vi.useFakeTimers();
+  it('ícone antigo com convite no próprio app: usa o prompt nativo; só o appinstalled libera "Abrir a nova"', async () => {
     history.replaceState(null, '', '/app/mercado-teste-dc/');
     const { AppIdentityUpdate, st } = await load();
     st.captureInstallEvents(window);
@@ -131,22 +134,41 @@ describe('AppIdentityUpdate', () => {
     const ev = Object.assign(new Event('beforeinstallprompt'), { prompt, userChoice: Promise.resolve({ outcome: 'accepted' as const }) });
     window.dispatchEvent(ev);
     await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
-    await act(async () => { (container.querySelector('[data-testid="identity-update"]') as HTMLButtonElement).click(); });
-    await act(async () => { vi.advanceTimersByTime(1300); for (let i = 0; i < 5; i++) await Promise.resolve(); });
+    await act(async () => { (container.querySelector('[data-testid="identity-update"]') as HTMLButtonElement).click(); for (let i = 0; i < 5; i++) await Promise.resolve(); });
     expect(prompt).toHaveBeenCalled();
-    // aceito ≠ instalado: só manda remover o antigo depois do appinstalled
     expect(container.querySelector('[data-testid="identity-pending"]')).not.toBeNull();
     expect(container.textContent).not.toContain('Pronto!');
     const hrefSet = vi.fn();
     const loc = window.location;
-    vi.stubGlobal('location', { ...loc, origin: 'https://deliverychannel.com.br', pathname: loc.pathname, search: loc.search, set href(v: string) { hrefSet(v); }, get href() { return loc.href; } });
+    vi.stubGlobal('location', { ...loc, origin: 'https://deliverychannel.ai.studio', pathname: loc.pathname, search: loc.search, set href(v: string) { hrefSet(v); }, get href() { return loc.href; } });
     await act(async () => { window.dispatchEvent(new Event('appinstalled')); });
     expect(container.textContent).toContain('Pronto!');
-    // sem passo a passo para o cliente
+    // appinstalled pelo convite do próprio app antigo também confirma a versão nova
+    expect(localStorage.getItem('dc:app-identity:mercado-teste-dc')).toBe(CUR);
     expect(container.textContent).not.toMatch(/Desinstalar|Remover|toque e segure/i);
-    // abre o app novo sozinho (intent sem package: o Android entrega ao app novo)
-    await act(async () => { vi.advanceTimersByTime(1300); });
-    expect(hrefSet).toHaveBeenCalledWith(`intent://deliverychannel.com.br/app/mercado-teste-dc~${CUR}/?source=pwa#Intent;scheme=https;S.browser_fallback_url=${encodeURIComponent(`https://deliverychannel.com.br/app/mercado-teste-dc~${CUR}/?source=pwa`)};end`);
+    // "Abrir a nova": link https comum (o Chrome entrega ao app instalado dono do endereço), nunca intent://
+    await act(async () => { (container.querySelector('[data-testid="identity-open-new"]') as HTMLButtonElement).click(); });
+    expect(hrefSet).toHaveBeenCalledWith(`https://deliverychannel.ai.studio/app/mercado-teste-dc~${CUR}/?source=pwa`);
+  });
+
+  it('página de instalação aberta DENTRO da janela do app antigo (display-mode standalone): mostra a instalação e não marca nada', async () => {
+    vi.useFakeTimers();
+    standalone = true;
+    history.replaceState(null, '', `/app/mercado-teste-dc~${CUR}/?reinstall=1`);
+    const { AppIdentityUpdate } = await load();
+    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
+    expect(container.querySelector('[data-testid="identity-waiting"]')).not.toBeNull();
+    await act(async () => { vi.advanceTimersByTime(8100); });
+    expect(container.textContent).toContain('Abrir no Chrome');
+    expect(localStorage.getItem('dc:app-identity:mercado-teste-dc')).toBeNull();
+  });
+
+  it('versão atual aberta por navegação vinda do app antigo (com referrer): não marca como instalada', async () => {
+    history.replaceState(null, '', `/app/mercado-teste-dc~${CUR}/?source=pwa`);
+    vi.spyOn(document, 'referrer', 'get').mockReturnValue('https://deliverychannel.ai.studio/app/mercado-teste-dc/');
+    const { AppIdentityUpdate } = await load();
+    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" initialIdentity={CUR} />);
+    expect(localStorage.getItem('dc:app-identity:mercado-teste-dc')).toBeNull();
   });
 
   it('ícone antigo depois de abrir o novo: uma linha "pode apagar" + Abrir a nova, sem instruções', async () => {
@@ -177,6 +199,8 @@ describe('AppIdentityUpdate', () => {
     expect(container.querySelector('[data-testid="identity-pending"]')).not.toBeNull();
     await act(async () => { window.dispatchEvent(new Event('appinstalled')); });
     expect(container.querySelector('[data-testid="identity-installed"]')).not.toBeNull();
+    // appinstalled confirma: o ícone antigo passa a mostrar "pode apagar" + "Abrir a nova"
+    expect(localStorage.getItem('dc:app-identity:mercado-teste-dc')).toBe(CUR);
   });
 
   it('aceito sem appinstalled em 45 s: não manda remover, explica e deixa fechar', async () => {
