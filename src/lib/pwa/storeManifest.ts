@@ -10,6 +10,10 @@ export interface StoreIdentityInput {
   slug: string;
   name: string;
   updatedAt?: string;
+  /** theme_tokens.meta.appBaseLogoUrl (ausente = loja nunca trocou a logo depois do fluxo de versão). Não entra no manifesto. */
+  appBaseLogoUrl?: string;
+  /** theme_tokens.meta.logoConfirmedUrl (logo definitiva confirmada; ausente = loja antiga). Não entra no manifesto. */
+  logoConfirmedUrl?: string;
   theme?: {
     storeName?: string;
     shortName?: string;

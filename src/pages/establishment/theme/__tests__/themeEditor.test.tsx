@@ -82,6 +82,8 @@ describe('editor e salvamento', () => {
       expect(saved[key]).toBe(identity[key]);
     // loja antiga: a logo que já estava fica gravada como definitiva (theme_tokens.meta, sem migração)
     expect(saved.tokens.meta.logoConfirmedUrl).toBe(identity.logoUrl);
+    // logo não mudou: não entra no fluxo de versão (nada muda para quem já instalou)
+    expect('appBaseLogoUrl' in saved.tokens.meta).toBe(false);
     expect(mocks.setTenant).toHaveBeenCalledWith(
       expect.objectContaining({ id: tenant.id, theme: saved })
     );

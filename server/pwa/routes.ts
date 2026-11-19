@@ -18,6 +18,7 @@ import { ICON_VARIANTS, IconVariant, isNearlyFlatPng, renderInitialsPng, renderS
 import { DC_BRAND_SVG, DC_SPLASH_ICON_VERSION, SPLASH_TEST_COLOR } from './splashTest';
 import { fetchPublicImage } from './safeFetch';
 import { isValidSlug, StoreResolver } from './storeSource';
+import { hasAppBaseLogo, offerUpdatedApp } from '../../src/lib/pwa/appBaseLogo';
 import { splitStoreSegment, versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope } from '../../src/lib/pwa/appIdentity';
 
 declare const __PWA_BUILD_VERSION__: string | undefined;
@@ -336,8 +337,12 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   /** Segmento "/app/<slug>~<versão>": versão só vale para lojas de teste; nas demais o segmento segue inválido (404). */
   function parseSegment(raw: string): { slug: string; identity: string | null } {
     const seg = splitStoreSegment(raw);
-    return seg.identity && identityTestSlugs.has(seg.slug) ? seg : { slug: raw, identity: null };
+    return seg.identity && isValidSlug(seg.slug) ? seg : { slug: raw, identity: null };
   }
+  /** Loja aceita /app/<slug>~<versão>/: lista de teste ou já trocou a logo depois do fluxo (appBaseLogoUrl gravado). */
+  const identityEnabled = (store: StoreIdentityInput) => identityTestSlugs.has(store.slug) || hasAppBaseLogo(store);
+  /** App versionado agora: lista de teste (sempre) ou logo diferente da do app sem versão E confirmada como definitiva. */
+  const versionedNow = (store: StoreIdentityInput) => identityTestSlugs.has(store.slug) || offerUpdatedApp(store);
 
   async function guard(req: Request, res: Response): Promise<StoreIdentityInput | null> {
     const slug = parseSegment(String(req.params.slug || '')).slug;
@@ -359,7 +364,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       const r = await lookup(slug);
       if (r.status === 'ok' && r.store.slug === slug) {
         storeVer = identityVersion(r.store);
-        if (identityTestSlugs.has(slug)) appIdentity = iconVersion(r.store);
+        if (versionedNow(r.store)) appIdentity = iconVersion(r.store);
       }
     }
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -371,14 +376,19 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     });
   });
 
-  // EXPERIMENTO de identidade: "/app/<slug>~<versão>/..." só existe para lojas de teste; nas demais volta ao endereço normal.
-  router.use((req, res, next) => {
+  // "/app/<slug>~<versão>/..." só existe para lojas no fluxo de versão; nas demais volta ao endereço normal.
+  router.use(async (req, res, next) => {
     const m = /^\/app\/([^/]+)(\/.*)?$/.exec(req.path);
     if (!m || (req.method !== 'GET' && req.method !== 'HEAD')) return next();
     let raw = m[1];
     try { raw = decodeURIComponent(raw); } catch { return next(); }
     const seg = splitStoreSegment(raw);
     if (!seg.identity || identityTestSlugs.has(seg.slug) || !isValidSlug(seg.slug)) return next();
+    const r = await lookup(seg.slug).catch(() => null);
+    // Falha/timeout da consulta: mantém o endereço versionado (um app instalado não pode sair do próprio scope).
+    // Só redireciona quando a consulta CONFIRMA que a loja não está no fluxo (ou não existe).
+    if (!r || r.status === 'error') return next();
+    if (r.status === 'ok' && r.store.slug === seg.slug && identityEnabled(r.store)) return next();
     const q = req.originalUrl.indexOf('?');
     res.set('Cache-Control', 'no-cache');
     res.redirect(302, `/app/${encodeURIComponent(seg.slug)}${m[2] || '/'}${q >= 0 ? req.originalUrl.slice(q) : ''}`);
@@ -398,6 +408,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     const store = await guard(req, res);
     if (!store) return;
     const { identity } = parseSegment(String(req.params.slug || ''));
+    if (identity && !identityEnabled(store)) { res.status(404).type('text/plain').send('Loja não encontrada'); return; }
     res.set('Content-Type', 'application/manifest+json; charset=utf-8');
     // Sempre revalidado: tema/logo/barras novos chegam ao app logo após a loja salvar.
     res.set('Cache-Control', 'no-cache');
@@ -497,7 +508,9 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     return r.status === 'ok' && r.store.slug === slug ? r.store : null;
   };
   const identityHeadOptions = (store: StoreIdentityInput | null, identity: string | null): IdentityHeadOptions => {
-    if (!store || !identityTestSlugs.has(store.slug)) return {};
+    if (!store || !identityEnabled(store)) return {};
+    // Voltou para a logo do app sem versão: sem botão; quem abre um app versionado mantém o manifesto dele.
+    if (!versionedNow(store)) return identity ? { manifestHref: versionedManifestPath(store.slug, identity) } : {};
     const current = iconVersion(store);
     return { manifestHref: versionedManifestPath(store.slug, identity || current), appIdentity: current };
   };

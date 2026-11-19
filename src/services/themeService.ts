@@ -42,13 +42,14 @@ export const themeService = {
   async resetToDeliveryChannelDefault(
     context: SecurityContext,
     tenantId: string,
-    identity: { storeName: string; tagline?: string; logoUrl?: string; bannerUrl?: string; logoConfirmedUrl?: string }
+    identity: { storeName: string; tagline?: string; logoUrl?: string; bannerUrl?: string; logoConfirmedUrl?: string; appBaseLogoUrl?: string }
   ): Promise<TenantTheme> {
     const baseTokens = createDefaultThemeTokens(DEFAULT_DELIVERY_CHANNEL_THEME);
-    // A logo é mantida: a confirmação de "logo definitiva" também.
-    const defaultTokens = identity.logoConfirmedUrl === undefined
-      ? baseTokens
-      : { ...baseTokens, meta: { ...baseTokens.meta, logoConfirmedUrl: identity.logoConfirmedUrl } };
+    // A logo é mantida: a confirmação de "logo definitiva" e a logo do app instalado (sem versão) também.
+    const meta = { ...baseTokens.meta };
+    if (identity.logoConfirmedUrl !== undefined) meta.logoConfirmedUrl = identity.logoConfirmedUrl;
+    if (identity.appBaseLogoUrl !== undefined) meta.appBaseLogoUrl = identity.appBaseLogoUrl;
+    const defaultTokens = { ...baseTokens, meta };
     const restoredTheme: TenantTheme = {
       ...DEFAULT_DELIVERY_CHANNEL_THEME,
       storeName: identity.storeName,
