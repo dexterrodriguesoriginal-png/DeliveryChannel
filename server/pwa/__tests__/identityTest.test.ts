@@ -165,3 +165,19 @@ describe('todas as lojas: botão só depois de a loja TROCAR a logo (appBaseLogo
     expect(r.identityHeadOptions(unchanged, 'aaaaaaaaaa')).toEqual({ manifestHref: '/app/loja-igual~aaaaaaaaaa/manifest.webmanifest' });
   });
 });
+
+describe('endereço versionado com falha na consulta da loja', () => {
+  it('não redireciona para fora do scope do app instalado; só redireciona quando a consulta confirma', async () => {
+    let fail = true;
+    const r = createPwaRouter({ resolveStore: async (s) => (fail ? { status: 'error', message: 'timeout' } : (s === 'adegasshow' ? { status: 'ok', store: real } : { status: 'not_found' })), publicDir, fetchLogo: async () => { throw new Error('x'); }, ttlMs: 0 });
+    const a = express(); a.use(r); a.use((_req, res) => { res.status(200).send('html'); });
+    const srv = await listen(a);
+    try {
+      const x = await fetch(`${srv.base}/app/adegasshow~0123456789/`, { redirect: 'manual' });
+      expect(x.status).toBe(200);
+      fail = false;
+      const y = await fetch(`${srv.base}/app/adegasshow~0123456789/`, { redirect: 'manual' });
+      expect(y.status).toBe(302);
+    } finally { await new Promise<void>(res => srv.server.close(() => res())); }
+  });
+});

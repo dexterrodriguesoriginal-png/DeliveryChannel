@@ -385,7 +385,10 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     const seg = splitStoreSegment(raw);
     if (!seg.identity || identityTestSlugs.has(seg.slug) || !isValidSlug(seg.slug)) return next();
     const r = await lookup(seg.slug).catch(() => null);
-    if (r && r.status === 'ok' && r.store.slug === seg.slug && identityEnabled(r.store)) return next();
+    // Falha/timeout da consulta: mantém o endereço versionado (um app instalado não pode sair do próprio scope).
+    // Só redireciona quando a consulta CONFIRMA que a loja não está no fluxo (ou não existe).
+    if (!r || r.status === 'error') return next();
+    if (r.status === 'ok' && r.store.slug === seg.slug && identityEnabled(r.store)) return next();
     const q = req.originalUrl.indexOf('?');
     res.set('Cache-Control', 'no-cache');
     res.redirect(302, `/app/${encodeURIComponent(seg.slug)}${m[2] || '/'}${q >= 0 ? req.originalUrl.slice(q) : ''}`);
