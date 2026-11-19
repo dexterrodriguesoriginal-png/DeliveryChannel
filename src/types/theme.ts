@@ -86,6 +86,8 @@ export interface ThemeMeta {
   systemBars?: { statusBarColor?: string; navBarColor?: string };
   /** Logo que a loja confirmou como definitiva ('' = não confirmou; ausente = loja antiga, logo atual vale). Ver src/lib/pwa/logoConfirmation.ts. */
   logoConfirmedUrl?: string;
+  /** Logo do app instalado sem versão (/app/<slug>/); gravada na 1ª troca de logo. Ver src/lib/pwa/appBaseLogo.ts. */
+  appBaseLogoUrl?: string;
 }
 
 export interface ComponentStyles {

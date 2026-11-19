@@ -124,3 +124,44 @@ describe('loja de teste', () => {
     expect(v2).not.toBe(iv);
   });
 });
+
+describe('todas as lojas: botão só depois de a loja TROCAR a logo (appBaseLogoUrl)', () => {
+  const base = 'https://cdn.example/logo-original.png';
+  const unchanged: StoreIdentityInput = { id: 'tenant-u', slug: 'loja-igual', name: 'Loja Igual', appBaseLogoUrl: base, theme: { storeName: 'Loja Igual', logoUrl: base } };
+  const changed: StoreIdentityInput = { id: 'tenant-c', slug: 'loja-nova', name: 'Loja Nova', appBaseLogoUrl: base, theme: { storeName: 'Loja Nova', logoUrl: 'https://cdn.example/logo-nova.png' } };
+  const all: Record<string, StoreIdentityInput> = { [real.slug]: real, [unchanged.slug]: unchanged, [changed.slug]: changed };
+  const r = createPwaRouter({ resolveStore: async (s) => (all[s] ? { status: 'ok', store: all[s] } : { status: 'not_found' }), publicDir, fetchLogo: async () => { throw new Error('x'); }, identityTestSlugs: ['mercado-teste-dc'] });
+  let srv: { server: Server; base: string };
+  beforeAll(async () => { const a = express(); a.use(r); srv = await listen(a); });
+  afterAll(async () => { await new Promise<void>(res => srv.server.close(() => res())); });
+  const cv = iconVersion(changed);
+
+  it('loja que nunca trocou a logo (sem appBaseLogoUrl): manifesto, HTML e versão como antes', async () => {
+    expect(r.identityHeadOptions(real, null)).toEqual({});
+    const j = await fetch(`${srv.base}/api/pwa/version?slug=adegasshow`).then(x => x.json());
+    expect(j.appIdentity).toBeUndefined();
+    expect(await fetch(`${srv.base}/app/adegasshow/manifest.webmanifest`).then(x => x.text())).toBe(JSON.stringify(serverManifest(real)));
+    expect((await fetch(`${srv.base}/app/adegasshow~0123456789/`, { redirect: 'manual' })).status).toBe(302);
+  });
+
+  it('logo igual à do app instalado: sem botão, manifesto base', async () => {
+    expect(r.identityHeadOptions(unchanged, null)).toEqual({});
+    const j = await fetch(`${srv.base}/api/pwa/version?slug=loja-igual`).then(x => x.json());
+    expect(j.appIdentity).toBeUndefined();
+    expect(await fetch(`${srv.base}/app/loja-igual/manifest.webmanifest`).then(x => x.text())).toBe(JSON.stringify(serverManifest(unchanged)));
+  });
+
+  it('logo trocada: versão nova (app antigo vê o botão) e manifesto versionado', async () => {
+    expect(r.identityHeadOptions(changed, null)).toEqual({ manifestHref: `/app/loja-nova~${cv}/manifest.webmanifest`, appIdentity: cv });
+    const j = await fetch(`${srv.base}/api/pwa/version?slug=loja-nova`).then(x => x.json());
+    expect(j.appIdentity).toBe(cv);
+    const m = await fetch(`${srv.base}/app/loja-nova~${cv}/manifest.webmanifest`).then(x => x.json());
+    expect(m).toEqual(identityTestManifest(changed, cv));
+    // o manifesto sem versão (o do app instalado) continua sendo servido
+    expect(await fetch(`${srv.base}/app/loja-nova/manifest.webmanifest`).then(x => x.text())).toBe(JSON.stringify(serverManifest(changed)));
+  });
+
+  it('voltou para a logo original: app versionado mantém o manifesto dele, sem botão', () => {
+    expect(r.identityHeadOptions(unchanged, 'aaaaaaaaaa')).toEqual({ manifestHref: '/app/loja-igual~aaaaaaaaaa/manifest.webmanifest' });
+  });
+});

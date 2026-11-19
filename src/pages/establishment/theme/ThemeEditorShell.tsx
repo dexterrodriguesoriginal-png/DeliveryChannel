@@ -26,6 +26,7 @@ import { LiveStorePreview } from '../../../components/establishment/theme/LiveSt
 import { ThemedProductItem } from '../../../components/storefront/ThemedProductList';
 import { useThemeDraft } from './useThemeDraft';
 import { logoConfirmedUrlToSave } from '../../../lib/pwa/logoConfirmation';
+import { appBaseLogoUrlToSave } from '../../../lib/pwa/appBaseLogo';
 import { useThemeControls } from './useThemeControls';
 import { ThemeEditorContext } from './ThemeEditorContext';
 import { TemplateGallery } from './TemplateGallery';
@@ -94,6 +95,11 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
       message: 'Sua marca foi preservada. Clique em Salvar quando estiver tudo do seu jeito.',
     });
   };
+  // Logo do app instalado sem versão: gravada na 1ª troca de logo (libera "Baixar versão atualizada" para quem já instalou).
+  const withAppBaseLogo = <M extends Record<string, unknown>>(meta: M, newLogo: string) => {
+    const base = appBaseLogoUrlToSave(tenant.theme?.tokens?.meta?.appBaseLogoUrl, tenant.theme?.logoUrl, newLogo);
+    return base === undefined ? meta : { ...meta, appBaseLogoUrl: base };
+  };
   const save = async () => {
     if (!draft.isDirty || saveInFlight.current) return;
     if (!draft.draftTheme.storeName?.trim()) {
@@ -134,7 +140,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
         ...submitted,
         logoUrl: cleanImage(submitted.logoUrl),
         bannerUrl: cleanImage(submitted.bannerUrl),
-        tokens: { ...draft.draftTokens, backgrounds, meta: { ...draft.draftTokens.meta, logoConfirmedUrl } },
+        tokens: { ...draft.draftTokens, backgrounds, meta: withAppBaseLogo({ ...draft.draftTokens.meta, logoConfirmedUrl }, cleanImage(submitted.logoUrl)) },
       });
       draft.markSaved(saved, submitted);
       setActiveTenant({ ...tenant, theme: saved });
@@ -170,6 +176,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
         logoUrl: draft.draftTheme.logoUrl,
         bannerUrl: draft.draftTheme.bannerUrl,
         logoConfirmedUrl: logoConfirmedUrlToSave({ logoUrl: draft.draftTheme.logoUrl, tokens: draft.draftTokens }, tenant.theme),
+        appBaseLogoUrl: appBaseLogoUrlToSave(tenant.theme?.tokens?.meta?.appBaseLogoUrl, tenant.theme?.logoUrl, draft.draftTheme.logoUrl),
       });
       draft.markSaved(restored, draft.draftTheme);
       void announceThemeSaved(tenant.id);
