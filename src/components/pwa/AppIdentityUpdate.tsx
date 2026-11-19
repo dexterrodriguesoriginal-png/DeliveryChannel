@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   APP_IDENTITY_META, APP_IDENTITY_RE, identityStatus, newestLaunchedKey, reinstallUrl, REINSTALL_PARAM,
-  splitStoreSegment, storeSegmentFromPath, versionedStartUrl,
+  chromeIntentUrl, splitStoreSegment, storeSegmentFromPath, versionedStartUrl,
 } from '../../lib/pwa/appIdentity';
 import { clearDeferredPrompt, detectPlatform, getDeferredPrompt, isStandalone, subscribeInstall, wasAppInstalledEvent } from '../../lib/pwa/installState';
 
@@ -12,14 +12,14 @@ export function readAppIdentityMeta(doc: Document | undefined = typeof document 
 }
 
 export const REINSTALL_PROGRESS_MS = 1200;
-export const REINSTALL_PROMPT_WAIT_MS = 8000;
+export const REINSTALL_PROMPT_WAIT_MS = 3000;
 /** Aceitar o convite não é instalar: espera o appinstalled antes de mandar remover o ícone antigo. */
 export const REINSTALL_CONFIRM_WAIT_MS = 45000;
 
 const safeGet = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
 const safeSet = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
 
-type Phase = 'idle' | 'progress' | 'opening-chrome' | 'waiting-prompt' | 'ready' | 'pending-install' | 'slow-install' | 'installed' | 'no-prompt';
+type Phase = 'idle' | 'opening-chrome' | 'pending-install' | 'slow-install' | 'installed' | 'no-prompt';
 
 const card: React.CSSProperties = {
   background: 'var(--dc-bg-card-color)', color: 'var(--dc-text-main)', border: '1px solid var(--dc-border)',
@@ -34,27 +34,10 @@ const secondaryBtn: React.CSSProperties = {
   padding: '10px 18px', fontWeight: 600, fontSize: 14, cursor: 'pointer',
 };
 
-function ProgressBar({ indeterminate, value }: { indeterminate?: boolean; value?: number }) {
-  return (
-    <div role="progressbar" aria-label="Atualizando aplicativo" aria-valuemin={0} aria-valuemax={100} aria-valuenow={indeterminate ? undefined : value}
-      style={{ height: 8, borderRadius: 999, background: 'var(--dc-border)', overflow: 'hidden', position: 'relative' }}>
-      <style>{'@keyframes dc-reinstall-indet{0%{left:-40%}100%{left:100%}}'}</style>
-      <div data-testid="identity-progress-fill" style={indeterminate
-        ? { position: 'absolute', top: 0, bottom: 0, width: '40%', background: 'var(--dc-primary)', borderRadius: 999, animation: 'dc-reinstall-indet 1.1s ease-in-out infinite' }
-        : { height: '100%', width: `${value ?? 0}%`, background: 'var(--dc-primary)', borderRadius: 999, transition: `width ${REINSTALL_PROGRESS_MS}ms ease-out` }} />
-    </div>
-  );
-}
-
-/**
- * Só lojas da lista de teste: "Nova versão do app" quando a logo mudou. Um toque em "Baixar versão atualizada":
- * barra "Atualizando aplicativo...", convite nativo de instalar e o app novo abre sozinho. Sem passo a passo:
- * o Android não deixa um site apagar outro app, então o ícone antigo, se aberto, só diz que pode ser apagado.
- */
+/** Atualização da identidade do app; só appinstalled confirma uma instalação. */
 export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: string; storeName: string; initialIdentity: string }) {
   const [current, setCurrent] = useState(initialIdentity);
   const [phase, setPhase] = useState<Phase>('idle');
-  const [progress, setProgress] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [, force] = useState(0);
   const standalone = useMemo(() => isStandalone(window), []);
@@ -82,18 +65,6 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
 
   const status = identityStatus({ standalone, runningIdentity: running, currentIdentity: current, newestLaunched: safeGet(newestLaunchedKey(slug)), reinstallRequested });
 
-  // Aba do Chrome vinda do "Atualizar": espera o convite de instalação nativo.
-  useEffect(() => {
-    if (status !== 'reinstall') return;
-    setPhase(p => (p === 'idle' ? 'waiting-prompt' : p));
-    const t = setTimeout(() => setPhase(p => (p === 'waiting-prompt' ? (wasAppInstalledEvent() ? 'installed' : 'no-prompt') : p)), REINSTALL_PROMPT_WAIT_MS);
-    return () => clearTimeout(t);
-  }, [status]);
-  const deferred = getDeferredPrompt();
-  useEffect(() => {
-    if (status === 'reinstall' && (phase === 'waiting-prompt' || phase === 'no-prompt') && deferred) setPhase('ready');
-    if (wasAppInstalledEvent() && phase !== 'installed' && phase !== 'idle' && phase !== 'progress') setPhase('installed');
-  });
   // Só o appinstalled confirma a versão nova instalada (libera "Abrir a nova" no ícone antigo).
   useEffect(() => {
     if ((status === 'reinstall' || status === 'update-available') && phase === 'installed') safeSet(newestLaunchedKey(slug), current);
@@ -142,14 +113,12 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
     // Ainda no toque: janela nova fora do app (o intent:// para o Chrome só navegava a janela do próprio app, onde
     // o Chrome nunca oferece instalar). Se bloquearem, abre aqui mesmo; a página de instalação mostra o caminho.
     // Se o próprio app já tem o convite nativo (raro), instala aqui mesmo.
-    if (getDeferredPrompt()) { setPhase('progress'); void runPrompt().then(ok => { if (!ok) setPhase('idle'); }); return; }
+    if (getDeferredPrompt()) { void runPrompt().then(ok => { if (!ok) setPhase('idle'); }); return; }
     const url = reinstallUrl(window.location.origin, slug, current);
     let w: Window | null = null;
     try { w = window.open(url, '_blank'); } catch { w = null; }
     if (!w) { window.location.href = url; return; }
     setPhase('opening-chrome');
-    setProgress(0);
-    requestAnimationFrame(() => setProgress(90));
   }, [runPrompt, slug, current]);
 
   // Experimento só no Android (WebAPK do Chrome); iPhone e outros seguem como hoje.
@@ -169,15 +138,13 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
   const installedView = (
     <div data-testid="identity-installed">
       {title('Pronto!')}
-      <ProgressBar value={100} />
       <p style={{ fontSize: 13, margin: '12px 0 0' }}>A nova versão está na tela inicial.</p>
       <button type="button" style={{ ...primaryBtn, width: '100%', marginTop: 14 }} onClick={openNewApp} data-testid="identity-open-new">Abrir a nova</button>
     </div>
   );
   const pendingView = (
     <div data-testid={phase === 'slow-install' ? 'identity-slow' : 'identity-pending'}>
-      {title('Atualizando aplicativo...')}
-      <ProgressBar indeterminate />
+      {title('Instalando aplicativo...')}
       {phase === 'slow-install' && (<>
         <button type="button" style={{ ...primaryBtn, width: '100%', marginTop: 14 }} onClick={openNewApp} data-testid="identity-open-new">Abrir a nova</button>
         {close('Fechar')}
@@ -188,17 +155,12 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
   if (status === 'update-available') {
     if (phase === 'installed') return overlay(installedView);
     if (phase === 'pending-install' || phase === 'slow-install') return overlay(pendingView);
-    if (phase === 'progress' || phase === 'opening-chrome') {
-      return overlay(
-        <div data-testid="identity-progress">
-          {title('Atualizando aplicativo...')}
-          <ProgressBar value={progress} />
-          {phase === 'opening-chrome' && (
-            <button type="button" style={{ ...secondaryBtn, width: '100%', marginTop: 14 }} onClick={() => setPhase('idle')} data-testid="identity-back">Voltar à loja</button>
-          )}
-        </div>,
-      );
-    }
+    if (phase === 'opening-chrome') return overlay(
+      <div data-testid="identity-opening-chrome">
+        {title('Página de instalação aberta')}
+        <button type="button" style={{ ...secondaryBtn, width: '100%' }} onClick={() => setPhase('idle')} data-testid="identity-back">Voltar à loja</button>
+      </div>,
+    );
     return (
       <div data-testid="identity-pill" role="status"
         style={{ ...card, position: 'fixed', left: 12, right: 12, top: 'calc(env(safe-area-inset-top, 0px) + 10px)', zIndex: 2147482000,
@@ -224,29 +186,46 @@ export function AppIdentityUpdate({ slug, storeName, initialIdentity }: { slug: 
     );
   }
 
-  // status === 'reinstall' (aba do Chrome aberta pelo botão): um toque em "Instalar" (o Chrome exige um toque).
+  // ?reinstall=1: controles disponíveis desde o primeiro render, sem progresso artificial.
+  const installFromPage = async () => {
+    if (!getDeferredPrompt()) {
+      const found = await new Promise<boolean>(resolve => {
+        if (getDeferredPrompt()) { resolve(true); return; }
+        let finished = false;
+        const finish = (available: boolean) => {
+          if (finished) return;
+          finished = true;
+          unsubscribe();
+          window.clearTimeout(timer);
+          resolve(available);
+        };
+        const unsubscribe = subscribeInstall(() => { if (getDeferredPrompt()) finish(true); });
+        const timer = window.setTimeout(() => finish(!!getDeferredPrompt()), REINSTALL_PROMPT_WAIT_MS);
+      });
+      if (!found) { setPhase('no-prompt'); return; }
+    }
+    if (!(await runPrompt())) setPhase('no-prompt');
+  };
+  const httpsUrl = reinstallUrl(window.location.origin, slug, current);
+  const chromeUrl = chromeIntentUrl(httpsUrl, { android });
+  const appLogo = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')?.href
+    || document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.href;
   return overlay(
     phase === 'installed' ? installedView
     : phase === 'pending-install' || phase === 'slow-install' ? pendingView
-    : phase === 'ready' ? (
-      <div data-testid="identity-ready">
-        {title('Atualizando aplicativo...')}
-        <ProgressBar value={95} />
-        <button type="button" style={{ ...primaryBtn, width: '100%', marginTop: 14 }} data-testid="identity-install"
-          onClick={() => { void runPrompt().then(ok => { if (!ok) setPhase('no-prompt'); }); }}>Instalar</button>
-        {close()}
-      </div>
-    ) : phase === 'no-prompt' ? (
-      <div data-testid="identity-no-prompt">
-        {title('Atualizando aplicativo...')}
-        <ProgressBar value={95} />
-        <p style={{ fontSize: 13, margin: '12px 0 0' }}>Toque em <b>⋮</b> e em <b>Abrir no Chrome</b> ou <b>Instalar app</b>.</p>
+    : (
+      <div data-testid="identity-reinstall" style={{ textAlign: 'center' }}>
+        {appLogo ? <img src={appLogo} alt={`Logo de ${storeName}`} width={80} height={80}
+          style={{ width: 80, height: 80, objectFit: 'contain', borderRadius: 16, margin: '0 auto 12px' }} /> :
+          <div role="img" aria-label={`Logo de ${storeName}`} style={{ background: 'var(--dc-primary)', color: 'var(--dc-button-text)', width: 80, height: 80, borderRadius: 16, margin: '0 auto 12px', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800 }}>{storeName.slice(0, 2).toUpperCase()}</div>}
+        <p style={{ fontSize: 20, fontWeight: 800, margin: '0 0 18px' }}>{storeName}</p>
+        <button type="button" style={{ ...primaryBtn, width: '100%', minHeight: 52, fontSize: 16 }}
+          data-testid="identity-install" onClick={() => { void installFromPage(); }}>Instalar app</button>
+        <a href={chromeUrl} data-testid="identity-chrome" style={{ ...secondaryBtn, width: '100%', minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', marginTop: 12, textDecoration: 'none', fontSize: 16 }}>
+          Baixar pelo Google Chrome
+        </a>
+        {phase === 'no-prompt' && <p data-testid="identity-no-prompt" style={{ fontSize: 13, margin: '14px 0 0' }}>Toque em <b>⋮</b> e escolha <b>Abrir no Chrome</b> ou <b>Instalar app</b>.</p>}
         {close('Fechar')}
-      </div>
-    ) : (
-      <div data-testid="identity-waiting">
-        {title('Atualizando aplicativo...')}
-        <ProgressBar indeterminate />
       </div>
     ),
   );
