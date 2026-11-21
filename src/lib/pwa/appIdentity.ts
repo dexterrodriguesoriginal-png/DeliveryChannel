@@ -1,17 +1,7 @@
 /**
- * EXPERIMENTO (só lojas da lista de teste, ver server/pwa/identityTest.ts): "reinstalar em 1 toque" quando
- * a logo da loja muda.
- *
- * Por que um ENDEREÇO novo e não só um `id` novo (Chromium, Android):
- *  - Antes de disparar beforeinstallprompt o Chrome pergunta se já existe um WebAPK que abre a start_url do
- *    manifesto (webapps_client_android.cc DoesNewWebAppConflictWithExistingInstallation →
- *    WebappsUtils::IsWebApkInstalled(start_url) → WebApkValidator.queryFirstWebApkPackage: intent-filter
- *    pelo scope). Mesma start_url/scope = "já instalado" e o convite nunca aparece, mesmo com id novo.
- *  - Na instalação o app_key enviado ao servidor de WebAPK é o manifest id (webapk_installer.cc BuildProto
- *    com manifest_id; webapk.proto "app_key: the key used for identifying a WebAPK"): id novo = app novo
- *    (outro pacote). O Android NÃO troca o app antigo; ele continua até o cliente remover.
- * Então cada versão da logo ganha scope próprio: /app/<slug>~<versão>/ (fora do scope /app/<slug>/ antigo).
- * Funções puras, usadas no servidor e no cliente.
+ * Compatibilidade com WebAPKs já instalados em /app/<slug>~<hash10>/.
+ * Novas instalações usam sempre o manifesto, id e scope canônicos.
+ * Estes helpers preservam identidades legadas, não criam versões novas.
  */
 export const APP_IDENTITY_SEP = '~';
 export const APP_IDENTITY_RE = /^[0-9a-f]{10}$/;
