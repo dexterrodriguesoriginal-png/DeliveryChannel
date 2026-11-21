@@ -20,7 +20,7 @@ export function canInviteInstallApp(theme: Partial<TenantTheme> | null | undefin
   if (!isLogoConfirmed(theme)) return false;
   const state = onboardingState(theme);
   if (!state || state.legacyInvites) return true; // Legacy shops preserve their existing invitations.
-  return state.completed === true && state.navConfirmedColor === systemBarsFromTokens(themeToTokens(theme)).nav;
+  return state.completed === true && !!state.navConfirmedColor;
 }
 
 export function installedIdentityChanged(before: Partial<TenantTheme>, after: Partial<TenantTheme>): boolean {
