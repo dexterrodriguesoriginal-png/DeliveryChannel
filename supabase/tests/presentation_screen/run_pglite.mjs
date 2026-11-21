@@ -7,6 +7,10 @@ const read = (p) => fs.readFileSync(p, 'utf8');
 const T = '10000000-0000-0000-0000-000000000001', O = '10000000-0000-0000-0000-000000000002';
 const U = '90000000-0000-0000-0000-000000000001';
 const M = '90000000-0000-0000-0000-000000000002';
+const CASHIER = '90000000-0000-0000-0000-000000000003';
+const CUSTOMER = '90000000-0000-0000-0000-000000000004';
+const OTHER_OWNER = '90000000-0000-0000-0000-000000000005';
+const NO_MEMBERSHIP = '90000000-0000-0000-0000-000000000006';
 const IMG = '50000000-0000-0000-0000-000000000001', VID = '50000000-0000-0000-0000-000000000002', LONG = '50000000-0000-0000-0000-000000000003',
   BIG = '50000000-0000-0000-0000-000000000004', DRAFT = '50000000-0000-0000-0000-000000000005', OTHER = '50000000-0000-0000-0000-000000000006',
   BIGVID = '50000000-0000-0000-0000-000000000007';
@@ -36,9 +40,11 @@ CREATE FUNCTION public.set_tenant_module(p_tenant uuid,p_key text,p_enabled bool
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE v_role text;
 BEGIN
- -- Simula o SELECT real de tenant_users: usuário sem vínculo ativo => papel NULL.
- v_role := CASE WHEN current_setting('test.tenant',true) = p_tenant::text
-   THEN NULLIF(current_setting('test.role',true), '') ELSE NULL END;
+ -- Mesma consulta da RPC real: roles de test.role não concedem autorização.
+ SELECT tu.role_id INTO v_role FROM public.tenant_users tu
+ WHERE tu.tenant_id = p_tenant
+   AND tu.user_id = auth.uid()
+   AND tu.status = 'ACTIVE';
  IF v_role IS DISTINCT FROM 'OWNER' THEN RAISE EXCEPTION 'MODULE_OWNER_REQUIRED' USING ERRCODE='42501'; END IF;
  IF p_key NOT IN ('pos', 'loyalty', 'credit_tab') THEN RAISE EXCEPTION 'MODULE_INVALID'; END IF;
  INSERT INTO public.tenant_modules(tenant_id,module_key,enabled) VALUES(p_tenant,p_key,p_enabled)
@@ -59,7 +65,10 @@ GRANT EXECUTE ON FUNCTION public.get_public_store(text) TO anon, authenticated;
 CREATE SCHEMA supabase_migrations;
 INSERT INTO public.tenants VALUES ('${T}','loja','Loja'),('${O}','outra','Outra');
 INSERT INTO public.tenant_users(tenant_id,user_id,role_id,status) VALUES
- ('${T}','${U}','OWNER','ACTIVE'), ('${T}','${M}','MANAGER','ACTIVE');
+ ('${T}','${U}','OWNER','ACTIVE'), ('${T}','${M}','MANAGER','ACTIVE'),
+ ('${T}','${CASHIER}','CASHIER','ACTIVE'),
+ ('${T}','${CUSTOMER}','CUSTOMER','ACTIVE'),
+ ('${O}','${OTHER_OWNER}','OWNER','ACTIVE');
 INSERT INTO public.marketing_media_assets VALUES
  ('${IMG}','${T}','CREATIVE','IMAGE','PUBLISHED','${T}/a.webp','${T}/p/a.webp',800000,1080,1920,NULL),
  ('${VID}','${T}','CREATIVE','VIDEO','PUBLISHED','${T}/v.mp4','${T}/p/v.mp4',9000000,1080,1920,9.8),
@@ -95,8 +104,10 @@ await db.exec('SET ROLE anon');
 await assert.rejects(db.query(`SELECT public.set_presentation_screen('${T}','${IMG}')`), /permission denied/);
 await assert.rejects(db.query(`SELECT * FROM public.tenant_presentation_screens`), /permission denied/);
 await db.exec('RESET ROLE');
-for (const [role, tenant] of [['CASHIER', T], ['CUSTOMER', T], ['OWNER', O]]) {
-  await as(role, tenant, U, async () => {
+for (const [role, tenant, uid] of [
+  ['CASHIER', T, CASHIER], ['CUSTOMER', T, CUSTOMER], ['OWNER', O, OTHER_OWNER],
+]) {
+  await as(role, tenant, uid, async () => {
     await db.exec('SET ROLE authenticated');
     await assert.rejects(db.query(`SELECT public.set_presentation_screen('${T}','${IMG}')`), /FORBIDDEN/);
     await assert.rejects(db.query(`SELECT public.clear_presentation_screen('${T}')`), /FORBIDDEN/);
@@ -111,15 +122,17 @@ await as('OWNER', T, U, async () => {
  await assert.rejects(db.query(`SELECT public.set_presentation_screen('${T}','${IMG}')`), /MODULE_DISABLED/);
  await db.query(`SELECT public.set_tenant_module('${T}','store_presentation',true)`);
 });
-await as('MANAGER', O, U, async () => {
+await as('MANAGER', T, M, async () => {
  await db.exec('SET ROLE authenticated');
  await assert.rejects(db.query(`SELECT public.set_presentation_screen('${T}','${IMG}')`), /FORBIDDEN/);
  await assert.rejects(db.query(`SELECT public.set_tenant_module('${T}','store_presentation',false)`), /MODULE_OWNER_REQUIRED|FORBIDDEN/);
 });
 
 // Regressão P1: vínculo inexistente deixa v_role NULL na SECURITY DEFINER.
-for (const [role, tenant] of [['MANAGER', O], ['OWNER', O], ['', T]]) {
- await as(role, tenant, U, async () => {
+for (const [role, tenant, uid] of [
+ ['MANAGER', T, M], ['OWNER', O, OTHER_OWNER], ['', T, NO_MEMBERSHIP],
+]) {
+ await as(role, tenant, uid, async () => {
   await db.exec('SET ROLE authenticated');
   for (const enabled of [true, false]) {
    await assert.rejects(
@@ -158,7 +171,7 @@ await as('OWNER', T, U, async () => {
   assert.equal(row.length, 1); assert.equal(row[0].updated_by, U);
 });
 // Leitura do painel isolada por loja.
-await as('OWNER', O, U, async () => { await db.exec('SET ROLE authenticated'); assert.equal((await db.query(`SELECT * FROM public.tenant_presentation_screens`)).rows.length, 0); });
+await as('OWNER', O, OTHER_OWNER, async () => { await db.exec('SET ROLE authenticated'); assert.equal((await db.query(`SELECT * FROM public.tenant_presentation_screens`)).rows.length, 0); });
 
 // Público (anon): só os campos publicados, sem caminho privado, ids internos ou usuário.
 await db.exec('SET ROLE anon');
