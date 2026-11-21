@@ -8,6 +8,7 @@
  *  - sem e-mail, PIX, custo, estoque, contadores ou limites internos.
  */
 import { Offer, Product, PromotionCarousel } from '../types';
+import { mapPresentation } from '../lib/pwa/presentation';
 import { mapPublicStorePayload, PublicStoreData, PublicStorePayloadError } from './publicStoreMapper';
 
 export type MediaUrlResolver = (bucket: 'marketing-public', path: string) => string;
@@ -224,6 +225,7 @@ export function mapN6PublicStore(raw: unknown, resolve: MediaUrlResolver, receiv
   return {
     ...base,
     settings: { ...base.settings, pixKey: undefined },
+    presentation: mapPresentation(raw.presentation, resolve),
     offers: [...offers, ...campaignCards],
     promotionCarousels: mapN6Carousels(raw.carousels, tenantId, base.products, resolve),
     campaigns: [],
