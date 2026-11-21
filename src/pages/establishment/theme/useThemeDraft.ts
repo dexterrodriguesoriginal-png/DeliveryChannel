@@ -72,13 +72,13 @@ export function useThemeDraft(savedTheme: TenantTheme) {
       // do Android e barra de ícones passam a seguir o modelo (escolhas manuais anteriores são substituídas;
       // a loja pode personalizá-las de novo depois em Cores).
       updateTokens(() => {
-        const meta = { ...copy(template.tokens.meta || {}), templateId: template.id };
+        const meta = { ...copy(template.tokens.meta || {}), ownerOnboarding: themeToTokens(state.draft).meta?.ownerOnboarding, templateId: template.id };
         if (!meta.systemBars) delete meta.systemBars;
         if (meta.appTabBarColor === undefined) meta.appTabBarColor = null;
         return { ...copy(template.tokens), meta };
       });
     },
-    [updateTokens]
+    [updateTokens, state.draft]
   );
   return {
     draftTheme: state.draft,
