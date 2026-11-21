@@ -24,6 +24,8 @@ describe('migration da tela inicial personalizada', () => {
     expect(sql).not.toMatch(/GRANT EXECUTE ON FUNCTION public\.(set|clear)_presentation_screen[^;]*anon/);
     expect(sql).toContain('REVOKE ALL ON FUNCTION public._presentation_store_base(text) FROM PUBLIC, anon, authenticated');
     expect(down).toContain('PRESENTATION DOWN');
+    expect(down).toMatch(/END;\s*\$\$;/);
+    expect(sql).toContain("p_key IS DISTINCT FROM ''store_presentation'' OR v_role IS DISTINCT FROM ''MANAGER''");
     expect(down).not.toMatch(/CASCADE/);
   });
   it('PGlite: aplica, isola tenants, não vaza campos e o rollback restaura a função exata', () => {
