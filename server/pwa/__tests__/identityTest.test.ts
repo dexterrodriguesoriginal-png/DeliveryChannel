@@ -98,7 +98,7 @@ describe('manifesto estável para todas as instalações novas', () => {
       { src: `/app/mercado-teste-dc/icons/icon-512.png?v=${iconVersion(test)}`, sizes: '512x512', type: 'image/png', purpose: 'any' },
       { src: `/app/mercado-teste-dc/icons/maskable-512.png?v=${iconVersion(test)}`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ]);
-    expect(m.icons.some(i => i.purpose === 'any maskable')).toBe(false);
+    expect(m.icons.some(i => String(i.purpose) === 'any maskable')).toBe(false);
     const colorChange = { ...test, theme: { ...test.theme, primaryColor: '#abcdef' } };
     expect(iconVersion(colorChange)).toBe(iconVersion(test));
     expect(iconVersion({ ...test, theme: { ...test.theme, logoUrl: '/different.png' } }))
