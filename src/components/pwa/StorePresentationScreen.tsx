@@ -53,6 +53,7 @@ export function StorePresentationScreen({ plan, storeName, reducedMotion = false
   return (
     <div
       data-testid="store-presentation"
+      data-kind={plan.kind}
       role="dialog"
       aria-modal="true"
       aria-label={storeName ? `Abertura de ${storeName}` : 'Abertura da loja'}
