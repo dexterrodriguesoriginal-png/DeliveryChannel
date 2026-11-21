@@ -43,7 +43,8 @@ export interface PwaRouteOptions {
 const MIME_BY_EXT: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml' };
 
 export const IMMUTABLE_ICON_CACHE_CONTROL = 'public, max-age=31536000, immutable';
-export const DEFAULT_LOGO_CACHE_TTL_MS = 5 * 60 * 1000;
+export const DEFAULT_LOGO_CACHE_TTL_MS = 60 * 1000;
+export const RETRY_ICON_AFTER_SECONDS = 30;
 export const DEFAULT_MAX_LOGO_CACHE_ENTRIES = 100;
 export const DEFAULT_MAX_LOGO_CACHE_BYTES = 16 * 1024 * 1024;
 export const MAX_SINGLE_LOGO_CACHE_BYTES = 2 * 1024 * 1024;
@@ -211,12 +212,14 @@ export type PwaRouter = Router & {
   lookupStore: (slug: string) => Promise<StoreIdentityInput | null>;
   /** Apenas rotas legadas ~hash recebem manifesto versionado. */
   identityHeadOptions: (store: StoreIdentityInput | null, identity: string | null) => IdentityHeadOptions;
-  /** Para o HTML da vitrine: devolve na hora a última leitura (até staleMs) e atualiza em segundo plano. */
+  /** HTML usa identidade enriquecida com hash dos bytes da logo. */
   lookupStoreForHtml: (slug: string) => Promise<StoreIdentityInput | null>;
+  /** Remove dados e ícones de um tenant após salvar seu Design do App. */
+  invalidateStore: (slug: string, tenantId: string) => void;
 };
 
-/** Quanto tempo o HTML da vitrine pode usar a última leitura da loja enquanto busca a nova (manifesto/ícones não usam). */
-export const DEFAULT_HTML_STALE_MS = 10 * 60 * 1000;
+/** Limite máximo para o HTML; invalidação explícita permite antecipar a atualização. */
+export const DEFAULT_HTML_STALE_MS = 60 * 1000;
 
 interface CachedLogoEntry {
   at: number;
@@ -225,7 +228,8 @@ interface CachedLogoEntry {
 }
 
 export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
-  const ttl = opts.ttlMs ?? 30 * 1000;
+  // Leitura fresca a cada solicitação para garantir identidade atual mesmo entre réplicas do servidor.
+  const ttl = opts.ttlMs ?? 0;
   const logoTtlMs = opts.logoTtlMs ?? DEFAULT_LOGO_CACHE_TTL_MS;
   const maxLogoCacheEntries = opts.maxLogoCacheEntries ?? DEFAULT_MAX_LOGO_CACHE_ENTRIES;
   const maxLogoCacheBytes = opts.maxLogoCacheBytes ?? DEFAULT_MAX_LOGO_CACHE_BYTES;
@@ -239,18 +243,21 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   const splashTestSlugs = new Set(opts.splashTestSlugs ?? []);
   let dcSplashPng: Buffer | null = null;
 
-  const htmlStaleMs = opts.htmlStaleMs ?? DEFAULT_HTML_STALE_MS;
+  // Sem stale implícito: a próxima visita após salvar precisa consultar o tema atualizado.
+  const htmlStaleMs = Math.min(opts.htmlStaleMs ?? 0, DEFAULT_HTML_STALE_MS);
+  const cacheGeneration = new Map<string, number>();
   const inflight = new Map<string, Promise<Awaited<ReturnType<StoreResolver>>>>();
 
   /** Uma consulta por loja por vez (pedidos simultâneos dividem a mesma resposta). */
   function refresh(slug: string) {
     let job = inflight.get(slug);
     if (!job) {
+      const generation = cacheGeneration.get(slug) ?? 0;
       job = opts.resolveStore(slug).then((v) => {
-        if (v.status !== 'error') storeCache.set(slug, { at: Date.now(), v });
+        if (v.status !== 'error' && (cacheGeneration.get(slug) ?? 0) === generation) storeCache.set(slug, { at: Date.now(), v });
         if (storeCache.size > 500) storeCache.delete(storeCache.keys().next().value as string);
         return v;
-      }).finally(() => inflight.delete(slug));
+      }).finally(() => { if (inflight.get(slug) === job) inflight.delete(slug); });
       inflight.set(slug, job);
     }
     return job;
@@ -274,6 +281,19 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       }
     }
     return refresh(slug);
+  }
+
+  function invalidateStore(slug: string, tenantId: string) {
+    cacheGeneration.set(slug, (cacheGeneration.get(slug) ?? 0) + 1);
+    storeCache.delete(slug);
+    inflight.delete(slug);
+    // Todas as imagens/variantes antigas deste tenant ficam inválidas, inclusive URL mantida.
+    for (const key of [...logoCache.keys()]) {
+      if (key.startsWith(`${tenantId}|`)) evictLogoCacheEntry(key);
+    }
+    for (const key of [...iconCache.keys()]) {
+      if (key.startsWith(`${tenantId}|`)) iconCache.delete(key);
+    }
   }
 
   function evictLogoCacheEntry(key: string) {
@@ -332,6 +352,23 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     return loaded;
   }
 
+  /** Hash de conteúdo real: URL igual e imagem alterada geram uma versão nova. */
+  async function withLogoDigest(store: StoreIdentityInput): Promise<StoreIdentityInput | null> {
+    const url = store.theme?.logoUrl?.trim();
+    if (!url) return store;
+    const logo = await loadLogo(store.id, url);
+    if (!logo) return null;
+    const contentHash = crypto.createHash('sha256').update(logo.bytes).digest('hex').slice(0, 24);
+    return { ...store, iconContentHash: contentHash };
+  }
+
+  function iconUnavailable(res: Response) {
+    res.set('Cache-Control', 'no-store');
+    res.set('Retry-After', String(RETRY_ICON_AFTER_SECONDS));
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.status(503).type('text/plain').send('Ícone temporariamente indisponível');
+  }
+
   /** Segmentos versionados existentes são permanentes, independentemente da logo atual. */
   function parseSegment(raw: string): { slug: string; identity: string | null } {
     const seg = splitStoreSegment(raw);
@@ -384,12 +421,14 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     const store = await guard(req, res);
     if (!store) return;
     const { identity } = parseSegment(String(req.params.slug || ''));
+    const verified = await withLogoDigest(store);
+    if (!verified) { iconUnavailable(res); return; }
     res.set('Content-Type', 'application/manifest+json; charset=utf-8');
     // Sempre revalidado: tema/logo/barras novos chegam ao app logo após a loja salvar.
     res.set('Cache-Control', 'no-cache');
     res.set('X-Content-Type-Options', 'nosniff');
     const splashTest = splashTestSlugs.has(store.slug);
-    res.send(JSON.stringify(identity ? identityTestManifest(store, identity, { splashTest }) : serverManifest(store, { splashTest })));
+    res.send(JSON.stringify(identity ? identityTestManifest(verified, identity, { splashTest }) : serverManifest(verified, { splashTest })));
   });
 
   router.get('/totem/:slug/manifest.webmanifest', async (req, res) => {
@@ -408,36 +447,35 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     const store = await guard(req, res);
     if (!store) return;
     if (testVariant) { await sendSplashTestIcon(res, store, variant as unknown as SplashTestIconVariant); return; }
-    const ver = iconVersion(store);
+    const configuredLogo = Boolean(store.theme?.logoUrl?.trim());
+    const logo = configuredLogo ? await loadLogo(store.id, store.theme?.logoUrl) : null;
+    if (configuredLogo && !logo) { iconUnavailable(res); return; }
+    const verified = logo
+      ? { ...store, iconContentHash: crypto.createHash('sha256').update(logo.bytes).digest('hex').slice(0, 24) }
+      : store;
+    const ver = iconVersion(verified);
     const key = `${store.id}|${ver}|${variant}`;
     let png = iconCache.get(key);
-    let usedRealLogo = Boolean(png);
     if (!png) {
-      const logo = await loadLogo(store.id, store.theme?.logoUrl);
       if (logo) {
         try {
-          png = await renderStoreIconPng(logo.bytes, logo.contentType, variant);
-          if (await isNearlyFlatPng(png)) {
-            png = undefined;
-            usedRealLogo = false;
-          } else {
-            usedRealLogo = true;
-          }
+          const rendered = await renderStoreIconPng(logo.bytes, logo.contentType, variant);
+          if (await isNearlyFlatPng(rendered)) { iconUnavailable(res); return; }
+          png = rendered;
+          iconCache.set(key, png); // somente PNG renderizado a partir de logo real verificada
+          if (iconCache.size > 600) iconCache.delete(iconCache.keys().next().value as string);
         } catch {
-          png = undefined;
-          usedRealLogo = false;
+          iconUnavailable(res);
+          return;
         }
-      }
-      if (png && usedRealLogo) {
-        iconCache.set(key, png);
-        if (iconCache.size > 600) iconCache.delete(iconCache.keys().next().value as string);
       } else {
+        // Iniciais só quando NÃO há logo configurada. Nunca armazenar fallback no iconCache.
         png = renderInitialsPng(storeDisplayName(store), iconFallbackColor(store.theme), variant);
       }
     }
     const reqV = typeof req.query.v === 'string' ? req.query.v : '';
     res.set('Content-Type', 'image/png');
-    res.set('Cache-Control', usedRealLogo && reqV === ver ? IMMUTABLE_ICON_CACHE_CONTROL : 'no-cache');
+    res.set('Cache-Control', logo && reqV === ver ? IMMUTABLE_ICON_CACHE_CONTROL : 'no-cache');
     res.set('X-Content-Type-Options', 'nosniff');
     res.send(png);
   });
@@ -480,12 +518,15 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   const lookupStoreForHtml = async (slug: string) => {
     if (!isValidSlug(slug)) return null;
     const r = await lookupForHtml(slug);
-    return r.status === 'ok' && r.store.slug === slug ? r.store : null;
+    if (r.status !== 'ok' || r.store.slug !== slug) return null;
+    // Quando o storage falha, preserva o HTML/cores; o manifesto/PNG respondem 503,
+    // sem publicar uma imagem de iniciais indevida.
+    return (await withLogoDigest(r.store)) || r.store;
   };
   const identityHeadOptions = (store: StoreIdentityInput | null, identity: string | null): IdentityHeadOptions => {
     if (!store || !identity || !/^[0-9a-f]{10}$/.test(identity)) return {};
     return { manifestHref: versionedManifestPath(store.slug, identity) };
   };
-  return Object.assign(router, { lookupStore, lookupStoreForHtml, identityHeadOptions });
+  return Object.assign(router, { lookupStore, lookupStoreForHtml, identityHeadOptions, invalidateStore });
 }
 
