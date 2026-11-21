@@ -77,6 +77,9 @@ export interface LayoutConfig {
 }
 
 export interface ThemeMeta {
+  /** Progresso do guia do dono, isolado por loja em tenant_themes.theme_tokens. */
+  ownerOnboarding?: { step: number; skipped?: boolean; completed?: boolean; navConfirmedColor?: string };
+
   templateId?: string;
   legacyPresetId?: string;
   storeDefault?: Omit<ThemeTokens, 'meta'>;
