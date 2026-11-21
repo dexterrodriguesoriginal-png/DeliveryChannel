@@ -12,7 +12,7 @@ import type { StoreIdentityInput } from '../../../src/lib/pwa/storeManifest';
 
 const real: StoreIdentityInput = {
   id: 'tenant-real-01', slug: 'adegasshow', name: 'Adega Show',
-  theme: { storeName: 'Adega Show', primaryColor: '#7c3aed', navBarColor: '#1d4ed8', statusBarColor: '#111827', logoUrl: '/nao-existe.png' },
+  theme: { storeName: 'Adega Show', primaryColor: '#7c3aed', navBarColor: '#1d4ed8', statusBarColor: '#111827' },
 };
 const test: StoreIdentityInput = {
   id: 'tenant-test-01', slug: 'mercado-teste-dc', name: 'Mercado Teste DC',

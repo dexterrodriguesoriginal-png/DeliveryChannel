@@ -19,6 +19,7 @@ import { ICON_VARIANTS, IconVariant, isNearlyFlatPng, renderInitialsPng, renderS
 import { DC_BRAND_SVG, DC_SPLASH_ICON_VERSION, SPLASH_TEST_COLOR } from './splashTest';
 import { fetchPublicImage } from './safeFetch';
 import { isValidSlug, StoreResolver, supabaseEnvFrom } from './storeSource';
+import { RateLimiter } from '../payments/security';
 import { splitStoreSegment, versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope } from '../../src/lib/pwa/appIdentity';
 
 declare const __PWA_BUILD_VERSION__: string | undefined;
@@ -248,6 +249,8 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   const htmlStaleMs = Math.min(opts.htmlStaleMs ?? 0, DEFAULT_HTML_STALE_MS);
   const cacheGeneration = new Map<string, number>();
   const inflight = new Map<string, Promise<Awaited<ReturnType<StoreResolver>>>>();
+  const invalidateIpLimit = new RateLimiter(30, 60_000);
+  const invalidateUserLimit = new RateLimiter(20, 60_000);
 
   /** Uma consulta por loja por vez (pedidos simultâneos dividem a mesma resposta). */
   function refresh(slug: string) {
@@ -363,6 +366,21 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     return { ...store, iconContentHash: contentHash };
   }
 
+  /** O HTML no servidor.ts tem orçamento de 1,5s; não esperar o download da logo (até 4s). */
+  const HTML_LOGO_DIGEST_BUDGET_MS = 400;
+  async function withLogoDigestForHtml(store: StoreIdentityInput): Promise<StoreIdentityInput> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const raced = await Promise.race([
+        withLogoDigest(store),
+        new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), HTML_LOGO_DIGEST_BUDGET_MS); }),
+      ]);
+      return raced || store;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   function iconUnavailable(res: Response) {
     res.set('Cache-Control', 'no-store');
     res.set('Retry-After', String(RETRY_ICON_AFTER_SECONDS));
@@ -412,6 +430,10 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantId)) {
       res.status(400).json({ error: 'Loja inválida' }); return;
     }
+    const ip = req.socket.remoteAddress || 'unknown';
+    if (!invalidateIpLimit.allow(ip)) {
+      res.status(429).set('Retry-After', '60').json({ error: 'Muitas solicitações' }); return;
+    }
     try {
       const db = createClient(cfg.url, cfg.key, {
         auth: { persistSession: false, autoRefreshToken: false },
@@ -419,10 +441,16 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       });
       const { data: session, error: authError } = await db.auth.getUser(token);
       if (authError || !session.user) { res.status(401).json({ error: 'Sessão inválida' }); return; }
+      if (!invalidateUserLimit.allow(session.user.id)) {
+        res.status(429).set('Retry-After', '60').json({ error: 'Muitas solicitações' }); return;
+      }
       const { data: membership, error: membershipError } = await db.from('tenant_users')
         .select('tenant_id,role_id').eq('tenant_id', tenantId).eq('user_id', session.user.id)
         .eq('status', 'ACTIVE').in('role_id', ['OWNER', 'MANAGER']).maybeSingle();
-      if (membershipError || !membership) { res.status(403).json({ error: 'Sem acesso à loja' }); return; }
+      const role = membership && (membership as { role_id?: string }).role_id;
+      if (membershipError || !membership || (role !== 'OWNER' && role !== 'MANAGER')) {
+        res.status(403).json({ error: 'Sem acesso à loja' }); return;
+      }
       // Consulta direta à fonte pública (sem confiar no cache local para autorizar a operação).
       const resolved = await opts.resolveStore(slug);
       if (resolved.status !== 'ok' || resolved.store.id !== tenantId || resolved.store.slug !== slug) {
@@ -543,14 +571,19 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       }
       png = dcSplashPng;
     } else {
-      const logo = await loadLogo(store.id, store.theme?.logoUrl);
+      const configuredLogo = Boolean(store.theme?.logoUrl?.trim());
+      const logo = configuredLogo ? await loadLogo(store.id, store.theme?.logoUrl, store.theme?.updatedAt || store.updatedAt) : null;
+      if (configuredLogo && !logo) { iconUnavailable(res); return; }
       if (logo) {
         try {
           const p = await renderStoreIconPng(logo.bytes, logo.contentType, variant);
           if (!(await isNearlyFlatPng(p))) png = p;
         } catch { png = undefined; }
       }
-      if (!png) png = renderInitialsPng(storeDisplayName(store), iconFallbackColor(store.theme), variant);
+      if (!png) {
+        if (configuredLogo) { iconUnavailable(res); return; }
+        png = renderInitialsPng(storeDisplayName(store), iconFallbackColor(store.theme), variant);
+      }
     }
     res.set('Content-Type', 'image/png');
     res.set('Cache-Control', 'no-cache');
@@ -568,8 +601,8 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     const r = await lookupForHtml(slug);
     if (r.status !== 'ok' || r.store.slug !== slug) return null;
     // Quando o storage falha, preserva o HTML/cores; o manifesto/PNG respondem 503,
-    // sem publicar uma imagem de iniciais indevida.
-    return (await withLogoDigest(r.store)) || r.store;
+    // sem publicar uma imagem de iniciais indevida. Digest só entra se o cache/orçamento permitir.
+    return withLogoDigestForHtml(r.store);
   };
   const identityHeadOptions = (store: StoreIdentityInput | null, identity: string | null): IdentityHeadOptions => {
     if (!store || !identity || !/^[0-9a-f]{10}$/.test(identity)) return {};

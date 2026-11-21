@@ -263,6 +263,26 @@ describe('rotas PWA por loja', () => {
     } finally { await new Promise<void>(resolve => srv.close(() => resolve())); }
   });
 
+  it('HTML não espera o download lento da logo: devolve identidade (cores/nome) dentro do orçamento', async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#159957"/></svg>');
+    const store = {
+      id: 'tenant-html-budget', slug: 'loja-orcamento', name: 'Loja Orçamento',
+      theme: { storeName: 'Loja Orçamento', logoUrl: 'https://cdn.example/slow.png', statusBarColor: '#159957', primaryColor: '#159957' },
+    };
+    const router = createPwaRouter({
+      resolveStore: async slug => slug === store.slug ? { status: 'ok', store } : { status: 'not_found' },
+      publicDir: '/nonexistent',
+      fetchLogo: () => new Promise(resolve => setTimeout(() => resolve({ bytes: svg, contentType: 'image/svg+xml' }), 2000)),
+    });
+    const started = Date.now();
+    const htmlStore = await router.lookupStoreForHtml(store.slug);
+    const elapsed = Date.now() - started;
+    expect(htmlStore?.name).toBe('Loja Orçamento');
+    expect(htmlStore?.theme?.statusBarColor).toBe('#159957');
+    expect(htmlStore?.iconContentHash).toBeUndefined();
+    expect(elapsed).toBeLessThan(900);
+  });
+
   it('item 4 e 6: staticAssetCacheControl aplica immutable só em arquivos com hash (excluindo /assets/aistudio) e resolveBuildVersion não usa dc-pwa-v1 fixo', () => {
     expect(HASHED_ASSET_RE.test('index-AbCd1234.js')).toBe(true);
     expect(HASHED_ASSET_RE.test('style-9f8e7d6c.css')).toBe(true);
