@@ -6,6 +6,7 @@ const db = new PGlite();
 const read = (p) => fs.readFileSync(p, 'utf8');
 const T = '10000000-0000-0000-0000-000000000001', O = '10000000-0000-0000-0000-000000000002';
 const U = '90000000-0000-0000-0000-000000000001';
+const M = '90000000-0000-0000-0000-000000000002';
 const IMG = '50000000-0000-0000-0000-000000000001', VID = '50000000-0000-0000-0000-000000000002', LONG = '50000000-0000-0000-0000-000000000003',
   BIG = '50000000-0000-0000-0000-000000000004', DRAFT = '50000000-0000-0000-0000-000000000005', OTHER = '50000000-0000-0000-0000-000000000006',
   BIGVID = '50000000-0000-0000-0000-000000000007';
@@ -16,6 +17,8 @@ CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT NULLIF(current
 CREATE FUNCTION public.is_tenant_owner_or_manager(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT current_setting('test.tenant',true)=$1::text AND current_setting('test.role',true) IN ('OWNER','MANAGER') $$;
 GRANT EXECUTE ON FUNCTION public.is_tenant_owner_or_manager(uuid) TO authenticated;
 CREATE TABLE public.tenants(id uuid PRIMARY KEY, slug text UNIQUE, name text);
+CREATE TABLE public.tenant_users (tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  user_id uuid NOT NULL, role_id text NOT NULL, status text NOT NULL);
 CREATE TABLE public.tenant_modules (
  tenant_id uuid REFERENCES public.tenants(id), module_key text NOT NULL,
  enabled boolean NOT NULL DEFAULT false, config jsonb DEFAULT '{}'::jsonb,
@@ -55,6 +58,8 @@ REVOKE ALL ON FUNCTION public.get_public_store(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_public_store(text) TO anon, authenticated;
 CREATE SCHEMA supabase_migrations;
 INSERT INTO public.tenants VALUES ('${T}','loja','Loja'),('${O}','outra','Outra');
+INSERT INTO public.tenant_users(tenant_id,user_id,role_id,status) VALUES
+ ('${T}','${U}','OWNER','ACTIVE'), ('${T}','${M}','MANAGER','ACTIVE');
 INSERT INTO public.marketing_media_assets VALUES
  ('${IMG}','${T}','CREATIVE','IMAGE','PUBLISHED','${T}/a.webp','${T}/p/a.webp',800000,1080,1920,NULL),
  ('${VID}','${T}','CREATIVE','VIDEO','PUBLISHED','${T}/v.mp4','${T}/p/v.mp4',9000000,1080,1920,9.8),
@@ -126,10 +131,16 @@ for (const [role, tenant] of [['MANAGER', O], ['OWNER', O], ['', T]]) {
 }
 assert.equal((await db.query(`SELECT enabled FROM public.tenant_modules
  WHERE tenant_id='${T}' AND module_key='store_presentation'`)).rows[0].enabled, true);
-// Gerente realmente associado à própria loja continua autorizado.
-await as('MANAGER', T, U, async () => {
+// Gerente da própria loja não consegue alterar módulo, nem mídia, apesar de estar ativo.
+await as('MANAGER', T, M, async () => {
  await db.exec('SET ROLE authenticated');
- await db.query(`SELECT public.set_tenant_module('${T}','store_presentation',true)`);
+ for (const enabled of [true, false]) {
+  await assert.rejects(db.query(`SELECT public.set_tenant_module('${T}','store_presentation',${enabled})`),
+    /MODULE_OWNER_REQUIRED/);
+ }
+ await assert.rejects(db.query(`SELECT public.set_presentation_screen('${T}','${IMG}')`), /FORBIDDEN/);
+ await assert.rejects(db.query(`SELECT public.clear_presentation_screen('${T}')`), /FORBIDDEN/);
+ assert.equal((await db.query('SELECT * FROM public.tenant_presentation_screens')).rows.length, 0);
 });
 
 // Dono: escrita direta na tabela é proibida (só RPC).
@@ -159,8 +170,8 @@ const txt = JSON.stringify(s.presentation);
 for (const leak of ['/p/', U, IMG, 'private', 'updated']) assert.ok(!txt.includes(leak), `vazou ${leak}`);
 assert.equal((await db.query(`SELECT public.get_public_store('outra') r`)).rows[0].r.presentation, null);
 
-// Vídeo até 10 s troca a tela (upsert); gerente também pode.
-await as('MANAGER', T, U, async () => { await db.exec('SET ROLE authenticated'); await db.query(`SELECT public.set_presentation_screen('${T}','${VID}')`); });
+// Vídeo até 10 s troca a tela (upsert) apenas pelo proprietário.
+await as('OWNER', T, U, async () => { await db.exec('SET ROLE authenticated'); await db.query(`SELECT public.set_presentation_screen('${T}','${VID}')`); });
 s = (await db.query(`SELECT public.get_public_store('loja') r`)).rows[0].r;
 assert.equal(s.presentation.media.mediaType, 'VIDEO'); assert.equal(Number(s.presentation.media.durationSeconds), 9.8);
 
@@ -171,7 +182,7 @@ await as('OWNER', T, U, async () => {
 });
 assert.equal((await db.query(`SELECT public.get_public_store('loja') r`)).rows[0].r.presentation, null);
 assert.equal((await db.query(`SELECT count(*)::int c FROM public.tenant_presentation_screens`)).rows[0].c, 1);
-await as('MANAGER', T, U, async () => {
+await as('OWNER', T, U, async () => {
  await db.exec('SET ROLE authenticated');
  await db.query(`SELECT public.set_tenant_module('${T}','store_presentation',true)`);
 });
