@@ -16,15 +16,13 @@ export const PRESENTATION_MAX_VIDEO_BYTES = 15 * 1024 * 1024;
 export const PRESENTATION_DEFAULT_IMAGE_SECONDS = 3;
 export const PRESENTATION_MIN_IMAGE_SECONDS = 1;
 export const PRESENTATION_MAX_IMAGE_SECONDS = 5;
-/** Sem tela configurada (ou movimento reduzido): fundo do tema com logo/nome da loja. */
-export const PRESENTATION_THEME_FALLBACK_MS = 1000;
+/** Sem mídia, a abertura é pulada integralmente. */
 /** Se a mídia não começar a tocar/carregar nesse tempo, segue para a vitrine. */
 export const PRESENTATION_START_TIMEOUT_MS = 1500;
 export const PRESENTATION_FADE_MS = 200;
 /** Movimento reduzido: vídeo vira o primeiro quadro parado por esse tempo. */
 export const PRESENTATION_STILL_MS = 1500;
-/** Prévia do painel ("Ver abertura"): simula a #dc-boot antes da tela da loja. */
-export const PRESENTATION_PREVIEW_BOOT_MS = 900;
+/** Prévia do painel usa somente a mídia real, sem simular marca/splash. */
 
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'webp'];
 const VIDEO_EXT = ['mp4', 'webm'];
@@ -46,8 +44,10 @@ export function mapPresentation(
   const media = r.media as Record<string, unknown> | null | undefined;
   if (!media || typeof media !== 'object' || media.bucket !== 'marketing-public') return undefined;
   if (typeof media.path !== 'string' || !media.path) return undefined;
+  if (media.mediaType !== 'IMAGE' && media.mediaType !== 'VIDEO') return undefined;
   const mediaType: PresentationMediaType = media.mediaType === 'VIDEO' ? 'VIDEO' : 'IMAGE';
   const duration = Number(media.durationSeconds);
+  if (media.mediaType === 'VIDEO' && (!Number.isFinite(duration) || duration <= 0 || duration > PRESENTATION_MAX_VIDEO_SECONDS)) return undefined;
   return {
     url: resolve('marketing-public', media.path),
     mediaType,
@@ -63,8 +63,10 @@ export function presentationFileError(
   durationSeconds?: number,
 ): string | null {
   const ext = (file.name.split('.').pop() || '').toLowerCase();
-  const isImage = IMAGE_EXT.includes(ext) && file.type.startsWith('image/');
-  const isVideo = VIDEO_EXT.includes(ext) && file.type.startsWith('video/');
+  const imageMime: Record<string,string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+  const videoMime: Record<string,string> = { mp4: 'video/mp4', webm: 'video/webm' };
+  const isImage = IMAGE_EXT.includes(ext) && file.type === imageMime[ext];
+  const isVideo = VIDEO_EXT.includes(ext) && file.type === videoMime[ext];
   if (!isImage && !isVideo) return 'Formato não suportado. Use imagem JPG, PNG ou WEBP, ou vídeo MP4 ou WEBM.';
   if (isImage && file.size > PRESENTATION_MAX_IMAGE_BYTES) return 'A imagem passa de 3 MB. Envie uma versão mais leve.';
   if (isVideo && file.size > PRESENTATION_MAX_VIDEO_BYTES) return 'O vídeo passa de 15 MB. Envie uma versão mais leve.';
@@ -82,8 +84,7 @@ export function presentationFileError(
 export type PresentationPlan =
   | { kind: 'IMAGE'; url: string; durationMs: number }
   | { kind: 'VIDEO'; url: string; maxMs: number }
-  | { kind: 'STILL'; url: string; durationMs: number }
-;
+  | { kind: 'STILL'; url: string; durationMs: number };
 
 /** O que mostrar. Movimento reduzido nunca toca vídeo: mostra o primeiro quadro parado. Sem tela → tema. */
 export function presentationPlan(p: StorePresentation | undefined | null, opts: { reducedMotion?: boolean } = {}): PresentationPlan | null {
