@@ -33,11 +33,10 @@ CREATE FUNCTION public.set_tenant_module(p_tenant uuid,p_key text,p_enabled bool
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE v_role text;
 BEGIN
- v_role := current_setting('test.role',true);
+ -- Simula o SELECT real de tenant_users: usuário sem vínculo ativo => papel NULL.
+ v_role := CASE WHEN current_setting('test.tenant',true) = p_tenant::text
+   THEN NULLIF(current_setting('test.role',true), '') ELSE NULL END;
  IF v_role IS DISTINCT FROM 'OWNER' THEN RAISE EXCEPTION 'MODULE_OWNER_REQUIRED' USING ERRCODE='42501'; END IF;
- IF current_setting('test.tenant',true) IS DISTINCT FROM p_tenant::text THEN
-  RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
- END IF;
  IF p_key NOT IN ('pos', 'loyalty', 'credit_tab') THEN RAISE EXCEPTION 'MODULE_INVALID'; END IF;
  INSERT INTO public.tenant_modules(tenant_id,module_key,enabled) VALUES(p_tenant,p_key,p_enabled)
  ON CONFLICT(tenant_id,module_key) DO UPDATE SET enabled=excluded.enabled;
@@ -111,6 +110,26 @@ await as('MANAGER', O, U, async () => {
  await db.exec('SET ROLE authenticated');
  await assert.rejects(db.query(`SELECT public.set_presentation_screen('${T}','${IMG}')`), /FORBIDDEN/);
  await assert.rejects(db.query(`SELECT public.set_tenant_module('${T}','store_presentation',false)`), /MODULE_OWNER_REQUIRED|FORBIDDEN/);
+});
+
+// Regressão P1: vínculo inexistente deixa v_role NULL na SECURITY DEFINER.
+for (const [role, tenant] of [['MANAGER', O], ['OWNER', O], ['', T]]) {
+ await as(role, tenant, U, async () => {
+  await db.exec('SET ROLE authenticated');
+  for (const enabled of [true, false]) {
+   await assert.rejects(
+     db.query(`SELECT public.set_tenant_module('${T}','store_presentation',${enabled})`),
+     /MODULE_OWNER_REQUIRED/
+   );
+  }
+ });
+}
+assert.equal((await db.query(`SELECT enabled FROM public.tenant_modules
+ WHERE tenant_id='${T}' AND module_key='store_presentation'`)).rows[0].enabled, true);
+// Gerente realmente associado à própria loja continua autorizado.
+await as('MANAGER', T, U, async () => {
+ await db.exec('SET ROLE authenticated');
+ await db.query(`SELECT public.set_tenant_module('${T}','store_presentation',true)`);
 });
 
 // Dono: escrita direta na tabela é proibida (só RPC).
