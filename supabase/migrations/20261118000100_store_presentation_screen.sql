@@ -1,7 +1,7 @@
 -- Abertura opcional de loja, sem marca da plataforma, e dependente do módulo store_presentation.
 -- Aditiva: nenhuma linha existente muda. Mídia vem do fluxo governado N3 (bucket privado "marketing" com
 -- caminho definido pelo servidor por tenant -> publicação em "marketing-public").
--- Leitura pública: só os campos da tela PUBLICADA, dentro de get_public_store. Escrita: só OWNER/MANAGER do tenant.
+-- Leitura pública: só os campos da tela PUBLICADA, dentro de get_public_store. Escrita: só OWNER do tenant.
 BEGIN;
 
 DO $pre$
@@ -36,13 +36,17 @@ CREATE TABLE IF NOT EXISTS public.tenant_presentation_screens (
  updated_at    timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.tenant_presentation_screens ENABLE ROW LEVEL SECURITY;
--- Painel: dono/gerente lê a própria configuração. Escrita só pelas RPCs abaixo (sem INSERT/UPDATE/DELETE direto).
+-- Painel: somente o dono lê a própria configuração. Escrita só pelas RPCs abaixo (sem INSERT/UPDATE/DELETE direto).
 DO $policy$ BEGIN
  IF NOT EXISTS (SELECT 1 FROM pg_policies
     WHERE schemaname = 'public' AND tablename = 'tenant_presentation_screens'
     AND policyname = 'presentation_manager_read') THEN
   CREATE POLICY presentation_manager_read ON public.tenant_presentation_screens FOR SELECT TO authenticated
-   USING (public.is_tenant_owner_or_manager(tenant_id));
+   USING (EXISTS (
+     SELECT 1 FROM public.tenant_users tu
+     WHERE tu.tenant_id = tenant_id AND tu.user_id = auth.uid()
+       AND tu.status = 'ACTIVE' AND tu.role_id = 'OWNER'
+   ));
  END IF;
 END $policy$;
 REVOKE ALL ON public.tenant_presentation_screens FROM PUBLIC, anon, authenticated;
@@ -55,8 +59,8 @@ ALTER TABLE public.tenant_modules ADD CONSTRAINT tenant_modules_module_key_check
  'printing','weight','barcode','substitution','variants','reserve_exchange','scheduling',
  'quotes','street_vendor','pos','loyalty','credit_tab','store_presentation'));
 
--- Atualiza somente os dois trechos necessários da função já instalada, sem sobrescrever
--- evoluções introduzidas por migrations posteriores a 20261019.
+-- Mantém intocada a verificação original OWNER (IS DISTINCT FROM rejeita NULL).
+-- Apenas adiciona a chave do módulo à whitelist da RPC já instalada.
 DO $module$ DECLARE d text; BEGIN
  SELECT pg_get_functiondef('public.set_tenant_module(uuid,text,boolean,jsonb)'::regprocedure) INTO d;
  IF position('store_presentation' in d) = 0 THEN
@@ -64,10 +68,8 @@ DO $module$ DECLARE d text; BEGIN
     OR position('''pos'', ''loyalty'', ''credit_tab''' in d) = 0 THEN
     RAISE EXCEPTION 'PRESENTATION PRE: assinatura de set_tenant_module incompatível, revisar antes de migrar';
   END IF;
-  d := replace(d, 'IF v_role IS DISTINCT FROM ''OWNER'' THEN',
-     'IF v_role IS DISTINCT FROM ''OWNER'' AND (p_key IS DISTINCT FROM ''store_presentation'' OR v_role IS DISTINCT FROM ''MANAGER'') THEN');
   d := replace(d, '''pos'', ''loyalty'', ''credit_tab''',
-     '''pos'', ''loyalty'', ''credit_tab'', ''store_presentation''');
+    '''pos'', ''loyalty'', ''credit_tab'', ''store_presentation''');
   EXECUTE d;
  END IF;
 END $module$;
@@ -79,8 +81,11 @@ CREATE OR REPLACE FUNCTION public.set_presentation_screen(p_tenant_id uuid, p_as
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE a public.marketing_media_assets; v_seconds numeric;
 BEGIN
- IF auth.uid() IS NULL OR p_tenant_id IS NULL OR NOT public.is_tenant_owner_or_manager(p_tenant_id) THEN
-  RAISE EXCEPTION 'FORBIDDEN: somente dono ou gerente' USING ERRCODE = '42501';
+ IF auth.uid() IS NULL OR p_tenant_id IS NULL OR NOT EXISTS (
+   SELECT 1 FROM public.tenant_users tu WHERE tu.tenant_id = p_tenant_id
+     AND tu.user_id = auth.uid() AND tu.status = 'ACTIVE' AND tu.role_id = 'OWNER'
+ ) THEN
+  RAISE EXCEPTION 'FORBIDDEN: somente dono' USING ERRCODE = '42501';
  END IF;
  PERFORM public.assert_tenant_module_enabled(p_tenant_id, 'store_presentation');
 
@@ -113,8 +118,11 @@ END $$;
 CREATE OR REPLACE FUNCTION public.clear_presentation_screen(p_tenant_id uuid)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
- IF auth.uid() IS NULL OR p_tenant_id IS NULL OR NOT public.is_tenant_owner_or_manager(p_tenant_id) THEN
-  RAISE EXCEPTION 'FORBIDDEN: só o dono ou gerente da loja altera a tela inicial.' USING ERRCODE = '42501';
+ IF auth.uid() IS NULL OR p_tenant_id IS NULL OR NOT EXISTS (
+   SELECT 1 FROM public.tenant_users tu WHERE tu.tenant_id = p_tenant_id
+     AND tu.user_id = auth.uid() AND tu.status = 'ACTIVE' AND tu.role_id = 'OWNER'
+ ) THEN
+  RAISE EXCEPTION 'FORBIDDEN: só o dono da loja altera a tela inicial.' USING ERRCODE = '42501';
  END IF;
  PERFORM public.assert_tenant_module_enabled(p_tenant_id, 'store_presentation');
  DELETE FROM public.tenant_presentation_screens WHERE tenant_id = p_tenant_id;
