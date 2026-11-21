@@ -134,8 +134,8 @@ import {
 import { StoreLogo } from '../../components/client/StoreLogo';
 import { StoreLoadingScreen } from '../../components/pwa/StoreLoadingScreen';
 import { hideBootScreen } from '../../lib/pwa/bootScreen';
-import { storeSlugFromAppPath, versionedStartUrl } from '../../lib/pwa/appIdentity';
-import { AppIdentityUpdate, readAppIdentityMeta } from '../../components/pwa/AppIdentityUpdate';
+import { splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath } from '../../lib/pwa/appIdentity';
+import { AppIdentityUpdate } from '../../components/pwa/AppIdentityUpdate';
 import { newIdempotencyKey } from '../../lib/pricing/idempotency';
 import { searchProducts } from '../../lib/customer/search';
 import { buildReorderCart } from '../../lib/customer/reorder';
@@ -242,8 +242,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // Prévia do Design do App (iframe no painel): tema em rascunho por postMessage, sem pedidos,
   // sem carrinho persistente, sem analytics, sem notificações/som e sem mexer no PWA.
   const previewMode = useMemo(() => typeof window !== 'undefined' && isEmbeddedPreview(window), []);
-  // EXPERIMENTO "reinstalar em 1 toque": o servidor só injeta a meta para lojas de teste.
-  const appIdentity = useMemo(() => readAppIdentityMeta(), []);
+  // Só WebAPKs antigos têm ~hash na URL. O manifesto canônico permanece estável.
+  const legacyIdentity = useMemo(() => splitStoreSegment(storeSegmentFromPath(window.location.pathname) || '').identity, []);
   const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
   const [previewCard, setPreviewCard] = useState<Partial<Offer> | null>(null);
   useEffect(() => {
@@ -1897,8 +1897,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       }}
     >
       {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
-      {!previewMode && appIdentity && <AppIdentityUpdate slug={storeData.tenant.slug} storeName={storeData.tenant.name} initialIdentity={appIdentity} />}
-      {!previewMode && !appIdentity && <StoreVisualUpdateNotice
+      {!previewMode && legacyIdentity && <AppIdentityUpdate slug={storeData.tenant.slug} storeName={storeData.tenant.name} />}
+      {!previewMode && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
         tenantId={storeData.tenant.id}
         hidden={Boolean(selectedProductModal) || Boolean(selectedPromoOffer) || isCheckoutOpen || isPromoCheckoutOpen
@@ -1913,8 +1913,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         hidden={isCheckoutOpen || isPromoCheckoutOpen || addressFlow.open || navTab === 'cart'}
         busy={pushPromptOpen}
         bottomOffset={installHintBottomOffset({ bottomNav: true, floatingCartBar: cart.length > 0 && !isCheckoutOpen && (navTab === 'home' || navTab === 'search' || navTab === 'offers') })}
-        // Loja da lista de teste: o app instalado é o da versão atual (/app/<slug>~<versão>/); "Abrir app" vai para ele.
-        startPath={appIdentity ? versionedStartUrl(storeData.tenant.slug, appIdentity) : undefined}
+
       />}
       {/* Barra de Retorno ao Painel: só para a equipe autenticada DESTE estabelecimento. */}
       {!previewMode && isStaffPreview(!!supabaseUser, activeTenant?.id, storeData.tenant.id) && (
