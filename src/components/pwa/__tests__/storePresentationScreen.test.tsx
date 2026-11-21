@@ -43,7 +43,7 @@ describe('Abertura da loja — mídia e fallback', () => {
     const ui = render(<StorePresentationScreen plan={{ kind: 'VIDEO', url: 'https://cdn.test/v.mp4', maxMs: 10000 }} onDone={done} />);
     const video = ui.getByTestId('store-presentation-video') as HTMLVideoElement;
     expect(video.muted).toBe(true);
-    expect(video.playsInline).toBe(true);
+    expect(video.hasAttribute('playsinline')).toBe(true);
     fireEvent.playing(video);
     advance(9999); expect(done).not.toHaveBeenCalled();
     fireEvent.click(ui.getByRole('button', { name: /Pular/ }));
