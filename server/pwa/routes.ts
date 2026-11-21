@@ -402,7 +402,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
         if (origin !== expected) { res.status(403).json({ error: 'Origem não autorizada' }); return; }
       } catch { res.status(403).json({ error: 'Origem inválida' }); return; }
     }
-    const token = req.get('authorization')?.match(/^Bearer ([^\\s]{1,8192})$/)?.[1];
+    const token = req.get('authorization')?.match(/^Bearer ([^\s]{1,8192})$/)?.[1];
     const slug = req.body?.slug;
     const tenantId = req.body?.tenantId;
     if (!token) { res.status(401).json({ error: 'Autenticação necessária' }); return; }
