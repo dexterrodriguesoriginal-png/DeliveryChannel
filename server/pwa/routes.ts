@@ -398,8 +398,11 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     const origin = req.get('origin');
     if (origin) {
       try {
-        const expected = new URL(`${req.protocol}://${req.get('host')}`).origin;
-        if (origin !== expected) { res.status(403).json({ error: 'Origem não autorizada' }); return; }
+        // Cloud Run termina TLS no proxy; req.protocol pode ser "http" apesar de Origin HTTPS.
+        const supplied = new URL(origin);
+        if (!['https:', 'http:'].includes(supplied.protocol) || supplied.host !== req.get('host')) {
+          res.status(403).json({ error: 'Origem não autorizada' }); return;
+        }
       } catch { res.status(403).json({ error: 'Origem inválida' }); return; }
     }
     const token = req.get('authorization')?.match(/^Bearer ([^\s]{1,8192})$/)?.[1];
