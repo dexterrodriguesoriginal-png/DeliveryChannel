@@ -234,7 +234,13 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <div>{module.key === 'store_presentation' && isEnabled && (activeRole === 'OWNER' || activeRole === 'MANAGER') && (
+                      <div>
+                        {module.key === 'store_presentation' && !isEnabled && (activeRole === 'OWNER' || activeRole === 'MANAGER') && (
+                          <button type="button" data-testid="presentation-enable" style={{ color: 'var(--dc-primary)', fontWeight: 700 }}
+                            disabled={loading || Boolean(savingKey)}
+                            onClick={() => void handleToggle('store_presentation')}>Habilitar</button>
+                        )}
+                        {module.key === 'store_presentation' && isEnabled && (activeRole === 'OWNER' || activeRole === 'MANAGER') && (
                         <Button type="button" variant="outline" size="sm" onClick={() => onNavigate?.('est-theme')}>Configurar no Design do App</Button>
                       )}{module.key === 'dine_in' && isEnabled && salonAccess.canManageSalon && (
                         <Button type="button" variant="outline" size="sm" onClick={() => setShowSalonSetup(value => !value)}>
