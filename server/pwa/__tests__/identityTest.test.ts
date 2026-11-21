@@ -16,178 +16,141 @@ const real: StoreIdentityInput = {
 };
 const test: StoreIdentityInput = {
   id: 'tenant-test-01', slug: 'mercado-teste-dc', name: 'Mercado Teste DC',
-  theme: { storeName: 'Mercado Teste DC', primaryColor: '#0ea5e9', navBarColor: '#f8fafc', logoUrl: 'https://cdn.example/logo-v1.png' },
+  theme: { storeName: 'Mercado Teste DC', logoUrl: 'https://cdn.example/logo-v1.png' },
 };
-const stores: Record<string, StoreIdentityInput> = { [real.slug]: real, [test.slug]: test };
-const resolver: StoreResolver = async (slug) => (stores[slug] ? { status: 'ok', store: stores[slug] } : { status: 'not_found' });
-
-function listen(app: express.Express): Promise<{ server: Server; base: string }> {
-  return new Promise(r => { const server = app.listen(0, '127.0.0.1', () => r({ server, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}` })); });
-}
+const changed: StoreIdentityInput = {
+  id: 'tenant-changed', slug: 'loja-nova', name: 'Loja Nova',
+  appBaseLogoUrl: '/logo-original.png',
+  theme: { storeName: 'Loja Nova', logoUrl: '/logo-nova.png' },
+};
+const stores: Record<string, StoreIdentityInput> = {
+  [real.slug]: real, [test.slug]: test, [changed.slug]: changed,
+};
+const resolver: StoreResolver = async (slug) => stores[slug]
+  ? { status: 'ok', store: stores[slug] } : { status: 'not_found' };
 const publicDir = path.resolve(process.cwd(), 'public');
-const mk = (identityTestSlugs?: string[]) => {
-  const a = express();
-  a.use(createPwaRouter({ resolveStore: resolver, publicDir, fetchLogo: async () => { throw new Error('x'); }, identityTestSlugs }));
-  return a;
+
+async function listen(app: express.Express): Promise<{ server: Server; base: string }> {
+  return new Promise(resolve => {
+    const server = app.listen(0, '127.0.0.1', () => resolve({
+      server, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    }));
+  });
+}
+const make = (identityTestSlugs?: string[]) => {
+  const router = createPwaRouter({ resolveStore: resolver, publicDir, identityTestSlugs });
+  const app = express();
+  app.use(router);
+  // Simula o index.html do servidor principal, sem redirecionar instalações legadas.
+  app.use((req, res) => res.status(200).send('html'));
+  return { router, app };
 };
-let withList: { server: Server; base: string };
-let without: { server: Server; base: string };
-let routerWith: ReturnType<typeof createPwaRouter>;
+
+let listed: { server: Server; base: string };
+let unlisted: { server: Server; base: string };
+let router: ReturnType<typeof createPwaRouter>;
 beforeAll(async () => {
-  routerWith = createPwaRouter({ resolveStore: resolver, publicDir, fetchLogo: async () => { throw new Error('x'); }, identityTestSlugs: ['mercado-teste-dc'] });
-  const a = express(); a.use(routerWith);
-  [withList, without] = await Promise.all([listen(a), listen(mk())]);
+  const a = make(['mercado-teste-dc']); router = a.router;
+  [listed, unlisted] = await Promise.all([listen(a.app), listen(make([]).app)]);
 });
-afterAll(async () => { await Promise.all([withList, without].map(s => new Promise<void>(r => s.server.close(() => r())))); });
+afterAll(async () => {
+  await Promise.all([listed, unlisted].map(s =>
+    new Promise<void>(resolve => s.server.close(() => resolve()))));
+});
 
-const iv = iconVersion(test);
-
-describe('lista do experimento de identidade', () => {
-  it('padrão só a loja de teste; env substitui (vazia desliga)', () => {
+describe('lista histórica de identidade', () => {
+  it('env substitui a lista padrão, mas nunca governa o HTML canônico', () => {
     expect(DEFAULT_IDENTITY_TEST_SLUGS).toEqual(['mercado-teste-dc']);
     expect(resolveIdentityTestSlugs({})).toEqual(['mercado-teste-dc']);
     expect(resolveIdentityTestSlugs({ PWA_IDENTITY_TEST_SLUGS: '' })).toEqual([]);
+    expect(router.identityHeadOptions(test, null)).toEqual({});
   });
 });
 
-describe('lojas reais: nada muda', () => {
-  it('manifesto base igual com e sem lista (mesmos bytes)', async () => {
-    const [x, y] = await Promise.all([withList, without].map(s => fetch(`${s.base}/app/adegasshow/manifest.webmanifest`).then(r => r.text())));
-    expect(x).toBe(y);
-    expect(x).toBe(JSON.stringify(serverManifest(real)));
-  });
-  it('endereço versionado de loja real volta ao endereço normal (302), manifesto versionado não existe', async () => {
-    const r = await fetch(`${withList.base}/app/adegasshow~0123456789/?source=pwa`, { redirect: 'manual' });
-    expect(r.status).toBe(302);
-    expect(r.headers.get('location')).toBe('/app/adegasshow/?source=pwa');
-    const m = await fetch(`${withList.base}/app/adegasshow~0123456789/manifest.webmanifest`, { redirect: 'manual' });
-    expect(m.status).toBe(302);
-    expect(m.headers.get('location')).toBe('/app/adegasshow/manifest.webmanifest');
-  });
-  it('/api/pwa/version sem appIdentity para loja real', async () => {
-    const j = await fetch(`${withList.base}/api/pwa/version?slug=adegasshow`).then(r => r.json());
-    expect(j.appIdentity).toBeUndefined();
-  });
-  it('identityHeadOptions vazio para loja real', () => {
-    expect(routerWith.identityHeadOptions(real, null)).toEqual({});
-    expect(routerWith.identityHeadOptions(real, '0123456789')).toEqual({});
-  });
-  it('HTML de loja real sem opções de identidade = igual ao atual', () => {
-    const html = '<html><head><title>x</title></head><body></body></html>';
-    expect(injectStoreHead(html, real.slug, real, {})).toBe(injectStoreHead(html, real.slug, real));
-    expect(injectStoreHead(html, real.slug, real)).not.toContain('dc-app-identity');
+describe('manifesto estável para todas as instalações novas', () => {
+  for (const store of [real, test, changed]) {
+    it(`/app/${store.slug}/ usa id e scope fixos, mesmo com logo trocada/lista de teste`, async () => {
+      const [a, b] = await Promise.all([listed, unlisted].map(s =>
+        fetch(`${s.base}/app/${store.slug}/manifest.webmanifest`).then(r => r.json())));
+      expect(a).toEqual(serverManifest(store));
+      expect(b).toEqual(serverManifest(store));
+      expect(a.id).toBe(`/app-id/${store.id}`);
+      expect(a.scope).toBe(`/app/${store.slug}/`);
+      expect(a.start_url).toBe(`/app/${store.slug}/?source=pwa`);
+      expect(router.identityHeadOptions(store, null)).toEqual({});
+      const html = injectStoreHead('<html><head></head><body></body></html>', store.slug, store,
+        router.identityHeadOptions(store, null));
+      expect(html).toContain(`href="/app/${store.slug}/manifest.webmanifest"`);
+      expect(html).not.toContain('dc-app-identity');
+    });
+
+    it(`/api/pwa/version?slug=${store.slug} não inclui appIdentity`, async () => {
+      const json = await fetch(`${listed.base}/api/pwa/version?slug=${store.slug}`).then(r => r.json());
+      expect(json.appIdentity).toBeUndefined();
+      expect(typeof json.identityVersion).toBe('string');
+    });
+  }
+
+  it('ícones PNG têm purpose separados e versões derivadas somente da imagem', () => {
+    const m = serverManifest(test);
+    expect(m.icons).toEqual([
+      { src: `/app/mercado-teste-dc/icons/icon-192.png?v=${iconVersion(test)}`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: `/app/mercado-teste-dc/icons/icon-512.png?v=${iconVersion(test)}`, sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: `/app/mercado-teste-dc/icons/maskable-512.png?v=${iconVersion(test)}`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ]);
+    expect(m.icons.some(i => i.purpose === 'any maskable')).toBe(false);
+    const colorChange = { ...test, theme: { ...test.theme, primaryColor: '#abcdef' } };
+    expect(iconVersion(colorChange)).toBe(iconVersion(test));
+    expect(iconVersion({ ...test, theme: { ...test.theme, logoUrl: '/different.png' } }))
+      .not.toBe(iconVersion(test));
   });
 });
 
-describe('loja de teste', () => {
-  it('manifesto base continua igual (app antigo segue funcionando)', async () => {
-    const t = await fetch(`${withList.base}/app/mercado-teste-dc/manifest.webmanifest`).then(r => r.text());
-    expect(t).toBe(JSON.stringify(serverManifest(test)));
+describe('compatibilidade permanente dos WebAPKs com ~hash', () => {
+  for (const store of [real, test, changed]) {
+    it(`mantém id, scope, start_url e related_applications do hash antigo de ${store.slug}`, async () => {
+      const hash = '0123456789'; // não precisa corresponder à versão do ícone atual
+      for (const server of [listed, unlisted]) {
+        const page = await fetch(`${server.base}/app/${store.slug}~${hash}/`, { redirect: 'manual' });
+        expect(page.status).toBe(200);
+        const response = await fetch(`${server.base}/app/${store.slug}~${hash}/manifest.webmanifest`, { redirect: 'manual' });
+        expect(response.status).toBe(200);
+        const m = await response.json();
+        expect(m).toEqual(identityTestManifest(store, hash));
+        expect(m.id).toBe(`/app-id/${store.id}/${hash}`);
+        expect(m.scope).toBe(`/app/${store.slug}~${hash}/`);
+        expect(m.start_url).toBe(`/app/${store.slug}~${hash}/?source=pwa`);
+        expect(m.related_applications).toEqual([{ platform: 'webapp', url: `/app/${store.slug}~${hash}/manifest.webmanifest` }]);
+        expect(m.icons).toEqual(serverManifest(store).icons);
+      }
+      expect(router.identityHeadOptions(store, hash)).toEqual({
+        manifestHref: `/app/${store.slug}~${hash}/manifest.webmanifest`,
+      });
+      const html = injectStoreHead('<html><head></head><body></body></html>', store.slug, store,
+        router.identityHeadOptions(store, hash));
+      expect(html).toContain(`href="/app/${store.slug}~${hash}/manifest.webmanifest"`);
+      expect(html).not.toContain('dc-app-identity');
+    });
+  }
+  it('versões inválidas não são aceitas como hash legado', async () => {
+    const res = await fetch(`${listed.base}/app/mercado-teste-dc~XYZ/manifest.webmanifest`);
+    expect(res.status).toBe(404);
   });
-  it('manifesto versionado: id/start_url/scope próprios da versão da logo', async () => {
-    const m = await fetch(`${withList.base}/app/mercado-teste-dc~${iv}/manifest.webmanifest`).then(r => r.json());
-    expect(m.id).toBe(`/app-id/tenant-test-01/${iv}`);
-    expect(m.start_url).toBe(`/app/mercado-teste-dc~${iv}/?source=pwa`);
-    expect(m.scope).toBe(`/app/mercado-teste-dc~${iv}/`);
-    expect(m.related_applications).toEqual([{ platform: 'webapp', url: `/app/mercado-teste-dc~${iv}/manifest.webmanifest` }]);
-    expect(m.icons).toEqual(serverManifest(test).icons);
-    expect(m).toEqual(identityTestManifest(test, iv));
-    // fora do scope antigo: o Chrome não acha que "já está instalado"
-    expect(m.start_url.startsWith('/app/mercado-teste-dc/')).toBe(false);
-  });
-  it('sem a lista, endereço versionado volta ao normal', async () => {
-    const r = await fetch(`${without.base}/app/mercado-teste-dc~${iv}/`, { redirect: 'manual' });
-    expect(r.status).toBe(302);
-    expect(r.headers.get('location')).toBe('/app/mercado-teste-dc/');
-  });
-  it('versão inválida não vira identidade', async () => {
-    expect((await fetch(`${withList.base}/app/mercado-teste-dc~XYZ/manifest.webmanifest`)).status).toBe(404);
-  });
-  it('/api/pwa/version traz appIdentity atual', async () => {
-    const j = await fetch(`${withList.base}/api/pwa/version?slug=mercado-teste-dc`).then(r => r.json());
-    expect(j.appIdentity).toBe(iv);
-    expect(typeof j.identityVersion).toBe('string');
-  });
-  it('identityHeadOptions: manifesto da versão pedida (ou da atual) e meta da atual', () => {
-    expect(routerWith.identityHeadOptions(test, null)).toEqual({ manifestHref: `/app/mercado-teste-dc~${iv}/manifest.webmanifest`, appIdentity: iv });
-    expect(routerWith.identityHeadOptions(test, 'aaaaaaaaaa')).toEqual({ manifestHref: '/app/mercado-teste-dc~aaaaaaaaaa/manifest.webmanifest', appIdentity: iv });
-  });
-  it('HTML injeta manifesto versionado e meta dc-app-identity', () => {
-    const html = '<html><head><title>x</title></head><body></body></html>';
-    const out = injectStoreHead(html, test.slug, test, routerWith.identityHeadOptions(test, null));
-    expect(out).toContain(`<link rel="manifest" href="/app/mercado-teste-dc~${iv}/manifest.webmanifest"`);
-    expect(out).toContain(`<meta name="dc-app-identity" content="${iv}" />`);
-  });
-  it('logo nova = versão nova', () => {
-    const v2 = iconVersion({ ...test, theme: { ...test.theme, logoUrl: 'https://cdn.example/logo-v2.png' } });
-    expect(v2).toMatch(/^[0-9a-f]{10}$/);
-    expect(v2).not.toBe(iv);
-  });
-});
-
-describe('todas as lojas: botão só depois de a loja TROCAR a logo (appBaseLogoUrl)', () => {
-  const base = 'https://cdn.example/logo-original.png';
-  const unchanged: StoreIdentityInput = { id: 'tenant-u', slug: 'loja-igual', name: 'Loja Igual', appBaseLogoUrl: base, theme: { storeName: 'Loja Igual', logoUrl: base } };
-  const changed: StoreIdentityInput = { id: 'tenant-c', slug: 'loja-nova', name: 'Loja Nova', appBaseLogoUrl: base, theme: { storeName: 'Loja Nova', logoUrl: 'https://cdn.example/logo-nova.png' } };
-  const all: Record<string, StoreIdentityInput> = { [real.slug]: real, [unchanged.slug]: unchanged, [changed.slug]: changed };
-  const r = createPwaRouter({ resolveStore: async (s) => (all[s] ? { status: 'ok', store: all[s] } : { status: 'not_found' }), publicDir, fetchLogo: async () => { throw new Error('x'); }, identityTestSlugs: ['mercado-teste-dc'] });
-  let srv: { server: Server; base: string };
-  beforeAll(async () => { const a = express(); a.use(r); srv = await listen(a); });
-  afterAll(async () => { await new Promise<void>(res => srv.server.close(() => res())); });
-  const cv = iconVersion(changed);
-
-  it('loja que nunca trocou a logo (sem appBaseLogoUrl): manifesto, HTML e versão como antes', async () => {
-    expect(r.identityHeadOptions(real, null)).toEqual({});
-    const j = await fetch(`${srv.base}/api/pwa/version?slug=adegasshow`).then(x => x.json());
-    expect(j.appIdentity).toBeUndefined();
-    expect(await fetch(`${srv.base}/app/adegasshow/manifest.webmanifest`).then(x => x.text())).toBe(JSON.stringify(serverManifest(real)));
-    expect((await fetch(`${srv.base}/app/adegasshow~0123456789/`, { redirect: 'manual' })).status).toBe(302);
-  });
-
-  it('logo igual à do app instalado: sem botão, manifesto base', async () => {
-    expect(r.identityHeadOptions(unchanged, null)).toEqual({});
-    const j = await fetch(`${srv.base}/api/pwa/version?slug=loja-igual`).then(x => x.json());
-    expect(j.appIdentity).toBeUndefined();
-    expect(await fetch(`${srv.base}/app/loja-igual/manifest.webmanifest`).then(x => x.text())).toBe(JSON.stringify(serverManifest(unchanged)));
-  });
-
-  it('logo trocada: versão nova (app antigo vê o botão) e manifesto versionado', async () => {
-    expect(r.identityHeadOptions(changed, null)).toEqual({ manifestHref: `/app/loja-nova~${cv}/manifest.webmanifest`, appIdentity: cv });
-    const j = await fetch(`${srv.base}/api/pwa/version?slug=loja-nova`).then(x => x.json());
-    expect(j.appIdentity).toBe(cv);
-    const m = await fetch(`${srv.base}/app/loja-nova~${cv}/manifest.webmanifest`).then(x => x.json());
-    expect(m).toEqual(identityTestManifest(changed, cv));
-    // o manifesto sem versão (o do app instalado) continua sendo servido
-    expect(await fetch(`${srv.base}/app/loja-nova/manifest.webmanifest`).then(x => x.text())).toBe(JSON.stringify(serverManifest(changed)));
-  });
-
-  it('logo trocada mas NÃO confirmada como definitiva: sem botão; apps versionados mantêm o manifesto', async () => {
-    const pending: StoreIdentityInput = { ...changed, slug: 'loja-pendente', logoConfirmedUrl: base };
-    all[pending.slug] = pending;
-    expect(r.identityHeadOptions(pending, null)).toEqual({});
-    expect(r.identityHeadOptions(pending, 'aaaaaaaaaa')).toEqual({ manifestHref: '/app/loja-pendente~aaaaaaaaaa/manifest.webmanifest' });
-    const j = await fetch(`${srv.base}/api/pwa/version?slug=loja-pendente`).then(x => x.json());
-    expect(j.appIdentity).toBeUndefined();
-    expect(r.identityHeadOptions({ ...pending, logoConfirmedUrl: pending.theme!.logoUrl }, null).appIdentity).toBe(iconVersion(pending));
-  });
-
-  it('voltou para a logo original: app versionado mantém o manifesto dele, sem botão', () => {
-    expect(r.identityHeadOptions(unchanged, 'aaaaaaaaaa')).toEqual({ manifestHref: '/app/loja-igual~aaaaaaaaaa/manifest.webmanifest' });
-  });
-});
-
-describe('endereço versionado com falha na consulta da loja', () => {
-  it('não redireciona para fora do scope do app instalado; só redireciona quando a consulta confirma', async () => {
+  it('erro de consulta não força redirecionamento para fora do scope legado', async () => {
     let fail = true;
-    const r = createPwaRouter({ resolveStore: async (s) => (fail ? { status: 'error', message: 'timeout' } : (s === 'adegasshow' ? { status: 'ok', store: real } : { status: 'not_found' })), publicDir, fetchLogo: async () => { throw new Error('x'); }, ttlMs: 0 });
-    const a = express(); a.use(r); a.use((_req, res) => { res.status(200).send('html'); });
-    const srv = await listen(a);
+    const app = express();
+    app.use(createPwaRouter({
+      resolveStore: async () => fail ? { status: 'error', message: 'timeout' } : { status: 'ok', store: real },
+      publicDir, ttlMs: 0,
+    }));
+    app.use((_req, res) => res.status(200).send('html'));
+    const srv = await listen(app);
     try {
-      const x = await fetch(`${srv.base}/app/adegasshow~0123456789/`, { redirect: 'manual' });
-      expect(x.status).toBe(200);
+      const first = await fetch(`${srv.base}/app/adegasshow~0123456789/`, { redirect: 'manual' });
+      expect(first.status).toBe(200);
       fail = false;
-      const y = await fetch(`${srv.base}/app/adegasshow~0123456789/`, { redirect: 'manual' });
-      expect(y.status).toBe(302);
+      const second = await fetch(`${srv.base}/app/adegasshow~0123456789/`, { redirect: 'manual' });
+      expect(second.status).toBe(200);
     } finally { await new Promise<void>(res => srv.server.close(() => res())); }
   });
 });
