@@ -273,9 +273,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // Uma única abertura por sessão/loja. Desligado, sem mídia ou falha no módulo: app segue normal.
   const presentationSlugRef = useRef<string | null>(null);
   useEffect(() => {
-    if (previewMode || isLoadingStore || !slug || !storeData?.presentation || storeData.tenant.slug !== slug) return;
+    if (previewMode || isLoadingStore || !slug || storeData?.tenant.slug !== slug) return;
     if (presentationSlugRef.current === slug) return;
     presentationSlugRef.current = slug;
+    if (!storeData.presentation) return;
     let alive = true;
     const session = (() => { try { return window.sessionStorage; } catch { return null; } })();
     const local = (() => { try { return window.localStorage; } catch { return null; } })();
