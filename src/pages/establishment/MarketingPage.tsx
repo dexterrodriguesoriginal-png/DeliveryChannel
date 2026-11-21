@@ -18,6 +18,7 @@ import { UpsellMarketingPanel } from '../../components/marketing/UpsellMarketing
 import { CampaignsPanel } from '../../components/marketing/CampaignsPanel';
 import { mediaRepository } from '../../repositories/mediaRepository';
 import { QRCodeCard } from '../../components/common/QRCodeCard';
+import { canShareStoreLinks } from '../../lib/onboarding/ownerOnboarding';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -1639,12 +1640,17 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ activeTab: request
 
       {activeTab === 'materials' && (
         <div className="space-y-6">
-          <QRCodeCard
-            slug={activeTenant.slug}
-            storeName={activeTenant.name}
-            primaryColor={activeTenant.theme.primaryColor}
-            onOpenApp={() => window.open(getPublicStoreUrl(activeTenant.slug), '_blank')}
-          />
+          {/* Mesmo gate do painel: loja nova só divulga link/QR depois de concluir as missões do app. */}
+          {canShareStoreLinks(activeTenant.theme) ? (
+            <QRCodeCard
+              slug={activeTenant.slug}
+              storeName={activeTenant.name}
+              primaryColor={activeTenant.theme.primaryColor}
+              onOpenApp={() => window.open(getPublicStoreUrl(activeTenant.slug), '_blank')}
+            />
+          ) : (
+            <p role="status" data-testid="materials-locked" className="text-sm">Conclua as missões do aplicativo no Dashboard para liberar o QR e o link da loja.</p>
+          )}
         </div>
       )}
 
