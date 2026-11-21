@@ -1,12 +1,8 @@
 /**
- * "Baixar versão atualizada" para TODAS as lojas, sem mexer em quem já instalou.
- *
- * theme_tokens.meta.appBaseLogoUrl (JSON existente, sem migração) = logo com que o app SEM versão
- * (/app/<slug>/, o que já está instalado hoje) foi instalado. O painel grava isso só na PRIMEIRA troca de logo.
- *  - ausente: a loja nunca trocou a logo depois deste recurso → nada muda (manifesto, HTML e /api/pwa/version
- *    idênticos aos de antes);
- *  - igual à logo atual: idem (voltou para a logo original);
- *  - diferente: a loja passa a ter app versionado (/app/<slug>~<versão>/) e quem tem o app antigo vê o botão.
+ * Registro histórico da logo base para compatibilidade com dados já gravados.
+ * A troca de logo atualiza o ícone do manifesto estável via ?v=, sem criar
+ * uma nova identidade ou oferecer reinstalação no cliente canônico.
+ * Os helpers permanecem disponíveis para o painel e testes legados.
  */
 const clean = (u: unknown) => (typeof u === 'string' ? u.trim() : '');
 
