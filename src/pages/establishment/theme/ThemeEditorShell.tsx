@@ -95,7 +95,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
       message: 'Sua marca foi preservada. Clique em Salvar quando estiver tudo do seu jeito.',
     });
   };
-  // Logo do app instalado sem versão: gravada na 1ª troca de logo (libera "Baixar versão atualizada" para quem já instalou).
+  // Logo do app instalado no manifesto estável: gravada na 1ª troca de logo (histórico; não cria identidade nova).
   const withAppBaseLogo = <M extends Record<string, unknown>>(meta: M, newLogo: string) => {
     const base = appBaseLogoUrlToSave(tenant.theme?.tokens?.meta?.appBaseLogoUrl, tenant.theme?.logoUrl, newLogo);
     return base === undefined ? meta : { ...meta, appBaseLogoUrl: base };

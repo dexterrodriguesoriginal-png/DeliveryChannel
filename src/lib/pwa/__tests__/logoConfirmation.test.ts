@@ -46,7 +46,15 @@ describe('ClientApp: convite "Instalar app"', () => {
   it('só aparece com a logo definitiva confirmada', () => {
     expect(src).toMatch(/\{!previewMode && isLogoConfirmed\(theme\) && <InstallStoreAppHint/);
   });
-  it('loja da lista de teste: "Abrir app" vai para o app da versão atual', () => {
-    expect(src).toMatch(/startPath=\{appIdentity \? versionedStartUrl\(storeData\.tenant\.slug, appIdentity\) : undefined\}/);
+  it('o convite Instalar app não aponta para um manifesto versionado', () => {
+    expect(src).not.toMatch(/versionedStartUrl/);
+    expect(src).not.toMatch(/startPath=\{appIdentity/);
+    const start = src.indexOf('<InstallStoreAppHint');
+    const end = src.indexOf('/>', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(src.slice(start, end + 2)).not.toMatch(/startPath/);
+  });
+  it('aviso visual interno não aparece junto do banner legado', () => {
+    expect(src).toMatch(/\{!previewMode && !legacyIdentity && <StoreVisualUpdateNotice/);
   });
 });
