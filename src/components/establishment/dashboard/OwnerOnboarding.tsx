@@ -61,6 +61,7 @@ export function OwnerOnboarding({ tenant, ownerName, onNavigate }: Props) {
     if (await persist({ step: 4, completed: true, skipped: false })) setCelebrating(true);
   };
 
+  if (existing?.completed && !celebrating) return null;
   if (!open && !celebrating) return (
     <section data-testid="onboarding-resume" aria-label="Missões de preparação do aplicativo" className="rounded-xl border border-[var(--onboarding-border)] p-3"
       style={{ '--onboarding-border': tokens.palette.border } as React.CSSProperties}>
