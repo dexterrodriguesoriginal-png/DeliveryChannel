@@ -54,6 +54,7 @@ describe('tela inicial personalizada: regras', () => {
     expect(presentationFileError({ name: 'v.mp4', type: 'video/mp4', size: 16 * MB }, 5)).toMatch(/15 MB/);
     expect(presentationFileError({ name: 'v.mp4', type: 'video/mp4', size: MB }, 10)).toBeNull();
     expect(presentationFileError({ name: 'v.webm', type: 'video/webm', size: MB }, 10.6)).toMatch(/10 segundos/);
+    expect(presentationFileError({ name: 'v.mp4', type: 'video/mp4', size: MB }, 10.01)).toMatch(/10 segundos/);
     expect(presentationFileError({ name: 'v.mp4', type: 'video/mp4', size: MB })).toMatch(/duração/);
   });
   it('URL da prévia: só https, blob: ou caminho da mesma origem', () => {
