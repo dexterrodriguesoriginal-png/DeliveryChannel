@@ -94,7 +94,7 @@ BEGIN
  IF a.media_type = 'VIDEO' AND (a.size_bytes IS NULL OR a.size_bytes > 15728640) THEN
   RAISE EXCEPTION 'PRESENTATION_VIDEO_TOO_LARGE: o vídeo deve ter até 15 MB.' USING ERRCODE = '22023';
  END IF;
- IF a.media_type = 'VIDEO' AND (a.duration_seconds IS NULL OR a.duration_seconds > 10.05) THEN
+ IF a.media_type = 'VIDEO' AND (a.duration_seconds IS NULL OR a.duration_seconds > 10) THEN
   RAISE EXCEPTION 'PRESENTATION_VIDEO_TOO_LONG: o vídeo deve ter até 10 segundos.' USING ERRCODE = '22023';
  END IF;
  v_seconds := round(COALESCE(p_image_seconds, 3), 1);
