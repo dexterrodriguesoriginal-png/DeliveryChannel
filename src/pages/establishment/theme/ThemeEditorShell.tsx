@@ -27,6 +27,7 @@ import { ThemedProductItem } from '../../../components/storefront/ThemedProductL
 import { useThemeDraft } from './useThemeDraft';
 import { logoConfirmedUrlToSave } from '../../../lib/pwa/logoConfirmation';
 import { appBaseLogoUrlToSave } from '../../../lib/pwa/appBaseLogo';
+import { installedIdentityChanged } from '../../../lib/onboarding/ownerOnboarding';
 import { useThemeControls } from './useThemeControls';
 import { ThemeEditorContext } from './ThemeEditorContext';
 import { TemplateGallery } from './TemplateGallery';
@@ -61,6 +62,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   const [products, setProducts] = useState<ThemedProductItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const [confirmInstalledChange, setConfirmInstalledChange] = useState(false);
   const saveInFlight = useRef(false);
   const actionsRef = useRef<HTMLElement>(null);
   useBottomActionsOffset(actionsRef, active);
@@ -100,8 +102,12 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
     const base = appBaseLogoUrlToSave(tenant.theme?.tokens?.meta?.appBaseLogoUrl, tenant.theme?.logoUrl, newLogo);
     return base === undefined ? meta : { ...meta, appBaseLogoUrl: base };
   };
-  const save = async () => {
+  const save = async (identityAcknowledged = false) => {
     if (!draft.isDirty || saveInFlight.current) return;
+    if (!identityAcknowledged && installedIdentityChanged(tenant.theme, draft.draftTheme)) {
+      setConfirmInstalledChange(true);
+      return;
+    }
     if (!draft.draftTheme.storeName?.trim()) {
       showToast({
         type: 'error',
@@ -177,6 +183,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
         bannerUrl: draft.draftTheme.bannerUrl,
         logoConfirmedUrl: logoConfirmedUrlToSave({ logoUrl: draft.draftTheme.logoUrl, tokens: draft.draftTokens }, tenant.theme),
         appBaseLogoUrl: appBaseLogoUrlToSave(tenant.theme?.tokens?.meta?.appBaseLogoUrl, tenant.theme?.logoUrl, draft.draftTheme.logoUrl),
+        ownerOnboarding: tenant.theme?.tokens?.meta?.ownerOnboarding,
       });
       draft.markSaved(restored, draft.draftTheme);
       void announceThemeSaved(tenant.id);
@@ -357,7 +364,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
             <button
               type="button"
               disabled={!draft.isDirty || saving}
-              onClick={save}
+              onClick={() => void save()}
               className="theme-primary"
             >
               <Save size={14} />
@@ -368,6 +375,18 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
         <nav className="theme-mobile-nav" aria-label="Seções do editor no celular">
           {navItems(true)}
         </nav>
+        {confirmInstalledChange && (
+          <ThemeDialog title="Atenção: atualização do aplicativo" onClose={() => setConfirmInstalledChange(false)}>
+            <div className="max-w-md space-y-4">
+              <p role="alert" className="text-sm">Atenção: seus clientes com o app instalado vão precisar atualizar. Continuar?</p>
+              <p className="text-xs">O ícone e a barra do Android podem continuar antigos até o navegador atualizar o app ou o cliente instalar a nova versão.</p>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button type="button" className="theme-secondary" onClick={() => setConfirmInstalledChange(false)}>Cancelar</button>
+                <button type="button" className="theme-primary" disabled={saving} data-testid="confirm-installed-identity-change" onClick={() => { setConfirmInstalledChange(false); void save(true); }}>Continuar e salvar</button>
+              </div>
+            </div>
+          </ThemeDialog>
+        )}
         {confirmRestore && (
           <ThemeDialog title="Restaurar padrão Delivery Channel?" onClose={() => !saving && setConfirmRestore(false)}>
             <div className="max-w-md space-y-4">
