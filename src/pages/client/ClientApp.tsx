@@ -53,7 +53,7 @@ import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint
 import { isLogoConfirmed } from '../../lib/pwa/logoConfirmation';
 import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
-import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
+import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewPresentationMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
 import { setPwaAutoReloadBlocked } from '../../lib/pwa/registerSw';
@@ -134,6 +134,8 @@ import {
 import { StoreLogo } from '../../components/client/StoreLogo';
 import { StoreLoadingScreen } from '../../components/pwa/StoreLoadingScreen';
 import { hideBootScreen } from '../../lib/pwa/bootScreen';
+import { StorePresentationScreen } from '../../components/pwa/StorePresentationScreen';
+import { markPresentationShown, prefersReducedMotion, presentationPlan, type PresentationPlan, shouldShowPresentation } from '../../lib/pwa/presentation';
 import { splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath } from '../../lib/pwa/appIdentity';
 import { AppIdentityUpdate } from '../../components/pwa/AppIdentityUpdate';
 import { newIdempotencyKey } from '../../lib/pricing/idempotency';
@@ -246,11 +248,17 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const legacyIdentity = useMemo(() => splitStoreSegment(storeSegmentFromPath(window.location.pathname) || '').identity, []);
   const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
   const [previewCard, setPreviewCard] = useState<Partial<Offer> | null>(null);
+  const [presentationRun, setPresentationRun] = useState<{ plan: PresentationPlan; key: number } | null>(null);
   useEffect(() => {
     if (!previewMode) return;
     const onMsg = (ev: MessageEvent) => {
       const t = parsePreviewThemeMessage(ev, window); if (t) setPreviewTheme(t);
       const c = parsePreviewCardMessage(ev, window); if (c) setPreviewCard(c.card);
+      const pr = parsePreviewPresentationMessage(ev, window);
+      if (pr?.presentation) {
+        const plan = presentationPlan(pr.presentation, { reducedMotion: prefersReducedMotion() });
+        if (plan) setPresentationRun({ plan, key: Date.now() });
+      }
     };
     window.addEventListener('message', onMsg);
     try { window.parent.postMessage({ type: PREVIEW_READY_MSG }, window.location.origin); } catch { /* sem pai */ }
@@ -260,8 +268,44 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // 2. Estados de Carregamento e Dados do Catálogo Real
   const [storeData, setStoreData] = useState<PublicStoreData | null>(null);
   const [isLoadingStore, setIsLoadingStore] = useState(true);
-  // Abertura com a logo da loja (#store-boot, do servidor) fica até a vitrine terminar de carregar (ou falhar).
-  useEffect(() => { if (!isLoadingStore) hideBootScreen(); }, [isLoadingStore]);
+  // Mantém #store-boot exatamente como está; somente aguarda a decisão sobre
+  // a apresentação para não mostrar a vitrine brevemente antes da mídia.
+  useEffect(() => {
+    if (!isLoadingStore && (previewMode || !storeData?.presentation || storeData.tenant.slug !== slug)) hideBootScreen();
+  }, [isLoadingStore, previewMode, slug, storeData]);
+  // Uma tentativa por sessão de abertura/loja; não executa após navegações internas.
+  const presentationSlugRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (previewMode || isLoadingStore || !slug || storeData?.tenant.slug !== slug) return;
+    if (presentationSlugRef.current === slug) return;
+    presentationSlugRef.current = slug;
+    if (!storeData.presentation) return;
+    let alive = true;
+    const session = (() => { try { return window.sessionStorage; } catch { return null; } })();
+    const local = (() => { try { return window.localStorage; } catch { return null; } })();
+    if (!shouldShowPresentation({ slug, oncePerDay: storeData.presentation.oncePerDay, session, local })) {
+      hideBootScreen(); return;
+    }
+    // Segurança em camadas: RPC pública já filtra por módulo e status da mídia;
+    // no cliente revalidamos get_public_modules com limite de espera de 1,5s.
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const check = tenantModuleRepository.getPublicEnabled(storeData.tenant.id).catch(() => null);
+    const deadline = new Promise<null>(resolve => { timeout = setTimeout(() => resolve(null), 1500); });
+    void Promise.race([check, deadline]).then(keys => {
+      if (!alive) return;
+      if (keys?.has('store_presentation')) {
+        const plan = presentationPlan(storeData.presentation, { reducedMotion: prefersReducedMotion() });
+        if (plan) {
+          markPresentationShown({ slug, session, local });
+          setPresentationRun({ plan, key: Date.now() });
+        }
+      }
+      // O overlay é montado antes de sumir a logo do servidor, sem flash de cardápio.
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => { if (alive) hideBootScreen(); });
+      else setTimeout(() => { if (alive) hideBootScreen(); }, 0);
+    }).finally(() => { if (timeout) clearTimeout(timeout); });
+    return () => { alive = false; if (timeout) clearTimeout(timeout); hideBootScreen(); };
+  }, [previewMode, isLoadingStore, slug, storeData]);
   const [storeNotFound, setStoreNotFound] = useState(false);
   // Falha técnica ao carregar a vitrine (ex.: RPC com erro) — distinta de "loja não encontrada".
   const [storeLoadError, setStoreLoadError] = useState<string | null>(null);
@@ -1896,6 +1940,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         fontFamily: 'var(--dc-font-family, Inter, sans-serif)',
       }}
     >
+      {presentationRun && (
+        <StorePresentationScreen
+          key={presentationRun.key}
+          plan={presentationRun.plan}
+          storeName={theme.storeName || storeData.tenant.name}
+          reducedMotion={prefersReducedMotion()}
+          onDone={() => setPresentationRun(null)}
+        />
+      )}
       {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
       {!previewMode && legacyIdentity && <AppIdentityUpdate slug={storeData.tenant.slug} storeName={storeData.tenant.name} />}
       {!previewMode && !legacyIdentity && <StoreVisualUpdateNotice

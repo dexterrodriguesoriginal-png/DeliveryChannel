@@ -40,29 +40,65 @@ export function classifyMediaFile(file: { name: string; type: string }): { media
   throw new BackendError('MEDIA_TYPE_INVALID', 'Formato não suportado. Use JPG, PNG, WEBP, MP4 ou WEBM.');
 }
 
+/**
+ * Metadados locais antes do upload. O deadline cobre arquivos danificados e
+ * navegadores que nunca disparam loadedmetadata/load; sempre revoga o blob URL.
+ */
 function readDimensions(file: File, mediaType: 'IMAGE' | 'VIDEO'): Promise<{ width?: number; height?: number; duration?: number }> {
   return new Promise(resolve => {
+    let url: string | undefined;
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cleanupMedia = () => {};
+    const finish = (dimensions: { width?: number; height?: number; duration?: number } = {}) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      cleanupMedia();
+      if (url) {
+        try { URL.revokeObjectURL(url); } catch { /* URL já revogada */ }
+      }
+      resolve(dimensions);
+    };
+    timer = setTimeout(() => finish(), 5000);
     try {
-      const url = URL.createObjectURL(file);
+      url = URL.createObjectURL(file);
       if (mediaType === 'IMAGE') {
         const img = new Image();
-        img.onload = () => { resolve({ width: img.naturalWidth, height: img.naturalHeight }); URL.revokeObjectURL(url); };
-        img.onerror = () => { resolve({}); URL.revokeObjectURL(url); };
+        cleanupMedia = () => { img.onload = null; img.onerror = null; };
+        img.onload = () => finish({ width: img.naturalWidth, height: img.naturalHeight });
+        img.onerror = () => finish();
         img.src = url;
       } else {
-        const v = document.createElement('video');
-        v.preload = 'metadata';
-        v.onloadedmetadata = () => {
-          resolve({ width: v.videoWidth, height: v.videoHeight, duration: Number.isFinite(v.duration) ? Number(v.duration.toFixed(2)) : undefined });
-          URL.revokeObjectURL(url);
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        cleanupMedia = () => {
+          video.onloadedmetadata = null;
+          video.onerror = null;
+          video.removeAttribute('src');
         };
-        v.onerror = () => { resolve({}); URL.revokeObjectURL(url); };
-        v.src = url;
+        video.onloadedmetadata = () => finish({
+          width: video.videoWidth,
+          height: video.videoHeight,
+          // Não arredondar: 10,004 s ainda é maior do que o limite de 10 s.
+          duration: Number.isFinite(video.duration) ? video.duration : undefined,
+        });
+        video.onerror = () => finish();
+        video.src = url;
       }
     } catch {
-      resolve({});
+      finish();
     }
   });
+}
+
+/** API pública usada na validação de abertura da loja. */
+export async function readMediaDimensions(
+  file: File,
+  mediaType: 'IMAGE' | 'VIDEO',
+): Promise<{ width?: number; height?: number; durationSeconds?: number }> {
+  const dims = await readDimensions(file, mediaType);
+  return { width: dims.width, height: dims.height, durationSeconds: dims.duration };
 }
 
 /** Limites alinhados ao servidor (migration 20261105000300): vídeo até 5 min e 50 MB. */

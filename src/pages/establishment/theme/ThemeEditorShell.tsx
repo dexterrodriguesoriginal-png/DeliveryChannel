@@ -33,6 +33,8 @@ import { ThemeEditorContext } from './ThemeEditorContext';
 import { TemplateGallery } from './TemplateGallery';
 import { ThemeDialog } from './ThemeDialog';
 import { IdentityTab } from './tabs/IdentityTab';
+import { PresentationScreenCard } from './tabs/PresentationScreenCard';
+import { useModules } from '../../../hooks/useModules';
 import { ColorsTab } from './tabs/ColorsTab';
 import { SystemBarsCard } from './tabs/SystemBarsCard';
 import { BackgroundsTab } from './tabs/BackgroundsTab';
@@ -55,6 +57,8 @@ type Tab = (typeof TABS)[number]['id'];
 export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; active?: boolean }) {
   const { securityContext, setActiveTenant } = useAuth();
   const { showToast } = useToast();
+  const { modules, activeRole } = useModules();
+  const presentationEnabled = Boolean(modules?.has('store_presentation')) && activeRole === 'OWNER';
   const draft = useThemeDraft(tenant.theme);
   const controls = useThemeControls(draft.draftTokens, draft.updateTokens);
   const [galleryPreview, setGalleryPreview] = useState<StoreTemplate | null>(null);
@@ -275,7 +279,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
                   onPreviewChange={setGalleryPreview}
                 />
               </div>
-              {tab === 'identity' && <IdentityTab />}
+              {tab === 'identity' && <div className="space-y-4"><IdentityTab />{presentationEnabled && <PresentationScreenCard />}</div>}
               {tab === 'colors' && (
                 <div className="space-y-4">
                   <ColorsTab />

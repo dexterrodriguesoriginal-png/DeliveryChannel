@@ -39,7 +39,12 @@ describe('StoreLoadingScreen (React) e fim do "AF"', () => {
 
   it('ClientApp tira a tela do servidor quando a vitrine termina de carregar', () => {
     const src = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
-    expect(src).toMatch(/useEffect\(\(\) => \{ if \(!isLoadingStore\) hideBootScreen\(\); \}, \[isLoadingStore\]\);/);
+    // A vitrine sem apresentação (ou a prévia) fecha o boot assim que carrega.
+    expect(src).toContain("if (!isLoadingStore && (previewMode || !storeData?.presentation || storeData.tenant.slug !== slug)) hideBootScreen();");
+    // Com apresentação, liberar o boot ao terminar a decisão de exibir a mídia.
+    expect(src).toContain("hideBootScreen(); return;");
+    expect(src).toMatch(/requestAnimationFrame\(\(\) => \{ if \(alive\) hideBootScreen\(\); \}\)/);
+    expect(src).toContain("return () => { alive = false; if (timeout) clearTimeout(timeout); hideBootScreen(); };");
     expect(src).toMatch(/if \(isLoadingStore\) \{[\s\S]{0,200}return <StoreLoadingScreen \/>;/);
   });
 
