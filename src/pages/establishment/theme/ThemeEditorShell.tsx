@@ -58,7 +58,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   const { securityContext, setActiveTenant } = useAuth();
   const { showToast } = useToast();
   const { modules, activeRole } = useModules();
-  const presentationEnabled = Boolean(modules?.has('store_presentation')) && (activeRole === 'OWNER' || activeRole === 'MANAGER');
+  const presentationEnabled = Boolean(modules?.has('store_presentation')) && activeRole === 'OWNER';
   const draft = useThemeDraft(tenant.theme);
   const controls = useThemeControls(draft.draftTokens, draft.updateTokens);
   const [galleryPreview, setGalleryPreview] = useState<StoreTemplate | null>(null);
