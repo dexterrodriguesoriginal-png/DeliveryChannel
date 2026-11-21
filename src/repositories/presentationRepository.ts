@@ -35,7 +35,7 @@ export async function validatePresentationFile(file: File): Promise<string | nul
   if (quick) return quick;
   if (mediaType === 'IMAGE') return null;
   const dims = await readMediaDimensions(file, 'VIDEO');
-  return presentationFileError(file, dims.duration);
+  return presentationFileError(file, dims.durationSeconds);
 }
 
 export const presentationRepository = {
