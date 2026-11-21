@@ -98,7 +98,7 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
   const hasPresetChanges = savedBusinessType !== businessType;
 
   const handleToggle = async (key: ModuleKey) => {
-    if (!activeTenant || !canChange || savingKey) return;
+    if (!activeTenant || !(canChange || (key === 'store_presentation' && activeRole === 'MANAGER')) || savingKey) return;
     const currentlyEnabled = enabled.has(key);
     setSavingKey(key);
     try {
