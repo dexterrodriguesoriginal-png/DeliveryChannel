@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MODULES, isModuleEnabled, presetModuleKeys, toolPlanBadge } from '../modules';
+import { MODULES, isModuleEnabled, presetModuleKeys, toolPlanBadge, type ModuleKey } from '../modules';
 
 describe('Abertura da loja como ferramenta opcional', () => {
   const module = MODULES.find(m => m.key === 'store_presentation');
@@ -19,7 +19,7 @@ describe('Abertura da loja como ferramenta opcional', () => {
     expect(toolPlanBadge(module!)).toBeNull();
   });
   it('ativação independente não interfere nos módulos de vendas', () => {
-    const enabled = new Set(['delivery', 'pickup', 'store_presentation'] as const);
+    const enabled = new Set<ModuleKey>(['delivery', 'pickup', 'store_presentation']);
     expect(isModuleEnabled(enabled, 'store_presentation')).toBe(true);
     expect(isModuleEnabled(enabled, 'delivery')).toBe(true);
   });
