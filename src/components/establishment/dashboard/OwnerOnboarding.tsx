@@ -42,7 +42,7 @@ export function OwnerOnboarding({ tenant, ownerName, onNavigate }: Props) {
         ...themeToTokens(tenant.theme),
         meta: { ...themeToTokens(tenant.theme).meta, ownerOnboarding: next },
       };
-      const saved = await themeService.updateTheme(securityContext, tenant.id, { tokens: updatedTokens });
+      const saved = await themeService.updateTheme(securityContext, tenant.id, { ...tenant.theme, tokens: updatedTokens });
       setActiveTenant({ ...tenant, theme: saved });
       return true;
     } catch (e) {
