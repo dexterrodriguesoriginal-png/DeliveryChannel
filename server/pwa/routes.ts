@@ -11,13 +11,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Request, Response, Router } from 'express';
 import express from 'express';
+import { createClient } from '@supabase/supabase-js';
 import { buildStoreManifest, ManifestIcon, iconFallbackColor, storeDisplayName, storeIconVersion, storeIdentityVersion, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
 import { buildTotemManifest } from '../../src/lib/pwa/totemManifest';
 import { storeAppCanonicalPath } from '../../src/lib/pwa/storeScopeUrl';
 import { ICON_VARIANTS, IconVariant, isNearlyFlatPng, renderInitialsPng, renderStoreIconPng, SPLASH_TEST_ICON_VARIANTS, SplashTestIconVariant } from './icons';
 import { DC_BRAND_SVG, DC_SPLASH_ICON_VERSION, SPLASH_TEST_COLOR } from './splashTest';
 import { fetchPublicImage } from './safeFetch';
-import { isValidSlug, StoreResolver } from './storeSource';
+import { isValidSlug, StoreResolver, supabaseEnvFrom } from './storeSource';
 import { splitStoreSegment, versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope } from '../../src/lib/pwa/appIdentity';
 
 declare const __PWA_BUILD_VERSION__: string | undefined;
@@ -387,6 +388,50 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   }
 
   const router = express.Router();
+
+  // Invalidação autenticada após salvar o Design do App. Nunca aceitar um tenant arbitrário
+  // sem verificar a sessão Supabase, a associação ativa e o slug real no banco.
+  router.post('/api/pwa/invalidate', express.json({ limit: '2kb' }), async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const cfg = supabaseEnvFrom(process.env);
+    if (!cfg) { res.status(503).json({ error: 'Serviço indisponível' }); return; }
+    const origin = req.get('origin');
+    if (origin) {
+      try {
+        const expected = new URL(`${req.protocol}://${req.get('host')}`).origin;
+        if (origin !== expected) { res.status(403).json({ error: 'Origem não autorizada' }); return; }
+      } catch { res.status(403).json({ error: 'Origem inválida' }); return; }
+    }
+    const token = req.get('authorization')?.match(/^Bearer ([^\\s]{1,8192})$/)?.[1];
+    const slug = req.body?.slug;
+    const tenantId = req.body?.tenantId;
+    if (!token) { res.status(401).json({ error: 'Autenticação necessária' }); return; }
+    if (!isValidSlug(slug) || typeof tenantId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantId)) {
+      res.status(400).json({ error: 'Loja inválida' }); return;
+    }
+    try {
+      const db = createClient(cfg.url, cfg.key, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { headers: { Authorization: `Bearer ${token}` } },
+      });
+      const { data: session, error: authError } = await db.auth.getUser(token);
+      if (authError || !session.user) { res.status(401).json({ error: 'Sessão inválida' }); return; }
+      const { data: membership, error: membershipError } = await db.from('tenant_users')
+        .select('tenant_id,role_id').eq('tenant_id', tenantId).eq('user_id', session.user.id)
+        .eq('status', 'ACTIVE').in('role_id', ['OWNER', 'MANAGER']).maybeSingle();
+      if (membershipError || !membership) { res.status(403).json({ error: 'Sem acesso à loja' }); return; }
+      // Consulta direta à fonte pública (sem confiar no cache local para autorizar a operação).
+      const resolved = await opts.resolveStore(slug);
+      if (resolved.status !== 'ok' || resolved.store.id !== tenantId || resolved.store.slug !== slug) {
+        res.status(403).json({ error: 'Loja não corresponde ao vínculo' }); return;
+      }
+      invalidateStore(slug, tenantId);
+      res.json({ ok: true });
+    } catch {
+      res.status(503).json({ error: 'Não foi possível invalidar o cache' });
+    }
+  });
 
   router.get('/api/pwa/version', async (req, res) => {
     const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : '';
