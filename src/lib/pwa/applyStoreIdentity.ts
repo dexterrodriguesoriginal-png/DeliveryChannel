@@ -136,7 +136,10 @@ async function resolveTouchIcon(store: StoreIdentityInput): Promise<string> {
   return computed;
 }
 
+let applyGeneration = 0;
+
 export async function applyStoreIdentity(store: StoreIdentityInput): Promise<AppliedIdentity> {
+  const generation = ++applyGeneration;
   const name = storeDisplayName(store);
   const shortName = deriveShortName(name, store.theme?.shortName);
   const bars = resolveSystemBars({
@@ -144,8 +147,11 @@ export async function applyStoreIdentity(store: StoreIdentityInput): Promise<App
     headerColor: store.theme?.headerColor, primaryColor: store.theme?.primaryColor, backgroundColor: store.theme?.backgroundColor,
   });
   const themeColor = bars.status;
-  // Cores das barras do sistema ao vivo (não depende do manifesto, que o Android só relê de tempos em tempos).
-  applySystemBarMeta(bars.status, bars.colorScheme);
+  const commit = (apply: () => AppliedIdentity): AppliedIdentity | null => {
+    if (generation !== applyGeneration) return null;
+    applySystemBarMeta(bars.status, bars.colorScheme);
+    return apply();
+  };
   // Manifesto já injetado pelo servidor no HTML desta loja: manter URL estável (sem ?v= que quebre o WebAPK).
   const injected = document.head.querySelector('link[rel="manifest"][data-server-injected]') as HTMLLinkElement | null;
   const ownHref = `/app/${encodeURIComponent(store.slug)}/manifest.webmanifest`;
@@ -154,31 +160,40 @@ export async function applyStoreIdentity(store: StoreIdentityInput): Promise<App
   const injectedHref = injected?.getAttribute('href') || '';
   const versioned = injectedHref !== ownHref && injectedHref.split('?')[0] !== ownHref && isOwnManifestHref(injectedHref, store.slug);
   if (injected && versioned) {
-    injected.setAttribute('data-store-id', store.id);
-    applyHeadMeta(name, shortName, themeColor, await resolveTouchIcon(store), urlOnlyIconVersion(store));
-    return { manifestHref: injectedHref, usedFallbackIcon: false, served: true };
+    const touch = await resolveTouchIcon(store);
+    return commit(() => {
+      injected.setAttribute('data-store-id', store.id);
+      applyHeadMeta(name, shortName, themeColor, touch, urlOnlyIconVersion(store));
+      return { manifestHref: injectedHref, usedFallbackIcon: false, served: true };
+    }) || { manifestHref: injectedHref, usedFallbackIcon: false, served: true };
   }
   if (injected && (injected.getAttribute('href') || '').split('?')[0] === ownHref) {
-    injected.setAttribute('data-store-id', store.id);
-    if (injected.getAttribute('href') !== ownHref) injected.setAttribute('href', ownHref);
-    applyHeadMeta(name, shortName, themeColor, await resolveTouchIcon(store), urlOnlyIconVersion(store));
-    return { manifestHref: ownHref, usedFallbackIcon: false, served: true };
+    const touch = await resolveTouchIcon(store);
+    return commit(() => {
+      injected.setAttribute('data-store-id', store.id);
+      if (injected.getAttribute('href') !== ownHref) injected.setAttribute('href', ownHref);
+      applyHeadMeta(name, shortName, themeColor, touch, urlOnlyIconVersion(store));
+      return { manifestHref: ownHref, usedFallbackIcon: false, served: true };
+    }) || { manifestHref: ownHref, usedFallbackIcon: false, served: true };
   }
   // Uma nova tentativa evita trocar o manifesto servido por um data: numa falha momentânea.
   const served = (await fetchServedManifest(store)) || (await fetchServedManifest(store));
   if (served) {
-    setManifestLink(served.href, store.id);
-    applyHeadMeta(name, served.shortName || shortName, themeColor, served.touchIcon, urlOnlyIconVersion(store));
-    return { manifestHref: served.href, usedFallbackIcon: false, served: true };
+    return commit(() => {
+      setManifestLink(served.href, store.id);
+      applyHeadMeta(name, served.shortName || shortName, themeColor, served.touchIcon, urlOnlyIconVersion(store));
+      return { manifestHref: served.href, usedFallbackIcon: false, served: true };
+    }) || { manifestHref: served.href, usedFallbackIcon: false, served: true };
   }
   const logoIcons = await buildLogoIcons(store.theme?.logoUrl, '#ffffff');
   const manifest = buildStoreManifest(store, window.location.origin, logoIcons || undefined);
   const href = manifestDataUrl(manifest);
-
-  setManifestLink(href, store.id);
   const touch = logoIcons ? logoIcons[0].src : svgDataUrl(fallbackIconSvg(name, themeColor, 180));
-  applyHeadMeta(name, manifest.short_name, themeColor, touch);
-  return { manifestHref: href, usedFallbackIcon: !logoIcons, served: false };
+  return commit(() => {
+    setManifestLink(href, store.id);
+    applyHeadMeta(name, manifest.short_name, themeColor, touch);
+    return { manifestHref: href, usedFallbackIcon: !logoIcons, served: false };
+  }) || { manifestHref: href, usedFallbackIcon: !logoIcons, served: false };
 }
 
 function setManifestLink(href: string, storeId: string) {

@@ -74,4 +74,43 @@ describe('applyStoreIdentity e versão verificada do ícone', () => {
     expect(document.head.querySelector('link[rel="apple-touch-icon"]')?.getAttribute('href')).toBe(next);
     expect(document.head.querySelector('link[rel="icon"]')?.getAttribute('href')).toBe(next);
   });
+
+  it('não aplica identidade antiga se um tema mais novo já foi aplicado', async () => {
+    inject('/app/adega-premium/manifest.webmanifest');
+    const storeV1 = {
+      ...store,
+      name: 'Adega V1',
+      theme: { storeName: 'Adega V1', logoUrl: 'https://cdn.example/v1.png', primaryColor: '#15803d' },
+    };
+    const storeV2 = {
+      ...store,
+      name: 'Adega V2',
+      theme: { storeName: 'Adega V2', logoUrl: 'https://cdn.example/v2.png', primaryColor: '#b91c1c' },
+    };
+    const iconV2 = `/app/adega-premium/icons/icon-192.png?v=${identityHash({ ...storeV2, iconContentHash: 'bbbbbbbbbbbbbbbbbbbbbbbb' })}`;
+    const pending: Array<(value: Response) => void> = [];
+    vi.stubGlobal('fetch', () => new Promise<Response>((resolve) => { pending.push(resolve); }));
+    const first = applyStoreIdentity(storeV1);
+    await vi.waitFor(() => expect(pending.length).toBe(1));
+    const second = applyStoreIdentity(storeV2);
+    await vi.waitFor(() => expect(pending.length).toBe(2));
+    pending[1](new Response(JSON.stringify({
+      id: '/app-id/t1',
+      short_name: 'Adega V2',
+      icons: [{ src: iconV2, type: 'image/png' }],
+    }), { status: 200, headers: { 'content-type': 'application/manifest+json' } }));
+    await second;
+    expect(document.title).toBe('Adega V2');
+    expect(document.head.querySelector('link[rel="apple-touch-icon"]')?.getAttribute('href')).toBe(iconV2);
+    expect(document.head.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#b91c1c');
+    pending[0](new Response(JSON.stringify({
+      id: '/app-id/t1',
+      short_name: 'Adega V1',
+      icons: [{ src: `/app/adega-premium/icons/icon-192.png?v=${identityHash(storeV1)}`, type: 'image/png' }],
+    }), { status: 200, headers: { 'content-type': 'application/manifest+json' } }));
+    await first;
+    expect(document.title).toBe('Adega V2');
+    expect(document.head.querySelector('link[rel="apple-touch-icon"]')?.getAttribute('href')).toBe(iconV2);
+    expect(document.head.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#b91c1c');
+  });
 });
