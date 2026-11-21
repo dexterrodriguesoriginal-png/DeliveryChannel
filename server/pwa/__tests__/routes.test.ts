@@ -208,7 +208,7 @@ describe('rotas PWA por loja', () => {
     const tenantId = 'tenant-invalidation';
     const resolver: StoreResolver = async slug => slug === 'loja-invalida'
       ? { status: 'ok', store: { id: tenantId, slug, name, updatedAt: revision,
-          theme: { storeName: name, logoUrl: logo, statusBarColor: color, primaryColor: color, updatedAt: revision } } }
+          theme: { storeName: name, logoUrl: logo, statusBarColor: color, navBarColor: color, primaryColor: color, updatedAt: revision } } }
       : { status: 'not_found' };
     const app = express();
     const router = createPwaRouter({ resolveStore: resolver, publicDir: '/nonexistent',
