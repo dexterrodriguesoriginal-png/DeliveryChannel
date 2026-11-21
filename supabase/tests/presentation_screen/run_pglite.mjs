@@ -35,6 +35,9 @@ DECLARE v_role text;
 BEGIN
  v_role := current_setting('test.role',true);
  IF v_role IS DISTINCT FROM 'OWNER' THEN RAISE EXCEPTION 'MODULE_OWNER_REQUIRED' USING ERRCODE='42501'; END IF;
+ IF current_setting('test.tenant',true) IS DISTINCT FROM p_tenant::text THEN
+  RAISE EXCEPTION 'FORBIDDEN' USING ERRCODE='42501';
+ END IF;
  IF p_key NOT IN ('pos', 'loyalty', 'credit_tab') THEN RAISE EXCEPTION 'MODULE_INVALID'; END IF;
  INSERT INTO public.tenant_modules(tenant_id,module_key,enabled) VALUES(p_tenant,p_key,p_enabled)
  ON CONFLICT(tenant_id,module_key) DO UPDATE SET enabled=excluded.enabled;
