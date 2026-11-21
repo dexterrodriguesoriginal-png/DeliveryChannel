@@ -1,7 +1,7 @@
 /**
- * "Baixar versão atualizada" (src/lib/pwa/appIdentity.ts). Lojas desta lista ficam SEMPRE versionadas (teste).
- * Demais lojas: só depois de trocarem a logo (theme_tokens.meta.appBaseLogoUrl, ver src/lib/pwa/appBaseLogo.ts);
- * até lá nenhum byte muda (manifesto, HTML e /api/pwa/version).
+ * Lista histórica para testes de compatibilidade das instalações com ~hash.
+ * Não força mais id/scope versionados em visitas novas ao caminho canônico.
+ * Mantida para compatibilidade com configuração existente.
  */
 export const IDENTITY_TEST_SLUGS_ENV = 'PWA_IDENTITY_TEST_SLUGS';
 export const DEFAULT_IDENTITY_TEST_SLUGS: readonly string[] = ['mercado-teste-dc'];
