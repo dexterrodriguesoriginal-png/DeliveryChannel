@@ -5,6 +5,7 @@ import { StoreLogo } from '../../client/StoreLogo';
 import { Modal } from '../../ui/Modal';
 import { QRCodeCard } from '../../common/QRCodeCard';
 import { getPublicStoreUrl, isValidStoreSlug } from '../../../utils/publicStoreUrl';
+import { canInviteInstallApp } from '../../../lib/onboarding/ownerOnboarding';
 
 interface Props {
   tenant: Tenant;
@@ -24,6 +25,7 @@ export const StoreHeaderCard: React.FC<Props> = ({ tenant, isOpen, canToggleOpen
   const [qrOpen, setQrOpen] = useState(false);
   const name = tenant.theme?.storeName || tenant.name;
   const slugOk = isValidStoreSlug(tenant.slug);
+  const installReady = canInviteInstallApp(tenant.theme);
   const url = slugOk ? getPublicStoreUrl(tenant.slug) : '';
 
   const copy = async () => {
@@ -72,11 +74,12 @@ export const StoreHeaderCard: React.FC<Props> = ({ tenant, isOpen, canToggleOpen
             <button type="button" onClick={copy} className={`${btn} bg-white hover:bg-slate-50 text-slate-800 border border-slate-300`}>
               {copied ? <Check className="w-4 h-4 text-emerald-700" /> : <Copy className="w-4 h-4" />} {copied ? 'Copiado' : 'Copiar link'}
             </button>
-            <button type="button" onClick={() => setQrOpen(true)} className={`${btn} bg-white hover:bg-slate-50 text-slate-800 border border-slate-300`}>
+            {installReady && <button type="button" onClick={() => setQrOpen(true)} className={`${btn} bg-white hover:bg-slate-50 text-slate-800 border border-slate-300`}>
               <QrCode className="w-4 h-4" /> QR Code
-            </button>
+            </button>}
           </>
         )}
+        {!installReady && <p role="status" className="col-span-2 text-xs">Confirme as missões do aplicativo para liberar o QR de instalação.</p>}
         {onOpenMarketing && (
           <button type="button" onClick={onOpenMarketing} className={`${btn} bg-white hover:bg-slate-50 text-slate-800 border border-slate-300`}>
             <Megaphone className="w-4 h-4" /> Banners & Ofertas
