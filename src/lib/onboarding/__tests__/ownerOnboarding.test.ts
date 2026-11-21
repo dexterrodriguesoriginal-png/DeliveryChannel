@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { canInviteInstallApp, installedIdentityChanged, nextOwnerOnboardingState, onboardingState } from '../ownerOnboarding';
 import type { TenantTheme } from '../../../types';
+import { createDefaultThemeTokens } from '../../theme/themeEngine';
+import { systemBarsFromTokens } from '../../pwa/systemBars';
 
 const logo = 'https://example.com/logo.png';
 const make = (state?: { step: number; skipped?: boolean; completed?: boolean; legacyInvites?: boolean; navConfirmedColor?: string }, url = logo) =>
@@ -23,6 +25,15 @@ describe('missões do dono', () => {
     expect(canInviteInstallApp(before)).toBe(false);
     const done = make({ step: 4, completed: true, navConfirmedColor: 'outra-cor' });
     expect(canInviteInstallApp(done)).toBe(false);
+  });
+  it('libera após confirmação da barra e das quatro missões', () => {
+    const tokens = createDefaultThemeTokens();
+    const nav = systemBarsFromTokens(tokens).nav;
+    const completed = { logoUrl: logo, tokens: { ...tokens, meta: { ...tokens.meta, logoConfirmedUrl: logo, ownerOnboarding: { step: 4, completed: true, navConfirmedColor: nav } } } } as TenantTheme;
+    expect(canInviteInstallApp(completed)).toBe(true);
+    const changed = { ...completed, tokens: { ...completed.tokens, meta: { ...completed.tokens.meta, systemBars: { navBarColor: tokens.palette.secondary } } } } as TenantTheme;
+    expect(canInviteInstallApp(changed)).toBe(false);
+    expect(installedIdentityChanged(completed, changed)).toBe(true);
   });
   it('loja antiga preserva convite, mesmo após abrir o guia', () => {
     expect(canInviteInstallApp(make())).toBe(true);
