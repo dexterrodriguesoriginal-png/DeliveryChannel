@@ -304,10 +304,11 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     }
   }
 
-  async function loadLogo(storeId: string, logoUrl: string | undefined): Promise<{ bytes: Buffer; contentType: string } | null> {
+  async function loadLogo(storeId: string, logoUrl: string | undefined, revision = ''): Promise<{ bytes: Buffer; contentType: string } | null> {
     const u = (logoUrl || '').trim();
     if (!u) return null;
-    const cacheKey = `${storeId}|${u}`;
+    // updatedAt do tema torna o cache diferente em TODAS as réplicas após salvar.
+    const cacheKey = `${storeId}|${u}|${revision}`;
     const now = Date.now();
     const cached = logoCache.get(cacheKey);
     if (cached) {
@@ -356,7 +357,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   async function withLogoDigest(store: StoreIdentityInput): Promise<StoreIdentityInput | null> {
     const url = store.theme?.logoUrl?.trim();
     if (!url) return store;
-    const logo = await loadLogo(store.id, url);
+    const logo = await loadLogo(store.id, url, store.theme?.updatedAt || store.updatedAt);
     if (!logo) return null;
     const contentHash = crypto.createHash('sha256').update(logo.bytes).digest('hex').slice(0, 24);
     return { ...store, iconContentHash: contentHash };
@@ -448,7 +449,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     if (!store) return;
     if (testVariant) { await sendSplashTestIcon(res, store, variant as unknown as SplashTestIconVariant); return; }
     const configuredLogo = Boolean(store.theme?.logoUrl?.trim());
-    const logo = configuredLogo ? await loadLogo(store.id, store.theme?.logoUrl) : null;
+    const logo = configuredLogo ? await loadLogo(store.id, store.theme?.logoUrl, store.theme?.updatedAt || store.updatedAt) : null;
     if (configuredLogo && !logo) { iconUnavailable(res); return; }
     const verified = logo
       ? { ...store, iconContentHash: crypto.createHash('sha256').update(logo.bytes).digest('hex').slice(0, 24) }
