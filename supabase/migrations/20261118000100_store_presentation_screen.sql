@@ -65,7 +65,7 @@ DO $module$ DECLARE d text; BEGIN
     RAISE EXCEPTION 'PRESENTATION PRE: assinatura de set_tenant_module incompatível, revisar antes de migrar';
   END IF;
   d := replace(d, 'IF v_role IS DISTINCT FROM ''OWNER'' THEN',
-     'IF v_role IS DISTINCT FROM ''OWNER'' AND NOT (p_key = ''store_presentation'' AND v_role = ''MANAGER'') THEN');
+     'IF v_role IS DISTINCT FROM ''OWNER'' AND (p_key IS DISTINCT FROM ''store_presentation'' OR v_role IS DISTINCT FROM ''MANAGER'') THEN');
   d := replace(d, '''pos'', ''loyalty'', ''credit_tab''',
      '''pos'', ''loyalty'', ''credit_tab'', ''store_presentation''');
   EXECUTE d;
