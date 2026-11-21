@@ -335,22 +335,21 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       loaded = null;
     }
 
-    if (
-      loaded &&
-      loaded.bytes.byteLength > 0 &&
-      loaded.bytes.byteLength <= Math.min(MAX_SINGLE_LOGO_CACHE_BYTES, maxLogoCacheBytes)
-    ) {
-      while (
-        logoCache.size >= maxLogoCacheEntries ||
-        (logoCache.size > 0 && logoCacheBytes + loaded.bytes.byteLength > maxLogoCacheBytes)
-      ) {
-        const oldestKey = logoCache.keys().next().value as string | undefined;
-        if (!oldestKey) break;
-        evictLogoCacheEntry(oldestKey);
-      }
-      logoCache.set(cacheKey, { at: Date.now(), bytes: loaded.bytes, contentType: loaded.contentType });
-      logoCacheBytes += loaded.bytes.byteLength;
+    // Um download vazio, grande demais ou não obtido não deve ser usado como logo.
+    if (!loaded || loaded.bytes.byteLength === 0 ||
+        loaded.bytes.byteLength > Math.min(MAX_SINGLE_LOGO_CACHE_BYTES, maxLogoCacheBytes)) {
+      return null;
     }
+    while (
+      logoCache.size >= maxLogoCacheEntries ||
+      (logoCache.size > 0 && logoCacheBytes + loaded.bytes.byteLength > maxLogoCacheBytes)
+    ) {
+      const oldestKey = logoCache.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      evictLogoCacheEntry(oldestKey);
+    }
+    logoCache.set(cacheKey, { at: Date.now(), bytes: loaded.bytes, contentType: loaded.contentType });
+    logoCacheBytes += loaded.bytes.byteLength;
     return loaded;
   }
 
