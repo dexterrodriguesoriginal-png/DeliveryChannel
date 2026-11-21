@@ -179,8 +179,8 @@ function splashTestManifest(store: StoreIdentityInput, base: string, v: string) 
 }
 
 /**
- * EXPERIMENTO (só slugs de teste): o mesmo manifesto da loja, mas com id/start_url/scope da versão da logo
- * (/app/<slug>~<versão>/). Ver src/lib/pwa/appIdentity.ts.
+ * COMPATIBILIDADE LEGADA: manifesto da loja com id/start_url/scope do hash já instalado
+ * (/app/<slug>~<hash>/). Não gerar novas identidades. Ver src/lib/pwa/appIdentity.ts.
  */
 export function identityTestManifest(store: StoreIdentityInput, identity: string, opts: { splashTest?: boolean } = {}) {
   const m = serverManifest(store, opts);
