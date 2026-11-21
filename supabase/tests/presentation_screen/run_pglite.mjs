@@ -23,6 +23,9 @@ GRANT EXECUTE ON FUNCTION public.is_tenant_owner_or_manager(uuid) TO authenticat
 CREATE TABLE public.tenants(id uuid PRIMARY KEY, slug text UNIQUE, name text);
 CREATE TABLE public.tenant_users (tenant_id uuid NOT NULL REFERENCES public.tenants(id),
   user_id uuid NOT NULL, role_id text NOT NULL, status text NOT NULL);
+ALTER TABLE public.tenant_users ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tu_self ON public.tenant_users FOR SELECT TO authenticated USING (user_id = auth.uid());
+GRANT SELECT ON public.tenant_users TO authenticated;
 CREATE TABLE public.tenant_modules (
  tenant_id uuid REFERENCES public.tenants(id), module_key text NOT NULL,
  enabled boolean NOT NULL DEFAULT false, config jsonb DEFAULT '{}'::jsonb,
