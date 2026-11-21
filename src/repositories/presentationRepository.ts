@@ -1,5 +1,5 @@
 /**
- * Tela inicial personalizada (painel, OWNER/MANAGER). A mídia passa pelo fluxo governado N3
+ * Tela inicial personalizada (painel, OWNER). A mídia passa pelo fluxo governado N3
  * (mediaRepository.uploadAndPublishCreative) e a escolha é gravada só via RPC SECURITY DEFINER,
  * que confere papel, tenant, publicação, tamanho e duração no servidor.
  */
