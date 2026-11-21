@@ -40,6 +40,7 @@ import { useToast } from '../../context/ToastContext';
 import { ownerStatusToastMessage } from '../../lib/orders/labels';
 import { formatBRL } from '../../lib/pricing/money';
 import { StoreHeaderCard } from '../../components/establishment/dashboard/StoreHeaderCard';
+import { OwnerOnboarding } from '../../components/establishment/dashboard/OwnerOnboarding';
 import { useMarkDashboardOpen } from '../../lib/dashboardPresence';
 import { OrderAlertsCard } from '../../components/establishment/dashboard/OrderAlertsCard';
 import { buildOrderAlerts, newOrderIds, updateNewOrderQueue, nextStepFor, orderDetailsHash, FOCUS_ORDER_KEY, NextStep } from '../../lib/orders/orderAlerts';
@@ -507,6 +508,7 @@ const EstablishmentDashboardContent: React.FC<EstablishmentDashboardProps> = ({ 
   return (
     <DriverOffersContext.Provider value={ownerOffers}>
     <div className="space-y-3">
+      {activeRole === 'OWNER' && <OwnerOnboarding tenant={activeTenant} ownerName={userName} onNavigate={onNavigate} />}
       {/* ========================================================================= */}
       {/* 1. CABEÇALHO DO DASHBOARD (COMANDO 49 SEÇÃO 4 / COMANDO 125)               */}
       {/* ========================================================================= */}
