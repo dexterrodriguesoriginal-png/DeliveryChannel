@@ -1949,7 +1949,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           onDone={() => setPresentationRun(null)}
         />
       )}
-      {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />
+      {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
       {!previewMode && legacyIdentity && <AppIdentityUpdate slug={storeData.tenant.slug} storeName={storeData.tenant.name} />}
       {!previewMode && !legacyIdentity && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
