@@ -158,6 +158,30 @@ describe('rotas PWA por loja', () => {
     } finally { await new Promise<void>(resolve => srv.close(() => resolve())); }
   });
 
+  it('logo com bytes inválidos nunca gera iniciais nem é armazenada como ícone válido', async () => {
+    const store = { id: 'tenant-corrupt', slug: 'logo-corrupta', name: 'Loja',
+      theme: { storeName: 'Loja', logoUrl: 'https://cdn.example/corrupt.png' } };
+    const app = express();
+    const fetchLogo = vi.fn(async () => ({
+      bytes: Buffer.from('não é uma imagem'), contentType: 'image/png',
+    }));
+    app.use(createPwaRouter({ publicDir: '/nonexistent', fetchLogo,
+      resolveStore: async slug => slug === store.slug ? { status: 'ok', store } : { status: 'not_found' },
+    }));
+    const srv = await new Promise<Server>(resolve => { const server = app.listen(0, '127.0.0.1', () => resolve(server)); });
+    const b = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    try {
+      for (const variant of ['icon-192', 'icon-512', 'maskable-512']) {
+        const response = await fetch(`${b}/app/logo-corrupta/icons/${variant}.png`);
+        expect(response.status).toBe(503);
+        expect(response.headers.get('cache-control')).toBe('no-store');
+        expect(response.headers.get('retry-after')).toBeTruthy();
+        expect(response.headers.get('content-type')).not.toContain('image/png');
+      }
+      expect(fetchLogo).toHaveBeenCalledTimes(1); // bytes brutos em cache curto; nenhum PNG inválido em iconCache
+    } finally { await new Promise<void>(resolve => srv.close(() => resolve())); }
+  });
+
   it('URL da logo idêntica: bytes alterados mudam ?v=; mesmos bytes mantêm ?v= e ícone do cache é atualizado', async () => {
     const sharp = (await import('sharp')).default;
     const make = async (accent: string) => {
