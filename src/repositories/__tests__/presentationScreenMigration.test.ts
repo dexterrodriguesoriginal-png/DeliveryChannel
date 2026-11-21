@@ -25,7 +25,11 @@ describe('migration da tela inicial personalizada', () => {
     expect(sql).toContain('REVOKE ALL ON FUNCTION public._presentation_store_base(text) FROM PUBLIC, anon, authenticated');
     expect(down).toContain('PRESENTATION DOWN');
     expect(down).toMatch(/END;\s*\$\$;/);
-    expect(sql).toContain("p_key IS DISTINCT FROM ''store_presentation'' OR v_role IS DISTINCT FROM ''MANAGER''");
+    // O controle original OWNER usa IS DISTINCT FROM e rejeita NULL.
+    expect(sql).toContain("IF v_role IS DISTINCT FROM ''OWNER'' THEN");
+    expect(sql).not.toContain("v_role IS DISTINCT FROM ''MANAGER''");
+    expect(sql).toContain("tu.role_id = 'OWNER'");
+    expect(sql).toContain("tu.status = 'ACTIVE'");
     expect(down).not.toMatch(/CASCADE/);
   });
   it('PGlite: aplica, isola tenants, não vaza campos e o rollback restaura a função exata', () => {
