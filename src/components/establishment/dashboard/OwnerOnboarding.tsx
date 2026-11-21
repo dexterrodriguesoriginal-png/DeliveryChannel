@@ -33,8 +33,7 @@ export function OwnerOnboarding({ tenant, ownerName, onNavigate }: Props) {
   // Persist the first-visit marker. Shops created before rollout retain their existing invites.
   useEffect(() => {
     if (existing) return;
-    const legacyInvites = isLegacyInviteStore(tenant.theme, tenant.createdAt);
-    void persist({ step: 0, legacyInvites }).catch(() => undefined);
+    void persist({ step: 0 }).catch(() => undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenant.id]);
 
@@ -43,7 +42,10 @@ export function OwnerOnboarding({ tenant, ownerName, onNavigate }: Props) {
     setBusy(true);
     setError('');
     try {
-      const next = nextOwnerOnboardingState(onboardingState(tenant.theme), patch);
+      // Primeira gravação (automática ou após falha dela) sempre define a elegibilidade de loja antiga.
+      const previous = onboardingState(tenant.theme)
+        ?? { step: 0, legacyInvites: isLegacyInviteStore(tenant.theme, tenant.createdAt) };
+      const next = nextOwnerOnboardingState(previous, patch);
       const updatedTokens = {
         ...themeToTokens(tenant.theme),
         meta: { ...themeToTokens(tenant.theme).meta, ownerOnboarding: next },
