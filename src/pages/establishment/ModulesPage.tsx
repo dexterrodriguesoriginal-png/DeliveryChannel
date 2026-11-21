@@ -98,7 +98,7 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
   const hasPresetChanges = savedBusinessType !== businessType;
 
   const handleToggle = async (key: ModuleKey) => {
-    if (!activeTenant || !(canChange || (key === 'store_presentation' && activeRole === 'MANAGER')) || savingKey) return;
+    if (!activeTenant || !canChange || savingKey) return;
     const currentlyEnabled = enabled.has(key);
     setSavingKey(key);
     try {
@@ -235,12 +235,12 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        {module.key === 'store_presentation' && !isEnabled && (activeRole === 'OWNER' || activeRole === 'MANAGER') && (
+                        {module.key === 'store_presentation' && !isEnabled && activeRole === 'OWNER' && (
                           <button type="button" data-testid="presentation-enable" style={{ color: 'var(--dc-primary)', fontWeight: 700 }}
                             disabled={loading || Boolean(savingKey)}
                             onClick={() => void handleToggle('store_presentation')}>Habilitar</button>
                         )}
-                        {module.key === 'store_presentation' && isEnabled && (activeRole === 'OWNER' || activeRole === 'MANAGER') && (
+                        {module.key === 'store_presentation' && isEnabled && activeRole === 'OWNER' && (
                         <Button type="button" variant="outline" size="sm" onClick={() => onNavigate?.('est-theme')}>Configurar no Design do App</Button>
                       )}{module.key === 'dine_in' && isEnabled && salonAccess.canManageSalon && (
                         <Button type="button" variant="outline" size="sm" onClick={() => setShowSalonSetup(value => !value)}>
@@ -252,7 +252,7 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
                         role="switch"
                         aria-checked={isEnabled}
                         aria-label={`${isEnabled ? 'Desativar' : 'Ativar'} ${module.label}`}
-                        disabled={!(canChange || (module.key === 'store_presentation' && activeRole === 'MANAGER')) || !module.implemented || loading || Boolean(savingKey) || isSaving}
+                        disabled={!canChange || !module.implemented || loading || Boolean(savingKey) || isSaving}
                         onClick={() => void handleToggle(module.key)}
                         className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                           isEnabled ? 'bg-emerald-600' : 'bg-gray-300'
