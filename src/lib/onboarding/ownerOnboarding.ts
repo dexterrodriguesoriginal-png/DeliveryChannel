@@ -7,6 +7,7 @@ export interface OwnerOnboardingState {
   step: number;
   skipped?: boolean;
   completed?: boolean;
+  legacyInvites?: boolean;
   navConfirmedColor?: string;
 }
 
@@ -18,7 +19,7 @@ export function onboardingState(theme: Partial<TenantTheme> | null | undefined):
 export function canInviteInstallApp(theme: Partial<TenantTheme> | null | undefined): boolean {
   if (!isLogoConfirmed(theme)) return false;
   const state = onboardingState(theme);
-  if (!state) return true; // Store existed before the onboarding was initialized.
+  if (!state || state.legacyInvites) return true; // Legacy shops preserve their existing invitations.
   return state.completed === true && state.navConfirmedColor === systemBarsFromTokens(themeToTokens(theme)).nav;
 }
 
