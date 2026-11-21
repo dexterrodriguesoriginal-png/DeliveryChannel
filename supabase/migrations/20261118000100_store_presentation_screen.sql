@@ -55,108 +55,22 @@ ALTER TABLE public.tenant_modules ADD CONSTRAINT tenant_modules_module_key_check
  'printing','weight','barcode','substitution','variants','reserve_exchange','scheduling',
  'quotes','street_vendor','pos','loyalty','credit_tab','store_presentation'));
 
--- Owner mantém controle dos outros módulos; gerente só pode alternar este módulo.
-CREATE OR REPLACE FUNCTION public.set_tenant_module(
-  p_tenant uuid,
-  p_key text,
-  p_enabled boolean,
-  p_config jsonb DEFAULT '{}'::jsonb
-)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-  v_role text;
-  v_previous_enabled boolean;
-  v_previous_config jsonb;
-  v_blockers text[];
-  v_config jsonb;
-BEGIN
-  IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'AUTH_REQUIRED: Faça login para alterar os módulos.';
+-- Atualiza somente os dois trechos necessários da função já instalada, sem sobrescrever
+-- evoluções introduzidas por migrations posteriores a 20261019.
+DO $module$ DECLARE d text; BEGIN
+ SELECT pg_get_functiondef('public.set_tenant_module(uuid,text,boolean,jsonb)'::regprocedure) INTO d;
+ IF position('store_presentation' in d) = 0 THEN
+  IF position('IF v_role IS DISTINCT FROM ''OWNER'' THEN' in d) = 0
+    OR position('''pos'', ''loyalty'', ''credit_tab''' in d) = 0 THEN
+    RAISE EXCEPTION 'PRESENTATION PRE: assinatura de set_tenant_module incompatível, revisar antes de migrar';
   END IF;
-
-  SELECT tu.role_id INTO v_role
-  FROM public.tenant_users tu
-  WHERE tu.tenant_id = p_tenant
-    AND tu.user_id = auth.uid()
-    AND tu.status = 'ACTIVE';
-
-  IF v_role IS DISTINCT FROM 'OWNER' AND NOT (p_key = 'store_presentation' AND v_role = 'MANAGER') THEN
-    RAISE EXCEPTION 'MODULE_OWNER_REQUIRED: Apenas o proprietário pode alterar os módulos.';
-  END IF;
-
-  IF p_enabled IS NULL THEN
-    RAISE EXCEPTION 'MODULE_INVALID: Informe se o módulo deve ficar ativado ou desativado.';
-  END IF;
-
-  IF p_key IS NULL OR p_key NOT IN (
-    'delivery', 'pickup', 'addons', 'kds', 'dine_in', 'counter', 'service_fee',
-    'printing', 'weight', 'barcode', 'substitution', 'variants', 'reserve_exchange',
-    'scheduling', 'quotes', 'street_vendor', 'pos', 'loyalty', 'credit_tab', 'store_presentation'
-  ) THEN
-    RAISE EXCEPTION 'MODULE_INVALID: Módulo inválido.';
-  END IF;
-
-  IF p_enabled AND p_key = 'service_fee' AND NOT EXISTS (
-    SELECT 1 FROM public.tenant_modules tm
-    WHERE tm.tenant_id = p_tenant AND tm.module_key IN ('dine_in', 'counter') AND tm.enabled
-  ) THEN
-    RAISE EXCEPTION 'MODULE_DEPENDENCY: Taxa de serviço precisa de Mesa ou Balcão.';
-  END IF;
-
-  IF p_enabled AND p_key = 'kds' AND NOT EXISTS (
-    SELECT 1 FROM public.tenant_modules tm
-    WHERE tm.tenant_id = p_tenant AND tm.module_key IN ('pickup', 'counter') AND tm.enabled
-  ) THEN
-    RAISE EXCEPTION 'MODULE_DEPENDENCY: Chamar no TV precisa de Retirada ou Balcão.';
-  END IF;
-
-  IF NOT p_enabled THEN
-    v_blockers := public._tenant_module_disable_blockers(p_tenant, p_key);
-    IF COALESCE(pg_catalog.cardinality(v_blockers), 0) > 0 THEN
-      RAISE EXCEPTION 'MODULE_HAS_OPEN_ITEMS: Feche primeiro: %', pg_catalog.array_to_string(v_blockers, ', ');
-    END IF;
-  END IF;
-
-  SELECT tm.enabled, tm.config
-  INTO v_previous_enabled, v_previous_config
-  FROM public.tenant_modules tm
-  WHERE tm.tenant_id = p_tenant AND tm.module_key = p_key;
-
-  v_config := CASE
-    WHEN p_config IS NULL OR (p_config = '{}'::jsonb AND COALESCE(v_previous_config, '{}'::jsonb) <> '{}'::jsonb)
-      THEN COALESCE(v_previous_config, '{}'::jsonb)
-    ELSE p_config
-  END;
-
-  INSERT INTO public.tenant_modules (tenant_id, module_key, enabled, config, updated_by, updated_at)
-  VALUES (p_tenant, p_key, p_enabled, v_config, auth.uid(), pg_catalog.now())
-  ON CONFLICT (tenant_id, module_key) DO UPDATE
-    SET enabled = EXCLUDED.enabled,
-        config = EXCLUDED.config,
-        updated_by = EXCLUDED.updated_by,
-        updated_at = EXCLUDED.updated_at
-    WHERE public.tenant_modules.enabled IS DISTINCT FROM EXCLUDED.enabled
-       OR public.tenant_modules.config IS DISTINCT FROM EXCLUDED.config;
-
-  IF v_previous_enabled IS DISTINCT FROM p_enabled OR v_previous_config IS DISTINCT FROM v_config THEN
-    PERFORM public.log_audit_event(
-      'TENANT_MODULE_UPDATED',
-      'tenant_modules',
-      pg_catalog.format('Módulo %s %s.', p_key, CASE WHEN p_enabled THEN 'ativado' ELSE 'desativado' END),
-      p_key,
-      pg_catalog.jsonb_build_object('enabled', COALESCE(v_previous_enabled, false), 'config', COALESCE(v_previous_config, '{}'::jsonb))::text,
-      pg_catalog.jsonb_build_object('enabled', p_enabled, 'config', v_config)::text,
-      p_tenant
-    );
-  END IF;
-END;
-$$;
-
-
+  d := replace(d, 'IF v_role IS DISTINCT FROM ''OWNER'' THEN',
+     'IF v_role IS DISTINCT FROM ''OWNER'' AND NOT (p_key = ''store_presentation'' AND v_role = ''MANAGER'') THEN');
+  d := replace(d, '''pos'', ''loyalty'', ''credit_tab''',
+     '''pos'', ''loyalty'', ''credit_tab'', ''store_presentation''');
+  EXECUTE d;
+ END IF;
+END $module$;
 REVOKE ALL ON FUNCTION public.set_tenant_module(uuid,text,boolean,jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.set_tenant_module(uuid,text,boolean,jsonb) TO authenticated;
 
