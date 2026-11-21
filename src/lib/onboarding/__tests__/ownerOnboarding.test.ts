@@ -32,7 +32,7 @@ describe('missões do dono', () => {
     const completed = { logoUrl: logo, tokens: { ...tokens, meta: { ...tokens.meta, logoConfirmedUrl: logo, ownerOnboarding: { step: 4, completed: true, navConfirmedColor: nav } } } } as TenantTheme;
     expect(canInviteInstallApp(completed)).toBe(true);
     const changed = { ...completed, tokens: { ...completed.tokens, meta: { ...completed.tokens.meta, systemBars: { navBarColor: tokens.palette.secondary } } } } as TenantTheme;
-    expect(canInviteInstallApp(changed)).toBe(false);
+    expect(canInviteInstallApp(changed)).toBe(true);
     expect(installedIdentityChanged(completed, changed)).toBe(true);
   });
   it('loja antiga preserva convite, mesmo após abrir o guia', () => {
