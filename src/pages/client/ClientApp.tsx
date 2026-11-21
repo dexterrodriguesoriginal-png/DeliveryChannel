@@ -301,7 +301,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         }
       }
       // O overlay é montado antes de sumir a logo do servidor, sem flash de cardápio.
-      requestAnimationFrame(() => { if (alive) hideBootScreen(); });
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => { if (alive) hideBootScreen(); });
+      else setTimeout(() => { if (alive) hideBootScreen(); }, 0);
     }).finally(() => { if (timeout) clearTimeout(timeout); });
     return () => { alive = false; if (timeout) clearTimeout(timeout); hideBootScreen(); };
   }, [previewMode, isLoadingStore, slug, storeData]);
