@@ -23,14 +23,14 @@ CREATE TABLE public.tenant_modules (
  CONSTRAINT tenant_modules_module_key_check CHECK(module_key IN ('pos','loyalty','credit_tab'))
 );
 CREATE FUNCTION public.assert_tenant_module_enabled(p_tenant uuid,p_key text) RETURNS void
- LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 BEGIN
  IF NOT EXISTS (SELECT 1 FROM public.tenant_modules WHERE tenant_id=p_tenant AND module_key=p_key AND enabled) THEN
   RAISE EXCEPTION 'MODULE_DISABLED';
  END IF;
-END $;
+END $$;
 CREATE FUNCTION public.set_tenant_module(p_tenant uuid,p_key text,p_enabled boolean,p_config jsonb DEFAULT '{}'::jsonb)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE v_role text;
 BEGIN
  v_role := current_setting('test.role',true);
@@ -41,7 +41,7 @@ BEGIN
  IF p_key NOT IN ('pos', 'loyalty', 'credit_tab') THEN RAISE EXCEPTION 'MODULE_INVALID'; END IF;
  INSERT INTO public.tenant_modules(tenant_id,module_key,enabled) VALUES(p_tenant,p_key,p_enabled)
  ON CONFLICT(tenant_id,module_key) DO UPDATE SET enabled=excluded.enabled;
-END $;
+END $$;
 CREATE TABLE public.marketing_media_assets(id uuid PRIMARY KEY, tenant_id uuid REFERENCES public.tenants(id), kind text, media_type text, status text,
   public_path text, private_path text, size_bytes bigint, width_px int, height_px int, duration_seconds numeric(8,3));
 CREATE FUNCTION public._public_media_json(p_tenant uuid, p_asset uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
