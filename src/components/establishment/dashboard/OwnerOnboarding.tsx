@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { LockKeyhole, Medal, Smartphone, Sparkles } from 'lucide-react';
 import type { Tenant } from '../../../types';
 import { useAuth } from '../../../context/AuthContext';
@@ -23,6 +23,12 @@ export function OwnerOnboarding({ tenant, ownerName, onNavigate }: Props) {
   const nav = systemBarsFromTokens(tokens).nav;
   const logoReady = isLogoConfirmed(tenant.theme);
   const navReady = existing?.navConfirmedColor === nav;
+  // Loja deste painel ainda montada: resposta atrasada não pode trazer de volta a loja anterior.
+  const liveTenantId = useRef<string | null>(tenant.id);
+  useEffect(() => {
+    liveTenantId.current = tenant.id;
+    return () => { liveTenantId.current = null; };
+  }, [tenant.id]);
 
   // Persist the first-visit marker. Shops created before rollout retain their existing invites.
   useEffect(() => {
@@ -45,6 +51,7 @@ export function OwnerOnboarding({ tenant, ownerName, onNavigate }: Props) {
       // Grava só o progresso (theme_tokens) + nome obrigatório: não reescreve logo/cores com valores de exibição
       // (ex.: logo padrão usada quando a loja ainda não tem logo).
       await themeService.updateTheme(securityContext, tenant.id, { storeName: tenant.theme.storeName || tenant.name, tokens: updatedTokens });
+      if (liveTenantId.current !== tenant.id) return false;
       setActiveTenant({ ...tenant, theme: { ...tenant.theme, tokens: updatedTokens } });
       return true;
     } catch (e) {
@@ -145,6 +152,7 @@ export function OwnerOnboarding({ tenant, ownerName, onNavigate }: Props) {
           </div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={acknowledged} onChange={e => setAcknowledged(e.target.checked)} /> Entendi</label>
           {(!logoReady || !navReady) && <p role="alert" className="text-sm">Confirme a logo e a cor da barra antes de concluir as missões.</p>}
+          {!navReady && <button type="button" className="underline text-sm" disabled={busy} data-testid="onboarding-reconfirm-nav" onClick={() => void persist({ navConfirmedColor: nav })}>Confirmar a cor atual da barra</button>}
           <button type="button" style={buttonStyle} className="rounded-xl px-5 py-2 font-bold disabled:opacity-50" disabled={busy || !acknowledged || !logoReady || !navReady} onClick={complete}>Meu app está pronto</button>
         </div>
       )}
