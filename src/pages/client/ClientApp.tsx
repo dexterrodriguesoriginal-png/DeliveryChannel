@@ -51,6 +51,7 @@ import { Card } from '../../components/ui/Card';
 import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
 import { isLogoConfirmed } from '../../lib/pwa/logoConfirmation';
+import { canInviteInstallApp } from '../../lib/onboarding/ownerOnboarding';
 import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
@@ -1905,7 +1906,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           || isAuthModalOpen || isAccountOpen || addressFlow.open || isSubmittingOrder || navTab === 'cart'}
       />}
       {/* "Instalar app" só depois que a loja confirma a logo definitiva (ícone do app nasce com ela). */}
-      {!previewMode && isLogoConfirmed(theme) && <InstallStoreAppHint
+      {!previewMode && isLogoConfirmed(theme) && canInviteInstallApp(theme) && <InstallStoreAppHint
         tenantId={storeData.tenant.id}
         storeName={theme.storeName || storeData.tenant.name}
         color={theme.primaryColor || '#334155'}
