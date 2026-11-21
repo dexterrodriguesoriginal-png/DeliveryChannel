@@ -1,51 +1,41 @@
 # Atualização dos Apps Instalados (PWA) — Delivery Channel
 
-Este documento descreve como funcionam as atualizações de identidade visual (logotipo, nome, cores) e de código nos aplicativos instaláveis (Loja do Cliente, Garçom, Entregador e Cozinha).
+Este documento descreve as atualizações de identidade visual e código do aplicativo de cada loja. Os aplicativos de garçom, entregador, cozinha e totem não são alterados pelo fluxo de identidade da loja.
 
----
+## Manifesto canônico estável
 
-## 1. Arquitetura de Manifesto e Ícones por Loja
+Novas visitas a `/app/<slug>/` recebem sempre o link `/app/<slug>/manifest.webmanifest`, sem query string. O manifesto mantém:
 
-1. **URL do manifesto estável (`/app/:slug/manifest.webmanifest`):**
-   - O elemento `<link rel="manifest" href="/app/<slug>/manifest.webmanifest">` mantém sempre a **mesma URL** (sem query string variável) e o mesmo `id` (`/app-id/<tenantId>`).
-   - O Chrome/Android associa o WebAPK instalado à URL exata do manifesto. Se a URL do manifesto mudasse a cada alteração de tema, o WebAPK não reconheceria a atualização.
-   - O manifesto é servido com `Cache-Control: no-cache`, garantindo revalidação a cada checagem do navegador.
+- `id: /app-id/<tenantId>`, sem versão no identificador;
+- `scope: /app/<slug>/` e `start_url: /app/<slug>/?source=pwa`;
+- nome, nome curto, descrição, `theme_color` e `background_color` atuais;
+- três ícones PNG separados: 192x192 com `purpose: any`, 512x512 com `purpose: any`, e 512x512 com `purpose: maskable`.
 
-2. **Ícones versionados por hash da identidade (`/app/:slug/icons/:variant.png?v=<hash>`):**
-   - Dentro do manifesto e nas tags `<link rel="icon">` / `<link rel="apple-touch-icon">`, as URLs dos ícones (`icon-192.png`, `icon-512.png`, `maskable-512.png`) recebem `?v=<hash>`.
-   - O hash é calculado a partir do conteúdo da identidade (nome, nome curto, URL e bytes do logotipo, cores do tema/barras e `updated_at`).
-   - Quando o dono troca o logotipo ou as cores da loja, o `?v=` muda automaticamente, sinalizando ao Chrome/WebAPK que os ícones foram alterados.
-   - Ícones com `?v=` são servidos com `Cache-Control: public, max-age=31536000, immutable`.
+Os ícones são servidos em `/app/<slug>/icons/*.png?v=<storeIconVersion>`. O hash `?v=` é calculado a partir da identidade visual **do ícone** (logo ou fallback de iniciais), não da cor das barras, de `updated_at` ou de cada alteração genérica do tema. O manifesto continua com `Cache-Control: no-cache`; o handler dos ícones mantém sua política de cache existente.
 
-3. **Atualização em Runtime no Navegador/App Aberto:**
-   - Quando a identidade da loja muda, `applyStoreIdentity` atualiza imediatamente em runtime:
-     - `<link rel="icon">`
-     - `<link rel="apple-touch-icon">`
-     - `<meta name="theme-color">`
-     - `<title>` e metadados de título do app
+Trocar e confirmar a logo não cria um novo manifesto, `id` ou `scope`: a URL do ícone muda via `?v=`, permitindo que o navegador reavalie o WebAPK existente. `/api/pwa/version` continua oferecendo versão do build e `identityVersion`, mas **não** `appIdentity`.
 
----
+## Compatibilidade com instalações antigas
 
-## 2. Service Worker e Atualização de Versão
+WebAPKs que já foram instalados usando `/app/<slug>~<hash10>/` continuam servidos, mesmo quando a loja não possui `appBaseLogoUrl` ou não está na lista de testes. Seu manifesto permanece em `/app/<slug>~<hash10>/manifest.webmanifest` com o **mesmo** `id: /app-id/<tenantId>/<hash10>`, `scope`, `start_url` e `related_applications` originais daquele hash. Apenas os dados atuais da loja e os ícones `?v=` acompanham mudanças.
 
-- O Service Worker mínimo (`/sw.js`) é registrado em `src/main.tsx` com **escopos isolados por aplicativo**:
-  - Loja: `/app/<slug>/`
-  - Garçom: `/garcom`
-  - Entregador: `/entregador`
-  - Cozinha: `/cozinha`
-- Ao abrir o app, `registerPwaServiceWorker` consulta `/api/pwa/version` (`no-store`) e verifica atualizações do Service Worker.
-- Quando uma nova versão está disponível, é exibido o aviso **"Nova versão disponível — atualizar"**. Ao tocar, o app envia `SKIP_WAITING` (`skipWaiting` + `clients.claim`) e recarrega na versão nova.
-- **Segurança e Privacidade (LGPD):**
-  - O Service Worker **não intercepta** `/api/*`, rotas de pagamento/webhooks nem chamadas a outras origens (como Supabase).
-  - HTML e manifestos (`*.webmanifest`, `manifest.json`) nunca são cacheados permanentemente (`Cache-Control: no-cache`).
+O HTML legado injeta seu próprio manifesto. Não há redirecionamento forçado 302 para sair do scope antigo; em erro da consulta também não se redireciona. O antigo WebAPK e o canônico são instalações distintas: nenhum id é migrado.
 
----
+Somente dentro de um WebAPK Android em modo standalone cujo endereço contém `~<hash10>` aparece uma faixa discreta “Há uma versão oficial deste app”, com ação “Abrir app atualizado”. Essa ação abre `/app/<slug>/` por HTTPS comum, sem `intent://` e sem `?reinstall=1`. O cliente pode instalar o canônico e, se desejar, apagar manualmente o ícone legado. Não existe mais banner automático “Baixar versão atualizada” no app estável.
 
-## 3. Comportamento e Limitações por Plataforma
+## Tema e atualizações de conteúdo
 
-| Plataforma | Conteúdo interno do app (cardápio, cores internas, cabeçalho) | Ícone e nome na tela inicial do aparelho |
-| --- | --- | --- |
-| **Android (Google Chrome / WebAPK)** | Atualiza **no próximo abrir** do app (ou imediatamente pelo aviso *"Nova versão disponível — atualizar"*). | Atualiza automaticamente em **~1–3 dias após o app ser aberto**, quando o Chrome executa o ciclo periódico de verificação do manifesto do WebAPK e detecta a nova URL `?v=<hash>` dos ícones. |
-| **iPhone / iPad (iOS Safari)** | Atualiza **no próximo abrir** do app. | O iOS congela o ícone e o nome no momento em que o atalho é criado. **Só troca o ícone ou o nome na tela inicial reinstalando** (removendo o atalho antigo e adicionando novamente à Tela de Início). |
-| **Desktop (Chrome / Edge)** | Atualiza **no próximo abrir** do app. | Atualiza após o navegador revalidar o manifesto ao abrir o app. |
+`injectStoreHead` grava as meta tags iniciais de barra e esquema de cores. Quando o tema carrega ou muda, `applyStoreIdentity` / `applySystemBarMeta` atualizam `<meta name="theme-color">` em runtime, sem cores hardcoded para cada loja. O comportamento de splash/boot não foi modificado; a barra de navegação e a splash do WebAPK podem depender da próxima atualização pelo Chrome.
 
+O Service Worker continua registrando e atualizando seu próprio código. O aviso `StoreVisualUpdateNotice` é separado do processo de atualização de ícone do WebAPK: recarregar o conteúdo não instala um aplicativo novo. HTML, manifestos e `sw.js` são revalidados.
+
+## Comportamento por plataforma e riscos
+
+- **Android / Chrome 144:** o WebAPK pode atualizar o ícone da mesma instalação. Para alterações visuais grandes, o Chromium pode bloquear a atualização silenciosa em torno de 11% de diferença; a opção **⋮ → Revisar atualização do app** pode aparecer. A presença do diálogo deve ser verificada no telefone com o experimento `dc-teste-notif` v1→v2. Não exibimos um hint no app estável, pois não sabemos se o WebAPK já foi atualizado.
+- **Android / Chrome anterior:** verificações periódicas podem depender de condições como Wi‑Fi, alimentação ou tempo decorrido. Não há garantia de troca imediata da logo.
+- **iOS / Safari:** o ícone de um PWA já instalado pode permanecer fixo e exigir remover e adicionar novamente o atalho.
+- **Desktop Chrome / Edge:** o navegador pode revalidar manifesto e ícones conforme seu próprio ciclo.
+
+Referência: [Improvements to web app updates](https://developer.chrome.com/blog/improvements-to-web-app-updates).
+
+O teste em aparelho real continua necessário; nenhuma troca de `id` deve ser introduzida para contornar restrições do Chromium.
