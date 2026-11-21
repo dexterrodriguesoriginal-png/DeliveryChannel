@@ -17,6 +17,7 @@
  * ao tenant do slug é descartado (defesa em profundidade além do filtro do servidor).
  */
 import { fulfillmentFieldsFromRaw } from '../lib/pricing/fulfillmentPricing';
+import type { StorePresentation } from '../lib/pwa/presentation';
 import { resolveMenuTheme } from '../lib/theme/channelThemes';
 import type { MenuTheme } from '../types/menuTheme';
 import { normalizeMenuOptions } from '../lib/menu/menuOptions';
@@ -59,6 +60,8 @@ export interface PublicStoreData {
   menuTheme?: MenuTheme;
   /** Opções do cardápio da mesa (modo totem). */
   menuOptions?: MenuOptions;
+  /** Opcional; a RPC pública omite mídia quando a ferramenta está desligada. */
+  presentation?: StorePresentation;
   categories: Category[];
   products: Product[];
   offers: Offer[];
