@@ -6,7 +6,7 @@ import { themeService } from '../../../services/themeService';
 import { isLogoConfirmed } from '../../../lib/pwa/logoConfirmation';
 import { systemBarsFromTokens } from '../../../lib/pwa/systemBars';
 import { themeToTokens } from '../../../lib/theme/themeEngine';
-import { nextOwnerOnboardingState, onboardingState, OwnerOnboardingState } from '../../../lib/onboarding/ownerOnboarding';
+import { isLegacyInviteStore, nextOwnerOnboardingState, onboardingState, OwnerOnboardingState } from '../../../lib/onboarding/ownerOnboarding';
 
 interface Props { tenant: Tenant; ownerName: string; onNavigate?: (tab: string) => void }
 
@@ -27,7 +27,7 @@ export function OwnerOnboarding({ tenant, ownerName, onNavigate }: Props) {
   // Persist the first-visit marker. Shops created before rollout retain their existing invites.
   useEffect(() => {
     if (existing) return;
-    const legacyInvites = !!tenant.createdAt && tenant.createdAt < '2026-11-21' && logoReady;
+    const legacyInvites = isLegacyInviteStore(tenant.theme, tenant.createdAt);
     void persist({ step: 0, legacyInvites }).catch(() => undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenant.id]);
@@ -42,8 +42,10 @@ export function OwnerOnboarding({ tenant, ownerName, onNavigate }: Props) {
         ...themeToTokens(tenant.theme),
         meta: { ...themeToTokens(tenant.theme).meta, ownerOnboarding: next },
       };
-      const saved = await themeService.updateTheme(securityContext, tenant.id, { ...tenant.theme, tokens: updatedTokens });
-      setActiveTenant({ ...tenant, theme: saved });
+      // Grava só o progresso (theme_tokens) + nome obrigatório: não reescreve logo/cores com valores de exibição
+      // (ex.: logo padrão usada quando a loja ainda não tem logo).
+      await themeService.updateTheme(securityContext, tenant.id, { storeName: tenant.theme.storeName || tenant.name, tokens: updatedTokens });
+      setActiveTenant({ ...tenant, theme: { ...tenant.theme, tokens: updatedTokens } });
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Não foi possível salvar o progresso. Tente novamente.');

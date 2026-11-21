@@ -5,7 +5,7 @@ import { StoreLogo } from '../../client/StoreLogo';
 import { Modal } from '../../ui/Modal';
 import { QRCodeCard } from '../../common/QRCodeCard';
 import { getPublicStoreUrl, isValidStoreSlug } from '../../../utils/publicStoreUrl';
-import { canInviteInstallApp } from '../../../lib/onboarding/ownerOnboarding';
+import { canShareStoreLinks } from '../../../lib/onboarding/ownerOnboarding';
 
 interface Props {
   tenant: Tenant;
@@ -25,7 +25,8 @@ export const StoreHeaderCard: React.FC<Props> = ({ tenant, isOpen, canToggleOpen
   const [qrOpen, setQrOpen] = useState(false);
   const name = tenant.theme?.storeName || tenant.name;
   const slugOk = isValidStoreSlug(tenant.slug);
-  const installReady = canInviteInstallApp(tenant.theme);
+  // Loja antiga (ou sem registro do guia) mantém link e QR como antes; loja nova libera ao concluir as missões.
+  const installReady = canShareStoreLinks(tenant.theme);
   const url = slugOk ? getPublicStoreUrl(tenant.slug) : '';
 
   const copy = async () => {

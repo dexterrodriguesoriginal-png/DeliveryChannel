@@ -141,12 +141,13 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
     }
     try {
       // Logo definitiva (theme_tokens.meta, sem migração): libera o "Instalar app" para os clientes.
+      // Progresso das missões é do painel, não do rascunho: grava sempre o último salvo (rascunho aberto antes não regride).
       const logoConfirmedUrl = cleanImage(logoConfirmedUrlToSave({ logoUrl: submitted.logoUrl, tokens: draft.draftTokens }, tenant.theme));
       const saved = await themeService.updateTheme(securityContext, tenant.id, {
         ...submitted,
         logoUrl: cleanImage(submitted.logoUrl),
         bannerUrl: cleanImage(submitted.bannerUrl),
-        tokens: { ...draft.draftTokens, backgrounds, meta: withAppBaseLogo({ ...draft.draftTokens.meta, logoConfirmedUrl }, cleanImage(submitted.logoUrl)) },
+        tokens: { ...draft.draftTokens, backgrounds, meta: withAppBaseLogo({ ...draft.draftTokens.meta, logoConfirmedUrl, ownerOnboarding: tenant.theme?.tokens?.meta?.ownerOnboarding }, cleanImage(submitted.logoUrl)) },
       });
       draft.markSaved(saved, submitted);
       setActiveTenant({ ...tenant, theme: saved });

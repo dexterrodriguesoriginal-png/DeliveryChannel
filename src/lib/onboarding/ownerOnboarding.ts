@@ -23,6 +23,27 @@ export function canInviteInstallApp(theme: Partial<TenantTheme> | null | undefin
   return state.completed === true && !!state.navConfirmedColor;
 }
 
+/** Data de corte do guia: lojas criadas antes já podiam convidar clientes para instalar o app. */
+export const OWNER_ONBOARDING_ROLLOUT = '2026-11-21';
+
+/**
+ * Loja que já divulgava antes do guia: criada antes do corte OU já confirmou a logo explicitamente no painel.
+ * Lojas novas nascem sem confirmação explícita, então passam pelas missões. (O convite "Instalar app" no app
+ * do cliente continua exigindo a logo confirmada, como antes.)
+ */
+export function isLegacyInviteStore(theme: Partial<TenantTheme> | null | undefined, createdAt?: string): boolean {
+  if (createdAt && createdAt < OWNER_ONBOARDING_ROLLOUT) return true;
+  const confirmed = theme?.tokens?.meta?.logoConfirmedUrl;
+  return isLogoConfirmed(theme) && typeof confirmed === 'string' && confirmed.trim() !== '';
+}
+
+/** Link público, "Copiar link" e QR no painel: travados só para loja nova que ainda não concluiu as missões. */
+export function canShareStoreLinks(theme: Partial<TenantTheme> | null | undefined): boolean {
+  const state = onboardingState(theme);
+  if (!state || state.legacyInvites) return true;
+  return state.completed === true && !!state.navConfirmedColor;
+}
+
 export function installedIdentityChanged(before: Partial<TenantTheme>, after: Partial<TenantTheme>): boolean {
   if (!canInviteInstallApp(before)) return false;
   return (before.logoUrl || '').trim() !== (after.logoUrl || '').trim()

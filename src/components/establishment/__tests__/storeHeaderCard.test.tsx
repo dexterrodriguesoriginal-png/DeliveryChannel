@@ -20,4 +20,11 @@ describe('StoreHeaderCard (Dashboard)', () => {
     expect(html).not.toContain('data-testid="toggle-store-open"');
     expect(html).not.toContain('Banners');
   });
+  it('loja nova com missões pendentes: sem link, Copiar link e QR até concluir', () => {
+    const fresh = { ...tenant, theme: { ...tenant.theme, tokens: { version: 1, meta: { ownerOnboarding: { step: 2 } } } } };
+    const html = renderToStaticMarkup(<StoreHeaderCard tenant={fresh} isOpen canToggleOpen onToggleOpen={() => {}} />);
+    expect(html).not.toContain('Copiar link');
+    expect(html).not.toContain('QR Code');
+    expect(html).toContain('Confirme as missões do aplicativo');
+  });
 });
