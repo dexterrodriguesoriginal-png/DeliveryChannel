@@ -19,15 +19,15 @@ import { assertPublicUrl, isPrivateIp } from '../safeFetch';
 import { identityFromPayload, isValidSlug, StoreResolver } from '../storeSource';
 
 const stores: Record<string, Awaited<ReturnType<StoreResolver>>> = {
-  'padaria-do-joao': { status: 'ok', store: { id: 'tenant-padaria-04', slug: 'padaria-do-joao', name: 'Padaria do João', theme: { storeName: 'Padaria do João', primaryColor: '#b45309', logoUrl: '/logo.png' } } },
-  'adega-premium': { status: 'ok', store: { id: 'tenant-adega-01', slug: 'adega-premium', name: 'Adega Premium', theme: { storeName: 'Adega Premium Jardins', primaryColor: '#15803d', logoUrl: 'http://127.0.0.1/x.png' } } },
+  'padaria-do-joao': { status: 'ok', store: { id: 'tenant-padaria-04', slug: 'padaria-do-joao', name: 'Padaria do João', theme: { storeName: 'Padaria do João', primaryColor: '#b45309' } } },
+  'adega-premium': { status: 'ok', store: { id: 'tenant-adega-01', slug: 'adega-premium', name: 'Adega Premium', theme: { storeName: 'Adega Premium Jardins', primaryColor: '#15803d' } } },
 };
 const resolver: StoreResolver = async (slug) => stores[slug] ?? { status: 'not_found' };
 
 let server: Server; let base = '';
 beforeAll(async () => {
   const app = express();
-  // logo relativo inexistente e logo externo bloqueado => fallback de iniciais
+  // Ambas as lojas deste fixture não têm logo; iniciais são o fallback legítimo.
   app.use(createPwaRouter({ resolveStore: resolver, publicDir: '/nonexistent', fetchLogo: async () => { throw new Error('bloqueado'); } }));
   await new Promise<void>(r => { server = app.listen(0, '127.0.0.1', () => r()); });
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -120,78 +120,123 @@ describe('rotas PWA por loja', () => {
     expect(htmlOut).toContain(`/app/minha-loja/icons/icon-192.png?v=${v1}`);
   });
 
-  it('item 1 e 2: /api/pwa/version e manifest nunca baixam logo; ícones fazem cache do logo por (store.id, logoUrl) e só usam immutable quando v===atual E logo real carregou', async () => {
+  it('logo configurada: 503 no-store em falha, 200 PNG válido quando recupera, sem fallback em cache', async () => {
     const store = {
-      id: 'tenant-real-01',
-      slug: 'loja-real',
-      name: 'Loja Real',
-      theme: {
-        storeName: 'Loja Real',
-        primaryColor: '#15803d',
-        logoUrl: 'https://cdn.example/logo-real.svg',
-        updatedAt: '2026-11-04T00:00:00Z',
-      },
+      id: 'tenant-real-01', slug: 'loja-real', name: 'Loja Real',
+      theme: { storeName: 'Loja Real', logoUrl: 'https://cdn.example/logo-real.svg' },
     };
-    const validSvg = Buffer.from(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="#15803d"/><circle cx="64" cy="64" r="40" fill="#ffffff"/></svg>',
-    );
-    let failLogoDownload = false;
-    const fetchLogoSpy = vi.fn(async () => {
-      if (failLogoDownload) throw new Error('falha temporária de rede');
-      return { bytes: validSvg, contentType: 'image/svg+xml' };
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="navy"/><circle cx="64" cy="64" r="40" fill="white"/></svg>');
+    let fail = true;
+    const fetchLogo = vi.fn(async () => {
+      if (fail) throw new Error('storage indisponível');
+      return { bytes: svg, contentType: 'image/svg+xml' };
     });
-
-    const app2 = express();
-    app2.use(
-      createPwaRouter({
-        resolveStore: async (slug) => (slug === 'loja-real' ? { status: 'ok', store } : { status: 'not_found' }),
-        publicDir: '/nonexistent',
-        fetchLogo: fetchLogoSpy,
-      }),
-    );
-    const srv2 = await new Promise<Server>((r) => {
-      const s = app2.listen(0, '127.0.0.1', () => r(s));
-    });
+    const app = express();
+    app.use(createPwaRouter({
+      resolveStore: async slug => slug === store.slug ? { status: 'ok', store } : { status: 'not_found' },
+      fetchLogo, publicDir: '/nonexistent',
+    }));
+    const srv = await new Promise<Server>(resolve => { const server = app.listen(0, '127.0.0.1', () => resolve(server)); });
+    const b = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
     try {
-      const b2 = `http://127.0.0.1:${(srv2.address() as AddressInfo).port}`;
-      const ver = iconVersion(store);
+      const broken = await fetch(`${b}/app/loja-real/icons/icon-192.png`);
+      expect(broken.status).toBe(503);
+      expect(broken.headers.get('cache-control')).toBe('no-store');
+      expect(broken.headers.get('retry-after')).toBeTruthy();
+      expect(broken.headers.get('content-type')).not.toContain('image/png');
+      const missingManifest = await fetch(`${b}/app/loja-real/manifest.webmanifest`);
+      expect(missingManifest.status).toBe(503);
+      expect(missingManifest.headers.get('cache-control')).toBe('no-store');
+      fail = false;
+      const manifest = await (await fetch(`${b}/app/loja-real/manifest.webmanifest`)).json();
+      const icon = await fetch(`${b}${manifest.icons[0].src}`);
+      expect(icon.status).toBe(200);
+      expect(icon.headers.get('content-type')).toBe('image/png');
+      expect(icon.headers.get('cache-control')).toBe(IMMUTABLE_ICON_CACHE_CONTROL);
+      expect(pngSize(Buffer.from(await icon.arrayBuffer()))).toEqual({ width: 192, height: 192 });
+      expect(fetchLogo).toHaveBeenCalledTimes(3);
+    } finally { await new Promise<void>(resolve => srv.close(() => resolve())); }
+  });
 
-      // 1) /api/pwa/version e /manifest.webmanifest NUNCA chamam fetchLogo
-      const verRes = await fetch(`${b2}/api/pwa/version?slug=loja-real`);
-      expect(verRes.status).toBe(200);
-      const manifestRes = await fetch(`${b2}/app/loja-real/manifest.webmanifest`);
-      expect(manifestRes.status).toBe(200);
-      expect(fetchLogoSpy).toHaveBeenCalledTimes(0);
+  it('URL da logo idêntica: bytes alterados mudam ?v=; mesmos bytes mantêm ?v= e ícone do cache é atualizado', async () => {
+    const sharp = (await import('sharp')).default;
+    const make = async (accent: string) => {
+      const bg = await sharp({ create: { width: 60, height: 60, channels: 3, background: accent } }).png().toBuffer();
+      return sharp({ create: { width: 128, height: 128, channels: 3, background: 'white' } })
+        .composite([{ input: bg, left: 34, top: 34 }]).png().toBuffer();
+    };
+    const first = await make('red');
+    const second = await make('blue');
+    let image = first;
+    let revision = '2026-11-21T10:00:00Z';
+    const store = () => ({
+      id: 'tenant-same-url', slug: 'same-url', name: 'Same URL',
+      theme: { storeName: 'Same URL', logoUrl: 'https://cdn.example/stable.png', updatedAt: revision },
+    });
+    const fetchLogo = vi.fn(async () => ({ bytes: image, contentType: 'image/png' }));
+    const app = express();
+    const router = createPwaRouter({
+      resolveStore: async slug => slug === 'same-url' ? { status: 'ok', store: store() } : { status: 'not_found' },
+      fetchLogo, publicDir: '/nonexistent',
+    });
+    app.use(router);
+    const srv = await new Promise<Server>(resolve => { const server = app.listen(0, '127.0.0.1', () => resolve(server)); });
+    const b = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    const getManifest = async () => (await fetch(`${b}/app/same-url/manifest.webmanifest`)).json();
+    try {
+      const v1 = (await getManifest()).icons[0].src;
+      const bytes1 = Buffer.from(await (await fetch(`${b}${v1}`)).arrayBuffer());
+      expect((await getManifest()).icons[0].src).toBe(v1);
+      image = second;
+      revision = '2026-11-21T10:01:00Z'; // mesmo caminho, tema persistido
+      router.invalidateStore('same-url', store().id);
+      const v2 = (await getManifest()).icons[0].src;
+      expect(v2).not.toBe(v1);
+      const bytes2 = Buffer.from(await (await fetch(`${b}${v2}`)).arrayBuffer());
+      expect(bytes2.equals(bytes1)).toBe(false);
+      expect((await getManifest()).icons[0].src).toBe(v2);
+      expect(fetchLogo).toHaveBeenCalledTimes(2);
+    } finally { await new Promise<void>(resolve => srv.close(() => resolve())); }
+  });
 
-      // 2) Se o download do logo falhar, serve fallback com no-cache e NÃO guarda fallback no iconCache
-      failLogoDownload = true;
-      const fallbackRes = await fetch(`${b2}/app/loja-real/icons/icon-192.png?v=${ver}`);
-      expect(fallbackRes.status).toBe(200);
-      expect(fallbackRes.headers.get('cache-control')).toBe('no-cache');
-      const fallbackBytes = Buffer.from(await fallbackRes.arrayBuffer());
-      expect(fetchLogoSpy).toHaveBeenCalledTimes(1);
-
-      // 3) Quando o logo volta a responder, não fica preso no fallback: baixa 1 única vez e reutiliza em todas as variantes
-      failLogoDownload = false;
-      const wrongVRes = await fetch(`${b2}/app/loja-real/icons/icon-192.png?v=versao-antiga`);
-      expect(wrongVRes.status).toBe(200);
-      expect(wrongVRes.headers.get('cache-control')).toBe('no-cache');
-      const realBytes192 = Buffer.from(await wrongVRes.arrayBuffer());
-      expect(realBytes192.equals(fallbackBytes)).toBe(false);
-      expect(fetchLogoSpy).toHaveBeenCalledTimes(2);
-
-      // Com ?v= igual à versão atual e logo real carregado => immutable, sem novo download
-      const ok192 = await fetch(`${b2}/app/loja-real/icons/icon-192.png?v=${ver}`);
-      const ok512 = await fetch(`${b2}/app/loja-real/icons/icon-512.png?v=${ver}`);
-      const okMaskable = await fetch(`${b2}/app/loja-real/icons/maskable-512.png?v=${ver}`);
-      expect(ok192.headers.get('cache-control')).toBe(IMMUTABLE_ICON_CACHE_CONTROL);
-      expect(ok512.headers.get('cache-control')).toBe(IMMUTABLE_ICON_CACHE_CONTROL);
-      expect(okMaskable.headers.get('cache-control')).toBe(IMMUTABLE_ICON_CACHE_CONTROL);
-      // Mesmo renderizando 512 e maskable-512, o logo veio do logoCache em memória (sem chamadas extras ao fetchLogo)
-      expect(fetchLogoSpy).toHaveBeenCalledTimes(2);
-    } finally {
-      await new Promise<void>((r) => srv2.close(() => r()));
-    }
+  it('após invalidar, HTML e manifesto recebem imediatamente nova logo, cor e nome', async () => {
+    let revision = '2026-11-21T10:00:00Z';
+    let logo = 'https://cdn.example/old.png';
+    let color = '#159957';
+    let name = 'Loja Inicial';
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><circle cx="64" cy="64" r="35" fill="blue"/></svg>');
+    const tenantId = 'tenant-invalidation';
+    const resolver: StoreResolver = async slug => slug === 'loja-invalida'
+      ? { status: 'ok', store: { id: tenantId, slug, name, updatedAt: revision,
+          theme: { storeName: name, logoUrl: logo, statusBarColor: color, primaryColor: color, updatedAt: revision } } }
+      : { status: 'not_found' };
+    const app = express();
+    const router = createPwaRouter({ resolveStore: resolver, publicDir: '/nonexistent',
+      fetchLogo: async () => ({ bytes: svg, contentType: 'image/svg+xml' }) });
+    app.use(router);
+    const srv = await new Promise<Server>(resolve => { const server = app.listen(0, '127.0.0.1', () => resolve(server)); });
+    const b = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    try {
+      const previous = await (await fetch(`${b}/app/loja-invalida/manifest.webmanifest`)).json();
+      const preHtmlStore = await router.lookupStoreForHtml('loja-invalida');
+      const firstHtml = injectStoreHead('<html><head><title>X</title></head><body></body></html>', 'loja-invalida', preHtmlStore);
+      expect(firstHtml).toContain(color);
+      name = 'Loja Atualizada'; color = '#1677b1'; logo = 'https://cdn.example/new.png';
+      revision = '2026-11-21T10:02:00Z';
+      router.invalidateStore('loja-invalida', tenantId);
+      const updated = await (await fetch(`${b}/app/loja-invalida/manifest.webmanifest`)).json();
+      const currentHtmlStore = await router.lookupStoreForHtml('loja-invalida');
+      const currentHtml = injectStoreHead('<html><head><title>X</title></head><body></body></html>', 'loja-invalida', currentHtmlStore);
+      expect(updated.id).toBe(previous.id);
+      expect(updated.scope).toBe(previous.scope);
+      expect(updated.start_url).toBe(previous.start_url);
+      expect(updated.name).toBe(name);
+      expect(updated.theme_color).toBe(color);
+      expect(updated.icons[0].src).not.toBe(previous.icons[0].src);
+      expect(currentHtml).toContain(`<title>${name}</title>`);
+      expect(currentHtml).toContain(`content="${color}"`);
+      expect(currentHtml).toContain(updated.icons[0].src);
+    } finally { await new Promise<void>(resolve => srv.close(() => resolve())); }
   });
 
   it('item 4 e 6: staticAssetCacheControl aplica immutable só em arquivos com hash (excluindo /assets/aistudio) e resolveBuildVersion não usa dc-pwa-v1 fixo', () => {
