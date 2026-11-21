@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BadgeCheck, LockKeyhole, Medal, Smartphone, Sparkles } from 'lucide-react';
+import { LockKeyhole, Medal, Smartphone, Sparkles } from 'lucide-react';
 import type { Tenant } from '../../../types';
 import { useAuth } from '../../../context/AuthContext';
 import { themeService } from '../../../services/themeService';
@@ -24,11 +24,11 @@ export function OwnerOnboarding({ tenant, ownerName, onNavigate }: Props) {
   const logoReady = isLogoConfirmed(tenant.theme);
   const navReady = existing?.navConfirmedColor === nav;
 
-  // An explicit metadata record distinguishes a new onboarding store from a legacy store.
-  // Do not initialize legacy stores with an existing confirmed logo: it would revoke invites.
+  // Persist the first-visit marker. Shops created before rollout retain their existing invites.
   useEffect(() => {
-    if (existing || logoReady) return;
-    void persist({ step: 0 }).catch(() => undefined);
+    if (existing) return;
+    const legacyInvites = !!tenant.createdAt && tenant.createdAt < '2026-11-21' && logoReady;
+    void persist({ step: 0, legacyInvites }).catch(() => undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenant.id]);
 
