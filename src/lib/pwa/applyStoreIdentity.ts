@@ -108,6 +108,34 @@ export async function fetchServedManifest(store: StoreIdentityInput, fetchImpl: 
   }
 }
 
+function urlOnlyIconVersion(store: StoreIdentityInput): string {
+  return identityHash({ ...store, iconContentHash: undefined });
+}
+
+function iconPathOf(href: string): string {
+  try { return new URL(href, 'http://local.invalid').pathname; }
+  catch { return href.split('?')[0]; }
+}
+
+/** Ícone de atalho: prefere o ?v= verificado do manifesto/HTML do servidor (digest dos bytes). */
+async function resolveTouchIcon(store: StoreIdentityInput): Promise<string> {
+  const iconPath = `/app/${encodeURIComponent(store.slug)}/icons/icon-192.png`;
+  const computed = `${iconPath}?v=${identityHash(store)}`;
+  const served = await fetchServedManifest(store);
+  if (served?.touchIcon) return served.touchIcon;
+  const apple = document.head.querySelector('link[rel="apple-touch-icon"]') as HTMLLinkElement | null;
+  const fav = document.head.querySelector('link[rel="icon"]') as HTMLLinkElement | null;
+  const el = apple || fav;
+  const existing = el?.getAttribute('href') || '';
+  const prevIdentity = el?.getAttribute('data-icon-identity') || '';
+  const urlOnly = urlOnlyIconVersion(store);
+  // Sem digest no runtime, não trocar um ?v= já verificado pelo servidor enquanto a logo/URL não mudar.
+  if (existing && iconPathOf(existing) === iconPath && !store.iconContentHash && (!prevIdentity || prevIdentity === urlOnly)) {
+    return existing;
+  }
+  return computed;
+}
+
 export async function applyStoreIdentity(store: StoreIdentityInput): Promise<AppliedIdentity> {
   const name = storeDisplayName(store);
   const shortName = deriveShortName(name, store.theme?.shortName);
@@ -127,23 +155,20 @@ export async function applyStoreIdentity(store: StoreIdentityInput): Promise<App
   const versioned = injectedHref !== ownHref && injectedHref.split('?')[0] !== ownHref && isOwnManifestHref(injectedHref, store.slug);
   if (injected && versioned) {
     injected.setAttribute('data-store-id', store.id);
-    const touch = `/app/${encodeURIComponent(store.slug)}/icons/icon-192.png?v=${identityHash(store)}`;
-    applyHeadMeta(name, shortName, themeColor, touch);
+    applyHeadMeta(name, shortName, themeColor, await resolveTouchIcon(store), urlOnlyIconVersion(store));
     return { manifestHref: injectedHref, usedFallbackIcon: false, served: true };
   }
   if (injected && (injected.getAttribute('href') || '').split('?')[0] === ownHref) {
     injected.setAttribute('data-store-id', store.id);
     if (injected.getAttribute('href') !== ownHref) injected.setAttribute('href', ownHref);
-    const v = identityHash(store);
-    const touch = `/app/${encodeURIComponent(store.slug)}/icons/icon-192.png?v=${v}`;
-    applyHeadMeta(name, shortName, themeColor, touch);
+    applyHeadMeta(name, shortName, themeColor, await resolveTouchIcon(store), urlOnlyIconVersion(store));
     return { manifestHref: ownHref, usedFallbackIcon: false, served: true };
   }
   // Uma nova tentativa evita trocar o manifesto servido por um data: numa falha momentânea.
   const served = (await fetchServedManifest(store)) || (await fetchServedManifest(store));
   if (served) {
     setManifestLink(served.href, store.id);
-    applyHeadMeta(name, served.shortName || shortName, themeColor, served.touchIcon);
+    applyHeadMeta(name, served.shortName || shortName, themeColor, served.touchIcon, urlOnlyIconVersion(store));
     return { manifestHref: served.href, usedFallbackIcon: false, served: true };
   }
   const logoIcons = await buildLogoIcons(store.theme?.logoUrl, '#ffffff');
@@ -165,16 +190,20 @@ function setManifestLink(href: string, storeId: string) {
   document.head.appendChild(link);
 }
 
-function applyHeadMeta(name: string, shortName: string, themeColor: string, touch: string) {
+function applyHeadMeta(name: string, shortName: string, themeColor: string, touch: string, iconIdentity?: string) {
   meta('theme-color', themeColor);
   meta('apple-mobile-web-app-title', shortName);
   meta('application-name', name);
   meta('apple-mobile-web-app-capable', 'yes');
   meta('mobile-web-app-capable', 'yes');
   const apple = upsert('link[rel="apple-touch-icon"]', () => { const l = document.createElement('link'); l.rel = 'apple-touch-icon'; return l; }) as HTMLLinkElement;
-  apple.href = touch;
+  apple.setAttribute('href', touch);
   const fav = upsert('link[rel="icon"]', () => { const l = document.createElement('link'); l.rel = 'icon'; return l; }) as HTMLLinkElement;
-  fav.href = touch;
+  fav.setAttribute('href', touch);
+  if (iconIdentity) {
+    apple.setAttribute('data-icon-identity', iconIdentity);
+    fav.setAttribute('data-icon-identity', iconIdentity);
+  }
   document.title = name;
 }
 
