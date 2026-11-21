@@ -74,7 +74,7 @@ export function presentationFileError(
     if (durationSeconds === undefined || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
       return 'Não conseguimos ler a duração deste vídeo. Tente exportá-lo novamente em MP4.';
     }
-    if (durationSeconds > PRESENTATION_MAX_VIDEO_SECONDS + 0.05) {
+    if (durationSeconds > PRESENTATION_MAX_VIDEO_SECONDS) {
       return `Este vídeo tem ${Math.round(durationSeconds)} segundos. O limite é de 10 segundos — corte o vídeo e envie novamente.`;
     }
   }
