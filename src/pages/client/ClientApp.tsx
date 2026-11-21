@@ -248,6 +248,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const legacyIdentity = useMemo(() => splitStoreSegment(storeSegmentFromPath(window.location.pathname) || '').identity, []);
   const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
   const [previewCard, setPreviewCard] = useState<Partial<Offer> | null>(null);
+  const [presentationRun, setPresentationRun] = useState<{ plan: PresentationPlan; key: number } | null>(null);
   useEffect(() => {
     if (!previewMode) return;
     const onMsg = (ev: MessageEvent) => {
@@ -272,7 +273,6 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   useEffect(() => {
     if (!isLoadingStore && (previewMode || !storeData?.presentation || storeData.tenant.slug !== slug)) hideBootScreen();
   }, [isLoadingStore, previewMode, slug, storeData]);
-  const [presentationRun, setPresentationRun] = useState<{ plan: PresentationPlan; key: number } | null>(null);
   // Uma tentativa por sessão de abertura/loja; não executa após navegações internas.
   const presentationSlugRef = useRef<string | null>(null);
   useEffect(() => {
