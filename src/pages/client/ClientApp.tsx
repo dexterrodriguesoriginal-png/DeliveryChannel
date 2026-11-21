@@ -248,7 +248,6 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const legacyIdentity = useMemo(() => splitStoreSegment(storeSegmentFromPath(window.location.pathname) || '').identity, []);
   const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
   const [previewCard, setPreviewCard] = useState<Partial<Offer> | null>(null);
-  const [presentationRun, setPresentationRun] = useState<{ plan: PresentationPlan; key: number } | null>(null);
   useEffect(() => {
     if (!previewMode) return;
     const onMsg = (ev: MessageEvent) => {
@@ -268,9 +267,13 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // 2. Estados de Carregamento e Dados do Catálogo Real
   const [storeData, setStoreData] = useState<PublicStoreData | null>(null);
   const [isLoadingStore, setIsLoadingStore] = useState(true);
-  // Abertura com a logo da loja (#store-boot, do servidor) fica até a vitrine terminar de carregar (ou falhar).
-  useEffect(() => { if (!isLoadingStore) hideBootScreen(); }, [isLoadingStore]);
-  // Uma única abertura por sessão/loja. Desligado, sem mídia ou falha no módulo: app segue normal.
+  // Mantém #store-boot exatamente como está; somente aguarda a decisão sobre
+  // a apresentação para não mostrar a vitrine brevemente antes da mídia.
+  useEffect(() => {
+    if (!isLoadingStore && (previewMode || !storeData?.presentation || storeData.tenant.slug !== slug)) hideBootScreen();
+  }, [isLoadingStore, previewMode, slug, storeData]);
+  const [presentationRun, setPresentationRun] = useState<{ plan: PresentationPlan; key: number } | null>(null);
+  // Uma tentativa por sessão de abertura/loja; não executa após navegações internas.
   const presentationSlugRef = useRef<string | null>(null);
   useEffect(() => {
     if (previewMode || isLoadingStore || !slug || storeData?.tenant.slug !== slug) return;
@@ -280,16 +283,27 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     let alive = true;
     const session = (() => { try { return window.sessionStorage; } catch { return null; } })();
     const local = (() => { try { return window.localStorage; } catch { return null; } })();
-    if (!shouldShowPresentation({ slug, oncePerDay: storeData.presentation.oncePerDay, session, local })) return;
-    // Defesa em profundidade: além da RPC pública, confirmar o estado do módulo.
-    void tenantModuleRepository.getPublicEnabled(storeData.tenant.id).then(keys => {
-      if (!alive || !keys?.has('store_presentation')) return;
-      const plan = presentationPlan(storeData.presentation, { reducedMotion: prefersReducedMotion() });
-      if (!plan) return;
-      markPresentationShown({ slug, session, local });
-      setPresentationRun({ plan, key: Date.now() });
-    }).catch(() => { /* falha fechada: vitrine normal */ });
-    return () => { alive = false; };
+    if (!shouldShowPresentation({ slug, oncePerDay: storeData.presentation.oncePerDay, session, local })) {
+      hideBootScreen(); return;
+    }
+    // Segurança em camadas: RPC pública já filtra por módulo e status da mídia;
+    // no cliente revalidamos get_public_modules com limite de espera de 1,5s.
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const check = tenantModuleRepository.getPublicEnabled(storeData.tenant.id).catch(() => null);
+    const deadline = new Promise<null>(resolve => { timeout = setTimeout(() => resolve(null), 1500); });
+    void Promise.race([check, deadline]).then(keys => {
+      if (!alive) return;
+      if (keys?.has('store_presentation')) {
+        const plan = presentationPlan(storeData.presentation, { reducedMotion: prefersReducedMotion() });
+        if (plan) {
+          markPresentationShown({ slug, session, local });
+          setPresentationRun({ plan, key: Date.now() });
+        }
+      }
+      // O overlay é montado antes de sumir a logo do servidor, sem flash de cardápio.
+      requestAnimationFrame(() => { if (alive) hideBootScreen(); });
+    }).finally(() => { if (timeout) clearTimeout(timeout); });
+    return () => { alive = false; if (timeout) clearTimeout(timeout); hideBootScreen(); };
   }, [previewMode, isLoadingStore, slug, storeData]);
   const [storeNotFound, setStoreNotFound] = useState(false);
   // Falha técnica ao carregar a vitrine (ex.: RPC com erro) — distinta de "loja não encontrada".
