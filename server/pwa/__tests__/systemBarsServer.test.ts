@@ -73,16 +73,28 @@ describe('barras do sistema no servidor (manifesto + HTML de /app/<slug>)', () =
     const server = await new Promise<import('node:http').Server>((r) => { const sv = app.listen(0, '127.0.0.1', () => r(sv)); });
     try {
       const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-      const m = await fetch(`${base}/app/adegashow/manifest.webmanifest`);
-      expect(m.headers.get('cache-control')).toBe('no-cache');
-      const i = await fetch(`${base}/app/adegashow/icons/icon-192.png`);
-      expect(i.headers.get('cache-control')).toBe('no-cache');
-      const ivFallback = await fetch(`${base}/app/adegashow/icons/icon-192.png?v=${iconVersion(s)}`);
-      expect(ivFallback.headers.get('cache-control')).toBe('no-cache');
+      const mFail = await fetch(`${base}/app/adegashow/manifest.webmanifest`);
+      expect(mFail.status).toBe(503);
+      expect(mFail.headers.get('cache-control')).toBe('no-store');
+      const iFail = await fetch(`${base}/app/adegashow/icons/icon-192.png`);
+      expect(iFail.status).toBe(503);
+      expect(iFail.headers.get('cache-control')).toBe('no-store');
       shouldFail = false;
+      const m = await fetch(`${base}/app/adegashow/manifest.webmanifest`);
+      expect(m.status).toBe(200);
+      expect(m.headers.get('cache-control')).toBe('no-cache');
+      const body = await m.json();
+      const currentSrc = body.icons[0].src as string;
+      expect(currentSrc).toContain('/app/adegashow/icons/icon-192.png?v=');
+      const i = await fetch(`${base}/app/adegashow/icons/icon-192.png`);
+      expect(i.status).toBe(200);
+      expect(i.headers.get('cache-control')).toBe('no-cache');
       const ivWrongV = await fetch(`${base}/app/adegashow/icons/icon-192.png?v=errado`);
+      expect(ivWrongV.status).toBe(200);
       expect(ivWrongV.headers.get('cache-control')).toBe('no-cache');
-      const ivCurrent = await fetch(`${base}/app/adegashow/icons/icon-192.png?v=${iconVersion(s)}`);
+      const ivCurrent = await fetch(`${base}${currentSrc}`);
+      expect(ivCurrent.status).toBe(200);
+      expect(ivCurrent.headers.get('content-type')).toMatch(/image\/png/);
       expect(ivCurrent.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
     } finally { server.close(); }
   });

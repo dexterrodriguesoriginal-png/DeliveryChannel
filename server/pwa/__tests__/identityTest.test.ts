@@ -12,7 +12,7 @@ import type { StoreIdentityInput } from '../../../src/lib/pwa/storeManifest';
 
 const real: StoreIdentityInput = {
   id: 'tenant-real-01', slug: 'adegasshow', name: 'Adega Show',
-  theme: { storeName: 'Adega Show', primaryColor: '#7c3aed', navBarColor: '#1d4ed8', statusBarColor: '#111827', logoUrl: '/nao-existe.png' },
+  theme: { storeName: 'Adega Show', primaryColor: '#7c3aed', navBarColor: '#1d4ed8', statusBarColor: '#111827' },
 };
 const test: StoreIdentityInput = {
   id: 'tenant-test-01', slug: 'mercado-teste-dc', name: 'Mercado Teste DC',
@@ -21,7 +21,7 @@ const test: StoreIdentityInput = {
 const changed: StoreIdentityInput = {
   id: 'tenant-changed', slug: 'loja-nova', name: 'Loja Nova',
   appBaseLogoUrl: '/logo-original.png',
-  theme: { storeName: 'Loja Nova', logoUrl: '/logo-nova.png' },
+  theme: { storeName: 'Loja Nova', logoUrl: 'https://cdn.example/logo-nova.png' },
 };
 const stores: Record<string, StoreIdentityInput> = {
   [real.slug]: real, [test.slug]: test, [changed.slug]: changed,
@@ -37,8 +37,10 @@ async function listen(app: express.Express): Promise<{ server: Server; base: str
     }));
   });
 }
+const exampleLogo = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="blue"/><circle cx="64" cy="64" r="32" fill="white"/></svg>');
+const fetchLogo = async () => ({ bytes: exampleLogo, contentType: 'image/svg+xml' });
 const make = (identityTestSlugs?: string[]) => {
-  const router = createPwaRouter({ resolveStore: resolver, publicDir, identityTestSlugs });
+  const router = createPwaRouter({ resolveStore: resolver, publicDir, identityTestSlugs, fetchLogo });
   const app = express();
   app.use(router);
   // Simula o index.html do servidor principal, sem redirecionar instalações legadas.
@@ -72,8 +74,9 @@ describe('manifesto estável para todas as instalações novas', () => {
     it(`/app/${store.slug}/ usa id e scope fixos, mesmo com logo trocada/lista de teste`, async () => {
       const [a, b] = await Promise.all([listed, unlisted].map(s =>
         fetch(`${s.base}/app/${store.slug}/manifest.webmanifest`).then(r => r.json())));
-      expect(a).toEqual(serverManifest(store));
-      expect(b).toEqual(serverManifest(store));
+      const hydrated = (await router.lookupStoreForHtml(store.slug))!;
+      expect(a).toEqual(serverManifest(hydrated));
+      expect(b).toEqual(serverManifest(hydrated));
       expect(a.id).toBe(`/app-id/${store.id}`);
       expect(a.scope).toBe(`/app/${store.slug}/`);
       expect(a.start_url).toBe(`/app/${store.slug}/?source=pwa`);
@@ -116,12 +119,12 @@ describe('compatibilidade permanente dos WebAPKs com ~hash', () => {
         const response = await fetch(`${server.base}/app/${store.slug}~${hash}/manifest.webmanifest`, { redirect: 'manual' });
         expect(response.status).toBe(200);
         const m = await response.json();
-        expect(m).toEqual(identityTestManifest(store, hash));
+        expect(m).toEqual(identityTestManifest((await router.lookupStoreForHtml(store.slug))!, hash));
         expect(m.id).toBe(`/app-id/${store.id}/${hash}`);
         expect(m.scope).toBe(`/app/${store.slug}~${hash}/`);
         expect(m.start_url).toBe(`/app/${store.slug}~${hash}/?source=pwa`);
         expect(m.related_applications).toEqual([{ platform: 'webapp', url: `/app/${store.slug}~${hash}/manifest.webmanifest` }]);
-        expect(m.icons).toEqual(serverManifest(store).icons);
+        expect(m.icons).toEqual(serverManifest((await router.lookupStoreForHtml(store.slug))!).icons);
       }
       expect(router.identityHeadOptions(store, hash)).toEqual({
         manifestHref: `/app/${store.slug}~${hash}/manifest.webmanifest`,

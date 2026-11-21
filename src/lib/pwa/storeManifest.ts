@@ -10,6 +10,8 @@ export interface StoreIdentityInput {
   slug: string;
   name: string;
   updatedAt?: string;
+  /** SHA-256 dos bytes reais da logo, resolvido pelo servidor; não persistir no banco. */
+  iconContentHash?: string;
   /** theme_tokens.meta.appBaseLogoUrl (ausente = loja nunca trocou a logo depois do fluxo de versão). Não entra no manifesto. */
   appBaseLogoUrl?: string;
   /** theme_tokens.meta.logoConfirmedUrl (logo definitiva confirmada; ausente = loja antiga). Não entra no manifesto. */
@@ -167,7 +169,7 @@ function shortHash(src: string): string {
 /**
  * Versão do ÍCONE (?v= dos PNGs em manifesto, <link rel="icon">, apple-touch-icon e totem).
  * Depende só do que muda a imagem do ícone:
- *  - com logo: o endereço do logo (o upload do painel sempre grava um arquivo novo, com timestamp);
+ *  - com logo: endereço e digest dos bytes reais quando o servidor os verificou;
  *  - sem logo: o ícone de iniciais = nome exibido + cor usada para desenhá-lo (iconFallbackColor).
  * Cores de barras/tema e updatedAt NÃO entram: o Chrome procura o hash antigo do ícone do app instalado
  * pela URL; ?v= novo a cada troca de cor fazia cada mudança de cor parecer troca de ícone (atualizações
@@ -177,7 +179,7 @@ function shortHash(src: string): string {
 export function storeIconVersion(store: StoreIdentityInput): string {
   const logo = (store.theme?.logoUrl || '').trim();
   const src = logo
-    ? ['logo', store.id, logo]
+    ? (store.iconContentHash ? ['logo', store.id, logo, store.iconContentHash] : ['logo', store.id, logo])
     : ['initials', store.id, storeDisplayName(store), iconFallbackColor(store.theme)];
   return shortHash(src.join('|'));
 }

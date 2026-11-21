@@ -27,6 +27,7 @@ import { ThemedProductItem } from '../../../components/storefront/ThemedProductL
 import { useThemeDraft } from './useThemeDraft';
 import { logoConfirmedUrlToSave } from '../../../lib/pwa/logoConfirmation';
 import { appBaseLogoUrlToSave } from '../../../lib/pwa/appBaseLogo';
+import { invalidateStorePwaCache } from '../../../lib/pwa/invalidateStoreCache';
 import { useThemeControls } from './useThemeControls';
 import { ThemeEditorContext } from './ThemeEditorContext';
 import { TemplateGallery } from './TemplateGallery';
@@ -142,6 +143,9 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
         bannerUrl: cleanImage(submitted.bannerUrl),
         tokens: { ...draft.draftTokens, backgrounds, meta: withAppBaseLogo({ ...draft.draftTokens.meta, logoConfirmedUrl }, cleanImage(submitted.logoUrl)) },
       });
+      // Após persistir, invalidar a leitura do servidor antes de avisar outros clientes.
+      const invalidated = await invalidateStorePwaCache(tenant.id, tenant.slug);
+      if (!invalidated) console.warn('[PWA] Invalidação imediata indisponível; leitura pública continua fresca.');
       draft.markSaved(saved, submitted);
       setActiveTenant({ ...tenant, theme: saved });
       void announceThemeSaved(tenant.id); // apps abertos atualizam em segundos
@@ -178,6 +182,8 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
         logoConfirmedUrl: logoConfirmedUrlToSave({ logoUrl: draft.draftTheme.logoUrl, tokens: draft.draftTokens }, tenant.theme),
         appBaseLogoUrl: appBaseLogoUrlToSave(tenant.theme?.tokens?.meta?.appBaseLogoUrl, tenant.theme?.logoUrl, draft.draftTheme.logoUrl),
       });
+      const invalidated = await invalidateStorePwaCache(tenant.id, tenant.slug);
+      if (!invalidated) console.warn('[PWA] Invalidação imediata indisponível; leitura pública continua fresca.');
       draft.markSaved(restored, draft.draftTheme);
       void announceThemeSaved(tenant.id);
       setActiveTenant({ ...tenant, theme: restored });
