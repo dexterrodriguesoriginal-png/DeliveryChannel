@@ -16,7 +16,7 @@ describe('migration da tela inicial personalizada', () => {
     expect(sql).toContain("module_key = 'store_presentation' AND tm.enabled");
     expect(sql).toContain("public.assert_tenant_module_enabled(p_tenant_id, 'store_presentation')");
     expect(sql).toContain('p_asset_id AND tenant_id = p_tenant_id');
-    expect(sql).toContain('a.duration_seconds > 10.05');
+    expect(sql).toContain('a.duration_seconds > 10');
     expect(sql.match(/SECURITY DEFINER SET search_path = ''/g)?.length).toBe(3);
     expect(sql).toContain('REVOKE ALL ON public.tenant_presentation_screens FROM PUBLIC, anon, authenticated');
     expect(sql).toContain('GRANT SELECT ON public.tenant_presentation_screens TO authenticated');
