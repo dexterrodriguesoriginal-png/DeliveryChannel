@@ -18,7 +18,6 @@ import { ICON_VARIANTS, IconVariant, isNearlyFlatPng, renderInitialsPng, renderS
 import { DC_BRAND_SVG, DC_SPLASH_ICON_VERSION, SPLASH_TEST_COLOR } from './splashTest';
 import { fetchPublicImage } from './safeFetch';
 import { isValidSlug, StoreResolver } from './storeSource';
-import { hasAppBaseLogo, offerUpdatedApp } from '../../src/lib/pwa/appBaseLogo';
 import { splitStoreSegment, versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope } from '../../src/lib/pwa/appIdentity';
 
 declare const __PWA_BUILD_VERSION__: string | undefined;
@@ -37,7 +36,7 @@ export interface PwaRouteOptions {
   buildVersion?: string;
   /** Experimento da splash (server/pwa/splashTest.ts): slugs de TESTE. Padrão: nenhum. */
   splashTestSlugs?: Iterable<string>;
-  /** Experimento "reinstalar em 1 toque" (server/pwa/identityTest.ts): slugs de TESTE. Padrão: nenhum. */
+  /** Lista histórica do experimento (não altera manifestos canônicos). */
   identityTestSlugs?: Iterable<string>;
 }
 
@@ -180,8 +179,8 @@ function splashTestManifest(store: StoreIdentityInput, base: string, v: string) 
 }
 
 /**
- * EXPERIMENTO (só slugs de teste): o mesmo manifesto da loja, mas com id/start_url/scope da versão da logo
- * (/app/<slug>~<versão>/). Ver src/lib/pwa/appIdentity.ts.
+ * COMPATIBILIDADE LEGADA: manifesto da loja com id/start_url/scope do hash já instalado
+ * (/app/<slug>~<hash>/). Não gerar novas identidades. Ver src/lib/pwa/appIdentity.ts.
  */
 export function identityTestManifest(store: StoreIdentityInput, identity: string, opts: { splashTest?: boolean } = {}) {
   const m = serverManifest(store, opts);
@@ -210,7 +209,7 @@ export interface IdentityHeadOptions { manifestHref?: string; appIdentity?: stri
 
 export type PwaRouter = Router & {
   lookupStore: (slug: string) => Promise<StoreIdentityInput | null>;
-  /** Experimento de identidade: manifesto versionado + meta só para lojas de teste; {} para as demais. */
+  /** Apenas rotas legadas ~hash recebem manifesto versionado. */
   identityHeadOptions: (store: StoreIdentityInput | null, identity: string | null) => IdentityHeadOptions;
   /** Para o HTML da vitrine: devolve na hora a última leitura (até staleMs) e atualiza em segundo plano. */
   lookupStoreForHtml: (slug: string) => Promise<StoreIdentityInput | null>;
@@ -238,7 +237,6 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   const iconCache = new Map<string, Buffer>();
   const fetchLogo = opts.fetchLogo ?? ((u: string) => fetchPublicImage(u));
   const splashTestSlugs = new Set(opts.splashTestSlugs ?? []);
-  const identityTestSlugs = new Set(opts.identityTestSlugs ?? []);
   let dcSplashPng: Buffer | null = null;
 
   const htmlStaleMs = opts.htmlStaleMs ?? DEFAULT_HTML_STALE_MS;
@@ -334,15 +332,11 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     return loaded;
   }
 
-  /** Segmento "/app/<slug>~<versão>": versão só vale para lojas de teste; nas demais o segmento segue inválido (404). */
+  /** Segmentos versionados existentes são permanentes, independentemente da logo atual. */
   function parseSegment(raw: string): { slug: string; identity: string | null } {
     const seg = splitStoreSegment(raw);
     return seg.identity && isValidSlug(seg.slug) ? seg : { slug: raw, identity: null };
   }
-  /** Loja aceita /app/<slug>~<versão>/: lista de teste ou já trocou a logo depois do fluxo (appBaseLogoUrl gravado). */
-  const identityEnabled = (store: StoreIdentityInput) => identityTestSlugs.has(store.slug) || hasAppBaseLogo(store);
-  /** App versionado agora: lista de teste (sempre) ou logo diferente da do app sem versão E confirmada como definitiva. */
-  const versionedNow = (store: StoreIdentityInput) => identityTestSlugs.has(store.slug) || offerUpdatedApp(store);
 
   async function guard(req: Request, res: Response): Promise<StoreIdentityInput | null> {
     const slug = parseSegment(String(req.params.slug || '')).slug;
@@ -359,12 +353,10 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   router.get('/api/pwa/version', async (req, res) => {
     const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : '';
     let storeVer: string | undefined;
-    let appIdentity: string | undefined;
     if (slug && isValidSlug(slug)) {
       const r = await lookup(slug);
       if (r.status === 'ok' && r.store.slug === slug) {
         storeVer = identityVersion(r.store);
-        if (versionedNow(r.store)) appIdentity = iconVersion(r.store);
       }
     }
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -372,27 +364,11 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     res.json({
       version: buildVersion,
       ...(slug && storeVer ? { slug, identityVersion: storeVer } : {}),
-      ...(slug && storeVer && appIdentity ? { appIdentity } : {}),
     });
   });
 
-  // "/app/<slug>~<versão>/..." só existe para lojas no fluxo de versão; nas demais volta ao endereço normal.
-  router.use(async (req, res, next) => {
-    const m = /^\/app\/([^/]+)(\/.*)?$/.exec(req.path);
-    if (!m || (req.method !== 'GET' && req.method !== 'HEAD')) return next();
-    let raw = m[1];
-    try { raw = decodeURIComponent(raw); } catch { return next(); }
-    const seg = splitStoreSegment(raw);
-    if (!seg.identity || identityTestSlugs.has(seg.slug) || !isValidSlug(seg.slug)) return next();
-    const r = await lookup(seg.slug).catch(() => null);
-    // Falha/timeout da consulta: mantém o endereço versionado (um app instalado não pode sair do próprio scope).
-    // Só redireciona quando a consulta CONFIRMA que a loja não está no fluxo (ou não existe).
-    if (!r || r.status === 'error') return next();
-    if (r.status === 'ok' && r.store.slug === seg.slug && identityEnabled(r.store)) return next();
-    const q = req.originalUrl.indexOf('?');
-    res.set('Cache-Control', 'no-cache');
-    res.redirect(302, `/app/${encodeURIComponent(seg.slug)}${m[2] || '/'}${q >= 0 ? req.originalUrl.slice(q) : ''}`);
-  });
+  // Rotas ~hash de apps já instalados permanecem válidas mesmo sem appBaseLogoUrl.
+  // Não redirecionar para fora do scope legado, inclusive em falha de consulta.
 
   // Vitrine sempre dentro do scope do manifesto (/app/<slug>/): instalar de "/app/<slug>" (fora do scope e
   // sem Service Worker) deixava o app da loja como atalho comum em vez de WebAPK. Mantém a query (mesa, preview, OAuth).
@@ -408,7 +384,6 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     const store = await guard(req, res);
     if (!store) return;
     const { identity } = parseSegment(String(req.params.slug || ''));
-    if (identity && !identityEnabled(store)) { res.status(404).type('text/plain').send('Loja não encontrada'); return; }
     res.set('Content-Type', 'application/manifest+json; charset=utf-8');
     // Sempre revalidado: tema/logo/barras novos chegam ao app logo após a loja salvar.
     res.set('Cache-Control', 'no-cache');
@@ -508,11 +483,8 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     return r.status === 'ok' && r.store.slug === slug ? r.store : null;
   };
   const identityHeadOptions = (store: StoreIdentityInput | null, identity: string | null): IdentityHeadOptions => {
-    if (!store || !identityEnabled(store)) return {};
-    // Voltou para a logo do app sem versão: sem botão; quem abre um app versionado mantém o manifesto dele.
-    if (!versionedNow(store)) return identity ? { manifestHref: versionedManifestPath(store.slug, identity) } : {};
-    const current = iconVersion(store);
-    return { manifestHref: versionedManifestPath(store.slug, identity || current), appIdentity: current };
+    if (!store || !identity || !/^[0-9a-f]{10}$/.test(identity)) return {};
+    return { manifestHref: versionedManifestPath(store.slug, identity) };
   };
   return Object.assign(router, { lookupStore, lookupStoreForHtml, identityHeadOptions });
 }

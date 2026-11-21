@@ -31,7 +31,7 @@ export interface StoreHeadOptions {
   edgeToEdge?: boolean;
   /** Abertura com a logo da loja (#store-boot) logo após <body>: só no app de delivery (fora da mesa e da prévia do painel). */
   bootScreen?: boolean;
-  /** EXPERIMENTO de identidade (só lojas de teste): manifesto da versão da logo e meta com a versão atual. */
+  /** Sobrescrita somente para manter o manifesto versionado de instalações legadas. */
   manifestHref?: string;
   appIdentity?: string;
 }
