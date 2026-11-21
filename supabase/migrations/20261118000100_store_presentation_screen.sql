@@ -44,7 +44,7 @@ DO $policy$ BEGIN
   CREATE POLICY presentation_manager_read ON public.tenant_presentation_screens FOR SELECT TO authenticated
    USING (EXISTS (
      SELECT 1 FROM public.tenant_users tu
-     WHERE tu.tenant_id = tenant_id AND tu.user_id = auth.uid()
+     WHERE tu.tenant_id = tenant_presentation_screens.tenant_id AND tu.user_id = auth.uid()
        AND tu.status = 'ACTIVE' AND tu.role_id = 'OWNER'
    ));
  END IF;
