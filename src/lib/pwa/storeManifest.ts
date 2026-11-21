@@ -179,7 +179,7 @@ function shortHash(src: string): string {
 export function storeIconVersion(store: StoreIdentityInput): string {
   const logo = (store.theme?.logoUrl || '').trim();
   const src = logo
-    ? ['logo', store.id, logo, store.iconContentHash || 'unverified']
+    ? (store.iconContentHash ? ['logo', store.id, logo, store.iconContentHash] : ['logo', store.id, logo])
     : ['initials', store.id, storeDisplayName(store), iconFallbackColor(store.theme)];
   return shortHash(src.join('|'));
 }
