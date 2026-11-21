@@ -13,7 +13,7 @@ DO $$ DECLARE d text; BEGIN
  WHERE signature IN ('set_tenant_module(uuid,text,boolean,jsonb)', 'public.set_tenant_module(uuid,text,boolean,jsonb)');
  IF d IS NULL THEN RAISE EXCEPTION 'PRESENTATION DOWN: set_tenant_module original ausente.'; END IF;
  EXECUTE d;
-END $$;
+END; $;
 GRANT EXECUTE ON FUNCTION public.get_public_store(text) TO anon, authenticated;
 DROP FUNCTION IF EXISTS public._presentation_store_base(text);
 DROP FUNCTION public.set_presentation_screen(uuid,uuid,numeric,boolean);
