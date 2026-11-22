@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, Bike, CalendarClock, Check, ChefHat, ConciergeBell, CreditCard, ExternalLink, FileText, Gauge, Gift, LayoutGrid, LoaderCircle,
+  AlertTriangle, Bike, CalendarClock, Check, ChefHat, Clapperboard, ConciergeBell, CreditCard, ExternalLink, FileText, Gauge, Gift, LayoutGrid, LoaderCircle,
   PlusCircle, Percent, Printer, QrCode, Repeat, Scale, ScanBarcode, Shirt, SlidersHorizontal, Store, Utensils, Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -16,7 +16,7 @@ import { SalonSetupPanel } from '../../components/establishment/SalonSetupPanel'
 import { salonPermissions } from '../../components/establishment/salonSetup';
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  Bike, CalendarClock, ChefHat, ConciergeBell, CreditCard, FileText, Gauge, Gift, LayoutGrid, PlusCircle, Percent, Printer, QrCode, Repeat, Scale,
+  Bike, CalendarClock, ChefHat, Clapperboard, ConciergeBell, CreditCard, FileText, Gauge, Gift, LayoutGrid, PlusCircle, Percent, Printer, QrCode, Repeat, Scale,
   ScanBarcode, Shirt, Store, Utensils, Wallet,
 };
 const ToolIcon: React.FC<{ name?: string | null }> = ({ name }) => {
@@ -234,7 +234,15 @@ export const ModulesPage: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <div>{module.key === 'dine_in' && isEnabled && salonAccess.canManageSalon && (
+                      <div>
+                        {module.key === 'store_presentation' && !isEnabled && activeRole === 'OWNER' && (
+                          <button type="button" data-testid="presentation-enable" style={{ color: 'var(--dc-primary)', fontWeight: 700 }}
+                            disabled={loading || Boolean(savingKey)}
+                            onClick={() => void handleToggle('store_presentation')}>Habilitar</button>
+                        )}
+                        {module.key === 'store_presentation' && isEnabled && activeRole === 'OWNER' && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => onNavigate?.('est-theme')}>Configurar no Design do App</Button>
+                      )}{module.key === 'dine_in' && isEnabled && salonAccess.canManageSalon && (
                         <Button type="button" variant="outline" size="sm" onClick={() => setShowSalonSetup(value => !value)}>
                           {showSalonSetup ? 'Fechar configuração' : 'Configurar'}
                         </Button>

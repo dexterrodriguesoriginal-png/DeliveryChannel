@@ -21,7 +21,7 @@ export type ModuleKey =
   | 'delivery' | 'pickup' | 'addons' | 'kds' | 'dine_in' | 'counter'
   | 'service_fee' | 'printing' | 'weight' | 'barcode' | 'substitution'
   | 'variants' | 'reserve_exchange' | 'scheduling' | 'quotes'
-  | 'street_vendor' | 'pos' | 'loyalty' | 'credit_tab';
+  | 'street_vendor' | 'pos' | 'loyalty' | 'credit_tab' | 'store_presentation';
 
 /** Grupos da página Ferramentas. */
 export type ToolCategory = 'Vendas' | 'Salão' | 'Cozinha' | 'Marketing' | 'Operação';
@@ -53,6 +53,7 @@ export function toolPlanBadge(tool: Pick<ModuleDefinition, 'plan' | 'addonPriceC
 }
 
 export const MODULES: ModuleDefinition[] = [
+  { key: 'store_presentation', label: 'Abertura da loja', description: 'Mostre uma imagem ou vídeo antes do cardápio ao abrir seu aplicativo.', changes: 'Habilita a configuração da mídia de apresentação em Design do App. Por padrão permanece desligada.', implemented: true, category: 'Marketing', icon: 'Clapperboard', plan: null, addonPriceCents: null },
   { key: 'delivery', label: 'Entrega', description: 'Receba pedidos para entregar no endereço do cliente.', changes: 'Exibe Entregadores e a opção de entrega no catálogo.', implemented: true, category: 'Vendas', icon: 'Bike', plan: null, addonPriceCents: null },
   { key: 'pickup', label: 'Retirada', description: 'Permita que clientes retirem pedidos no estabelecimento.', changes: 'Exibe a opção de retirada no catálogo.', implemented: true, category: 'Vendas', icon: 'Store', plan: null, addonPriceCents: null },
   { key: 'addons', label: 'Adicionais', description: 'Ofereça complementos e personalizações nos produtos.', changes: 'Adiciona escolhas de complementos ao cardápio.', implemented: true, category: 'Vendas', icon: 'PlusCircle', plan: null, addonPriceCents: null },
