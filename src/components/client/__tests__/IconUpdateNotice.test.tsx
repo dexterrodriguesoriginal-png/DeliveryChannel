@@ -2,7 +2,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
-import { IconUpdateNotice, chromeIconUpdateIntent, getIconNoticeVisible, storeIconUpdateUrl } from '../IconUpdateNotice';
+import { IconUpdateNotice, chromeIconUpdateIntent, getIconNoticeVisible, getReplacedScreenVisible, storeIconUpdateUrl } from '../IconUpdateNotice';
 import type { StoreIdentityInput } from '../../../lib/pwa/storeManifest';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -41,6 +41,7 @@ describe('aviso único da instalação anterior', () => {
     expect(notice.querySelectorAll('a,button')).toHaveLength(1);
     expect(ui.getByRole('link', { name: 'Atualizar' })).toBeTruthy();
     expect(getIconNoticeVisible()).toBe(true);
+    expect(getReplacedScreenVisible()).toBe(false);
   });
   it('não monta aviso na aba normal', () => {
     standalone(false);
@@ -101,6 +102,41 @@ describe('aviso único da instalação anterior', () => {
     fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
     await act(async () => { await Promise.resolve(); });
     expect(clipboard.writeText).toHaveBeenCalledWith(`https://${window.location.host}/app/adega-show~0123456789/`);
+    const notice = ui.getByTestId('icon-update-notice');
+    expect(notice.textContent).toContain('Link copiado. Abra no Safari para instalar a nova versão.');
+    expect(notice.textContent).not.toMatch(/ícone|icone|logo|tela inicial/i);
+    expect(notice.querySelectorAll('button,a')).toHaveLength(1);
+    expect(getReplacedScreenVisible()).toBe(false);
+  });
+  it('iOS mostra endereço HTTPS selecionável se copiar falhar', async () => {
+    const clipboard = { writeText: vi.fn().mockRejectedValue(new Error('clipboard denied')) };
+    vi.stubGlobal('navigator', { userAgent: ios, clipboard });
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    await act(async () => { await Promise.resolve(); });
+    const notice = ui.getByTestId('icon-update-notice');
+    expect(notice.textContent).toContain('Abra este endereço no Safari para instalar a nova versão.');
+    expect(notice.textContent).toContain(`https://${window.location.host}/app/adega-show~0123456789/`);
+    expect(notice.querySelector('.select-text')?.textContent).toBe(`https://${window.location.host}/app/adega-show~0123456789/`);
+    expect(notice.textContent).not.toMatch(/ícone|icone|logo|tela inicial/i);
+    expect(notice.querySelectorAll('button,a')).toHaveLength(1);
+    expect(getReplacedScreenVisible()).toBe(false);
+  });
+  it('redirecionamento para versão nova respeita reloadUnsafe e ocorre apenas uma vez', () => {
+    const client = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
+    const guardIndex = client.indexOf('const reloadUnsafe =');
+    const redirectIndex = client.indexOf('const versionedRedirectStarted = useRef(false);');
+    expect(guardIndex).toBeGreaterThan(-1);
+    expect(redirectIndex).toBeGreaterThan(guardIndex);
+    const redirect = client.slice(redirectIndex, client.indexOf('}, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity, reloadUnsafe]);', redirectIndex) + 110);
+    expect(redirect).toContain('if (previewMode || standalone || !currentIdentity || !slug || isLoadingStore || !storeData || reloadUnsafe) return;');
+    expect(redirect).toContain("new URLSearchParams(window.location.search).has('mesa')");
+    expect(redirect).toContain("new URLSearchParams(window.location.search).get('preview') === '1'");
+    expect(redirect).toContain('versionedRedirectStarted.current) return;');
+    expect(redirect).toContain('versionedRedirectStarted.current = true;');
+    expect(redirect).toContain('window.location.replace(destination);');
+    expect(redirect).toContain('runningIdentity, reloadUnsafe]);');
+    expect(client.match(/window.location.replace\(destination\)/g)).toHaveLength(1);
   });
   it('ClientApp não monta aviso de legado sobre o app ~hash atual, nem o guia de remoção', () => {
     const client = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
