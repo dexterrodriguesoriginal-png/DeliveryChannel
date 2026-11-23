@@ -6,7 +6,7 @@ import { analyticsAllowed, openCookiePreferences } from '../../lib/legal/cookies
 import { LegalCheckbox } from '../../components/legal/LegalUI';
 import { legalSignupMetadata } from '../../lib/legal/documents';
 import { storeEmailData } from '../../lib/auth/storeEmailBranding';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { normalizeBRPhone, formatBRPhone, brPhoneDigits } from '../../lib/phone/brPhone';
 import { DeliveryCodeCard } from '../../components/client/DeliveryCodeCard';
 import { PickupArrivalCard } from '../../components/pickup/PickupArrivalCard';
@@ -52,7 +52,7 @@ import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
 import { isLogoConfirmed } from '../../lib/pwa/logoConfirmation';
 import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
-import { IconUpdateNotice, IconUpdateBrowserGuide } from '../../components/client/IconUpdateNotice';
+import { IconUpdateNotice, getIconNoticeVisible, subscribeIconNotice } from '../../components/client/IconUpdateNotice';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewPresentationMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
@@ -231,6 +231,7 @@ function identityTheme(theme: TenantTheme | undefined): StoreIdentityInput['them
 export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => {
   const { supabaseUser, signInWithGoogle, signInWithPassword, signUp, signOut, activeTenant, resendConfirmationEmail } = useAuth();
   const { showToast } = useToast();
+  const iconNoticeVisible = useSyncExternalStore(subscribeIconNotice, getIconNoticeVisible, () => false);
 
   // 1. Extração estrita do Slug da URL
   const slug = useMemo(() => {
@@ -1951,7 +1952,6 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         />
       )}
       {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
-      {!previewMode && <IconUpdateBrowserGuide />}
       {!previewMode && <IconUpdateNotice store={{
         id: storeData.tenant.id,
         slug: storeData.tenant.slug,
@@ -1961,7 +1961,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         logoConfirmedUrl: theme.tokens?.meta?.logoConfirmedUrl,
       }} />}
       {!previewMode && legacyIdentity && <AppIdentityUpdate slug={storeData.tenant.slug} storeName={storeData.tenant.name} />}
-      {!previewMode && !legacyIdentity && <StoreVisualUpdateNotice
+      {!previewMode && !legacyIdentity && !iconNoticeVisible && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
         tenantId={storeData.tenant.id}
         hidden={Boolean(selectedProductModal) || Boolean(selectedPromoOffer) || isCheckoutOpen || isPromoCheckoutOpen
