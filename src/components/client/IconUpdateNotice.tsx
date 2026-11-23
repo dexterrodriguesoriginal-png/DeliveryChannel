@@ -1,16 +1,17 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Copy, RefreshCw, X } from 'lucide-react';
+import { publicStoreRepository } from '../../repositories/publicStoreRepository';
 import { offerUpdatedApp } from '../../lib/pwa/appBaseLogo';
 import { storeIconVersion, type StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { clearDeferredPrompt, detectPlatform, getDeferredPrompt, isStandalone, subscribeInstall } from '../../lib/pwa/installState';
-import { chromeIntentUrl } from '../../lib/pwa/appIdentity';
+
 import { Button } from '../ui/Button';
 
 export const ICON_UPDATE_TEXT = 'A loja atualizou o ícone do app. Para ver o novo ícone na tela inicial, desinstale e instale o app de novo.';
 export const iconUpdateDismissKey = (tenantId: string, version: string) => `dc:icon-update:${tenantId}:${version}`;
 
 export function storeIconUpdateUrl(slug: string, origin: string): string {
-  return `${origin}/app/${encodeURIComponent(slug)}/?atualizar_icone=1`;
+  return `${origin}/atualizar-icone/${encodeURIComponent(slug)}`;
 }
 
 /** For Chrome intents, the fallback MUST be an absolute HTTPS URL. */
@@ -21,7 +22,23 @@ export function secureIconUpdateUrl(slug: string, origin: string): string {
 }
 
 export function chromeIconUpdateIntent(slug: string, origin: string): string {
-  return chromeIntentUrl(secureIconUpdateUrl(slug, origin), { android: true });
+  const url = secureIconUpdateUrl(slug, origin);
+  const target = new URL(url);
+  return `intent://${target.host}${target.pathname}#Intent;scheme=https;package=com.android.chrome;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+}
+
+/** Single source for the two existing notices and the global service-worker toast. */
+let iconNoticeVisible = false;
+const iconNoticeListeners = new Set<() => void>();
+export const subscribeIconNotice = (listener: () => void) => {
+  iconNoticeListeners.add(listener);
+  return () => { iconNoticeListeners.delete(listener); };
+};
+export const getIconNoticeVisible = () => iconNoticeVisible;
+function setIconNoticeVisible(value: boolean) {
+  if (iconNoticeVisible === value) return;
+  iconNoticeVisible = value;
+  iconNoticeListeners.forEach(listener => listener());
 }
 
 const standalone = () => typeof window !== 'undefined' && isStandalone(window);
@@ -75,6 +92,12 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
     catch { setDismissed(false); }
   }, [eligible, kv, key]);
 
+  useEffect(() => {
+    const visible = eligible && !dismissed;
+    setIconNoticeVisible(visible);
+    return () => setIconNoticeVisible(false);
+  }, [eligible, dismissed]);
+
   if (!eligible || dismissed) return null;
   const url = storeIconUpdateUrl(store.slug, window.location.origin);
   const dismiss = () => {
@@ -97,7 +120,6 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
     }, ICON_INTENT_FALLBACK_MS);
     try {
       if (onNavigate) onNavigate(target);
-      else window.location.href = target;
     } catch {
       if (!didLeave.current) setShowFallback(true);
     }
@@ -116,7 +138,12 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
         <div className="min-w-0 flex-1 space-y-2">
           <p className="text-xs leading-relaxed">{ICON_UPDATE_TEXT}</p>
           {android ? (
-            <Button type="button" variant="primary" size="sm" onClick={openChrome}>Atualizar ícone</Button>
+            <a href={chromeIconUpdateIntent(store.slug, window.location.origin)}
+              target="_blank" rel="noopener noreferrer"
+              data-testid="icon-update-open-chrome" onClick={openChrome}
+              className="inline-flex items-center justify-center rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800">
+              Atualizar ícone
+            </a>
           ) : (
             <>
               <p className="text-xs text-gray-600">Abra no Safari, toque em Compartilhar e depois Adicionar à Tela de Início.</p>
@@ -149,33 +176,40 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
   );
 }
 
-export function IconUpdateBrowserGuide() {
+export function IconUpdateBrowserGuide({ slug, storeName, logoUrl }: {
+  slug: string; storeName?: string; logoUrl?: string;
+}) {
   const prompt = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
   const [dismissed, setDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const active = !standalone() &&
-    new URLSearchParams(window.location.search).get('atualizar_icone') === '1';
-
-  if (!active || dismissed) return null;
+  if (dismissed) return null;
+  const storeUrl = `/app/${encodeURIComponent(slug)}/`;
   const install = async () => {
-    if (!prompt || busy) return;
+    if (!prompt || busy) {
+      window.location.assign(storeUrl);
+      return;
+    }
     setBusy(true);
     try {
       await prompt.prompt();
       clearDeferredPrompt();
       const choice = await prompt.userChoice;
       if (choice.outcome === 'accepted') setDismissed(true);
-    } catch { /* o botão continua disponível quando surgir novo prompt */ }
-    finally { setBusy(false); }
+    } catch {
+      window.location.assign(storeUrl);
+    } finally { setBusy(false); }
   };
   return (
     <section data-testid="icon-update-guide" role="region" aria-label="Atualizar ícone do aplicativo"
-      className="fixed top-[calc(env(safe-area-inset-top,0px)+0.75rem)] inset-x-3 z-[145] mx-auto max-w-lg rounded-2xl border border-emerald-200 bg-white p-4 text-gray-900 shadow-xl">
+      className="mx-auto w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-5 text-gray-900 shadow-xl">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-bold">Atualize o ícone da loja</h2>
         <button type="button" aria-label="Fechar guia" onClick={() => setDismissed(true)}
           className="rounded-full p-1 text-gray-600 hover:bg-gray-100"><X className="h-4 w-4" /></button>
       </div>
+      {logoUrl && <img src={logoUrl} alt={`Logo de ${storeName || 'loja'}`}
+        className="mx-auto my-4 h-20 w-20 rounded-xl object-contain" />}
+      {storeName && <p className="mt-2 text-center text-sm font-semibold">{storeName}</p>}
       <div className="mt-3 space-y-2 text-xs leading-relaxed">
         <p><strong>Passo 1.</strong> Remova o ícone antigo da sua tela inicial (segure o ícone e toque em Desinstalar/Remover).</p>
         <p><strong>Passo 2.</strong> Toque em Instalar aplicativo abaixo para baixar o ícone com a nova logo.</p>
@@ -183,9 +217,38 @@ export function IconUpdateBrowserGuide() {
       <p className="my-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
         Se aparecer Abrir em vez de Instalar, apague o ícone antigo e volte para esta aba.
       </p>
-      <Button type="button" variant="primary" size="md" disabled={!prompt || busy}
-        isLoading={busy} onClick={() => void install()}>Instalar aplicativo</Button>
-      {!prompt && <p className="mt-2 text-xs text-gray-500">Se o navegador não oferecer a instalação, abra a loja no Chrome e use ⋮ → Instalar app depois de remover o ícone antigo.</p>}
+      {prompt ? (
+        <Button type="button" variant="primary" size="md"
+          disabled={busy} isLoading={busy} onClick={() => void install()}>Instalar aplicativo</Button>
+      ) : (
+        <a href={storeUrl} data-testid="icon-update-install-link"
+          className="inline-flex rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">
+          Instalar aplicativo
+        </a>
+      )}
+      <p className="mt-2 text-xs text-gray-500">
+        Se não aparecer a instalação, abra a loja no Chrome e use ⋮ → Instalar app depois de remover o ícone antigo.
+      </p>
     </section>
+  );
+}
+
+/** Página independente do scope WebAPK, mantida no SPA sem links capturados pelo app. */
+export function IconUpdateGuidePage({ slug }: { slug: string }) {
+  const [info, setInfo] = useState<{ name: string; logoUrl?: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void publicStoreRepository.loadPublicStore(slug).then(result => {
+      if (!alive || result.status !== 'ok') return;
+      setInfo({ name: result.data.theme?.storeName || result.data.tenant.name,
+        logoUrl: result.data.theme?.logoUrl });
+    });
+    return () => { alive = false; };
+  }, [slug]);
+  return (
+    <main data-testid="icon-update-guide-page"
+      className="min-h-screen bg-gray-50 px-4 py-12 text-gray-900">
+      <IconUpdateBrowserGuide slug={slug} storeName={info?.name} logoUrl={info?.logoUrl} />
+    </main>
   );
 }
