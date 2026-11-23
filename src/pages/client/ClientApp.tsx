@@ -2021,7 +2021,9 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
             storeName: theme.storeName, logoUrl: theme.logoUrl,
             primaryColor: theme.primaryColor, backgroundColor: theme.backgroundColor,
             tagline: theme.tagline,
-            ...identityTheme(theme as TenantTheme),
+            headerColor: theme.tokens?.palette?.bgHeader,
+            statusBarColor: theme.tokens?.meta?.systemBars?.statusBarColor,
+            navBarColor: theme.tokens?.meta?.systemBars?.navBarColor,
           },
         }} />
       )}
