@@ -6,7 +6,7 @@ import { isDraftLogoConfirmed, logoChangedAfterConfirmation } from '../../../../
 const safeGet = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
 const safeSet = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
 /** Mesmo texto para todas as lojas (pedido do David, 19/11/2026). */
-export const LOGO_CHANGE_WARNING_TEXT = 'Dentro do app, tudo atualiza na hora. Porém o ícone com a sua logo, que fica na tela do celular do cliente, continua com a logo antiga até o Android atualizar ou o cliente baixar a nova versão do app.';
+export const LOGO_CHANGE_WARNING_TEXT = 'Sua nova logo já aparece dentro do app na hora e para todos os novos clientes. Clientes antigos verão um botão para atualizar o ícone da tela inicial.';
 export const logoWarningKey = (tenantId: string, logoUrl: string) => `dc:logo-change-warning:${tenantId}:${logoUrl}`;
 
 /**
