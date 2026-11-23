@@ -28,7 +28,7 @@ describe('instalação antiga substituída', () => {
     const screen = container.querySelector('[data-testid="identity-replaced-screen"]') as HTMLElement;
     expect(screen).toBeTruthy();
     expect(screen.style.position).toBe('fixed');
-    expect(screen.style.inset).toBe('0px');
+    expect(screen.style.inset).toMatch(/^0(px)?$/);
     expect(screen.textContent).toContain('Esta versão foi substituída. A nova versão já está instalada no seu celular. Remova esta versão e abra a nova.');
     const links = screen.querySelectorAll('a');
     expect(links).toHaveLength(1);
