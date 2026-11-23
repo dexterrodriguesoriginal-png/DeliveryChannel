@@ -25,7 +25,7 @@ export function chromeIconUpdateIntent(slug: string, origin: string): string {
 }
 
 const standalone = () => typeof window !== 'undefined' && isStandalone(window);
-const isBlockingWebview = (ua: string) => /;\\s*wv[);]|FBAN|FBAV|Instagram|WhatsApp|\\bWebView\\b/i.test(ua);
+const isBlockingWebview = (ua: string) => /;\s*wv[);]|FBAN|FBAV|Instagram|WhatsApp|\bWebView\b/i.test(ua);
 export const ICON_INTENT_FALLBACK_MS = 1500;
 
 interface NoticeProps {
