@@ -11,7 +11,7 @@ export const ICON_UPDATE_TEXT = 'Atualize para a nova versão';
 export const iconUpdateDismissKey = (tenantId: string, version: string) => `dc:icon-update:${tenantId}:${version}`;
 
 export function storeIconUpdateUrl(slug: string, origin: string): string {
-  return `${origin}/atualizar-icone/${encodeURIComponent(slug)}`;
+  return `${origin}/atualizar-app/${encodeURIComponent(slug)}`;
 }
 
 /** For Chrome intents, the fallback MUST be an absolute HTTPS URL. */
@@ -193,7 +193,7 @@ export function IconUpdateBrowserGuide({ slug, storeName, logoUrl }: {
         className="mx-auto my-4 h-20 w-20 rounded-xl object-contain" />}
       {storeName && <p className="mt-2 text-center text-sm font-semibold">{storeName}</p>}
       <div className="mt-3 space-y-2 text-xs leading-relaxed">
-        <p><strong>Passo 1.</strong> Remova a versão antiga do app (toque e segure no app na tela inicial > Remover/Desinstalar).</p>
+        <p><strong>Passo 1.</strong> Remova a versão antiga do app (toque e segure o app na tela inicial e escolha Remover/Desinstalar).</p>
         <p><strong>Passo 2.</strong> Toque em Instalar aplicativo.</p>
       </div>
       <p className="my-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
@@ -205,9 +205,6 @@ export function IconUpdateBrowserGuide({ slug, storeName, logoUrl }: {
         className="inline-flex rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">
         Instalar aplicativo
       </a>
-      <p className="mt-2 text-xs text-gray-500">
-        Se não aparecer a instalação, abra a loja no Chrome e use ⋮ → Instalar app depois de remover a versão anterior.
-      </p>
     </section>
   );
 }
