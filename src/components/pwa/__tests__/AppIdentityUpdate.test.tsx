@@ -3,6 +3,8 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppIdentityUpdate, readAppIdentityMeta } from '../AppIdentityUpdate';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 let root: Root;
 let container: HTMLDivElement;
@@ -23,6 +25,23 @@ async function render() {
   });
 }
 describe('instalação antiga substituída', () => {
+  it('ClientApp fornece as variáveis do tema ao retorno bloqueante antes da tela normal', () => {
+    const client = readFileSync(resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
+    expect(client).toMatch(/if \(appStatus === 'old-icon' && currentIdentity\)\s*\{\s*return <div style=\{activeCssVars\}><AppIdentityUpdate/);
+    expect(client.indexOf("if (appStatus === 'old-icon'")).toBeLessThan(client.indexOf('className="min-h-screen pb-44'));
+  });
+
+  it('CookieBanner global não é renderizado quando a tela bloqueante está visível', () => {
+    const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+    expect(app).toContain('useSyncExternalStore(subscribeIconNotice, getIconNoticeVisible');
+    expect(app).toContain('return updateOverlayVisible ? null : <CookieBanner />');
+    expect(app).toContain('<CookieBannerWhenAvailable />');
+    const blocked = readFileSync(resolve(process.cwd(), 'src/components/pwa/AppIdentityUpdate.tsx'), 'utf8');
+    expect(blocked).toContain('setIconNoticeVisible(true)');
+    expect(blocked).toContain('setIconNoticeVisible(false)');
+  });
+
+
   it('lê só hashes de dez caracteres na meta da identidade', () => {
     const meta = document.createElement('meta');
     meta.name = 'dc-app-identity';
