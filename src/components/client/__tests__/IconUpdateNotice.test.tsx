@@ -177,7 +177,7 @@ describe('aviso único da instalação anterior', () => {
     expect(client).toContain("appStatus === 'current'");
     expect(client).not.toContain('legacyIdentity && <AppIdentityUpdate');
     expect(client).not.toContain('IconUpdateBrowserGuide');
-    expect(client).toContain("!iconNoticeVisible && <StoreVisualUpdateNotice");
+    expect(client).toContain("!iconNoticeVisible && (!runningIdentity || standalone) && <StoreVisualUpdateNotice");
     const toast = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pwa/PwaUpdateToast.tsx'), 'utf8');
     expect(toast).toContain('if (!visible || iconNoticeVisible) return null');
   });

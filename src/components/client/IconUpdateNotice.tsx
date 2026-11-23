@@ -105,6 +105,8 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
   if (!visible) return null;
 
   const url = storeIconUpdateUrl(slug, currentIdentity, window.location.origin);
+  // iPhone: Safari não usa ?instalar=1 (a instalação é pelo menu Compartilhar).
+  const iosUrl = url.replace(/\?instalar=1$/, '');
   const onAndroidClick = () => {
     const mode = getUpdateOpenMode();
     // Executar diretamente no gesto do usuário: popups disparados por timers são bloqueados.
@@ -136,7 +138,7 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
   const copy = async () => {
     setCopyFailed(false);
     try {
-      await navigator.clipboard.writeText(ios ? url.replace(/\?instalar=1$/, '') : url);
+      await navigator.clipboard.writeText(ios ? iosUrl : url);
       setCopied(true);
     } catch {
       setCopied(false);
@@ -166,7 +168,7 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
               {copyFailed && (
                 <div className="space-y-1 text-xs text-gray-700" role="status">
                   <p>Abra este endereço no Safari para instalar a nova versão.</p>
-                  <p className="select-text break-all">{url}</p>
+                  <p className="select-text break-all">{iosUrl}</p>
                 </div>
               )}
             </>
