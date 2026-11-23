@@ -51,7 +51,7 @@ describe('painel: confirmar logo definitiva', () => {
     fireEvent.click(ui.getByTestId('set-b'));
     const warn = ui.getByTestId('logo-change-warning');
     expect(warn.textContent!.trim()).toBe(`Você trocou a logo${LOGO_CHANGE_WARNING_TEXT}Entendi`);
-    expect(LOGO_CHANGE_WARNING_TEXT).toBe('Dentro do app, tudo atualiza na hora. Porém o ícone com a sua logo, que fica na tela do celular do cliente, continua com a logo antiga até o Android atualizar ou o cliente baixar a nova versão do app.');
+    expect(LOGO_CHANGE_WARNING_TEXT).toBe('Sua nova logo já aparece dentro do app na hora e para todos os novos clientes. Clientes antigos verão um botão para atualizar o ícone da tela inicial.');
     expect(ui.queryByTestId('logo-unconfirmed')).not.toBeNull();
     fireEvent.click(ui.getByText('Entendi'));
     expect(ui.queryByTestId('logo-change-warning')).toBeNull();
