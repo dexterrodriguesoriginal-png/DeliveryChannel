@@ -837,7 +837,7 @@ export default function App() {
     return <ScreenErrorBoundary><TvScreen /></ScreenErrorBoundary>;
   }
   // Fora de qualquer /app/<slug>/ scope: o Chrome abre este guia como aba externa.
-  const iconGuideSlug = /^\/atualizar-icone\/([^/]+)\/?$/.exec(window.location.pathname)?.[1];
+  const iconGuideSlug = /^\/atualizar-app\/([^/]+)\/?$/.exec(window.location.pathname)?.[1];
   if (iconGuideSlug) {
     let slug: string;
     try { slug = decodeURIComponent(iconGuideSlug); } catch { slug = iconGuideSlug; }
