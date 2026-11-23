@@ -12,7 +12,7 @@ import path from 'node:path';
 import type { Request, Response, Router } from 'express';
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { buildStoreManifest, ManifestIcon, iconFallbackColor, storeDisplayName, storeIconVersion, storeIdentityVersion, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
+import { buildStoreManifest, ManifestIcon, iconFallbackColor, storeDisplayName, storeIconVersion, storeAppIdentity, storeIdentityVersion, StoreIdentityInput } from '../../src/lib/pwa/storeManifest';
 import { buildTotemManifest } from '../../src/lib/pwa/totemManifest';
 import { storeAppCanonicalPath } from '../../src/lib/pwa/storeScopeUrl';
 import { ICON_VARIANTS, IconVariant, isNearlyFlatPng, renderInitialsPng, renderStoreIconPng, SPLASH_TEST_ICON_VARIANTS, SplashTestIconVariant } from './icons';
@@ -21,6 +21,7 @@ import { fetchPublicImage } from './safeFetch';
 import { isValidSlug, StoreResolver, supabaseEnvFrom } from './storeSource';
 import { RateLimiter } from '../payments/security';
 import { splitStoreSegment, versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope } from '../../src/lib/pwa/appIdentity';
+import { isVersionedStoreApp } from '../../src/lib/pwa/appVersionMode';
 
 declare const __PWA_BUILD_VERSION__: string | undefined;
 
@@ -466,10 +467,13 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   router.get('/api/pwa/version', async (req, res) => {
     const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : '';
     let storeVer: string | undefined;
+    let appIdentity: string | undefined;
     if (slug && isValidSlug(slug)) {
       const r = await lookup(slug);
       if (r.status === 'ok' && r.store.slug === slug) {
         storeVer = identityVersion(r.store);
+        const verified = await withLogoDigestForHtml(r.store);
+        if (isVersionedStoreApp(verified)) appIdentity = storeAppIdentity(verified);
       }
     }
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -477,6 +481,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     res.json({
       version: buildVersion,
       ...(slug && storeVer ? { slug, identityVersion: storeVer } : {}),
+      ...(appIdentity ? { appIdentity } : {}),
     });
   });
 
@@ -605,8 +610,11 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     return withLogoDigestForHtml(r.store);
   };
   const identityHeadOptions = (store: StoreIdentityInput | null, identity: string | null): IdentityHeadOptions => {
-    if (!store || !identity || !/^[0-9a-f]{10}$/.test(identity)) return {};
-    return { manifestHref: versionedManifestPath(store.slug, identity) };
+    if (!store) return {};
+    const appIdentity = isVersionedStoreApp(store) ? storeAppIdentity(store) : undefined;
+    const manifestHref = identity && /^[0-9a-f]{10}$/.test(identity)
+      ? versionedManifestPath(store.slug, identity) : undefined;
+    return { ...(manifestHref ? { manifestHref } : {}), ...(appIdentity ? { appIdentity } : {}) };
   };
   return Object.assign(router, { lookupStore, lookupStoreForHtml, identityHeadOptions, invalidateStore });
 }
