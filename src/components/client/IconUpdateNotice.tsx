@@ -1,21 +1,36 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Copy, RefreshCw } from 'lucide-react';
-import { chromeIntentUrl, versionedStoreScope } from '../../lib/pwa/appIdentity';
+import { versionedStoreScope } from '../../lib/pwa/appIdentity';
 import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { detectPlatform, isStandalone } from '../../lib/pwa/installState';
 import { Button } from '../ui/Button';
 
 export const ICON_UPDATE_TEXT = 'Atualize para a nova versão';
 export const ICON_INTENT_FALLBACK_MS = 1500;
+export type UpdateOpenMode = 'window' | 'chrome-component' | 'googlechrome-scheme';
+export const UPDATE_OPEN_MODE_KEY = 'dc:update-open-mode';
+
+export function getUpdateOpenMode(storage?: Pick<Storage, 'getItem'>): UpdateOpenMode {
+  let value: string | null = null;
+  try { value = (storage || window.localStorage).getItem(UPDATE_OPEN_MODE_KEY); } catch { /* armazenamento bloqueado */ }
+  return value === 'chrome-component' || value === 'googlechrome-scheme' ? value : 'window';
+}
 
 /** URL da instalação oficial atual, sem caminhos ou parâmetros de reinstalação. */
 export function storeIconUpdateUrl(slug: string, identity: string, origin: string): string {
   const base = new URL(origin);
   base.protocol = 'https:';
-  return base.origin + versionedStoreScope(slug, identity);
+  return base.origin + versionedStoreScope(slug, identity) + '?instalar=1';
 }
+/** Experimentos opcionais; o modo padrão abre a URL HTTPS em nova janela. */
+export function experimentalUpdateUrl(mode: Exclude<UpdateOpenMode, 'window'>, installUrl: string): string {
+  if (mode === 'googlechrome-scheme') return `googlechrome://navigate?url=${encodeURIComponent(installUrl)}`;
+  const url = new URL(installUrl);
+  return `intent://${url.host}${url.pathname}${url.search}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;component=com.android.chrome/com.google.android.apps.chrome.Main;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(installUrl)};end`;
+}
+/** Mantém nome para código de diagnóstico anterior; não é a estratégia padrão. */
 export const chromeIconUpdateIntent = (slug: string, identity: string, origin: string) =>
-  chromeIntentUrl(storeIconUpdateUrl(slug, identity, origin), { android: true });
+  experimentalUpdateUrl('chrome-component', storeIconUpdateUrl(slug, identity, origin));
 
 let iconNoticeVisible = false;
 const iconNoticeListeners = new Set<() => void>();
@@ -91,16 +106,32 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
 
   const url = storeIconUpdateUrl(slug, currentIdentity, window.location.origin);
   const onAndroidClick = () => {
+    const mode = getUpdateOpenMode();
+    // Executar diretamente no gesto do usuário: popups disparados por timers são bloqueados.
+    if (mode === 'window') {
+      try {
+        const opened = window.open(url, '_blank', 'noopener');
+        if (!opened) window.location.href = url;
+      } catch {
+        window.location.href = url;
+      }
+      return;
+    }
     left.current = false;
     setShowFallback(isBlockingWebview(ua));
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       timer.current = null;
-      if (!left.current && document.visibilityState === 'visible' && isStandalone(window)) {
-        setShowFallback(true);
-      }
+      if (!left.current && document.visibilityState === 'visible' && isStandalone(window)) setShowFallback(true);
     }, ICON_INTENT_FALLBACK_MS);
-    if (onNavigate) onNavigate(chromeIconUpdateIntent(slug, currentIdentity, window.location.origin));
+    const experimentalUrl = experimentalUpdateUrl(mode, url);
+    if (onNavigate) { onNavigate(experimentalUrl); return; }
+    const anchor = document.createElement('a');
+    anchor.href = experimentalUrl;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    document.body.appendChild(anchor);
+    try { anchor.click(); } finally { anchor.remove(); }
   };
   const copy = async () => {
     setCopyFailed(false);
@@ -121,12 +152,8 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
         <div className="min-w-0 flex-1 space-y-2">
           <p className="text-sm font-bold">{ICON_UPDATE_TEXT}</p>
           {android ? (
-            <a href={chromeIconUpdateIntent(slug, currentIdentity, window.location.origin)}
-              target="_blank" rel="noopener noreferrer" data-testid="icon-update-open-chrome"
-              onClick={(event) => { if (onNavigate) event.preventDefault(); onAndroidClick(); }}
-              className="inline-flex items-center justify-center rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800">
-              Atualizar
-            </a>
+            <Button type="button" variant="primary" size="sm"
+              data-testid="icon-update-open-chrome" onClick={onAndroidClick}>Atualizar</Button>
           ) : (
             <>
               <Button type="button" variant="primary" size="sm" onClick={() => void copy()}
