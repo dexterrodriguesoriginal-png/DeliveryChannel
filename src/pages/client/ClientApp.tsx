@@ -52,6 +52,7 @@ import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
 import { isLogoConfirmed } from '../../lib/pwa/logoConfirmation';
 import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
+import { IconUpdateNotice, IconUpdateBrowserGuide } from '../../components/client/IconUpdateNotice';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewPresentationMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
 import { emitInviteTrigger } from '../../lib/pwa/installState';
@@ -1950,6 +1951,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         />
       )}
       {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
+      {!previewMode && <IconUpdateBrowserGuide />}
+      {!previewMode && <IconUpdateNotice store={{
+        id: storeData.tenant.id,
+        slug: storeData.tenant.slug,
+        name: storeData.tenant.name,
+        theme: { logoUrl: theme.logoUrl },
+        appBaseLogoUrl: theme.tokens?.meta?.appBaseLogoUrl,
+        logoConfirmedUrl: theme.tokens?.meta?.logoConfirmedUrl,
+      }} />}
       {!previewMode && legacyIdentity && <AppIdentityUpdate slug={storeData.tenant.slug} storeName={storeData.tenant.name} />}
       {!previewMode && !legacyIdentity && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
