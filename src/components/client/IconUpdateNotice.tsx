@@ -136,7 +136,7 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
   const copy = async () => {
     setCopyFailed(false);
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(ios ? url.replace(/\?instalar=1$/, '') : url);
       setCopied(true);
     } catch {
       setCopied(false);
