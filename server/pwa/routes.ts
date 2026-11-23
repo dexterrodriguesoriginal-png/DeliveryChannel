@@ -472,8 +472,10 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       const r = await lookup(slug);
       if (r.status === 'ok' && r.store.slug === slug) {
         storeVer = identityVersion(r.store);
-        const verified = await withLogoDigestForHtml(r.store);
-        if (isVersionedStoreApp(verified)) appIdentity = storeAppIdentity(verified);
+        // O hash de instalação deve ser idêntico ao usado pelo manifesto PNG,
+        // inclusive quando os bytes da mesma URL forem modificados.
+        const verified = await withLogoDigest(r.store);
+        if (verified && isVersionedStoreApp(verified)) appIdentity = storeAppIdentity(verified);
       }
     }
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -611,7 +613,10 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
   };
   const identityHeadOptions = (store: StoreIdentityInput | null, identity: string | null): IdentityHeadOptions => {
     if (!store) return {};
-    const appIdentity = isVersionedStoreApp(store) ? storeAppIdentity(store) : undefined;
+    // HTML pode ter esgotado o orçamento de 400ms da logo. Nesse caso, não
+    // anunciar uma identidade baseada só no endereço (incompatível com o manifesto).
+    const digestReady = !store.theme?.logoUrl || Boolean(store.iconContentHash);
+    const appIdentity = digestReady && isVersionedStoreApp(store) ? storeAppIdentity(store) : undefined;
     const manifestHref = identity && /^[0-9a-f]{10}$/.test(identity)
       ? versionedManifestPath(store.slug, identity) : undefined;
     return { ...(manifestHref ? { manifestHref } : {}), ...(appIdentity ? { appIdentity } : {}) };
