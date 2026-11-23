@@ -1,6 +1,12 @@
 import React, { useLayoutEffect } from 'react';
 import { setIconNoticeVisible } from '../client/IconUpdateNotice';
-import { versionedStartUrl } from '../../lib/pwa/appIdentity';
+import { APP_IDENTITY_META, APP_IDENTITY_RE, versionedStartUrl } from '../../lib/pwa/appIdentity';
+
+/** O HTML canônico mantém a meta apenas no modo versionado, sem mudar o manifesto estável. */
+export function readAppIdentityMeta(doc: Document | undefined = typeof document !== 'undefined' ? document : undefined): string | null {
+  const value = doc?.querySelector(`meta[name="${APP_IDENTITY_META}"]`)?.getAttribute('content') || '';
+  return APP_IDENTITY_RE.test(value) ? value : null;
+}
 
 /** Bloqueia totalmente a interface da instalação substituída. */
 export function AppIdentityUpdate({ slug, currentIdentity }: { slug: string; currentIdentity: string }) {
