@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useSyncExternalStore, useLayoutEffect } from 'react';
+import React, { useState, useSyncExternalStore, useLayoutEffect } from 'react';
 import { Button } from '../ui/Button';
 import { StoreLogo } from '../client/StoreLogo';
 import { getDeferredPrompt, subscribeInstall, wasAppInstalledEvent, isStandalone, clearDeferredPrompt } from '../../lib/pwa/installState';
@@ -6,7 +6,7 @@ import { setIconNoticeVisible, setReplacedScreenVisible } from '../client/IconUp
 
 export const REINSTALL_PROMPT_WAIT_MS = 8000;
 export const INSTALL_READY_TEXT = 'Pronto. Abra o novo app na tela do seu celular.';
-export const INSTALL_NO_PROMPT_TEXT = 'Toque em ⋮ e em Abrir no Chrome';
+export const INSTALL_NO_PROMPT_TEXT = 'Se não instalar, toque em ⋮ e em Abrir no Chrome';
 
 export function shouldShowVersionInstallScreen(input: {
   standalone: boolean; runningIdentity: string | null;
@@ -21,7 +21,6 @@ export function shouldShowVersionInstallScreen(input: {
 export function VersionInstallScreen({ storeName, logoUrl }: { storeName: string; logoUrl?: string | null }) {
   const deferred = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
   const installed = useSyncExternalStore(subscribeInstall, wasAppInstalledEvent, () => false);
-  const [noPrompt, setNoPrompt] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useLayoutEffect(() => {
@@ -33,12 +32,6 @@ export function VersionInstallScreen({ storeName, logoUrl }: { storeName: string
     };
   }, []);
 
-  useEffect(() => {
-    if (installed || deferred) { setNoPrompt(false); return; }
-    const timer = window.setTimeout(() => setNoPrompt(true), REINSTALL_PROMPT_WAIT_MS);
-    return () => window.clearTimeout(timer);
-  }, [installed, deferred]);
-
   const install = async () => {
     const prompt = getDeferredPrompt();
     if (!prompt || busy) return;
@@ -47,10 +40,9 @@ export function VersionInstallScreen({ storeName, logoUrl }: { storeName: string
       await prompt.prompt();
       const choice = await prompt.userChoice;
       clearDeferredPrompt();
-      if (choice.outcome === 'dismissed') setNoPrompt(true);
       // 'accepted' is not yet installed; wait for the appinstalled event.
     } catch {
-      setNoPrompt(true);
+      // A orientação de abrir no Chrome já está visível abaixo do botão.
     } finally {
       setBusy(false);
     }
@@ -73,7 +65,7 @@ export function VersionInstallScreen({ storeName, logoUrl }: { storeName: string
           <Button type="button" variant="primary" size="lg" disabled={!deferred || busy}
             isLoading={busy} onClick={() => void install()}
             data-testid="version-install-button">Instalar</Button>
-          {noPrompt && <p data-testid="version-install-no-prompt" className="text-sm">{INSTALL_NO_PROMPT_TEXT}</p>}
+          <p data-testid="version-install-no-prompt" className="text-sm">{INSTALL_NO_PROMPT_TEXT}</p>
         </>
       )}
     </main>
