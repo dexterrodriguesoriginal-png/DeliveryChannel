@@ -16,6 +16,7 @@ import { createReceiptsRouter } from './server/receipts/routes';
 import path from 'node:path';
 import { createPwaRouter, staticAssetCacheControl } from './server/pwa/routes';
 import { precompressedStatic, sendCompressedHtml } from './server/http/compression';
+import { isIconUpdateGuidePath, stripGlobalPwaInstallHead } from './server/http/iconUpdateHtml';
 import { resolveSplashTestSlugs } from './server/pwa/splashTest';
 import { resolveIdentityTestSlugs } from './server/pwa/identityTest';
 import { splitStoreSegment } from './src/lib/pwa/appIdentity';
@@ -86,6 +87,15 @@ async function start() {
         res.type('html').send(injectWaiterHead(raw));
       } catch (e) { next(e); }
     });
+    // Fora de /app/:slug: esta página não deve herdar o manifesto global.
+    app.get(/^\/atualizar-icone\/[^/]+\/?$/, async (req, res, next) => {
+      if (!isHtmlNav(req)) return next();
+      try {
+        const raw = await vite.transformIndexHtml(req.originalUrl, await fs.readFile(path.resolve(process.cwd(), 'index.html'), 'utf8'));
+        res.setHeader('Cache-Control', 'no-cache');
+        res.type('html').send(stripGlobalPwaInstallHead(raw));
+      } catch (e) { next(e); }
+    });
     app.get('/app/*', async (req, res, next) => {
       const slug = storeSlugFromPath(req.path);
       if (!slug || !isHtmlNav(req)) return next();
@@ -123,6 +133,12 @@ async function start() {
       if (req.method !== 'GET' || path.extname(req.path)) return next();
       res.setHeader('Cache-Control', 'no-cache');
       const slug = storeSlugFromPath(req.path);
+      if (isIconUpdateGuidePath(req.path)) {
+        indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
+        indexHtml.then(raw => res.set('Cache-Control', 'no-cache').type('html')
+          .send(stripGlobalPwaInstallHead(raw)), next);
+        return;
+      }
       if (isDriverRoute(req.path)) {
         indexHtml ??= fs.readFile(path.join(distDir, 'index.html'), 'utf8');
         indexHtml.then(raw => res.set('Cache-Control', 'no-cache').type('html').send(injectDriverHead(raw)), next);
