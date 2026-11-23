@@ -1,8 +1,7 @@
 /**
  * Registro histórico da logo base para compatibilidade com dados já gravados.
- * A troca de logo atualiza o ícone do manifesto estável via ?v=, sem criar
- * uma nova identidade ou oferecer reinstalação no cliente canônico.
- * Os helpers permanecem disponíveis para o painel e testes legados.
+ * A primeira troca de logo confirmada habilita versões de instalação separadas.
+ * Mantém a referência da logo original no JSON existente do tema.
  */
 const clean = (u: unknown) => (typeof u === 'string' ? u.trim() : '');
 
