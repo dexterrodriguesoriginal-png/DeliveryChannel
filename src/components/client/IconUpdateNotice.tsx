@@ -30,6 +30,20 @@ export function setIconNoticeVisible(value: boolean) {
   iconNoticeListeners.forEach(listener => listener());
 }
 
+/** Only the full-screen replaced-app view may suppress the global cookie banner. */
+let replacedScreenVisible = false;
+const replacedScreenListeners = new Set<() => void>();
+export const subscribeReplacedScreen = (listener: () => void) => {
+  replacedScreenListeners.add(listener);
+  return () => { replacedScreenListeners.delete(listener); };
+};
+export const getReplacedScreenVisible = () => replacedScreenVisible;
+export function setReplacedScreenVisible(value: boolean) {
+  if (replacedScreenVisible === value) return;
+  replacedScreenVisible = value;
+  replacedScreenListeners.forEach(listener => listener());
+}
+
 const isBlockingWebview = (ua: string) => /;\s*wv[);]|FBAN|FBAV|Instagram|WhatsApp|\bWebView\b/i.test(ua);
 interface NoticeProps {
   store: StoreIdentityInput;
@@ -49,6 +63,7 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
   const ios = platform === 'ios-safari' || platform === 'ios-other';
   const visible = standalone && (android || ios);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const left = useRef(false);
@@ -88,8 +103,14 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
     if (onNavigate) onNavigate(chromeIconUpdateIntent(slug, currentIdentity, window.location.origin));
   };
   const copy = async () => {
-    try { await navigator.clipboard.writeText(url); setCopied(true); }
-    catch { setCopied(false); }
+    setCopyFailed(false);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+      setCopyFailed(true);
+    }
   };
 
   return (
@@ -107,8 +128,21 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
               Atualizar
             </a>
           ) : (
-            <Button type="button" variant="primary" size="sm" onClick={() => void copy()}
-              leftIcon={<Copy className="h-3.5 w-3.5" />}>Atualizar</Button>
+            <>
+              <Button type="button" variant="primary" size="sm" onClick={() => void copy()}
+                leftIcon={<Copy className="h-3.5 w-3.5" />}>Atualizar</Button>
+              {copied && (
+                <p className="text-xs text-gray-700" role="status">
+                  Link copiado. Abra no Safari para instalar a nova versão.
+                </p>
+              )}
+              {copyFailed && (
+                <div className="space-y-1 text-xs text-gray-700" role="status">
+                  <p>Abra este endereço no Safari para instalar a nova versão.</p>
+                  <p className="select-text break-all">{url}</p>
+                </div>
+              )}
+            </>
           )}
           {android && showFallback && (
             <div data-testid="icon-update-fallback" role="region" aria-label="Atualização pelo navegador"
