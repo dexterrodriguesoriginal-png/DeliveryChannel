@@ -468,6 +468,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : '';
     let storeVer: string | undefined;
     let appIdentity: string | undefined;
+    let appIconContentHash: string | undefined;
     if (slug && isValidSlug(slug)) {
       const r = await lookup(slug);
       if (r.status === 'ok' && r.store.slug === slug) {
@@ -476,7 +477,10 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
         // Quando há versão nova, o digest precisa coincidir com o manifesto PNG.
         if (isVersionedStoreApp(r.store)) {
           const verified = await withLogoDigest(r.store);
-          if (verified) appIdentity = storeAppIdentity(verified);
+          if (verified) {
+            appIdentity = storeAppIdentity(verified);
+            appIconContentHash = verified.iconContentHash;
+          }
         }
       }
     }
@@ -486,6 +490,7 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       version: buildVersion,
       ...(slug && storeVer ? { slug, identityVersion: storeVer } : {}),
       ...(appIdentity ? { appIdentity } : {}),
+      ...(appIdentity && appIconContentHash ? { iconContentHash: appIconContentHash } : {}),
     });
   });
 
