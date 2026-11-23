@@ -472,10 +472,12 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
       const r = await lookup(slug);
       if (r.status === 'ok' && r.store.slug === slug) {
         storeVer = identityVersion(r.store);
-        // O hash de instalação deve ser idêntico ao usado pelo manifesto PNG,
-        // inclusive quando os bytes da mesma URL forem modificados.
-        const verified = await withLogoDigest(r.store);
-        if (verified && isVersionedStoreApp(verified)) appIdentity = storeAppIdentity(verified);
+        // Evita baixar a logo para lojas que ainda utilizam somente o app estável.
+        // Quando há versão nova, o digest precisa coincidir com o manifesto PNG.
+        if (isVersionedStoreApp(r.store)) {
+          const verified = await withLogoDigest(r.store);
+          if (verified) appIdentity = storeAppIdentity(verified);
+        }
       }
     }
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
