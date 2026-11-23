@@ -36,9 +36,9 @@ describe('aviso para atualizar ícone do PWA', () => {
   it('aparece instalado no Android quando a logo mudou e foi confirmada', () => {
     const ui = render(<IconUpdateNotice store={store} userAgent={android} />);
     expect(ui.getByTestId('icon-update-notice').textContent).toContain(ICON_UPDATE_TEXT);
-    expect(ui.getByText('Nova versão disponível')).toBeTruthy();
+    expect(ui.getByText('Atualize para a nova versão')).toBeTruthy();
     expect(ui.getByTestId('icon-update-notice').textContent).not.toMatch(/ícone|logo|tela inicial/i);
-    expect(ui.getByRole('link', { name: 'Atualizar app' })).toBeTruthy();
+    expect(ui.getByRole('link', { name: 'Atualizar' })).toBeTruthy();
   });
   it('não aparece em aba normal nem se logo não mudou ou ainda não foi confirmada', () => {
     setStandalone(false);
@@ -70,7 +70,7 @@ describe('aviso para atualizar ícone do PWA', () => {
   it('botão Android monta o intent:// com Chrome, origem da loja e query correta', () => {
     const navigate = vi.fn();
     const ui = render(<IconUpdateNotice store={store} userAgent={android} onNavigate={navigate} />);
-    fireEvent.click(ui.getByRole('link', { name: 'Atualizar app' }));
+    fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
     const canonical = `https://${window.location.host}/atualizar-icone/adega-show`;
     const expected = `intent://${window.location.host}/atualizar-icone/adega-show#Intent;scheme=https;package=com.android.chrome;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(canonical)};end`;
     expect(chromeIconUpdateIntent(store.slug, window.location.origin)).toBe(expected);
@@ -87,7 +87,7 @@ describe('aviso para atualizar ícone do PWA', () => {
       const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
       vi.stubGlobal('navigator', { userAgent: android, clipboard });
       const ui = render(<IconUpdateNotice store={store} userAgent={android} onNavigate={navigate} />);
-      fireEvent.click(ui.getByRole('link', { name: 'Atualizar app' }));
+      fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
       expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
       await act(async () => { vi.advanceTimersByTime(1500); });
       expect(ui.getByTestId('icon-update-fallback').textContent).toContain('Para atualizar, abra este link no Chrome');
@@ -104,7 +104,7 @@ describe('aviso para atualizar ícone do PWA', () => {
     try {
       const navigate = vi.fn();
       const ui = render(<IconUpdateNotice store={store} userAgent={android} onNavigate={navigate} />);
-      fireEvent.click(ui.getByRole('link', { name: 'Atualizar app' }));
+      fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
       const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
       fireEvent(document, new Event('visibilitychange'));
       await act(async () => { vi.advanceTimersByTime(1800); });
@@ -117,7 +117,7 @@ describe('aviso para atualizar ícone do PWA', () => {
     const webview = 'Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 Instagram';
     const navigate = vi.fn();
     const ui = render(<IconUpdateNotice store={store} userAgent={webview} onNavigate={navigate} />);
-    fireEvent.click(ui.getByRole('link', { name: 'Atualizar app' }));
+    fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
     expect(navigate).toHaveBeenCalledWith(expect.stringContaining('package=com.android.chrome;'));
     expect(ui.getByTestId('icon-update-fallback').textContent).toContain('Abrir no Chrome');
   });
@@ -135,11 +135,11 @@ describe('aviso para atualizar ícone do PWA', () => {
     const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
     vi.stubGlobal('navigator', { clipboard, userAgent: ios });
     const ui = render(<IconUpdateNotice store={store} userAgent={ios} />);
-    expect(ui.queryByRole('link', { name: 'Atualizar app' })).toBeNull();
-    expect(ui.getByText('Nova versão disponível')).toBeTruthy();
-    expect(ui.getByText(/Abra-o no Safari/)).toBeTruthy();
+    expect(ui.queryByRole('link', { name: 'Atualizar' })).toBeNull();
+    expect(ui.getByText('Atualize para a nova versão')).toBeTruthy();
+    expect(ui.queryByText(/Abra-o no Safari/)).toBeNull();
     expect(ui.getByTestId('icon-update-notice').textContent).not.toMatch(/ícone|logo|tela inicial/i);
-    fireEvent.click(ui.getByRole('button', { name: 'Atualizar app' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith(
       `${window.location.origin}/app/adega-show/`
     ));
