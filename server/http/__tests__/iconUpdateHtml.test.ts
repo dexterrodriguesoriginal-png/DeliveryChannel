@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isIconUpdateGuidePath, stripGlobalPwaInstallHead } from '../iconUpdateHtml';
 
-describe('HTML de /atualizar-icone/:slug sem vínculo ao app global', () => {
+describe('HTML de /atualizar-app/:slug sem vínculo ao app global', () => {
   it('reconhece somente a rota do guia fora dos escopos', () => {
-    expect(isIconUpdateGuidePath('/atualizar-icone/adega-show')).toBe(true);
-    expect(isIconUpdateGuidePath('/atualizar-icone/adega-show/')).toBe(true);
-    expect(isIconUpdateGuidePath('/atualizar-icone/')).toBe(false);
+    expect(isIconUpdateGuidePath('/atualizar-app/adega-show')).toBe(true);
+    expect(isIconUpdateGuidePath('/atualizar-app/adega-show/')).toBe(true);
+    expect(isIconUpdateGuidePath('/atualizar-app/')).toBe(false);
     expect(isIconUpdateGuidePath('/app/adega-show/')).toBe(false);
     expect(isIconUpdateGuidePath('/entregador')).toBe(false);
   });
@@ -39,7 +39,7 @@ describe('HTML de /atualizar-icone/:slug sem vínculo ao app global', () => {
   });
   it('GET do guia passa pela transformação tanto em dev quanto em produção sem mudar outras rotas', () => {
     const server = readFileSync(resolve(process.cwd(), 'server.ts'), 'utf8');
-    expect(server).toContain('app.get(/^\\/atualizar-icone');
+    expect(server).toContain('app.get(/^\\/atualizar-app');
     expect(server).toContain('if (isIconUpdateGuidePath(req.path))');
     expect(server).toContain("res.setHeader('Cache-Control', 'no-cache')");
     expect(server).toContain("res.set('Cache-Control', 'no-cache')");
