@@ -44,7 +44,10 @@ describe('VersionInstallScreen', () => {
     expect(ui.getByRole('img', { name: 'Mercado Sol' })).toBeTruthy();
     expect(ui.getByRole('button', { name: 'Instalar' })).toBeTruthy();
     expect(ui.getByTestId('version-install-screen').querySelectorAll('button')).toHaveLength(1);
-    expect(ui.queryByTestId('version-install-no-prompt')).toBeNull();
+    const guide = ui.getByTestId('version-install-no-prompt');
+    expect(guide.textContent).toBe('Se não instalar, toque em ⋮ e em Abrir no Chrome');
+    const button = ui.getByTestId('version-install-button');
+    expect(button.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(getIconNoticeVisible()).toBe(true);
     expect(getReplacedScreenVisible()).toBe(true);
     ui.unmount();
@@ -52,14 +55,14 @@ describe('VersionInstallScreen', () => {
     expect(getReplacedScreenVisible()).toBe(false);
   });
 
-  it('sem beforeinstallprompt por 8 segundos mostra a única orientação alternativa', async () => {
+  it('orientação fica visível imediatamente e continua após 8 segundos sem prompt', async () => {
     vi.useFakeTimers();
     const ui = render(<VersionInstallScreen storeName="Mercado Sol" />);
     expect(REINSTALL_PROMPT_WAIT_MS).toBe(8000);
+    expect(ui.getByTestId('version-install-no-prompt').textContent).toBe(INSTALL_NO_PROMPT_TEXT);
     await act(async () => { vi.advanceTimersByTime(REINSTALL_PROMPT_WAIT_MS); });
-    const guide = ui.getByTestId('version-install-no-prompt');
-    expect(guide.textContent).toBe(INSTALL_NO_PROMPT_TEXT);
-    expect(guide.textContent).toBe('Toque em ⋮ e em Abrir no Chrome');
+    expect(ui.getByTestId('version-install-no-prompt').textContent)
+      .toBe('Se não instalar, toque em ⋮ e em Abrir no Chrome');
     expect(ui.getByTestId('version-install-screen').querySelectorAll('p')).toHaveLength(1);
   });
 
@@ -100,6 +103,7 @@ describe('VersionInstallScreen', () => {
     await act(async () => { window.dispatchEvent(ev); });
     const install = ui.getByRole('button', { name: 'Instalar' }) as HTMLButtonElement;
     expect(install.disabled).toBe(false);
+    expect(ui.getByTestId('version-install-no-prompt').textContent).toBe(INSTALL_NO_PROMPT_TEXT);
     await act(async () => {
       fireEvent.click(install);
       for (let i = 0; i < 4; i++) await Promise.resolve();
