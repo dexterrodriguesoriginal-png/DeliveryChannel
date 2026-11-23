@@ -112,8 +112,10 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
     // Executar diretamente no gesto do usuário: popups disparados por timers são bloqueados.
     if (mode === 'window') {
       try {
-        const opened = window.open(url, '_blank', 'noopener');
-        if (!opened) window.location.href = url;
+        // Sem 'noopener' na lista de recursos: com ele window.open devolve null sempre e a janela atual também navegaria.
+        const opened = window.open(url, '_blank');
+        if (opened) { try { opened.opener = null; } catch { /* outra origem */ } }
+        else window.location.href = url;
       } catch {
         window.location.href = url;
       }

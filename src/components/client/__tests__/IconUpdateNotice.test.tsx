@@ -57,7 +57,7 @@ describe('aviso único da instalação anterior', () => {
     expect(getUpdateOpenMode()).toBe('window');
     expect(storeIconUpdateUrl(slug, VERSION, window.location.origin)).toBe(installUrl);
     fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
-    expect(open).toHaveBeenCalledWith(installUrl, '_blank', 'noopener');
+    expect(open).toHaveBeenCalledWith(installUrl, '_blank');
     expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
     expect(installUrl).not.toMatch(/ícone|icone|logo|reinstall/i);
   });
@@ -103,7 +103,7 @@ describe('aviso único da instalação anterior', () => {
     const open = vi.spyOn(window, 'open').mockReturnValue({} as Window);
     const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
     fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
-    expect(open).toHaveBeenCalledWith(expect.stringContaining('?instalar=1'), '_blank', 'noopener');
+    expect(open).toHaveBeenCalledWith(expect.stringContaining('?instalar=1'), '_blank');
   });
   it('não mostra fallback quando aplicativo ficou oculto após modo experimental', async () => {
     localStorage.setItem(UPDATE_OPEN_MODE_KEY, 'chrome-component');
