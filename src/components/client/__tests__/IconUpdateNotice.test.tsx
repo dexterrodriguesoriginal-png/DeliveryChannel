@@ -2,7 +2,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
-import { IconUpdateNotice, chromeIconUpdateIntent, getIconNoticeVisible, getReplacedScreenVisible, storeIconUpdateUrl } from '../IconUpdateNotice';
+import { IconUpdateNotice, experimentalUpdateUrl, getUpdateOpenMode, getIconNoticeVisible, getReplacedScreenVisible, storeIconUpdateUrl, UPDATE_OPEN_MODE_KEY } from '../IconUpdateNotice';
 import type { StoreIdentityInput } from '../../../lib/pwa/storeManifest';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,6 +27,7 @@ function standalone(enabled: boolean) {
   }) as unknown as MediaQueryList);
 }
 beforeEach(() => {
+  localStorage.clear();
   standalone(true);
   window.history.replaceState(null, '', '/app/adega-show/');
 });
@@ -39,7 +40,7 @@ describe('aviso único da instalação anterior', () => {
     expect(notice.textContent).toContain('Atualize para a nova versão');
     expect(notice.textContent).not.toMatch(/ícone|logo|tela inicial/i);
     expect(notice.querySelectorAll('a,button')).toHaveLength(1);
-    expect(ui.getByRole('link', { name: 'Atualizar' })).toBeTruthy();
+    expect(ui.getByRole('button', { name: 'Atualizar' })).toBeTruthy();
     expect(getIconNoticeVisible()).toBe(true);
     expect(getReplacedScreenVisible()).toBe(false);
   });
@@ -49,49 +50,78 @@ describe('aviso único da instalação anterior', () => {
     expect(ui.queryByTestId('icon-update-notice')).toBeNull();
     expect(getIconNoticeVisible()).toBe(false);
   });
-  it('Android abre a URL HTTPS da nova instalação, com intent Chrome e fallback correspondente', () => {
+  it('modo padrão window abre HTTPS da versão em nova janela, sem intent', () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
+    const installUrl = `https://${window.location.host}/app/adega-show~0123456789/?instalar=1`;
+    expect(getUpdateOpenMode()).toBe('window');
+    expect(storeIconUpdateUrl(slug, VERSION, window.location.origin)).toBe(installUrl);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    expect(open).toHaveBeenCalledWith(installUrl, '_blank', 'noopener');
+    expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
+    expect(installUrl).not.toMatch(/ícone|icone|logo|reinstall/i);
+  });
+  it('janela bloqueada retorna para location.href na mesma janela', () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const assigned = vi.fn();
+    const original = window.location;
+    vi.stubGlobal('location', { ...original, origin: original.origin, host: original.host,
+      set href(value: string) { assigned(value); }, get href() { return original.href; } });
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(assigned).toHaveBeenCalledWith(`https://${original.host}/app/adega-show~0123456789/?instalar=1`);
+  });
+  it('chrome-component usa intent VIEW/BROWSABLE com componente e fallback idêntico', async () => {
+    localStorage.setItem(UPDATE_OPEN_MODE_KEY, 'chrome-component');
     const navigate = vi.fn();
     const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} onNavigate={navigate} />);
-    const url = `https://${window.location.host}/app/adega-show~0123456789/`;
-    const expected = `intent://${window.location.host}/app/adega-show~0123456789/#Intent;scheme=https;package=com.android.chrome;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(url)};end`;
-    expect(storeIconUpdateUrl(slug, VERSION, window.location.origin)).toBe(url);
-    expect(chromeIconUpdateIntent(slug, VERSION, window.location.origin)).toBe(expected);
-    fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
-    expect(navigate).toHaveBeenCalledWith(expected);
-    const anchor = ui.getByTestId('icon-update-open-chrome') as HTMLAnchorElement;
-    expect(anchor.getAttribute('href')).toBe(expected);
-    expect(anchor.target).toBe('_blank');
-    expect(anchor.rel).toContain('noopener');
-    expect(expected).not.toMatch(/atualizar-app|reinstall=1|icone|logo/i);
-  });
-  it('em 1,5s mostra copiar link só se permaneceu visível e standalone', async () => {
+    const url = `https://${window.location.host}/app/adega-show~0123456789/?instalar=1`;
+    const expected = `intent://${window.location.host}/app/adega-show~0123456789/?instalar=1#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;component=com.android.chrome/com.google.android.apps.chrome.Main;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+    expect(experimentalUpdateUrl('chrome-component', url)).toBe(expected);
     vi.useFakeTimers();
-    const navigate = vi.fn();
-    const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
-    vi.stubGlobal('navigator', { userAgent: android, clipboard });
-    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} onNavigate={navigate} />);
-    fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
-    expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    expect(navigate).toHaveBeenCalledWith(expected);
     await act(async () => { vi.advanceTimersByTime(1500); });
     expect(ui.getByTestId('icon-update-fallback').textContent).toContain('Para atualizar, abra este link no Chrome');
-    fireEvent.click(ui.getByRole('button', { name: 'Copiar link' }));
-    await act(async () => { await Promise.resolve(); });
-    expect(clipboard.writeText).toHaveBeenCalledWith(`https://${window.location.host}/app/adega-show~0123456789/`);
+    vi.useRealTimers();
+    expect(expected).not.toMatch(/ícone|icone|logo/i);
   });
-  it('não mostra fallback se visibilitychange informou que o Chrome abriu', async () => {
+  it('googlechrome-scheme é permitido apenas com override válido', () => {
+    localStorage.setItem(UPDATE_OPEN_MODE_KEY, 'googlechrome-scheme');
+    expect(getUpdateOpenMode()).toBe('googlechrome-scheme');
+    const navigate = vi.fn();
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} onNavigate={navigate} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    const url = `https://${window.location.host}/app/adega-show~0123456789/?instalar=1`;
+    expect(navigate).toHaveBeenCalledWith(`googlechrome://navigate?url=${encodeURIComponent(url)}`);
+    expect(experimentalUpdateUrl('googlechrome-scheme', url)).toBe(`googlechrome://navigate?url=${encodeURIComponent(url)}`);
+  });
+  it('override inválido volta ao modo window', () => {
+    localStorage.setItem(UPDATE_OPEN_MODE_KEY, 'invalid');
+    expect(getUpdateOpenMode()).toBe('window');
+    const open = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    expect(open).toHaveBeenCalledWith(expect.stringContaining('?instalar=1'), '_blank', 'noopener');
+  });
+  it('não mostra fallback quando aplicativo ficou oculto após modo experimental', async () => {
+    localStorage.setItem(UPDATE_OPEN_MODE_KEY, 'chrome-component');
     vi.useFakeTimers();
     const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} onNavigate={vi.fn()} />);
-    fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
     const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     fireEvent(document, new Event('visibilitychange'));
     await act(async () => { vi.advanceTimersByTime(1900); });
     expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
     visibility.mockRestore();
+    vi.useRealTimers();
   });
-  it('webview mostra o fallback imediato', () => {
+  it('webview com modo experimental mostra fallback imediato', () => {
+    localStorage.setItem(UPDATE_OPEN_MODE_KEY, 'chrome-component');
     const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION}
       userAgent="Mozilla/5.0 (Linux; Android 14; wv) Instagram" onNavigate={vi.fn()} />);
-    fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
     expect(ui.getByTestId('icon-update-fallback')).toBeTruthy();
   });
   it('iOS usa o botão Atualizar para copiar o link HTTPS da nova versão', async () => {
