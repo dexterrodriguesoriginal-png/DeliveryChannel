@@ -27,7 +27,7 @@ const changed: StoreIdentityInput = {
 const navChanged: StoreIdentityInput = {
   id: 'tenant-nav-01', slug: 'loja-nav', name: 'Loja NAV',
   appBaseNavColor: '#223344',
-  theme: { storeName: 'Loja NAV', navBarColor: '#445566' },
+  theme: { storeName: 'Loja NAV', navBarColor: '#445566', logoUrl: 'https://cdn.example/nav-logo.png' },
 };
 const stores: Record<string, StoreIdentityInput> = {
   [real.slug]: real, [test.slug]: test, [changed.slug]: changed, [navChanged.slug]: navChanged,
