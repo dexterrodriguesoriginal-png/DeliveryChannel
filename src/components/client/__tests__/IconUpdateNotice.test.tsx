@@ -68,7 +68,7 @@ describe('aviso para atualizar ícone do PWA', () => {
   it('botão Android monta o intent:// com Chrome, origem da loja e query correta', () => {
     const navigate = vi.fn();
     const ui = render(<IconUpdateNotice store={store} userAgent={android} onNavigate={navigate} />);
-    fireEvent.click(ui.getByRole('button', { name: 'Atualizar ícone' }));
+    fireEvent.click(ui.getByRole('link', { name: 'Atualizar ícone' }));
     const canonical = `https://${window.location.host}/atualizar-icone/adega-show`;
     const expected = `intent://${window.location.host}/atualizar-icone/adega-show#Intent;scheme=https;package=com.android.chrome;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(canonical)};end`;
     expect(chromeIconUpdateIntent(store.slug, window.location.origin)).toBe(expected);
@@ -85,7 +85,7 @@ describe('aviso para atualizar ícone do PWA', () => {
       const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
       vi.stubGlobal('navigator', { userAgent: android, clipboard });
       const ui = render(<IconUpdateNotice store={store} userAgent={android} onNavigate={navigate} />);
-      fireEvent.click(ui.getByRole('button', { name: 'Atualizar ícone' }));
+      fireEvent.click(ui.getByRole('link', { name: 'Atualizar ícone' }));
       expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
       await act(async () => { vi.advanceTimersByTime(1500); });
       expect(ui.getByTestId('icon-update-fallback').textContent).toContain('Abrir no Chrome');
@@ -102,7 +102,7 @@ describe('aviso para atualizar ícone do PWA', () => {
     try {
       const navigate = vi.fn();
       const ui = render(<IconUpdateNotice store={store} userAgent={android} onNavigate={navigate} />);
-      fireEvent.click(ui.getByRole('button', { name: 'Atualizar ícone' }));
+      fireEvent.click(ui.getByRole('link', { name: 'Atualizar ícone' }));
       const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
       fireEvent(document, new Event('visibilitychange'));
       await act(async () => { vi.advanceTimersByTime(1800); });
@@ -115,7 +115,7 @@ describe('aviso para atualizar ícone do PWA', () => {
     const webview = 'Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 Instagram';
     const navigate = vi.fn();
     const ui = render(<IconUpdateNotice store={store} userAgent={webview} onNavigate={navigate} />);
-    fireEvent.click(ui.getByRole('button', { name: 'Atualizar ícone' }));
+    fireEvent.click(ui.getByRole('link', { name: 'Atualizar ícone' }));
     expect(navigate).toHaveBeenCalledWith(expect.stringContaining('package=com.android.chrome;'));
     expect(ui.getByTestId('icon-update-fallback').textContent).toContain('Abrir no Chrome');
   });
@@ -124,8 +124,8 @@ describe('aviso para atualizar ícone do PWA', () => {
     setStandalone(false);
     const samsung = 'Mozilla/5.0 (Linux; Android 14) SamsungBrowser/27.0';
     vi.stubGlobal('navigator', { userAgent: samsung });
-    window.history.replaceState(null, '', '/app/adega-show/?atualizar_icone=1');
-    const ui = render(<IconUpdateBrowserGuide />);
+    window.history.replaceState(null, '', '/atualizar-icone/adega-show');
+    const ui = render(<IconUpdateBrowserGuide slug="adega-show" />);
     expect(ui.getByTestId('icon-update-guide').textContent).toContain('Passo 1.');
   });
 
