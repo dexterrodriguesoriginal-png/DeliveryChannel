@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Copy, RefreshCw, X } from 'lucide-react';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
 import { offerUpdatedApp } from '../../lib/pwa/appBaseLogo';
@@ -92,7 +92,7 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
     catch { setDismissed(false); }
   }, [eligible, kv, key]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const visible = eligible && !dismissed;
     setIconNoticeVisible(visible);
     return () => setIconNoticeVisible(false);
