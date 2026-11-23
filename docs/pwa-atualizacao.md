@@ -1,41 +1,41 @@
-# Atualização dos Apps Instalados (PWA) — Delivery Channel
+# Atualização dos aplicativos instalados — Delivery Channel
 
-Este documento descreve as atualizações de identidade visual e código do aplicativo de cada loja. Os aplicativos de garçom, entregador, cozinha e totem não são alterados pelo fluxo de identidade da loja.
+## Duas instalações podem coexistir
 
-## Manifesto canônico estável
+O app de uma loja já instalada continua disponível com a identidade e o escopo de instalação que recebeu originalmente. Alterar **a imagem do ícone** ou a **cor resolvida da barra de navegação do Android** habilita uma nova instalação independente, identificada por um hash hexadecimal de dez caracteres. Não migramos nem apagamos o WebAPK antigo.
 
-Novas visitas a `/app/<slug>/` recebem sempre o link `/app/<slug>/manifest.webmanifest`, sem query string. O manifesto mantém:
+Sem uma dessas mudanças confirmadas, todos os visitantes continuam usando o manifesto estável: `/app/<slug>/manifest.webmanifest`, com `id: /app-id/<tenantId>`, `scope: /app/<slug>/` e `start_url: /app/<slug>/?source=pwa`. Não ativamos modo versionado apenas por fazer deploy ou atualizar textos, catálogo, slogan, nome (quando há logo), cor primária, do cabeçalho, da barra de status ou timestamps.
 
-- `id: /app-id/<tenantId>`, sem versão no identificador;
-- `scope: /app/<slug>/` e `start_url: /app/<slug>/?source=pwa`;
-- nome, nome curto, descrição, `theme_color` e `background_color` atuais;
-- três ícones PNG separados: 192x192 com `purpose: any`, 512x512 com `purpose: any`, e 512x512 com `purpose: maskable`.
+Quando o modo versionado está ativo, a identidade oficial corrente é `storeAppIdentity(store)`, calculada usando exclusivamente `storeIconVersion(store)` e `resolveSystemBars(...).nav` normalizada. O app novo tem:
+- `/app/<slug>~<hash10>/`
+- `id: /app-id/<tenantId>/<hash10>`
+- `scope: /app/<slug>~<hash10>/`
+- `start_url: /app/<slug>~<hash10>/?source=pwa`
 
-Os ícones são servidos em `/app/<slug>/icons/*.png?v=<storeIconVersion>`. O hash `?v=` é calculado a partir da identidade visual **do ícone** (logo ou fallback de iniciais), não da cor das barras, de `updated_at` ou de cada alteração genérica do tema. O manifesto continua com `Cache-Control: no-cache`; o handler dos ícones mantém sua política de cache existente.
+`storeIconVersion` continua reservada para `?v=` dos PNGs, favicon, apple-touch e totem: **alterar só a cor de navegação não muda o URL da imagem**. O hash de conteúdo da logo é resolvido no servidor; o cliente consulta `/api/pwa/version` e recebe `appIdentity` apenas no modo versionado.
 
-Trocar e confirmar a logo não cria um novo manifesto, `id` ou `scope`: a URL do ícone muda via `?v=`, permitindo que o navegador reavalie o WebAPK existente. `/api/pwa/version` continua oferecendo versão do build e `identityVersion`, mas **não** `appIdentity`.
+A primeira mudança de barra salva `theme_tokens.meta.appBaseNavColor` com a barra resolvida anterior. O campo permanece no JSON do tema e é preservado pelo comando Restaurar ao padrão. Para logo, usamos `appBaseLogoUrl` e `logoConfirmedUrl` existentes: rascunhos ainda não confirmados não liberam uma versão nova. Não há migração de banco.
 
-## Compatibilidade com instalações antigas
+## Links, QR Codes e instalação
 
-WebAPKs que já foram instalados usando `/app/<slug>~<hash10>/` continuam servidos, mesmo quando a loja não possui `appBaseLogoUrl` ou não está na lista de testes. Seu manifesto permanece em `/app/<slug>~<hash10>/manifest.webmanifest` com o **mesmo** `id: /app-id/<tenantId>/<hash10>`, `scope`, `start_url` e `related_applications` originais daquele hash. Apenas os dados atuais da loja e os ícones `?v=` acompanham mudanças.
+Os códigos QR impressos e compartilhamentos continuam apontando para `/app/<slug>/`. Quando um visitante chega pelo **navegador comum**, o cliente redireciona apenas o navegador para `/app/<slug>~<hash10>/` (preservando query string) se o modo versionado estiver ativo. Apps já abertos em standalone não são redirecionados; os links de mesa (`?mesa=`) e a prévia de Design (`?preview=1`) continuam na rota original. Não há redirecionamento 302 geral do servidor.
 
-O HTML legado injeta seu próprio manifesto. Não há redirecionamento forçado 302 para sair do scope antigo; em erro da consulta também não se redireciona. O antigo WebAPK e o canônico são instalações distintas: nenhum id é migrado.
+O manifesto da rota estável nunca vira manifesto versionado: o cliente do WebAPK estável continua válido. Cada rota antiga `~hash` mantém indefinidamente seus próprios `id`, `start_url`, `scope`, `related_applications` e HTML apontando para o próprio manifesto, mesmo quando a logo atual mudou, a loja saiu de uma lista de testes ou houve falha temporária de consulta. O conteúdo atual e os ícones `?v=` podem ser atualizados sem mudar aquela identidade.
 
-Somente dentro de um WebAPK Android em modo standalone cujo endereço contém `~<hash10>` aparece uma faixa discreta “Há uma versão oficial deste app”, com ação “Abrir app atualizado”. Essa ação abre `/app/<slug>/` por HTTPS comum, sem `intent://` e sem `?reinstall=1`. O cliente pode instalar o canônico e, se desejar, apagar manualmente o ícone legado. Não existe mais banner automático “Baixar versão atualizada” no app estável.
+## Aviso para a versão antiga
 
-## Tema e atualizações de conteúdo
+Se o app instalado em standalone for o estável ou um `~hash` antigo e a nova versão ainda **não** tiver sido aberta naquele aparelho, mostramos apenas “Atualize para a nova versão” e a ação “Atualizar”. No Android, o link real de usuário abre `intent://` com `package=com.android.chrome`, `launchFlags=0x10000000` e fallback HTTPS apontando **diretamente para a loja versionada**. O Chrome deve oferecer o fluxo normal de instalar o app; não existe mais a rota auxiliar `/atualizar-app/` e não usamos `?reinstall=1`.
 
-`injectStoreHead` grava as meta tags iniciais de barra e esquema de cores. Quando o tema carrega ou muda, `applyStoreIdentity` / `applySystemBarMeta` atualizam `<meta name="theme-color">` em runtime, sem cores hardcoded para cada loja. O comportamento de splash/boot não foi modificado; a barra de navegação e a splash do WebAPK podem depender da próxima atualização pelo Chrome.
+Se o intent não tirar o app instalado do primeiro plano em 1,5 s ou em um webview que bloqueia intents, mostramos “Copiar link” para o endereço HTTPS versionado, com instruções para abrir no Chrome. Em iOS, a ação oferece copiar o link; não promete abrir Chrome.
 
-O Service Worker continua registrando e atualizando seu próprio código. O aviso `StoreVisualUpdateNotice` é separado do processo de atualização de ícone do WebAPK: recarregar o conteúdo não instala um aplicativo novo. HTML, manifestos e `sw.js` são revalidados.
+Apenas o app oficial atual `~hash`, **aberto em standalone**, grava `localStorage[dc:app-identity:<slug>] = <hash10>`. O navegador comum nunca grava. Depois disso, se o usuário abrir uma versão antiga, ela mostra **somente uma tela bloqueante**:
 
-## Comportamento por plataforma e riscos
+> Esta versão foi substituída. A nova versão já está instalada no seu celular. Remova esta versão e abra a nova.
 
-- **Android / Chrome 144:** o WebAPK pode atualizar o ícone da mesma instalação. Para alterações visuais grandes, o Chromium pode bloquear a atualização silenciosa em torno de 11% de diferença; a opção **⋮ → Revisar atualização do app** pode aparecer. A presença do diálogo deve ser verificada no telefone com o experimento `dc-teste-notif` v1→v2. Não exibimos um hint no app estável, pois não sabemos se o WebAPK já foi atualizado.
-- **Android / Chrome anterior:** verificações periódicas podem depender de condições como Wi‑Fi, alimentação ou tempo decorrido. Não há garantia de troca imediata da logo.
-- **iOS / Safari:** o ícone de um PWA já instalado pode permanecer fixo e exigir remover e adicionar novamente o atalho.
-- **Desktop Chrome / Edge:** o navegador pode revalidar manifesto e ícones conforme seu próprio ciclo.
+A única ação é “Abrir nova versão”, link HTTPS normal para o `start_url` da instalação atual, sem intent Chrome. Nem carrinho, menu, convite de instalação, notificação visual ou toast de atualização ficam acessíveis na versão antiga.
 
-Referência: [Improvements to web app updates](https://developer.chrome.com/blog/improvements-to-web-app-updates).
+## Compatibilidade e validação
 
-O teste em aparelho real continua necessário; nenhuma troca de `id` deve ser introduzida para contornar restrições do Chromium.
+`/api/pwa/version` continua disponibilizando a versão do build e `identityVersion` para atualizações normais. O mecanismo de CSS/tema em runtime e `theme-color` não é substituído. Ícones inválidos continuam respondendo 503 sem cache e nunca são substituídos por iniciais quando uma logo estava configurada.
+
+**Teste obrigatório em aparelho físico:** verificar se o Android Chrome respeita o intent fora do WebAPK, se apresenta a instalação versionada como um segundo aplicativo e se as duas instalações coexistem. A visibilidade do novo ícone e a captura de links dependem da versão do Android, Chrome e políticas WebAPK. A implementação do link não garante sozinha esse comportamento.
