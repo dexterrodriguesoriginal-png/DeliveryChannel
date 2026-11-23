@@ -251,6 +251,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     splitStoreSegment(storeSegmentFromPath(window.location.pathname) || '').identity, []);
   const standalone = useMemo(() => isStandalone(window), []);
   const [currentIdentity, setCurrentIdentity] = useState<string | null>(() => readAppIdentityMeta());
+  const [currentIconContentHash, setCurrentIconContentHash] = useState<string | undefined>();
   const [newestLaunched, setNewestLaunched] = useState<string | null>(() => {
     try { return localStorage.getItem(newestLaunchedKey(slug)); } catch { return null; }
   });
@@ -288,8 +289,13 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     void fetch(`/api/pwa/version?slug=${encodeURIComponent(slug)}`, { cache: 'no-store' })
       .then(res => res.ok ? res.json() : null)
       .then(data => {
-        if (active && data) setCurrentIdentity(
-          typeof data.appIdentity === 'string' && /^[0-9a-f]{10}$/.test(data.appIdentity) ? data.appIdentity : null);
+        if (active && data) {
+          setCurrentIdentity(
+            typeof data.appIdentity === 'string' && /^[0-9a-f]{10}$/.test(data.appIdentity) ? data.appIdentity : null);
+          setCurrentIconContentHash(
+            typeof data.iconContentHash === 'string' && /^[0-9a-f]{24}$/.test(data.iconContentHash)
+              ? data.iconContentHash : undefined);
+        }
       }).catch(() => { /* mantém meta injetada até a consulta estar disponível */ });
     return () => { active = false; };
   }, [previewMode, slug, isLoadingStore, storeData]);
@@ -2003,7 +2009,21 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       )}
       {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
       {!previewMode && appStatus === 'update-available' && currentIdentity && (
-        <IconUpdateNotice slug={slug} currentIdentity={currentIdentity} />
+        <IconUpdateNotice currentIdentity={currentIdentity} store={{
+          id: storeData.tenant.id,
+          slug: storeData.tenant.slug,
+          name: storeData.tenant.name,
+          iconContentHash: currentIconContentHash,
+          appBaseLogoUrl: theme.tokens?.meta?.appBaseLogoUrl,
+          logoConfirmedUrl: theme.tokens?.meta?.logoConfirmedUrl,
+          appBaseNavColor: theme.tokens?.meta?.appBaseNavColor,
+          theme: {
+            storeName: theme.storeName, logoUrl: theme.logoUrl,
+            primaryColor: theme.primaryColor, backgroundColor: theme.backgroundColor,
+            tagline: theme.tagline,
+            ...identityTheme(theme as TenantTheme),
+          },
+        }} />
       )}
       {!previewMode && appStatus === 'current' && !iconNoticeVisible && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
