@@ -72,6 +72,23 @@ describe('VersionInstallScreen', () => {
     expect(src).toContain("!iconNoticeVisible && isLogoConfirmed(theme) && <InstallStoreAppHint");
   });
 
+  it('convite dispensado mostra apenas a orientação para abrir no Chrome', async () => {
+    captureInstallEvents(window);
+    const prompt = vi.fn().mockResolvedValue(undefined);
+    const ev = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
+      prompt, userChoice: Promise.resolve({ outcome: 'dismissed' as const }),
+    });
+    const ui = render(<VersionInstallScreen storeName="Mercado Sol" />);
+    await act(async () => { window.dispatchEvent(ev); });
+    await act(async () => {
+      fireEvent.click(ui.getByRole('button', { name: 'Instalar' }));
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(ui.getByTestId('version-install-no-prompt').textContent).toBe(INSTALL_NO_PROMPT_TEXT);
+    expect(ui.queryByTestId('version-install-success')).toBeNull();
+  });
+
   // Mantido no final: appinstalled é um sinal global compartilhado pela origem.
   it('prompt aceito aguarda appinstalled antes de mostrar Pronto', async () => {
     captureInstallEvents(window);
