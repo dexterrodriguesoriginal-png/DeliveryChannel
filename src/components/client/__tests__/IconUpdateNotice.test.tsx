@@ -128,7 +128,9 @@ describe('aviso único da instalação anterior', () => {
     const redirectIndex = client.indexOf('const versionedRedirectStarted = useRef(false);');
     expect(guardIndex).toBeGreaterThan(-1);
     expect(redirectIndex).toBeGreaterThan(guardIndex);
-    const redirect = client.slice(redirectIndex, client.indexOf('}, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity, reloadUnsafe]);', redirectIndex) + 110);
+    const effectEnd = '}, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity, reloadUnsafe]);';
+    expect(client.indexOf(effectEnd, redirectIndex)).toBeGreaterThan(redirectIndex);
+    const redirect = client.slice(redirectIndex, client.indexOf(effectEnd, redirectIndex) + effectEnd.length);
     expect(redirect).toContain('if (previewMode || standalone || !currentIdentity || !slug || isLoadingStore || !storeData || reloadUnsafe) return;');
     expect(redirect).toContain("new URLSearchParams(window.location.search).has('mesa')");
     expect(redirect).toContain("new URLSearchParams(window.location.search).get('preview') === '1'");
