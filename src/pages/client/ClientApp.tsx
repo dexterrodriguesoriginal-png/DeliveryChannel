@@ -1752,7 +1752,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   }
 
   if (appStatus === 'old-icon' && currentIdentity) {
-    return <AppIdentityUpdate slug={slug} currentIdentity={currentIdentity} />;
+    return <div style={activeCssVars}><AppIdentityUpdate slug={slug} currentIdentity={currentIdentity} /></div>;
   }
 
   // --------------------------------------------------------------------------
