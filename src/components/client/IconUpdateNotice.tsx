@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Copy, RefreshCw, X } from 'lucide-react';
 import { publicStoreRepository } from '../../repositories/publicStoreRepository';
 import { offerUpdatedApp } from '../../lib/pwa/appBaseLogo';
 import { storeIconVersion, type StoreIdentityInput } from '../../lib/pwa/storeManifest';
-import { clearDeferredPrompt, detectPlatform, getDeferredPrompt, isStandalone, subscribeInstall } from '../../lib/pwa/installState';
+import { detectPlatform, isStandalone } from '../../lib/pwa/installState';
 
 import { Button } from '../ui/Button';
 
@@ -99,7 +99,6 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
   }, [eligible, dismissed]);
 
   if (!eligible || dismissed) return null;
-  const url = storeIconUpdateUrl(store.slug, window.location.origin);
   const dismiss = () => {
     try { kv?.setItem(key, '1'); } catch { /* armazenamento bloqueado */ }
     if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
@@ -126,7 +125,7 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
   };
   const copyLink = async (includeQuery = false) => {
     try { await navigator.clipboard.writeText(includeQuery ? secureIconUpdateUrl(store.slug, window.location.origin)
-      : new URL(url).origin + new URL(url).pathname); setCopied(true); }
+      : `${window.location.origin}/app/${encodeURIComponent(store.slug)}/`); setCopied(true); }
     catch { setCopied(false); }
   };
 
@@ -179,26 +178,10 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
 export function IconUpdateBrowserGuide({ slug, storeName, logoUrl }: {
   slug: string; storeName?: string; logoUrl?: string;
 }) {
-  const prompt = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
   const [dismissed, setDismissed] = useState(false);
-  const [busy, setBusy] = useState(false);
   if (dismissed) return null;
   const storeUrl = `/app/${encodeURIComponent(slug)}/`;
-  const install = async () => {
-    if (!prompt || busy) {
-      window.location.assign(storeUrl);
-      return;
-    }
-    setBusy(true);
-    try {
-      await prompt.prompt();
-      clearDeferredPrompt();
-      const choice = await prompt.userChoice;
-      if (choice.outcome === 'accepted') setDismissed(true);
-    } catch {
-      window.location.assign(storeUrl);
-    } finally { setBusy(false); }
-  };
+
   return (
     <section data-testid="icon-update-guide" role="region" aria-label="Atualizar ícone do aplicativo"
       className="mx-auto w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-5 text-gray-900 shadow-xl">
@@ -217,15 +200,12 @@ export function IconUpdateBrowserGuide({ slug, storeName, logoUrl }: {
       <p className="my-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
         Se aparecer Abrir em vez de Instalar, apague o ícone antigo e volte para esta aba.
       </p>
-      {prompt ? (
-        <Button type="button" variant="primary" size="md"
-          disabled={busy} isLoading={busy} onClick={() => void install()}>Instalar aplicativo</Button>
-      ) : (
-        <a href={storeUrl} data-testid="icon-update-install-link"
-          className="inline-flex rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">
-          Instalar aplicativo
-        </a>
-      )}
+      {/* O guia fica fora do scope da loja: um prompt nativo aqui instalaria o app GLOBAL.
+          Sempre levar o cliente ao scope correto para instalar o WebAPK da loja. */}
+      <a href={storeUrl} data-testid="icon-update-install-link"
+        className="inline-flex rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">
+        Instalar aplicativo
+      </a>
       <p className="mt-2 text-xs text-gray-500">
         Se não aparecer a instalação, abra a loja no Chrome e use ⋮ → Instalar app depois de remover o ícone antigo.
       </p>
