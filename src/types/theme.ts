@@ -88,6 +88,8 @@ export interface ThemeMeta {
   logoConfirmedUrl?: string;
   /** Logo do app instalado sem versão (/app/<slug>/); gravada na 1ª troca de logo. Ver src/lib/pwa/appBaseLogo.ts. */
   appBaseLogoUrl?: string;
+  /** Barra de navegação original antes da primeira mudança: habilita app versionado. */
+  appBaseNavColor?: string;
 }
 
 export interface ComponentStyles {
