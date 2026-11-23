@@ -55,6 +55,6 @@ describe('ClientApp: convite "Instalar app"', () => {
     expect(src.slice(start, end + 2)).not.toMatch(/startPath/);
   });
   it('aviso visual interno não aparece junto do banner legado', () => {
-    expect(src).toMatch(/\{!previewMode && !legacyIdentity && <StoreVisualUpdateNotice/);
+    expect(src).toMatch(/\{!previewMode && !legacyIdentity && !iconNoticeVisible && <StoreVisualUpdateNotice/);
   });
 });
