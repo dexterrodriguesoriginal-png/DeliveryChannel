@@ -19,7 +19,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { themeService } from '../../../services/themeService';
 import { productRepository } from '../../../repositories/productRepository';
-import { safeImageUrl, validateHexColor, tokensToTheme, createDefaultThemeTokens, DEFAULT_DELIVERY_CHANNEL_THEME } from '../../../lib/theme/themeEngine';
+import { safeImageUrl, validateHexColor, tokensToTheme, themeToTokens, createDefaultThemeTokens, DEFAULT_DELIVERY_CHANNEL_THEME } from '../../../lib/theme/themeEngine';
 import { announceThemeSaved } from '../../../lib/theme/themeLiveUpdate';
 import { useBottomActionsOffset, useFloatingLeftOf } from '../../../lib/ui/bottomActionsOffset';
 import { LiveStorePreview } from '../../../components/establishment/theme/LiveStorePreview';
@@ -141,7 +141,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
       };
     }
     try {
-      const originalNav = systemBarsFromTokens(tenant.theme?.tokens).nav;
+      const originalNav = systemBarsFromTokens(themeToTokens(tenant.theme)).nav;
       const proposedNav = systemBarsFromTokens(draft.draftTokens).nav;
       const appBaseNavColor = appBaseNavColorToSave(
         tenant.theme?.tokens?.meta?.appBaseNavColor, originalNav, proposedNav);
@@ -193,7 +193,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
         appBaseLogoUrl: appBaseLogoUrlToSave(tenant.theme?.tokens?.meta?.appBaseLogoUrl, tenant.theme?.logoUrl, draft.draftTheme.logoUrl),
         appBaseNavColor: appBaseNavColorToSave(
           tenant.theme?.tokens?.meta?.appBaseNavColor,
-          systemBarsFromTokens(tenant.theme?.tokens).nav,
+          systemBarsFromTokens(themeToTokens(tenant.theme)).nav,
           systemBarsFromTokens(createDefaultThemeTokens(DEFAULT_DELIVERY_CHANNEL_THEME)).nav),
       });
       const invalidated = await invalidateStorePwaCache(tenant.id, tenant.slug);
