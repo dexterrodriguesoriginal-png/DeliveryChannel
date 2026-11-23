@@ -133,9 +133,6 @@ export function PresentationScreenCard() {
           <div className="space-y-4">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge data-testid="presentation-status" variant={statusVariant} dot>{status}</Badge>
-              {hasMedia && <span className="text-xs font-semibold text-gray-700">
-                {settings?.mediaType === 'VIDEO' ? 'Vídeo salvo' : 'Imagem salva'}
-              </span>}
             </div>
 
             {settings && (
