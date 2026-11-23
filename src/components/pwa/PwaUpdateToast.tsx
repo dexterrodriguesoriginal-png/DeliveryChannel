@@ -1,5 +1,6 @@
 import React, { useSyncExternalStore } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { getIconNoticeVisible, subscribeIconNotice } from '../client/IconUpdateNotice';
 import {
   PWA_UPDATE_TOAST_TEXT,
   applySwUpdate,
@@ -9,7 +10,8 @@ import {
 
 export const PwaUpdateToast: React.FC = () => {
   const visible = useSyncExternalStore(subscribeSwUpdate, isSwUpdateAvailable, () => false);
-  if (!visible) return null;
+  const iconNoticeVisible = useSyncExternalStore(subscribeIconNotice, getIconNoticeVisible, () => false);
+  if (!visible || iconNoticeVisible) return null;
 
   return (
     <div
