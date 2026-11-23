@@ -139,6 +139,7 @@ import { StorePresentationScreen } from '../../components/pwa/StorePresentationS
 import { markPresentationShown, prefersReducedMotion, presentationPlan, type PresentationPlan, shouldShowPresentation } from '../../lib/pwa/presentation';
 import { identityStatus, newestLaunchedKey, splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath, versionedStoreScope } from '../../lib/pwa/appIdentity';
 import { AppIdentityUpdate, readAppIdentityMeta } from '../../components/pwa/AppIdentityUpdate';
+import { shouldShowVersionInstallScreen, VersionInstallScreen } from '../../components/pwa/VersionInstallScreen';
 import { newIdempotencyKey } from '../../lib/pricing/idempotency';
 import { searchProducts } from '../../lib/customer/search';
 import { buildReorderCart } from '../../lib/customer/reorder';
@@ -1757,6 +1758,17 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     return <div style={activeCssVars}><AppIdentityUpdate slug={slug} currentIdentity={currentIdentity} /></div>;
   }
 
+  if (shouldShowVersionInstallScreen({
+    standalone, runningIdentity, currentIdentity, previewMode, search: window.location.search,
+  }) && storeData) {
+    return <div style={activeCssVars}>
+      <VersionInstallScreen
+        storeName={storeDisplayName(theme.storeName, storeData.tenant.name)}
+        logoUrl={theme.logoUrl}
+      />
+    </div>;
+  }
+
   // --------------------------------------------------------------------------
   // ERRO TÉCNICO AO CARREGAR A VITRINE (não é "loja inexistente")
   // --------------------------------------------------------------------------
@@ -2029,14 +2041,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           },
         }} />
       )}
-      {!previewMode && appStatus === 'current' && !iconNoticeVisible && <StoreVisualUpdateNotice
+      {!previewMode && appStatus === 'current' && !iconNoticeVisible && (!runningIdentity || standalone) && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
         tenantId={storeData.tenant.id}
         hidden={Boolean(selectedProductModal) || Boolean(selectedPromoOffer) || isCheckoutOpen || isPromoCheckoutOpen
           || isAuthModalOpen || isAccountOpen || addressFlow.open || isSubmittingOrder || navTab === 'cart'}
       />}
       {/* "Instalar app" só depois que a loja confirma a logo definitiva (ícone do app nasce com ela). */}
-      {!previewMode && appStatus === 'current' && isLogoConfirmed(theme) && <InstallStoreAppHint
+      {!previewMode && appStatus === 'current' && !iconNoticeVisible && isLogoConfirmed(theme) && <InstallStoreAppHint
         tenantId={storeData.tenant.id}
         storeName={theme.storeName || storeData.tenant.name}
         color={theme.primaryColor || '#334155'}
