@@ -28,7 +28,7 @@ beforeEach(() => {
   mocks.get.mockResolvedValue(null);
   mocks.clear.mockResolvedValue(undefined);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Configuração da Abertura da loja', () => {
   it('sem mídia mostra card, selo neutro, dropzone e botão de envio, sem prévia', async () => {
@@ -128,7 +128,8 @@ describe('Configuração da Abertura da loja', () => {
 
   it('remover pede confirmação; cancelar não chama clear e aceitar remove a apresentação', async () => {
     mocks.get.mockResolvedValue(savedImage);
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    const confirm = vi.mocked(window.confirm);
     const ui = renderCard();
     await waitFor(() => expect(ui.getByTestId('presentation-status').textContent).toBe('Ativa'));
     expect(ui.getByRole('button', { name: 'Trocar mídia' })).toBeTruthy();
