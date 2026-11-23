@@ -259,6 +259,28 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         standalone, runningIdentity, currentIdentity, newestLaunched, reinstallRequested: false,
       })
     : 'current';
+  const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
+  const [previewCard, setPreviewCard] = useState<Partial<Offer> | null>(null);
+  const [presentationRun, setPresentationRun] = useState<{ plan: PresentationPlan; key: number } | null>(null);
+  useEffect(() => {
+    if (!previewMode) return;
+    const onMsg = (ev: MessageEvent) => {
+      const t = parsePreviewThemeMessage(ev, window); if (t) setPreviewTheme(t);
+      const c = parsePreviewCardMessage(ev, window); if (c) setPreviewCard(c.card);
+      const pr = parsePreviewPresentationMessage(ev, window);
+      if (pr?.presentation) {
+        const plan = presentationPlan(pr.presentation, { reducedMotion: prefersReducedMotion() });
+        if (plan) setPresentationRun({ plan, key: Date.now() });
+      }
+    };
+    window.addEventListener('message', onMsg);
+    try { window.parent.postMessage({ type: PREVIEW_READY_MSG }, window.location.origin); } catch { /* sem pai */ }
+    return () => window.removeEventListener('message', onMsg);
+  }, [previewMode]);
+
+  // 2. Estados de Carregamento e Dados do Catálogo Real
+  const [storeData, setStoreData] = useState<PublicStoreData | null>(null);
+  const [isLoadingStore, setIsLoadingStore] = useState(true);
   useEffect(() => {
     if (previewMode || !slug || isLoadingStore || !storeData) return;
     let active = true;
@@ -294,28 +316,6 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     const destination = versionedStoreScope(slug, currentIdentity) + window.location.search + window.location.hash;
     window.location.replace(destination);
   }, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity]);
-  const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
-  const [previewCard, setPreviewCard] = useState<Partial<Offer> | null>(null);
-  const [presentationRun, setPresentationRun] = useState<{ plan: PresentationPlan; key: number } | null>(null);
-  useEffect(() => {
-    if (!previewMode) return;
-    const onMsg = (ev: MessageEvent) => {
-      const t = parsePreviewThemeMessage(ev, window); if (t) setPreviewTheme(t);
-      const c = parsePreviewCardMessage(ev, window); if (c) setPreviewCard(c.card);
-      const pr = parsePreviewPresentationMessage(ev, window);
-      if (pr?.presentation) {
-        const plan = presentationPlan(pr.presentation, { reducedMotion: prefersReducedMotion() });
-        if (plan) setPresentationRun({ plan, key: Date.now() });
-      }
-    };
-    window.addEventListener('message', onMsg);
-    try { window.parent.postMessage({ type: PREVIEW_READY_MSG }, window.location.origin); } catch { /* sem pai */ }
-    return () => window.removeEventListener('message', onMsg);
-  }, [previewMode]);
-
-  // 2. Estados de Carregamento e Dados do Catálogo Real
-  const [storeData, setStoreData] = useState<PublicStoreData | null>(null);
-  const [isLoadingStore, setIsLoadingStore] = useState(true);
   // Mantém #store-boot exatamente como está; somente aguarda a decisão sobre
   // a apresentação para não mostrar a vitrine brevemente antes da mídia.
   useEffect(() => {
