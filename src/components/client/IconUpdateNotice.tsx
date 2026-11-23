@@ -59,7 +59,7 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
     else window.location.href = target;
   };
   const copyLink = async () => {
-    try { await navigator.clipboard.writeText(url); setCopied(true); }
+    try { await navigator.clipboard.writeText(new URL(url).origin + new URL(url).pathname); setCopied(true); }
     catch { setCopied(false); }
   };
 
