@@ -19,7 +19,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { themeService } from '../../../services/themeService';
 import { productRepository } from '../../../repositories/productRepository';
-import { safeImageUrl, validateHexColor, tokensToTheme } from '../../../lib/theme/themeEngine';
+import { safeImageUrl, validateHexColor, tokensToTheme, createDefaultThemeTokens, DEFAULT_DELIVERY_CHANNEL_THEME } from '../../../lib/theme/themeEngine';
 import { announceThemeSaved } from '../../../lib/theme/themeLiveUpdate';
 import { useBottomActionsOffset, useFloatingLeftOf } from '../../../lib/ui/bottomActionsOffset';
 import { LiveStorePreview } from '../../../components/establishment/theme/LiveStorePreview';
@@ -194,7 +194,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
         appBaseNavColor: appBaseNavColorToSave(
           tenant.theme?.tokens?.meta?.appBaseNavColor,
           systemBarsFromTokens(tenant.theme?.tokens).nav,
-          systemBarsFromTokens(undefined).nav),
+          systemBarsFromTokens(createDefaultThemeTokens(DEFAULT_DELIVERY_CHANNEL_THEME)).nav),
       });
       const invalidated = await invalidateStorePwaCache(tenant.id, tenant.slug);
       if (!invalidated) console.warn('[PWA] Invalidação imediata indisponível; leitura pública continua fresca.');
