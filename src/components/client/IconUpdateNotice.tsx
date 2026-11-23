@@ -7,7 +7,7 @@ import { detectPlatform, isStandalone } from '../../lib/pwa/installState';
 
 import { Button } from '../ui/Button';
 
-export const ICON_UPDATE_TEXT = 'A loja atualizou o ícone do app. Para ver o novo ícone na tela inicial, desinstale e instale o app de novo.';
+export const ICON_UPDATE_TEXT = 'Toque em atualizar para usar a versão mais recente.';
 export const iconUpdateDismissKey = (tenantId: string, version: string) => `dc:icon-update:${tenantId}:${version}`;
 
 export function storeIconUpdateUrl(slug: string, origin: string): string {
@@ -135,13 +135,14 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
       <div className="flex items-start gap-2.5">
         <RefreshCw aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
         <div className="min-w-0 flex-1 space-y-2">
+          <p className="text-sm font-bold">Nova versão disponível</p>
           <p className="text-xs leading-relaxed">{ICON_UPDATE_TEXT}</p>
           {android ? (
             <a href={chromeIconUpdateIntent(store.slug, window.location.origin)}
               target="_blank" rel="noopener noreferrer"
               data-testid="icon-update-open-chrome" onClick={(event) => { if (onNavigate) event.preventDefault(); openChrome(); }}
               className="inline-flex items-center justify-center rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800">
-              Atualizar ícone
+              Atualizar app
             </a>
           ) : (
             <>
@@ -153,10 +154,10 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
             </>
           )}
           {android && showFallback && (
-            <div data-testid="icon-update-fallback" role="region" aria-label="Abrir no navegador"
+            <div data-testid="icon-update-fallback" role="region" aria-label="Atualização pelo navegador"
               className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-2">
               <p className="text-xs text-gray-800">
-                <strong>Abrir no navegador:</strong> toque em ⋮ e depois "Abrir no Chrome".
+                Para atualizar, abra este link no Chrome. Toque em ⋮ e depois "Abrir no Chrome".
               </p>
               <Button type="button" variant="outline" size="sm"
                 onClick={() => void copyLink(true)}
@@ -166,7 +167,7 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
             </div>
           )}
         </div>
-        <button type="button" aria-label="Dispensar aviso" data-testid="icon-update-dismiss"
+        <button type="button" aria-label="Dispensar aviso de atualização" data-testid="icon-update-dismiss"
           onClick={dismiss} className="rounded-full p-1 text-gray-500 hover:bg-gray-100">
           <X className="h-4 w-4" />
         </button>
@@ -183,22 +184,22 @@ export function IconUpdateBrowserGuide({ slug, storeName, logoUrl }: {
   const storeUrl = `/app/${encodeURIComponent(slug)}/`;
 
   return (
-    <section data-testid="icon-update-guide" role="region" aria-label="Atualizar ícone do aplicativo"
+    <section data-testid="icon-update-guide" role="region" aria-label="Atualizar aplicativo"
       className="mx-auto w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-5 text-gray-900 shadow-xl">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-bold">Atualize o ícone da loja</h2>
+        <h2 className="text-sm font-bold">Atualize o app {storeName || 'da loja'}</h2>
         <button type="button" aria-label="Fechar guia" onClick={() => setDismissed(true)}
           className="rounded-full p-1 text-gray-600 hover:bg-gray-100"><X className="h-4 w-4" /></button>
       </div>
-      {logoUrl && <img src={logoUrl} alt={`Logo de ${storeName || 'loja'}`}
+      {logoUrl && <img src={logoUrl} alt={`Imagem de ${storeName || 'loja'}`}
         className="mx-auto my-4 h-20 w-20 rounded-xl object-contain" />}
       {storeName && <p className="mt-2 text-center text-sm font-semibold">{storeName}</p>}
       <div className="mt-3 space-y-2 text-xs leading-relaxed">
-        <p><strong>Passo 1.</strong> Remova o ícone antigo da sua tela inicial (segure o ícone e toque em Desinstalar/Remover).</p>
-        <p><strong>Passo 2.</strong> Toque em Instalar aplicativo abaixo para baixar o ícone com a nova logo.</p>
+        <p><strong>Passo 1.</strong> Remova a versão antiga do app (toque e segure no app na tela inicial > Remover/Desinstalar).</p>
+        <p><strong>Passo 2.</strong> Toque em Instalar aplicativo.</p>
       </div>
       <p className="my-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
-        Se aparecer Abrir em vez de Instalar, apague o ícone antigo e volte para esta aba.
+        Se aparecer Abrir em vez de Instalar, remova a versão antiga do app e volte para esta aba.
       </p>
       {/* O guia fica fora do scope da loja: um prompt nativo aqui instalaria o app GLOBAL.
           Sempre levar o cliente ao scope correto para instalar o WebAPK da loja. */}
@@ -207,7 +208,7 @@ export function IconUpdateBrowserGuide({ slug, storeName, logoUrl }: {
         Instalar aplicativo
       </a>
       <p className="mt-2 text-xs text-gray-500">
-        Se não aparecer a instalação, abra a loja no Chrome e use ⋮ → Instalar app depois de remover o ícone antigo.
+        Se não aparecer a instalação, abra a loja no Chrome e use ⋮ → Instalar app depois de remover a versão anterior.
       </p>
     </section>
   );
