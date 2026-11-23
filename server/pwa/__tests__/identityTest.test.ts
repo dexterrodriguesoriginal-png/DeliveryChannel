@@ -24,8 +24,13 @@ const changed: StoreIdentityInput = {
   appBaseLogoUrl: '/logo-original.png',
   theme: { storeName: 'Loja Nova', logoUrl: 'https://cdn.example/logo-nova.png' },
 };
+const navChanged: StoreIdentityInput = {
+  id: 'tenant-nav-01', slug: 'loja-nav', name: 'Loja NAV',
+  appBaseNavColor: '#223344',
+  theme: { storeName: 'Loja NAV', navBarColor: '#445566' },
+};
 const stores: Record<string, StoreIdentityInput> = {
-  [real.slug]: real, [test.slug]: test, [changed.slug]: changed,
+  [real.slug]: real, [test.slug]: test, [changed.slug]: changed, [navChanged.slug]: navChanged,
 };
 const resolver: StoreResolver = async (slug) => stores[slug]
   ? { status: 'ok', store: stores[slug] } : { status: 'not_found' };
@@ -71,7 +76,7 @@ describe('lista histórica de identidade', () => {
 });
 
 describe('manifesto estável para todas as instalações novas', () => {
-  for (const store of [real, test, changed]) {
+  for (const store of [real, test, changed, navChanged]) {
     it(`/app/${store.slug}/ usa id e scope fixos, mesmo com logo trocada/lista de teste`, async () => {
       const [a, b] = await Promise.all([listed, unlisted].map(s =>
         fetch(`${s.base}/app/${store.slug}/manifest.webmanifest`).then(r => r.json())));
@@ -99,6 +104,19 @@ describe('manifesto estável para todas as instalações novas', () => {
       expect(typeof json.identityVersion).toBe('string');
     });
   }
+
+  it('modo versionado só pela barra: identidade muda sem alterar o ?v= dos ícones', async () => {
+    const original = (await router.lookupStoreForHtml(navChanged.slug))!;
+    expect(isVersionedStoreApp(original)).toBe(true);
+    const before = storeAppIdentity(original);
+    const onlyNav = { ...original, theme: { ...original.theme, navBarColor: '#556677' } };
+    expect(storeAppIdentity(onlyNav)).not.toBe(before);
+    expect(iconVersion(onlyNav)).toBe(iconVersion(original));
+    const response = await fetch(`${listed.base}/api/pwa/version?slug=${navChanged.slug}`).then(r => r.json());
+    expect(response.appIdentity).toBe(before);
+    const m = await fetch(`${listed.base}/app/${navChanged.slug}~${before}/manifest.webmanifest`).then(r => r.json());
+    expect(m.id).toBe(`/app-id/${navChanged.id}/${before}`);
+  });
 
   it('ícones PNG têm purpose separados e versões derivadas somente da imagem', () => {
     const m = serverManifest(test);
