@@ -88,7 +88,7 @@ async function start() {
       } catch (e) { next(e); }
     });
     // Fora de /app/:slug: esta página não deve herdar o manifesto global.
-    app.get(/^\/atualizar-icone\/[^/]+\/?$/, async (req, res, next) => {
+    app.get(/^\/atualizar-app\/[^/]+\/?$/, async (req, res, next) => {
       if (!isHtmlNav(req)) return next();
       try {
         const raw = await vite.transformIndexHtml(req.originalUrl, await fs.readFile(path.resolve(process.cwd(), 'index.html'), 'utf8'));
