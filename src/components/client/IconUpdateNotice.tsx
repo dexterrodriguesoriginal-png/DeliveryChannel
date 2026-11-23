@@ -1,191 +1,159 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Copy, RefreshCw, X } from 'lucide-react';
-import { offerUpdatedApp } from '../../lib/pwa/appBaseLogo';
-import { storeIconVersion, type StoreIdentityInput } from '../../lib/pwa/storeManifest';
-import { clearDeferredPrompt, detectPlatform, getDeferredPrompt, isStandalone, subscribeInstall } from '../../lib/pwa/installState';
-import { chromeIntentUrl } from '../../lib/pwa/appIdentity';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Copy, RefreshCw } from 'lucide-react';
+import { chromeIntentUrl, versionedStoreScope } from '../../lib/pwa/appIdentity';
+import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
+import { detectPlatform, isStandalone } from '../../lib/pwa/installState';
 import { Button } from '../ui/Button';
 
-export const ICON_UPDATE_TEXT = 'A loja atualizou o ícone do app. Para ver o novo ícone na tela inicial, desinstale e instale o app de novo.';
-export const iconUpdateDismissKey = (tenantId: string, version: string) => `dc:icon-update:${tenantId}:${version}`;
-
-export function storeIconUpdateUrl(slug: string, origin: string): string {
-  return `${origin}/app/${encodeURIComponent(slug)}/?atualizar_icone=1`;
-}
-
-/** For Chrome intents, the fallback MUST be an absolute HTTPS URL. */
-export function secureIconUpdateUrl(slug: string, origin: string): string {
-  const source = new URL(origin);
-  source.protocol = 'https:';
-  return storeIconUpdateUrl(slug, source.origin);
-}
-
-export function chromeIconUpdateIntent(slug: string, origin: string): string {
-  return chromeIntentUrl(secureIconUpdateUrl(slug, origin), { android: true });
-}
-
-const standalone = () => typeof window !== 'undefined' && isStandalone(window);
-const isBlockingWebview = (ua: string) => /;\s*wv[);]|FBAN|FBAV|Instagram|WhatsApp|\bWebView\b/i.test(ua);
+export const ICON_UPDATE_TEXT = 'Atualize para a nova versão';
 export const ICON_INTENT_FALLBACK_MS = 1500;
 
-interface NoticeProps {
-  store: StoreIdentityInput;
-  /** Injetáveis em testes; no aplicativo são derivados do navegador. */
-  installed?: boolean;
-  userAgent?: string;
-  storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
-  onNavigate?: (target: string) => void;
+/** URL da instalação oficial atual, sem caminhos ou parâmetros de reinstalação. */
+export function storeIconUpdateUrl(slug: string, identity: string, origin: string): string {
+  const base = new URL(origin);
+  base.protocol = 'https:';
+  return base.origin + versionedStoreScope(slug, identity);
+}
+export const chromeIconUpdateIntent = (slug: string, identity: string, origin: string) =>
+  chromeIntentUrl(storeIconUpdateUrl(slug, identity, origin), { android: true });
+
+let iconNoticeVisible = false;
+const iconNoticeListeners = new Set<() => void>();
+export const subscribeIconNotice = (listener: () => void) => {
+  iconNoticeListeners.add(listener);
+  return () => { iconNoticeListeners.delete(listener); };
+};
+export const getIconNoticeVisible = () => iconNoticeVisible;
+export function setIconNoticeVisible(value: boolean) {
+  if (iconNoticeVisible === value) return;
+  iconNoticeVisible = value;
+  iconNoticeListeners.forEach(listener => listener());
 }
 
-export function IconUpdateNotice({ store, installed, userAgent, storage, onNavigate }: NoticeProps) {
-  const isInstalled = installed ?? standalone();
+/** Only the full-screen replaced-app view may suppress the global cookie banner. */
+let replacedScreenVisible = false;
+const replacedScreenListeners = new Set<() => void>();
+export const subscribeReplacedScreen = (listener: () => void) => {
+  replacedScreenListeners.add(listener);
+  return () => { replacedScreenListeners.delete(listener); };
+};
+export const getReplacedScreenVisible = () => replacedScreenVisible;
+export function setReplacedScreenVisible(value: boolean) {
+  if (replacedScreenVisible === value) return;
+  replacedScreenVisible = value;
+  replacedScreenListeners.forEach(listener => listener());
+}
+
+const isBlockingWebview = (ua: string) => /;\s*wv[);]|FBAN|FBAV|Instagram|WhatsApp|\bWebView\b/i.test(ua);
+interface NoticeProps {
+  store: StoreIdentityInput;
+  currentIdentity: string;
+  /** Deterministic fixtures; production derives the platform from the real device. */
+  installed?: boolean;
+  userAgent?: string;
+  onNavigate?: (url: string) => void;
+}
+
+export function IconUpdateNotice({ store, currentIdentity, installed, userAgent, onNavigate }: NoticeProps) {
+  const slug = store.slug;
+  const standalone = installed ?? (typeof window !== 'undefined' && isStandalone(window));
   const ua = userAgent ?? (typeof navigator === 'undefined' ? '' : navigator.userAgent);
   const platform = detectPlatform(ua);
   const android = platform === 'android-chrome' || platform === 'android-other';
   const ios = platform === 'ios-safari' || platform === 'ios-other';
-  const version = storeIconVersion(store);
-  const key = iconUpdateDismissKey(store.id, version);
-  const kv = storage !== undefined ? storage : (typeof window !== 'undefined' ? window.localStorage : null);
-  const eligible = isInstalled && offerUpdatedApp(store) && (android || ios);
-  const [dismissed, setDismissed] = useState(false);
+  const visible = standalone && (android || ios);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
-  const fallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const didLeave = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const left = useRef(false);
 
+  useLayoutEffect(() => {
+    setIconNoticeVisible(visible);
+    return () => setIconNoticeVisible(false);
+  }, [visible]);
   useEffect(() => {
     const noteLeft = () => {
-      didLeave.current = true;
-      if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
-      fallbackTimer.current = null;
+      left.current = true;
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
     };
-    const onVisibility = () => { if (document.visibilityState !== 'visible') noteLeft(); };
-    document.addEventListener('visibilitychange', onVisibility);
+    const checkVisibility = () => { if (document.visibilityState !== 'visible') noteLeft(); };
+    document.addEventListener('visibilitychange', checkVisibility);
     window.addEventListener('pagehide', noteLeft);
     return () => {
-      if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
-      document.removeEventListener('visibilitychange', onVisibility);
+      if (timer.current) clearTimeout(timer.current);
+      document.removeEventListener('visibilitychange', checkVisibility);
       window.removeEventListener('pagehide', noteLeft);
     };
   }, []);
+  if (!visible) return null;
 
-  useEffect(() => {
-    if (!eligible) return;
-    try { setDismissed(kv?.getItem(key) === '1'); }
-    catch { setDismissed(false); }
-  }, [eligible, kv, key]);
-
-  if (!eligible || dismissed) return null;
-  const url = storeIconUpdateUrl(store.slug, window.location.origin);
-  const dismiss = () => {
-    try { kv?.setItem(key, '1'); } catch { /* armazenamento bloqueado */ }
-    if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
-    setDismissed(true);
-  };
-  const openChrome = () => {
-    didLeave.current = false;
-    setShowFallback(false);
-    if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
-    const target = chromeIconUpdateIntent(store.slug, window.location.origin);
-    // Some embedded Android webviews reject intents immediately. Keep an escape hatch.
-    if (isBlockingWebview(ua)) setShowFallback(true);
-    fallbackTimer.current = setTimeout(() => {
-      fallbackTimer.current = null;
-      if (!didLeave.current && document.visibilityState === 'visible' && isStandalone(window)) {
+  const url = storeIconUpdateUrl(slug, currentIdentity, window.location.origin);
+  const onAndroidClick = () => {
+    left.current = false;
+    setShowFallback(isBlockingWebview(ua));
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      if (!left.current && document.visibilityState === 'visible' && isStandalone(window)) {
         setShowFallback(true);
       }
     }, ICON_INTENT_FALLBACK_MS);
-    try {
-      if (onNavigate) onNavigate(target);
-      else window.location.href = target;
-    } catch {
-      if (!didLeave.current) setShowFallback(true);
-    }
+    if (onNavigate) onNavigate(chromeIconUpdateIntent(slug, currentIdentity, window.location.origin));
   };
-  const copyLink = async (includeQuery = false) => {
-    try { await navigator.clipboard.writeText(includeQuery ? secureIconUpdateUrl(store.slug, window.location.origin)
-      : new URL(url).origin + new URL(url).pathname); setCopied(true); }
-    catch { setCopied(false); }
+  const copy = async () => {
+    setCopyFailed(false);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+      setCopyFailed(true);
+    }
   };
 
   return (
     <aside data-testid="icon-update-notice" role="status" aria-live="polite"
       className="fixed inset-x-3 bottom-20 z-[135] mx-auto max-w-md rounded-xl border border-amber-200 bg-white p-3 text-gray-900 shadow-xl">
-      <div className="flex items-start gap-2.5">
-        <RefreshCw aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+      <div className="flex items-center gap-3">
+        <RefreshCw aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-700" />
         <div className="min-w-0 flex-1 space-y-2">
-          <p className="text-xs leading-relaxed">{ICON_UPDATE_TEXT}</p>
+          <p className="text-sm font-bold">{ICON_UPDATE_TEXT}</p>
           {android ? (
-            <Button type="button" variant="primary" size="sm" onClick={openChrome}>Atualizar ícone</Button>
+            <a href={chromeIconUpdateIntent(slug, currentIdentity, window.location.origin)}
+              target="_blank" rel="noopener noreferrer" data-testid="icon-update-open-chrome"
+              onClick={(event) => { if (onNavigate) event.preventDefault(); onAndroidClick(); }}
+              className="inline-flex items-center justify-center rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800">
+              Atualizar
+            </a>
           ) : (
             <>
-              <p className="text-xs text-gray-600">Abra no Safari, toque em Compartilhar e depois Adicionar à Tela de Início.</p>
-              <Button type="button" variant="primary" size="sm"
-                leftIcon={<Copy className="h-3.5 w-3.5" />} onClick={() => void copyLink()}>
-                {copied ? 'Link copiado' : 'Copiar link'}
-              </Button>
+              <Button type="button" variant="primary" size="sm" onClick={() => void copy()}
+                leftIcon={<Copy className="h-3.5 w-3.5" />}>Atualizar</Button>
+              {copied && (
+                <p className="text-xs text-gray-700" role="status">
+                  Link copiado. Abra no Safari para instalar a nova versão.
+                </p>
+              )}
+              {copyFailed && (
+                <div className="space-y-1 text-xs text-gray-700" role="status">
+                  <p>Abra este endereço no Safari para instalar a nova versão.</p>
+                  <p className="select-text break-all">{url}</p>
+                </div>
+              )}
             </>
           )}
           {android && showFallback && (
-            <div data-testid="icon-update-fallback" role="region" aria-label="Abrir no navegador"
-              className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-2">
-              <p className="text-xs text-gray-800">
-                <strong>Abrir no navegador:</strong> toque em ⋮ e depois "Abrir no Chrome".
-              </p>
-              <Button type="button" variant="outline" size="sm"
-                onClick={() => void copyLink(true)}
-                leftIcon={<Copy className="h-3.5 w-3.5" />}>
-                {copied ? 'Link copiado' : 'Copiar link'}
-              </Button>
+            <div data-testid="icon-update-fallback" role="region" aria-label="Atualização pelo navegador"
+              className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+              <p className="text-xs text-gray-800">Para atualizar, abra este link no Chrome. Toque em ⋮ e depois "Abrir no Chrome".</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => void copy()}
+                leftIcon={<Copy className="h-3.5 w-3.5" />}>{copied ? 'Link copiado' : 'Copiar link'}</Button>
             </div>
           )}
         </div>
-        <button type="button" aria-label="Dispensar aviso" data-testid="icon-update-dismiss"
-          onClick={dismiss} className="rounded-full p-1 text-gray-500 hover:bg-gray-100">
-          <X className="h-4 w-4" />
-        </button>
       </div>
     </aside>
-  );
-}
-
-export function IconUpdateBrowserGuide() {
-  const prompt = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
-  const [dismissed, setDismissed] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const active = !standalone() &&
-    new URLSearchParams(window.location.search).get('atualizar_icone') === '1';
-
-  if (!active || dismissed) return null;
-  const install = async () => {
-    if (!prompt || busy) return;
-    setBusy(true);
-    try {
-      await prompt.prompt();
-      clearDeferredPrompt();
-      const choice = await prompt.userChoice;
-      if (choice.outcome === 'accepted') setDismissed(true);
-    } catch { /* o botão continua disponível quando surgir novo prompt */ }
-    finally { setBusy(false); }
-  };
-  return (
-    <section data-testid="icon-update-guide" role="region" aria-label="Atualizar ícone do aplicativo"
-      className="fixed top-[calc(env(safe-area-inset-top,0px)+0.75rem)] inset-x-3 z-[145] mx-auto max-w-lg rounded-2xl border border-emerald-200 bg-white p-4 text-gray-900 shadow-xl">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-bold">Atualize o ícone da loja</h2>
-        <button type="button" aria-label="Fechar guia" onClick={() => setDismissed(true)}
-          className="rounded-full p-1 text-gray-600 hover:bg-gray-100"><X className="h-4 w-4" /></button>
-      </div>
-      <div className="mt-3 space-y-2 text-xs leading-relaxed">
-        <p><strong>Passo 1.</strong> Remova o ícone antigo da sua tela inicial (segure o ícone e toque em Desinstalar/Remover).</p>
-        <p><strong>Passo 2.</strong> Toque em Instalar aplicativo abaixo para baixar o ícone com a nova logo.</p>
-      </div>
-      <p className="my-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
-        Se aparecer Abrir em vez de Instalar, apague o ícone antigo e volte para esta aba.
-      </p>
-      <Button type="button" variant="primary" size="md" disabled={!prompt || busy}
-        isLoading={busy} onClick={() => void install()}>Instalar aplicativo</Button>
-      {!prompt && <p className="mt-2 text-xs text-gray-500">Se o navegador não oferecer a instalação, abra a loja no Chrome e use ⋮ → Instalar app depois de remover o ícone antigo.</p>}
-    </section>
   );
 }

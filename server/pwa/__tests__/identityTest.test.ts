@@ -8,7 +8,8 @@ import { createPwaRouter, iconVersion, identityTestManifest, serverManifest } fr
 import { DEFAULT_IDENTITY_TEST_SLUGS, resolveIdentityTestSlugs } from '../identityTest';
 import { injectStoreHead } from '../storeHtml';
 import type { StoreResolver } from '../storeSource';
-import type { StoreIdentityInput } from '../../../src/lib/pwa/storeManifest';
+import { storeAppIdentity, type StoreIdentityInput } from '../../../src/lib/pwa/storeManifest';
+import { isVersionedStoreApp } from '../../../src/lib/pwa/appVersionMode';
 
 const real: StoreIdentityInput = {
   id: 'tenant-real-01', slug: 'adegasshow', name: 'Adega Show',
@@ -23,8 +24,13 @@ const changed: StoreIdentityInput = {
   appBaseLogoUrl: '/logo-original.png',
   theme: { storeName: 'Loja Nova', logoUrl: 'https://cdn.example/logo-nova.png' },
 };
+const navChanged: StoreIdentityInput = {
+  id: 'tenant-nav-01', slug: 'loja-nav', name: 'Loja NAV',
+  appBaseNavColor: '#223344',
+  theme: { storeName: 'Loja NAV', navBarColor: '#445566', logoUrl: 'https://cdn.example/nav-logo.png' },
+};
 const stores: Record<string, StoreIdentityInput> = {
-  [real.slug]: real, [test.slug]: test, [changed.slug]: changed,
+  [real.slug]: real, [test.slug]: test, [changed.slug]: changed, [navChanged.slug]: navChanged,
 };
 const resolver: StoreResolver = async (slug) => stores[slug]
   ? { status: 'ok', store: stores[slug] } : { status: 'not_found' };
@@ -70,7 +76,7 @@ describe('lista histórica de identidade', () => {
 });
 
 describe('manifesto estável para todas as instalações novas', () => {
-  for (const store of [real, test, changed]) {
+  for (const store of [real, test, changed, navChanged]) {
     it(`/app/${store.slug}/ usa id e scope fixos, mesmo com logo trocada/lista de teste`, async () => {
       const [a, b] = await Promise.all([listed, unlisted].map(s =>
         fetch(`${s.base}/app/${store.slug}/manifest.webmanifest`).then(r => r.json())));
@@ -80,19 +86,37 @@ describe('manifesto estável para todas as instalações novas', () => {
       expect(a.id).toBe(`/app-id/${store.id}`);
       expect(a.scope).toBe(`/app/${store.slug}/`);
       expect(a.start_url).toBe(`/app/${store.slug}/?source=pwa`);
-      expect(router.identityHeadOptions(store, null)).toEqual({});
+      const expectedOptions = isVersionedStoreApp(hydrated)
+        ? { appIdentity: storeAppIdentity(hydrated) } : {};
+      expect(router.identityHeadOptions(hydrated, null)).toEqual(expectedOptions);
       const html = injectStoreHead('<html><head></head><body></body></html>', store.slug, store,
-        router.identityHeadOptions(store, null));
+        router.identityHeadOptions(hydrated, null));
       expect(html).toContain(`href="/app/${store.slug}/manifest.webmanifest"`);
-      expect(html).not.toContain('dc-app-identity');
+      if (isVersionedStoreApp(hydrated)) expect(html).toContain('dc-app-identity');
+      else expect(html).not.toContain('dc-app-identity');
     });
 
-    it(`/api/pwa/version?slug=${store.slug} não inclui appIdentity`, async () => {
+    it(`/api/pwa/version?slug=${store.slug} inclui appIdentity somente no modo versionado`, async () => {
       const json = await fetch(`${listed.base}/api/pwa/version?slug=${store.slug}`).then(r => r.json());
-      expect(json.appIdentity).toBeUndefined();
+      const hydrated = (await router.lookupStoreForHtml(store.slug))!;
+      if (isVersionedStoreApp(hydrated)) expect(json.appIdentity).toBe(storeAppIdentity(hydrated));
+      else expect(json.appIdentity).toBeUndefined();
       expect(typeof json.identityVersion).toBe('string');
     });
   }
+
+  it('modo versionado só pela barra: identidade muda sem alterar o ?v= dos ícones', async () => {
+    const original = (await router.lookupStoreForHtml(navChanged.slug))!;
+    expect(isVersionedStoreApp(original)).toBe(true);
+    const before = storeAppIdentity(original);
+    const onlyNav = { ...original, theme: { ...original.theme, navBarColor: '#556677' } };
+    expect(storeAppIdentity(onlyNav)).not.toBe(before);
+    expect(iconVersion(onlyNav)).toBe(iconVersion(original));
+    const response = await fetch(`${listed.base}/api/pwa/version?slug=${navChanged.slug}`).then(r => r.json());
+    expect(response.appIdentity).toBe(before);
+    const m = await fetch(`${listed.base}/app/${navChanged.slug}~${before}/manifest.webmanifest`).then(r => r.json());
+    expect(m.id).toBe(`/app-id/${navChanged.id}/${before}`);
+  });
 
   it('ícones PNG têm purpose separados e versões derivadas somente da imagem', () => {
     const m = serverManifest(test);
@@ -126,15 +150,34 @@ describe('compatibilidade permanente dos WebAPKs com ~hash', () => {
         expect(m.related_applications).toEqual([{ platform: 'webapp', url: `/app/${store.slug}~${hash}/manifest.webmanifest` }]);
         expect(m.icons).toEqual(serverManifest((await router.lookupStoreForHtml(store.slug))!).icons);
       }
-      expect(router.identityHeadOptions(store, hash)).toEqual({
+      const hydrated = (await router.lookupStoreForHtml(store.slug))!;
+      expect(router.identityHeadOptions(hydrated, hash)).toEqual({
         manifestHref: `/app/${store.slug}~${hash}/manifest.webmanifest`,
+        ...(isVersionedStoreApp(hydrated) ? { appIdentity: storeAppIdentity(hydrated) } : {}),
       });
       const html = injectStoreHead('<html><head></head><body></body></html>', store.slug, store,
-        router.identityHeadOptions(store, hash));
+        router.identityHeadOptions(hydrated, hash));
       expect(html).toContain(`href="/app/${store.slug}~${hash}/manifest.webmanifest"`);
-      expect(html).not.toContain('dc-app-identity');
+      if (isVersionedStoreApp(hydrated)) expect(html).toContain('dc-app-identity');
+      else expect(html).not.toContain('dc-app-identity');
     });
   }
+  it('a versão oficial tem manifesto e scope próprios, sem invalidar versões anteriores', async () => {
+    const verified = (await router.lookupStoreForHtml(changed.slug))!;
+    const hash = storeAppIdentity(verified);
+    expect(isVersionedStoreApp(verified)).toBe(true);
+    const response = await fetch(`${listed.base}/app/${changed.slug}~${hash}/manifest.webmanifest`);
+    expect(response.status).toBe(200);
+    const m = await response.json();
+    expect(m.id).toBe(`/app-id/${changed.id}/${hash}`);
+    expect(m.scope).toBe(`/app/${changed.slug}~${hash}/`);
+    expect(m.start_url).toBe(`/app/${changed.slug}~${hash}/?source=pwa`);
+    const old = await fetch(`${listed.base}/app/${changed.slug}~0123456789/manifest.webmanifest`).then(r => r.json());
+    expect(old.id).toBe(`/app-id/${changed.id}/0123456789`);
+    const stable = await fetch(`${listed.base}/app/${changed.slug}/manifest.webmanifest`).then(r => r.json());
+    expect(stable.id).toBe(`/app-id/${changed.id}`);
+  });
+
   it('versões inválidas não são aceitas como hash legado', async () => {
     const res = await fetch(`${listed.base}/app/mercado-teste-dc~XYZ/manifest.webmanifest`);
     expect(res.status).toBe(404);

@@ -44,7 +44,7 @@ import path from 'node:path';
 describe('ClientApp: convite "Instalar app"', () => {
   const src = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
   it('só aparece com a logo definitiva confirmada', () => {
-    expect(src).toMatch(/\{!previewMode && isLogoConfirmed\(theme\) && <InstallStoreAppHint/);
+    expect(src).toMatch(/\{!previewMode && appStatus === 'current' && isLogoConfirmed\(theme\) && <InstallStoreAppHint/);
   });
   it('o convite Instalar app não aponta para um manifesto versionado', () => {
     expect(src).not.toMatch(/versionedStartUrl/);
@@ -55,6 +55,6 @@ describe('ClientApp: convite "Instalar app"', () => {
     expect(src.slice(start, end + 2)).not.toMatch(/startPath/);
   });
   it('aviso visual interno não aparece junto do banner legado', () => {
-    expect(src).toMatch(/\{!previewMode && !legacyIdentity && <StoreVisualUpdateNotice/);
+    expect(src).toMatch(/\{!previewMode && appStatus === 'current' && !iconNoticeVisible && <StoreVisualUpdateNotice/);
   });
 });

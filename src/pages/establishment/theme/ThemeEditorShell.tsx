@@ -19,7 +19,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { themeService } from '../../../services/themeService';
 import { productRepository } from '../../../repositories/productRepository';
-import { safeImageUrl, validateHexColor, tokensToTheme } from '../../../lib/theme/themeEngine';
+import { safeImageUrl, validateHexColor, tokensToTheme, themeToTokens, createDefaultThemeTokens, DEFAULT_DELIVERY_CHANNEL_THEME } from '../../../lib/theme/themeEngine';
 import { announceThemeSaved } from '../../../lib/theme/themeLiveUpdate';
 import { useBottomActionsOffset, useFloatingLeftOf } from '../../../lib/ui/bottomActionsOffset';
 import { LiveStorePreview } from '../../../components/establishment/theme/LiveStorePreview';
@@ -27,6 +27,8 @@ import { ThemedProductItem } from '../../../components/storefront/ThemedProductL
 import { useThemeDraft } from './useThemeDraft';
 import { logoConfirmedUrlToSave } from '../../../lib/pwa/logoConfirmation';
 import { appBaseLogoUrlToSave } from '../../../lib/pwa/appBaseLogo';
+import { appBaseNavColorToSave } from '../../../lib/pwa/appVersionMode';
+import { systemBarsFromTokens } from '../../../lib/pwa/systemBars';
 import { invalidateStorePwaCache } from '../../../lib/pwa/invalidateStoreCache';
 import { useThemeControls } from './useThemeControls';
 import { ThemeEditorContext } from './ThemeEditorContext';
@@ -139,13 +141,17 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
       };
     }
     try {
+      const originalNav = systemBarsFromTokens(themeToTokens(tenant.theme)).nav;
+      const proposedNav = systemBarsFromTokens(draft.draftTokens).nav;
+      const appBaseNavColor = appBaseNavColorToSave(
+        tenant.theme?.tokens?.meta?.appBaseNavColor, originalNav, proposedNav);
       // Logo definitiva (theme_tokens.meta, sem migração): libera o "Instalar app" para os clientes.
       const logoConfirmedUrl = cleanImage(logoConfirmedUrlToSave({ logoUrl: submitted.logoUrl, tokens: draft.draftTokens }, tenant.theme));
       const saved = await themeService.updateTheme(securityContext, tenant.id, {
         ...submitted,
         logoUrl: cleanImage(submitted.logoUrl),
         bannerUrl: cleanImage(submitted.bannerUrl),
-        tokens: { ...draft.draftTokens, backgrounds, meta: withAppBaseLogo({ ...draft.draftTokens.meta, logoConfirmedUrl }, cleanImage(submitted.logoUrl)) },
+        tokens: { ...draft.draftTokens, backgrounds, meta: withAppBaseLogo({ ...draft.draftTokens.meta, logoConfirmedUrl, ...(appBaseNavColor ? { appBaseNavColor } : {}) }, cleanImage(submitted.logoUrl)) },
       });
       // Após persistir, invalidar a leitura do servidor antes de avisar outros clientes.
       const invalidated = await invalidateStorePwaCache(tenant.id, tenant.slug);
@@ -185,6 +191,10 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
         bannerUrl: draft.draftTheme.bannerUrl,
         logoConfirmedUrl: logoConfirmedUrlToSave({ logoUrl: draft.draftTheme.logoUrl, tokens: draft.draftTokens }, tenant.theme),
         appBaseLogoUrl: appBaseLogoUrlToSave(tenant.theme?.tokens?.meta?.appBaseLogoUrl, tenant.theme?.logoUrl, draft.draftTheme.logoUrl),
+        appBaseNavColor: appBaseNavColorToSave(
+          tenant.theme?.tokens?.meta?.appBaseNavColor,
+          systemBarsFromTokens(themeToTokens(tenant.theme)).nav,
+          systemBarsFromTokens(createDefaultThemeTokens(DEFAULT_DELIVERY_CHANNEL_THEME)).nav),
       });
       const invalidated = await invalidateStorePwaCache(tenant.id, tenant.slug);
       if (!invalidated) console.warn('[PWA] Invalidação imediata indisponível; leitura pública continua fresca.');

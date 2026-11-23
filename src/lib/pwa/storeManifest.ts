@@ -16,6 +16,8 @@ export interface StoreIdentityInput {
   appBaseLogoUrl?: string;
   /** theme_tokens.meta.logoConfirmedUrl (logo definitiva confirmada; ausente = loja antiga). Não entra no manifesto. */
   logoConfirmedUrl?: string;
+  /** Cor original da barra de navegação antes da primeira troca; meta JSON já existente. */
+  appBaseNavColor?: string;
   theme?: {
     storeName?: string;
     shortName?: string;
@@ -182,6 +184,16 @@ export function storeIconVersion(store: StoreIdentityInput): string {
     ? (store.iconContentHash ? ['logo', store.id, logo, store.iconContentHash] : ['logo', store.id, logo])
     : ['initials', store.id, storeDisplayName(store), iconFallbackColor(store.theme)];
   return shortHash(src.join('|'));
+}
+
+/** Identidade de nova instalação: imagem do ícone + barra de navegação resolvida. */
+export function storeAppIdentity(store: StoreIdentityInput): string {
+  const t = store.theme || {};
+  const bars = resolveSystemBars({
+    statusBarColor: t.statusBarColor, navBarColor: t.navBarColor,
+    headerColor: t.headerColor, primaryColor: t.primaryColor, backgroundColor: t.backgroundColor,
+  });
+  return shortHash(['app', storeIconVersion(store), bars.nav].join('|'));
 }
 
 /**

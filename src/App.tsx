@@ -3,6 +3,7 @@ import { storeSlugFromAppPath } from './lib/pwa/appIdentity';
 import { TvScreen } from './components/pickup/TvScreen';
 import { InstallDriverAppHint } from './components/driver/InstallDriverAppHint';
 import { LegalBoundary, CookieBanner } from './components/legal/LegalUI';
+import { getReplacedScreenVisible, subscribeReplacedScreen } from './components/client/IconUpdateNotice';
 import { isEmbeddedPreview } from './lib/theme/previewBridge';
 import { FeedbackPage } from './pages/establishment/FeedbackPage';
 import { CallScreen } from './components/pickup/CallScreen';
@@ -13,7 +14,7 @@ import { MenuQualityPage } from './pages/establishment/MenuQualityPage';
 import { OwnerNotifications } from './components/notifications/OwnerNotifications';
 import { PanelApprovalsAlert, FOCUS_TABLE_KEY } from './components/establishment/salon/ApprovalsAlert';
 import { FOCUS_ORDER_KEY } from './lib/orders/orderAlerts';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useSyncExternalStore } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { Header } from './components/layout/Header';
@@ -830,6 +831,12 @@ function AppContent() {
   );
 }
 
+/** Na tela bloqueante não deve haver banner de consentimento interativo sobre a única ação permitida. */
+function CookieBannerWhenAvailable() {
+  const updateOverlayVisible = useSyncExternalStore(subscribeReplacedScreen, getReplacedScreenVisible, () => false);
+  return updateOverlayVisible ? null : <CookieBanner />;
+}
+
 export default function App() {
   // A TV não inicializa sessão, painel, consentimento analítico ou contexto de equipe.
   if (/^\/tv\/?$/.test(window.location.pathname)) {
@@ -840,7 +847,7 @@ export default function App() {
       <ToastProvider>
         <ScreenErrorBoundary><LegalBoundary><AppContent /></LegalBoundary></ScreenErrorBoundary>
         {/* Prévia do Design do App (iframe no painel): sem banner de cookies sobre a réplica. */}
-        {!isEmbeddedPreview(window) && <CookieBanner />}
+        {!isEmbeddedPreview(window) && <CookieBannerWhenAvailable />}
         <InstallDriverAppHint />
       </ToastProvider>
     </AuthProvider>

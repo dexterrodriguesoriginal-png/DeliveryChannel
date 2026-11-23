@@ -6,7 +6,7 @@ import { analyticsAllowed, openCookiePreferences } from '../../lib/legal/cookies
 import { LegalCheckbox } from '../../components/legal/LegalUI';
 import { legalSignupMetadata } from '../../lib/legal/documents';
 import { storeEmailData } from '../../lib/auth/storeEmailBranding';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { normalizeBRPhone, formatBRPhone, brPhoneDigits } from '../../lib/phone/brPhone';
 import { DeliveryCodeCard } from '../../components/client/DeliveryCodeCard';
 import { PickupArrivalCard } from '../../components/pickup/PickupArrivalCard';
@@ -52,10 +52,10 @@ import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
 import { isLogoConfirmed } from '../../lib/pwa/logoConfirmation';
 import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
-import { IconUpdateNotice, IconUpdateBrowserGuide } from '../../components/client/IconUpdateNotice';
+import { IconUpdateNotice, getIconNoticeVisible, subscribeIconNotice } from '../../components/client/IconUpdateNotice';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewPresentationMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
-import { emitInviteTrigger } from '../../lib/pwa/installState';
+import { emitInviteTrigger, isStandalone } from '../../lib/pwa/installState';
 import { applyStoreIdentity } from '../../lib/pwa/applyStoreIdentity';
 import { setPwaAutoReloadBlocked } from '../../lib/pwa/registerSw';
 import { applyNavBarCanvasColor, enableEdgeToEdgeViewport, SAFE_BOTTOM, SAFE_TOP } from '../../lib/pwa/edgeToEdge';
@@ -137,8 +137,8 @@ import { StoreLoadingScreen } from '../../components/pwa/StoreLoadingScreen';
 import { hideBootScreen } from '../../lib/pwa/bootScreen';
 import { StorePresentationScreen } from '../../components/pwa/StorePresentationScreen';
 import { markPresentationShown, prefersReducedMotion, presentationPlan, type PresentationPlan, shouldShowPresentation } from '../../lib/pwa/presentation';
-import { splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath } from '../../lib/pwa/appIdentity';
-import { AppIdentityUpdate } from '../../components/pwa/AppIdentityUpdate';
+import { identityStatus, newestLaunchedKey, splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath, versionedStoreScope } from '../../lib/pwa/appIdentity';
+import { AppIdentityUpdate, readAppIdentityMeta } from '../../components/pwa/AppIdentityUpdate';
 import { newIdempotencyKey } from '../../lib/pricing/idempotency';
 import { searchProducts } from '../../lib/customer/search';
 import { buildReorderCart } from '../../lib/customer/reorder';
@@ -231,6 +231,7 @@ function identityTheme(theme: TenantTheme | undefined): StoreIdentityInput['them
 export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => {
   const { supabaseUser, signInWithGoogle, signInWithPassword, signUp, signOut, activeTenant, resendConfirmationEmail } = useAuth();
   const { showToast } = useToast();
+  const iconNoticeVisible = useSyncExternalStore(subscribeIconNotice, getIconNoticeVisible, () => false);
 
   // 1. Extração estrita do Slug da URL
   const slug = useMemo(() => {
@@ -245,8 +246,20 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // Prévia do Design do App (iframe no painel): tema em rascunho por postMessage, sem pedidos,
   // sem carrinho persistente, sem analytics, sem notificações/som e sem mexer no PWA.
   const previewMode = useMemo(() => typeof window !== 'undefined' && isEmbeddedPreview(window), []);
-  // Só WebAPKs antigos têm ~hash na URL. O manifesto canônico permanece estável.
-  const legacyIdentity = useMemo(() => splitStoreSegment(storeSegmentFromPath(window.location.pathname) || '').identity, []);
+  // O app ~hash pode ser a versão OFICIAL atual, não necessariamente uma instalação antiga.
+  const runningIdentity = useMemo(() =>
+    splitStoreSegment(storeSegmentFromPath(window.location.pathname) || '').identity, []);
+  const standalone = useMemo(() => isStandalone(window), []);
+  const [currentIdentity, setCurrentIdentity] = useState<string | null>(() => readAppIdentityMeta());
+  const [currentIconContentHash, setCurrentIconContentHash] = useState<string | undefined>();
+  const [newestLaunched, setNewestLaunched] = useState<string | null>(() => {
+    try { return localStorage.getItem(newestLaunchedKey(slug)); } catch { return null; }
+  });
+  const appStatus = !previewMode && currentIdentity
+    ? identityStatus({
+        standalone, runningIdentity, currentIdentity, newestLaunched, reinstallRequested: false,
+      })
+    : 'current';
   const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
   const [previewCard, setPreviewCard] = useState<Partial<Offer> | null>(null);
   const [presentationRun, setPresentationRun] = useState<{ plan: PresentationPlan; key: number } | null>(null);
@@ -269,6 +282,39 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   // 2. Estados de Carregamento e Dados do Catálogo Real
   const [storeData, setStoreData] = useState<PublicStoreData | null>(null);
   const [isLoadingStore, setIsLoadingStore] = useState(true);
+  useEffect(() => {
+    if (previewMode || !slug || isLoadingStore || !storeData) return;
+    let active = true;
+    // O servidor fornece o hash com digest real da logo; não estimar esse hash a partir do tema no cliente.
+    void fetch(`/api/pwa/version?slug=${encodeURIComponent(slug)}`, { cache: 'no-store' })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (active && data) {
+          setCurrentIdentity(
+            typeof data.appIdentity === 'string' && /^[0-9a-f]{10}$/.test(data.appIdentity) ? data.appIdentity : null);
+          setCurrentIconContentHash(
+            typeof data.iconContentHash === 'string' && /^[0-9a-f]{24}$/.test(data.iconContentHash)
+              ? data.iconContentHash : undefined);
+        }
+      }).catch(() => { /* mantém meta injetada até a consulta estar disponível */ });
+    return () => { active = false; };
+  }, [previewMode, slug, isLoadingStore, storeData]);
+  useEffect(() => {
+    if (previewMode || !slug) return;
+    const refresh = () => {
+      try { setNewestLaunched(localStorage.getItem(newestLaunchedKey(slug))); } catch { /* privado */ }
+    };
+    window.addEventListener('storage', refresh);
+    window.addEventListener('focus', refresh);
+    return () => { window.removeEventListener('storage', refresh); window.removeEventListener('focus', refresh); };
+  }, [slug, previewMode]);
+  useEffect(() => {
+    if (previewMode || !currentIdentity || !slug || !standalone || runningIdentity !== currentIdentity) return;
+    try {
+      localStorage.setItem(newestLaunchedKey(slug), currentIdentity);
+      setNewestLaunched(currentIdentity);
+    } catch { /* privado: não bloquear a vitrine */ }
+  }, [previewMode, currentIdentity, slug, standalone, runningIdentity]);
   // Mantém #store-boot exatamente como está; somente aguarda a decisão sobre
   // a apresentação para não mostrar a vitrine brevemente antes da mídia.
   useEffect(() => {
@@ -1054,6 +1100,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const reloadUnsafe = navTab !== 'home' || Boolean(selectedProductModal) || Boolean(selectedPromoOffer)
     || isCheckoutOpen || isPromoCheckoutOpen || isAuthModalOpen || isAccountOpen
     || addressFlow.open || isSubmittingOrder || Boolean(completedOrder);
+  const versionedRedirectStarted = useRef(false);
+  useEffect(() => {
+    if (previewMode || standalone || !currentIdentity || !slug || isLoadingStore || !storeData || reloadUnsafe) return;
+    if (runningIdentity || new URLSearchParams(window.location.search).has('mesa') ||
+        new URLSearchParams(window.location.search).get('preview') === '1' || versionedRedirectStarted.current) return;
+    const destination = versionedStoreScope(slug, currentIdentity) + window.location.search + window.location.hash;
+    versionedRedirectStarted.current = true;
+    window.location.replace(destination);
+  }, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity, reloadUnsafe]);
   useEffect(() => {
     setPwaAutoReloadBlocked('client-app', reloadUnsafe);
     return () => setPwaAutoReloadBlocked('client-app', false);
@@ -1698,6 +1753,10 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     return <StoreLoadingScreen />;
   }
 
+  if (appStatus === 'old-icon' && currentIdentity) {
+    return <div style={activeCssVars}><AppIdentityUpdate slug={slug} currentIdentity={currentIdentity} /></div>;
+  }
+
   // --------------------------------------------------------------------------
   // ERRO TÉCNICO AO CARREGAR A VITRINE (não é "loja inexistente")
   // --------------------------------------------------------------------------
@@ -1951,24 +2010,33 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         />
       )}
       {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
-      {!previewMode && <IconUpdateBrowserGuide />}
-      {!previewMode && <IconUpdateNotice store={{
-        id: storeData.tenant.id,
-        slug: storeData.tenant.slug,
-        name: storeData.tenant.name,
-        theme: { logoUrl: theme.logoUrl },
-        appBaseLogoUrl: theme.tokens?.meta?.appBaseLogoUrl,
-        logoConfirmedUrl: theme.tokens?.meta?.logoConfirmedUrl,
-      }} />}
-      {!previewMode && legacyIdentity && <AppIdentityUpdate slug={storeData.tenant.slug} storeName={storeData.tenant.name} />}
-      {!previewMode && !legacyIdentity && <StoreVisualUpdateNotice
+      {!previewMode && appStatus === 'update-available' && currentIdentity && (
+        <IconUpdateNotice currentIdentity={currentIdentity} store={{
+          id: storeData.tenant.id,
+          slug: storeData.tenant.slug,
+          name: storeData.tenant.name,
+          iconContentHash: currentIconContentHash,
+          appBaseLogoUrl: theme.tokens?.meta?.appBaseLogoUrl,
+          logoConfirmedUrl: theme.tokens?.meta?.logoConfirmedUrl,
+          appBaseNavColor: theme.tokens?.meta?.appBaseNavColor,
+          theme: {
+            storeName: theme.storeName, logoUrl: theme.logoUrl,
+            primaryColor: theme.primaryColor, backgroundColor: theme.backgroundColor,
+            tagline: theme.tagline,
+            headerColor: theme.tokens?.palette?.bgHeader,
+            statusBarColor: theme.tokens?.meta?.systemBars?.statusBarColor,
+            navBarColor: theme.tokens?.meta?.systemBars?.navBarColor,
+          },
+        }} />
+      )}
+      {!previewMode && appStatus === 'current' && !iconNoticeVisible && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
         tenantId={storeData.tenant.id}
         hidden={Boolean(selectedProductModal) || Boolean(selectedPromoOffer) || isCheckoutOpen || isPromoCheckoutOpen
           || isAuthModalOpen || isAccountOpen || addressFlow.open || isSubmittingOrder || navTab === 'cart'}
       />}
       {/* "Instalar app" só depois que a loja confirma a logo definitiva (ícone do app nasce com ela). */}
-      {!previewMode && isLogoConfirmed(theme) && <InstallStoreAppHint
+      {!previewMode && appStatus === 'current' && isLogoConfirmed(theme) && <InstallStoreAppHint
         tenantId={storeData.tenant.id}
         storeName={theme.storeName || storeData.tenant.name}
         color={theme.primaryColor || '#334155'}

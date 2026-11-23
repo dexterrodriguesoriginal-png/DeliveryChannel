@@ -2,101 +2,85 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AppIdentityUpdate, readAppIdentityMeta } from '../AppIdentityUpdate';
+import { getIconNoticeVisible, getReplacedScreenVisible } from '../../client/IconUpdateNotice';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
-let act: typeof React.act;
 let root: Root;
 let container: HTMLDivElement;
-let standalone = true;
-const HASH = 'bbbbbbbbbb';
-
-async function load() { return import('../AppIdentityUpdate'); }
-async function render(el: React.ReactElement) {
-  await act(async () => { root.render(el); });
-}
 beforeEach(() => {
-  vi.resetModules();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  act = React.act;
-  standalone = true;
-  vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
-    matches: q === '(display-mode: standalone)' ? standalone : false,
-    media: q, onchange: null, addListener() {}, removeListener() {}, addEventListener() {},
-    removeEventListener() {}, dispatchEvent: () => false,
-  }) as unknown as MediaQueryList);
-  Object.defineProperty(navigator, 'userAgent', {
-    value: 'Mozilla/5.0 (Linux; Android 14) Chrome/144.0 Mobile Safari/537.36',
-    configurable: true,
-  });
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
 });
-afterEach(() => {
-  act(() => root.unmount());
+afterEach(async () => {
+  await React.act(async () => root.unmount());
   container.remove();
-  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+async function render() {
+  await React.act(async () => {
+    root.render(<AppIdentityUpdate slug="loja" currentIdentity="0123456789" />);
+  });
+}
+describe('instalação antiga substituída', () => {
+  it('ClientApp fornece as variáveis do tema ao retorno bloqueante antes da tela normal', () => {
+    const client = readFileSync(resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
+    expect(client).toMatch(/if \(appStatus === 'old-icon' && currentIdentity\)\s*\{\s*return <div style=\{activeCssVars\}><AppIdentityUpdate/);
+    expect(client.indexOf("if (appStatus === 'old-icon'")).toBeLessThan(client.indexOf('className="min-h-screen pb-44'));
+  });
 
-describe('banner exclusivo de WebAPK legado', () => {
-  it('app canônico standalone com logo nova não recebe pill de reinstalação', async () => {
-    history.replaceState(null, '', '/app/mercado-teste-dc/?source=pwa');
-    const { AppIdentityUpdate } = await load();
-    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" />);
-    expect(container.innerHTML).toBe('');
-    expect(container.textContent).not.toContain('Baixar versão atualizada');
+  it('CookieBanner global não é renderizado quando a tela bloqueante está visível', () => {
+    const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+    expect(app).toContain('useSyncExternalStore(subscribeReplacedScreen, getReplacedScreenVisible');
+    expect(app).toContain('return updateOverlayVisible ? null : <CookieBanner />');
+    expect(app).toContain('<CookieBannerWhenAvailable />');
+    const blocked = readFileSync(resolve(process.cwd(), 'src/components/pwa/AppIdentityUpdate.tsx'), 'utf8');
+    expect(blocked).toContain('setIconNoticeVisible(true)');
+    expect(blocked).toContain('setIconNoticeVisible(false)');
+    expect(blocked).toContain('setReplacedScreenVisible(true)');
+    expect(blocked).toContain('setReplacedScreenVisible(false)');
+    expect(app).not.toContain('subscribeIconNotice, getIconNoticeVisible');
   });
-  it('legado standalone Android recebe banner discreto e abre o canônico', async () => {
-    history.replaceState(null, '', `/app/mercado-teste-dc~${HASH}/?reinstall=1`);
-    const open = vi.spyOn(window, 'open').mockReturnValue({} as Window);
-    const { AppIdentityUpdate } = await load();
-    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" />);
-    expect(container.querySelector('[data-testid="identity-legacy-banner"]')).not.toBeNull();
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
-    expect(container.textContent).toContain('Há uma versão oficial deste app');
-    expect(container.textContent).toContain('Abrir app atualizado');
-    await act(async () => {
-      (container.querySelector('[data-testid="identity-open-canonical"]') as HTMLButtonElement).click();
-    });
-    expect(open).toHaveBeenCalledWith(`${window.location.origin}/app/mercado-teste-dc/`, '_blank');
-    expect(open.mock.calls[0][0]).not.toContain('~');
-    expect(open.mock.calls[0][0]).not.toContain('reinstall');
+
+
+  it('marca ambos os estados somente enquanto a tela bloqueante está montada', async () => {
+    expect(getReplacedScreenVisible()).toBe(false);
+    expect(getIconNoticeVisible()).toBe(false);
+    await render();
+    expect(getReplacedScreenVisible()).toBe(true);
+    expect(getIconNoticeVisible()).toBe(true);
+    await React.act(async () => { root.render(null); });
+    expect(getReplacedScreenVisible()).toBe(false);
+    expect(getIconNoticeVisible()).toBe(false);
   });
-  it('legado no Chrome sem standalone não recebe banner', async () => {
-    standalone = false;
-    history.replaceState(null, '', `/app/mercado-teste-dc~${HASH}/`);
-    const { AppIdentityUpdate } = await load();
-    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" />);
-    expect(container.innerHTML).toBe('');
-  });
-  it('legado iOS não recebe banner', async () => {
-    Object.defineProperty(navigator, 'userAgent', {
-      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
-      configurable: true,
-    });
-    history.replaceState(null, '', `/app/mercado-teste-dc~${HASH}/`);
-    const { AppIdentityUpdate } = await load();
-    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" />);
-    expect(container.innerHTML).toBe('');
-  });
-  it('o usuário pode dispensar o banner sem bloquear a loja', async () => {
-    history.replaceState(null, '', `/app/mercado-teste-dc~${HASH}/`);
-    const { AppIdentityUpdate } = await load();
-    await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" />);
-    await act(async () => {
-      (container.querySelector('[aria-label="Dispensar aviso"]') as HTMLButtonElement).click();
-    });
-    expect(container.innerHTML).toBe('');
-  });
-  it('meta antiga pode ser lida, mas não dispara o banner no caminho canônico', async () => {
-    const m = document.createElement('meta'); m.name = 'dc-app-identity'; m.content = HASH;
-    document.head.appendChild(m);
+
+  it('lê só hashes de dez caracteres na meta da identidade', () => {
+    const meta = document.createElement('meta');
+    meta.name = 'dc-app-identity';
+    meta.content = '0123456789';
+    document.head.appendChild(meta);
     try {
-      const { AppIdentityUpdate, readAppIdentityMeta } = await load();
-      expect(readAppIdentityMeta()).toBe(HASH);
-      history.replaceState(null, '', '/app/mercado-teste-dc/');
-      await render(<AppIdentityUpdate slug="mercado-teste-dc" storeName="Mercado" />);
-      expect(container.innerHTML).toBe('');
-    } finally { m.remove(); }
+      expect(readAppIdentityMeta()).toBe('0123456789');
+      meta.content = 'invalid';
+      expect(readAppIdentityMeta()).toBeNull();
+    } finally { meta.remove(); }
+  });
+
+  it('bloqueia a tela toda, mostra o texto exato e somente um link HTTPS relativo para a nova versão', async () => {
+    await render();
+    const screen = container.querySelector('[data-testid="identity-replaced-screen"]') as HTMLElement;
+    expect(screen).toBeTruthy();
+    expect(screen.style.position).toBe('fixed');
+    expect(screen.style.inset).toMatch(/^0(px)?$/);
+    expect(screen.textContent).toContain('Esta versão foi substituída. A nova versão já está instalada no seu celular. Remova esta versão e abra a nova.');
+    const links = screen.querySelectorAll('a');
+    expect(links).toHaveLength(1);
+    expect(links[0].textContent).toBe('Abrir nova versão');
+    expect(links[0].getAttribute('href')).toBe('/app/loja~0123456789/?source=pwa');
+    expect(screen.querySelector('button')).toBeNull();
+    expect(screen.innerHTML).not.toContain('intent://');
   });
 });

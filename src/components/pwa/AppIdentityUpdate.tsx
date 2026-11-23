@@ -1,48 +1,43 @@
-import React, { useMemo, useState } from 'react';
-import { APP_IDENTITY_META, APP_IDENTITY_RE, splitStoreSegment, storeSegmentFromPath } from '../../lib/pwa/appIdentity';
-import { detectPlatform, isStandalone } from '../../lib/pwa/installState';
+import React, { useLayoutEffect } from 'react';
+import { setIconNoticeVisible, setReplacedScreenVisible } from '../client/IconUpdateNotice';
+import { APP_IDENTITY_META, APP_IDENTITY_RE, versionedStartUrl } from '../../lib/pwa/appIdentity';
 
-/** Leitura de compatibilidade; o HTML canônico não injeta mais esta meta. */
+/** O HTML canônico mantém a meta apenas no modo versionado, sem mudar o manifesto estável. */
 export function readAppIdentityMeta(doc: Document | undefined = typeof document !== 'undefined' ? document : undefined): string | null {
-  const v = doc?.querySelector(`meta[name="${APP_IDENTITY_META}"]`)?.getAttribute('content') || '';
-  return APP_IDENTITY_RE.test(v) ? v : null;
+  const value = doc?.querySelector(`meta[name="${APP_IDENTITY_META}"]`)?.getAttribute('content') || '';
+  return APP_IDENTITY_RE.test(value) ? value : null;
 }
 
-/** Banner discreto somente em WebAPKs legados; oferece o app canônico, nunca um novo hash. */
-export function AppIdentityUpdate({ slug, storeName }: { slug: string; storeName: string }) {
-  const [dismissed, setDismissed] = useState(false);
-  const legacy = useMemo(() => {
-    const parsed = splitStoreSegment(storeSegmentFromPath(window.location.pathname) || '');
-    return parsed.slug === slug && parsed.identity !== null;
-  }, [slug]);
-  const standalone = useMemo(() => isStandalone(window), []);
-  const android = useMemo(() => detectPlatform(navigator.userAgent || '').startsWith('android'), []);
-
-  if (!legacy || !standalone || !android || dismissed) return null;
-
-  const canonical = `${window.location.origin}/app/${encodeURIComponent(slug)}/`;
-  const openCanonical = () => {
-    let opened: Window | null = null;
-    try { opened = window.open(canonical, '_blank'); } catch { /* popup bloqueado */ }
-    if (!opened) window.location.assign(canonical);
-  };
-
+/** Bloqueia totalmente a interface da instalação substituída. */
+export function AppIdentityUpdate({ slug, currentIdentity }: { slug: string; currentIdentity: string }) {
+  useLayoutEffect(() => {
+    setIconNoticeVisible(true);
+    setReplacedScreenVisible(true);
+    return () => {
+      setReplacedScreenVisible(false);
+      setIconNoticeVisible(false);
+    };
+  }, []);
+  const nextUrl = versionedStartUrl(slug, currentIdentity);
   return (
-    <div data-testid="identity-legacy-banner" role="status"
-      style={{ position: 'fixed', left: 12, right: 12, top: 'calc(env(safe-area-inset-top, 0px) + 10px)',
-        zIndex: 2147482000, display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px 8px 14px',
-        borderRadius: 999, background: 'var(--dc-bg-card-color)', color: 'var(--dc-text-main)',
-        border: '1px solid var(--dc-border)', boxShadow: '0 8px 20px rgba(0,0,0,.12)' }}>
-      <span style={{ flex: 1, fontWeight: 600, fontSize: 13 }}>Há uma versão oficial deste app</span>
-      <button type="button" data-testid="identity-open-canonical" onClick={openCanonical}
-        aria-label={`Abrir app atualizado de ${storeName}`}
-        style={{ background: 'var(--dc-primary)', color: 'var(--dc-button-text)', border: 0,
-          borderRadius: 999, padding: '9px 12px', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-        Abrir app atualizado
-      </button>
-      <button type="button" aria-label="Dispensar aviso" onClick={() => setDismissed(true)}
-        style={{ background: 'transparent', border: 0, color: 'var(--dc-text-main)',
-          cursor: 'pointer', fontSize: 18, padding: '2px 4px' }}>×</button>
-    </div>
+    <main data-testid="identity-replaced-screen" role="main"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 2147483000,
+        background: 'var(--dc-bg-card-color)', color: 'var(--dc-text-main)',
+        padding: 'calc(env(safe-area-inset-top, 0px) + 24px) 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
+        display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 22,
+      }}>
+      <p style={{ maxWidth: 340, textAlign: 'center', lineHeight: 1.6, fontWeight: 600 }}>
+        Esta versão foi substituída. A nova versão já está instalada no seu celular. Remova esta versão e abra a nova.
+      </p>
+      <a href={nextUrl} data-testid="identity-open-new-version"
+        style={{
+          background: 'var(--dc-primary)', color: 'var(--dc-button-text)',
+          border: '1px solid var(--dc-border)', borderRadius: 12,
+          padding: '12px 20px', fontWeight: 700, textDecoration: 'none',
+        }}>
+        Abrir nova versão
+      </a>
+    </main>
   );
 }
