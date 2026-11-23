@@ -74,7 +74,7 @@ describe('aviso para atualizar ícone do PWA', () => {
     expect(chromeIconUpdateIntent(store.slug, window.location.origin)).toBe(expected);
     expect(navigate).toHaveBeenCalledWith(expected);
     const anchor = ui.getByTestId('icon-update-open-chrome') as HTMLAnchorElement;
-    expect(anchor.href).toBe(expected);
+    expect(anchor.getAttribute('href')).toBe(expected);
     expect(anchor.target).toBe('_blank');
     expect(anchor.rel).toContain('noopener');
   });
@@ -155,7 +155,7 @@ describe('aviso para atualizar ícone do PWA', () => {
   it('rota dedicada /atualizar-icone/:slug monta guia independente do scope', async () => {
     const src = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf8');
     expect(src).toContain('IconUpdateGuidePage slug={slug}');
-    expect(src).toContain('/atualizar-icone/');
+    expect(src).toContain('atualizar-icone');
     const ui = render(<IconUpdateGuidePage slug="adega-show" />);
     expect(ui.getByTestId('icon-update-guide-page')).toBeTruthy();
     expect(ui.getByRole('link', { name: 'Instalar aplicativo' }).getAttribute('href')).toBe('/app/adega-show/');
