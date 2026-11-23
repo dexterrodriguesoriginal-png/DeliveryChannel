@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import {
   IconUpdateNotice, IconUpdateBrowserGuide, chromeIconUpdateIntent,
   iconUpdateDismissKey, ICON_UPDATE_TEXT,
 } from '../IconUpdateNotice';
 import { storeIconVersion, type StoreIdentityInput } from '../../../lib/pwa/storeManifest';
+import { captureInstallEvents, clearDeferredPrompt } from '../../../lib/pwa/installState';
 
 const A = 'https://cdn.example/loja-a.png';
 const B = 'https://cdn.example/loja-b.png';
@@ -27,7 +28,7 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/app/adega-show/');
   setStandalone(true);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); clearDeferredPrompt(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('aviso para atualizar ícone do PWA', () => {
   it('aparece instalado no Android quando a logo mudou e foi confirmada', () => {
@@ -81,6 +82,23 @@ describe('aviso para atualizar ícone do PWA', () => {
       `${window.location.origin}/app/adega-show/`
     ));
   });
+  it('Chrome externo aciona o evento beforeinstallprompt já capturado', async () => {
+    setStandalone(false);
+    window.history.replaceState(null, '', '/app/adega-show/?atualizar_icone=1');
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: android });
+    captureInstallEvents(window);
+    const ui = render(<IconUpdateBrowserGuide />);
+    const prompt = vi.fn().mockResolvedValue(undefined);
+    const event = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
+      prompt, userChoice: Promise.resolve({ outcome: 'accepted' as const }),
+    });
+    await act(async () => { window.dispatchEvent(event); });
+    const button = ui.getByRole('button', { name: 'Instalar aplicativo' }) as HTMLButtonElement;
+    await waitFor(() => expect(button.disabled).toBe(false));
+    fireEvent.click(button);
+    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+  });
+
   it('Chrome externo com parâmetro apresenta guia superior e usa beforeinstallprompt quando disponível', async () => {
     setStandalone(false);
     window.history.replaceState(null, '', '/app/adega-show/?atualizar_icone=1');
