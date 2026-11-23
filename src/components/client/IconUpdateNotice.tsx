@@ -146,10 +146,10 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
             </a>
           ) : (
             <>
-              <p className="text-xs text-gray-600">Abra no Safari, toque em Compartilhar e depois Adicionar à Tela de Início.</p>
+              <p className="text-xs text-gray-600">Toque em Atualizar app para copiar o endereço. Abra-o no Safari e selecione Compartilhar → Adicionar à Tela de Início.</p>
               <Button type="button" variant="primary" size="sm"
                 leftIcon={<Copy className="h-3.5 w-3.5" />} onClick={() => void copyLink()}>
-                {copied ? 'Link copiado' : 'Copiar link'}
+                {copied ? 'Link copiado' : 'Atualizar app'}
               </Button>
             </>
           )}
