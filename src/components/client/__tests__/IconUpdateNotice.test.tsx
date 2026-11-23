@@ -91,6 +91,6 @@ describe('aviso para atualizar ícone do PWA', () => {
     expect(guide.textContent).toContain('Passo 1.');
     expect(guide.textContent).toContain('Passo 2.');
     expect(guide.textContent).toContain('Se aparecer Abrir em vez de Instalar');
-    expect(ui.getByRole('button', { name: 'Instalar aplicativo' })).toBeDisabled();
+    expect((ui.getByRole('button', { name: 'Instalar aplicativo' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
