@@ -17,7 +17,7 @@ const store: StoreIdentityInput = {
 };
 const android = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/144.0 Mobile Safari/537.36';
 const ios = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1';
-const setStandalone = (enabled: boolean) => vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+const setStandalone = (enabled: boolean) => vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
   matches: enabled && query === '(display-mode: standalone)', media: query,
   addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(),
   removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
@@ -73,7 +73,7 @@ describe('aviso para atualizar ícone do PWA', () => {
   });
   it('iPhone mostra instruções do Safari e copia o link da loja', async () => {
     const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
-    vi.stubGlobal('navigator', Object.assign(Object.create(navigator), { clipboard, userAgent: ios }));
+    vi.stubGlobal('navigator', { clipboard, userAgent: ios });
     const ui = render(<IconUpdateNotice store={store} userAgent={ios} />);
     expect(ui.queryByRole('button', { name: 'Atualizar ícone' })).toBeNull();
     expect(ui.getByText(/Abra no Safari/)).toBeTruthy();
