@@ -139,7 +139,7 @@ export function IconUpdateNotice({ store, installed, userAgent, storage, onNavig
           {android ? (
             <a href={chromeIconUpdateIntent(store.slug, window.location.origin)}
               target="_blank" rel="noopener noreferrer"
-              data-testid="icon-update-open-chrome" onClick={openChrome}
+              data-testid="icon-update-open-chrome" onClick={(event) => { if (onNavigate) event.preventDefault(); openChrome(); }}
               className="inline-flex items-center justify-center rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800">
               Atualizar ícone
             </a>
