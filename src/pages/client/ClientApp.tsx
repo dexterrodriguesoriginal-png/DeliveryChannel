@@ -315,13 +315,6 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       setNewestLaunched(currentIdentity);
     } catch { /* privado: não bloquear a vitrine */ }
   }, [previewMode, currentIdentity, slug, standalone, runningIdentity]);
-  useEffect(() => {
-    if (previewMode || standalone || !currentIdentity || !slug || isLoadingStore || !storeData) return;
-    if (runningIdentity || new URLSearchParams(window.location.search).has('mesa') ||
-        new URLSearchParams(window.location.search).get('preview') === '1') return;
-    const destination = versionedStoreScope(slug, currentIdentity) + window.location.search + window.location.hash;
-    window.location.replace(destination);
-  }, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity]);
   // Mantém #store-boot exatamente como está; somente aguarda a decisão sobre
   // a apresentação para não mostrar a vitrine brevemente antes da mídia.
   useEffect(() => {
@@ -1107,6 +1100,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const reloadUnsafe = navTab !== 'home' || Boolean(selectedProductModal) || Boolean(selectedPromoOffer)
     || isCheckoutOpen || isPromoCheckoutOpen || isAuthModalOpen || isAccountOpen
     || addressFlow.open || isSubmittingOrder || Boolean(completedOrder);
+  const versionedRedirectStarted = useRef(false);
+  useEffect(() => {
+    if (previewMode || standalone || !currentIdentity || !slug || isLoadingStore || !storeData || reloadUnsafe) return;
+    if (runningIdentity || new URLSearchParams(window.location.search).has('mesa') ||
+        new URLSearchParams(window.location.search).get('preview') === '1' || versionedRedirectStarted.current) return;
+    const destination = versionedStoreScope(slug, currentIdentity) + window.location.search + window.location.hash;
+    versionedRedirectStarted.current = true;
+    window.location.replace(destination);
+  }, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity, reloadUnsafe]);
   useEffect(() => {
     setPwaAutoReloadBlocked('client-app', reloadUnsafe);
     return () => setPwaAutoReloadBlocked('client-app', false);
