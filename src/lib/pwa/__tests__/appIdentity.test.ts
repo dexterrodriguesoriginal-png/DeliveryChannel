@@ -5,6 +5,8 @@ import {
 } from '../appIdentity';
 import { extractStoreSlugFromPath, resolvePwaScope } from '../registerSw';
 import { emailRedirectUrl } from '../../auth/authRedirect';
+import { storeAppIdentity, storeIconVersion, type StoreIdentityInput } from '../storeManifest';
+import { appBaseNavColorToSave, isVersionedStoreApp } from '../appVersionMode';
 
 describe('appIdentity', () => {
   it('separa slug e versão', () => {
@@ -47,5 +49,55 @@ describe('appIdentity', () => {
     expect(isOwnManifestHref('/app/a~0123456789/manifest.webmanifest', 'a')).toBe(true);
     expect(isOwnManifestHref('/app/b~0123456789/manifest.webmanifest', 'a')).toBe(false);
     expect(isOwnManifestHref('/app/a~bad/manifest.webmanifest', 'a')).toBe(false);
+  });
+});
+
+describe('identidade de instalação — ícone e barra de navegação', () => {
+  const base: StoreIdentityInput = {
+    id: 'tenant-1', slug: 'loja', name: 'Loja',
+    iconContentHash: 'digest-1',
+    theme: { storeName: 'Loja', logoUrl: '/logo.png', navBarColor: '#334455',
+      statusBarColor: '#102030', headerColor: '#456789', primaryColor: '#445566' },
+  };
+  it('mesmos dados produzem exatamente 10 caracteres hexadecimais estáveis', () => {
+    const version = storeAppIdentity(base);
+    expect(version).toMatch(/^[0-9a-f]{10}$/);
+    expect(storeAppIdentity({ ...base, theme: { ...base.theme } })).toBe(version);
+  });
+  it('muda só com a imagem, o digest ou a barra nav resolvida', () => {
+    const before = storeAppIdentity(base);
+    expect(storeAppIdentity({ ...base, theme: { ...base.theme, logoUrl: '/new.png' } })).not.toBe(before);
+    expect(storeAppIdentity({ ...base, iconContentHash: 'digest-2' })).not.toBe(before);
+    expect(storeAppIdentity({ ...base, theme: { ...base.theme, navBarColor: '#223344' } })).not.toBe(before);
+    expect(storeAppIdentity({ ...base, theme: { ...base.theme, navBarColor: '#345' } }))
+      .toBe(storeAppIdentity({ ...base, theme: { ...base.theme, navBarColor: '#334455' } }));
+    expect(storeIconVersion({ ...base, theme: { ...base.theme, navBarColor: '#223344' } }))
+      .toBe(storeIconVersion(base)); // PNG nunca muda só por causa da barra
+  });
+  it('não muda com nome, slogan, cores de status/primária/cabeçalho, nem timestamps com logo', () => {
+    const other = {
+      ...base, name: 'Outro nome', updatedAt: '2026-01-02',
+      theme: {
+        ...base.theme, storeName: 'Outro nome', shortName: 'Curto', tagline: 'Nova frase',
+        primaryColor: '#eefecc', headerColor: '#112233', statusBarColor: '#ffffff',
+        updatedAt: '2026-01-03',
+      },
+    };
+    expect(storeAppIdentity(other)).toBe(storeAppIdentity(base));
+  });
+  it('sem logo, nome e cor das iniciais fazem parte do hash de instalação', () => {
+    const noLogo: StoreIdentityInput = { ...base, theme: { storeName: 'Loja', navBarColor: '#334455' } };
+    expect(storeAppIdentity({ ...noLogo, name: 'Outra', theme: { ...noLogo.theme, storeName: 'Outra' } }))
+      .not.toBe(storeAppIdentity(noLogo));
+  });
+  it('não habilita versão antes da primeira mudança confirmada de logo ou nav', () => {
+    expect(isVersionedStoreApp(base)).toBe(false);
+    expect(isVersionedStoreApp({ ...base, appBaseLogoUrl: '/before.png', logoConfirmedUrl: '/different.png' })).toBe(false);
+    expect(isVersionedStoreApp({ ...base, appBaseLogoUrl: '/before.png', logoConfirmedUrl: '/logo.png' })).toBe(true);
+    expect(isVersionedStoreApp({ ...base, appBaseNavColor: '#334455' })).toBe(false);
+    expect(isVersionedStoreApp({ ...base, appBaseNavColor: '#112233' })).toBe(true);
+    expect(appBaseNavColorToSave(undefined, '#334455', '#334455')).toBeUndefined();
+    expect(appBaseNavColorToSave(undefined, '#334455', '#112233')).toBe('#334455');
+    expect(appBaseNavColorToSave('#334455', '#112233', '#223344')).toBe('#334455');
   });
 });
