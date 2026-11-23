@@ -150,6 +150,8 @@ describe('aviso para atualizar ícone do PWA', () => {
     const guide = ui.getByTestId('icon-update-guide');
     expect(guide.textContent).toContain('Passo 1.');
     expect(guide.textContent).toContain('Passo 2.');
+    expect(guide.textContent).toContain('Remova a versão antiga do app (toque e segure o app na tela inicial e escolha Remover/Desinstalar).');
+    expect(guide.textContent).not.toContain('Se não aparecer a instalação');
     expect(guide.textContent).toContain('Se aparecer Abrir em vez de Instalar');
     const install = ui.getByRole('link', { name: 'Instalar aplicativo' }) as HTMLAnchorElement;
     expect(install.getAttribute('href')).toBe('/app/adega-show/');
