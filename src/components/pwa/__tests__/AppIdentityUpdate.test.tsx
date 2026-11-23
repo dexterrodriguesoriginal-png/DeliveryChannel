@@ -80,6 +80,7 @@ describe('instalação antiga substituída', () => {
     expect(links).toHaveLength(1);
     expect(links[0].textContent).toBe('Abrir nova versão');
     expect(links[0].getAttribute('href')).toBe('/app/loja~0123456789/?source=pwa');
+    expect(links[0].hasAttribute('target')).toBe(false);
     expect(screen.querySelector('button')).toBeNull();
     expect(screen.innerHTML).not.toContain('intent://');
   });
