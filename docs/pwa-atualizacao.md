@@ -24,9 +24,16 @@ O manifesto da rota estável nunca vira manifesto versionado: o cliente do WebAP
 
 ## Aviso para a versão antiga
 
-Se o app instalado em standalone for o estável ou um `~hash` antigo e a nova versão ainda **não** tiver sido aberta naquele aparelho, mostramos apenas “Atualize para a nova versão” e a ação “Atualizar”. No Android, o link real de usuário abre `intent://` com `package=com.android.chrome`, `launchFlags=0x10000000` e fallback HTTPS apontando **diretamente para a loja versionada**. O Chrome deve oferecer o fluxo normal de instalar o app; não existe mais a rota auxiliar `/atualizar-app/` e não usamos `?reinstall=1`.
+Se o app instalado em standalone for o estável ou um `~hash` antigo e a nova versão ainda **não** tiver sido aberta naquele aparelho, mostramos apenas “Atualize para a nova versão” e a ação “Atualizar”. No Android, o caminho padrão abre **no gesto do usuário** a URL HTTPS `/app/<slug>~<hash10>/?instalar=1` com `window.open(url, '_blank', 'noopener')`. Se a janela for bloqueada (`null`) ou o navegador lançar exceção, usa `window.location.href = url`. Em WebAPK do Chrome, uma navegação externa costuma abrir um **Chrome Custom Tab**, não necessariamente o aplicativo Chrome completo; o instalador próprio da página lida com esse cenário. Não usamos `?reinstall=1` nem a rota antiga `/atualizar-app/`.
 
-Se o intent não tirar o app instalado do primeiro plano em 1,5 s ou em um webview que bloqueia intents, mostramos “Copiar link” para o endereço HTTPS versionado, com instruções para abrir no Chrome. Em iOS, a ação oferece copiar o link; não promete abrir Chrome.
+Para testes em dispositivo, o armazenamento local da origem aceita a chave `dc:update-open-mode` com **somente** três valores:
+- `window` (padrão): o fluxo HTTPS acima.
+- `chrome-component` (experimental): âncora temporária com intent Android VIEW/BROWSABLE, componente `com.android.chrome/com.google.android.apps.chrome.Main`, `launchFlags=0x10000000` e `S.browser_fallback_url` HTTPS.
+- `googlechrome-scheme` (experimental): âncora `googlechrome://navigate?url=<URL codificada>`.
+
+Outros valores voltam ao modo `window`. Não há controle visível para o usuário. Nos modos experimentais, se o app permanecer visível e standalone após 1,5 segundo ou estiver em webview conhecido, mostramos “Copiar link” e a orientação para abrir a URL no Chrome. O timer **nunca** abre outra janela sem gesto do usuário. Em iOS, a ação continua copiando a URL HTTPS, sem prometer abrir o Chrome.
+
+A rota versionada com `?instalar=1`, quando aberta **fora do modo standalone** e com hash oficial atual, apresenta somente a logo e o nome da loja e o botão **Instalar**. Esse botão usa o evento `beforeinstallprompt` capturado por `installState`. Aceitar o convite não confirma a instalação: aguarda o evento `appinstalled` para mostrar “Pronto. Abra o novo app na tela do seu celular.” Sem prompt após 8 segundos, ou se ele for dispensado, a página orienta: “Toque em ⋮ e em Abrir no Chrome”. O sinal da versão nova só é escrito quando o cliente realmente abre o novo app em standalone.
 
 Apenas o app oficial atual `~hash`, **aberto em standalone**, grava `localStorage[dc:app-identity:<slug>] = <hash10>`. O navegador comum nunca grava. Depois disso, se o usuário abrir uma versão antiga, ela mostra **somente uma tela bloqueante**:
 
@@ -38,4 +45,4 @@ A única ação é “Abrir nova versão”, link HTTPS normal para o `start_url
 
 `/api/pwa/version` continua disponibilizando a versão do build e `identityVersion` para atualizações normais. O mecanismo de CSS/tema em runtime e `theme-color` não é substituído. Ícones inválidos continuam respondendo 503 sem cache e nunca são substituídos por iniciais quando uma logo estava configurada.
 
-**Teste obrigatório em aparelho físico:** verificar se o Android Chrome respeita o intent fora do WebAPK, se apresenta a instalação versionada como um segundo aplicativo e se as duas instalações coexistem. A visibilidade do novo ícone e a captura de links dependem da versão do Android, Chrome e políticas WebAPK. A implementação do link não garante sozinha esse comportamento.
+**Teste obrigatório em aparelho físico:** verificar como o WebAPK abre o endereço HTTPS em uma janela/Custom Tab, se o prompt nativo funciona e se a versão nova pode coexistir com a antiga. A visibilidade do novo ícone e a captura de links dependem da versão do Android, Chrome e políticas WebAPK. A implementação do link não garante sozinha esse comportamento.
