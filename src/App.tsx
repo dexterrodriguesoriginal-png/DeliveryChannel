@@ -3,7 +3,7 @@ import { storeSlugFromAppPath } from './lib/pwa/appIdentity';
 import { TvScreen } from './components/pickup/TvScreen';
 import { InstallDriverAppHint } from './components/driver/InstallDriverAppHint';
 import { LegalBoundary, CookieBanner } from './components/legal/LegalUI';
-import { getIconNoticeVisible, subscribeIconNotice } from './components/client/IconUpdateNotice';
+import { getReplacedScreenVisible, subscribeReplacedScreen } from './components/client/IconUpdateNotice';
 import { isEmbeddedPreview } from './lib/theme/previewBridge';
 import { FeedbackPage } from './pages/establishment/FeedbackPage';
 import { CallScreen } from './components/pickup/CallScreen';
@@ -833,7 +833,7 @@ function AppContent() {
 
 /** Na tela bloqueante não deve haver banner de consentimento interativo sobre a única ação permitida. */
 function CookieBannerWhenAvailable() {
-  const updateOverlayVisible = useSyncExternalStore(subscribeIconNotice, getIconNoticeVisible, () => false);
+  const updateOverlayVisible = useSyncExternalStore(subscribeReplacedScreen, getReplacedScreenVisible, () => false);
   return updateOverlayVisible ? null : <CookieBanner />;
 }
 
