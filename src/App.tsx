@@ -1,5 +1,6 @@
 import { confirmPendingDesignNavigation } from './lib/ui/useUnsavedChanges';
 import { storeSlugFromAppPath } from './lib/pwa/appIdentity';
+import { IconUpdateGuidePage } from './components/client/IconUpdateNotice';
 import { TvScreen } from './components/pickup/TvScreen';
 import { InstallDriverAppHint } from './components/driver/InstallDriverAppHint';
 import { LegalBoundary, CookieBanner } from './components/legal/LegalUI';
@@ -834,6 +835,13 @@ export default function App() {
   // A TV não inicializa sessão, painel, consentimento analítico ou contexto de equipe.
   if (/^\/tv\/?$/.test(window.location.pathname)) {
     return <ScreenErrorBoundary><TvScreen /></ScreenErrorBoundary>;
+  }
+  // Fora de qualquer /app/<slug>/ scope: o Chrome abre este guia como aba externa.
+  const iconGuideSlug = /^\/atualizar-icone\/([^/]+)\/?$/.exec(window.location.pathname)?.[1];
+  if (iconGuideSlug) {
+    let slug: string;
+    try { slug = decodeURIComponent(iconGuideSlug); } catch { slug = iconGuideSlug; }
+    return <ScreenErrorBoundary><IconUpdateGuidePage slug={slug} /></ScreenErrorBoundary>;
   }
   return (
     <AuthProvider>
