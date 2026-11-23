@@ -36,8 +36,9 @@ describe('appIdentity', () => {
   });
   it('intent do Chrome', () => {
     const u = 'https://x.com/app/a~0123456789/?reinstall=1';
-    expect(chromeIntentUrl(u, { android: true })).toBe(`intent://x.com/app/a~0123456789/?reinstall=1#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(u)};end`);
+    expect(chromeIntentUrl(u, { android: true })).toBe(`intent://x.com/app/a~0123456789/?reinstall=1#Intent;scheme=https;package=com.android.chrome;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(u)};end`);
     expect(chromeIntentUrl(u, { android: true, package: null })).not.toContain('package=');
+    expect(chromeIntentUrl(u, { android: true })).toContain('launchFlags=0x10000000');
     expect(chromeIntentUrl(u, { android: false })).toBe(u);
     expect(chromeIntentUrl('http://x.com/', { android: true })).toBe('http://x.com/');
   });
