@@ -3,7 +3,7 @@
  * Nunca remova tags destas categorias em outras rotas.
  */
 export const isIconUpdateGuidePath = (pathname: string): boolean =>
-  /^\/atualizar-icone\/[^/]+\/?$/.test(pathname);
+  /^\/atualizar-app\/[^/]+\/?$/.test(pathname);
 
 /** Remove somente os sinais de instalação global do HTML de entrada. */
 export function stripGlobalPwaInstallHead(html: string): string {
