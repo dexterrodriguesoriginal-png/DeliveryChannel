@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { IconUpdateNotice, chromeIconUpdateIntent, getIconNoticeVisible, storeIconUpdateUrl } from '../IconUpdateNotice';
+import type { StoreIdentityInput } from '../../../lib/pwa/storeManifest';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -10,6 +11,14 @@ const android = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/144.0
 const ios = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1';
 const VERSION = '0123456789';
 const slug = 'adega-show';
+const store: StoreIdentityInput = {
+  id: 'tenant-a', slug, name: 'Adega Show',
+  appBaseLogoUrl: 'https://cdn.example/logo-original.png',
+  logoConfirmedUrl: 'https://cdn.example/logo-atual.png',
+  appBaseNavColor: '#334455', iconContentHash: '0123456789abcdef01234567',
+  theme: { storeName: 'Adega Show', logoUrl: 'https://cdn.example/logo-atual.png',
+    navBarColor: '#556677', headerColor: '#112233', statusBarColor: '#445566' },
+};
 function standalone(enabled: boolean) {
   vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
     matches: enabled && query === '(display-mode: standalone)', media: query,
@@ -25,7 +34,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.use
 
 describe('aviso único da instalação anterior', () => {
   it('mostra só título e um botão na instalação Android', () => {
-    const ui = render(<IconUpdateNotice slug={slug} currentIdentity={VERSION} userAgent={android} />);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
     const notice = ui.getByTestId('icon-update-notice');
     expect(notice.textContent).toContain('Atualize para a nova versão');
     expect(notice.textContent).not.toMatch(/ícone|logo|tela inicial/i);
@@ -35,13 +44,13 @@ describe('aviso único da instalação anterior', () => {
   });
   it('não monta aviso na aba normal', () => {
     standalone(false);
-    const ui = render(<IconUpdateNotice slug={slug} currentIdentity={VERSION} userAgent={android} />);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
     expect(ui.queryByTestId('icon-update-notice')).toBeNull();
     expect(getIconNoticeVisible()).toBe(false);
   });
   it('Android abre a URL HTTPS da nova instalação, com intent Chrome e fallback correspondente', () => {
     const navigate = vi.fn();
-    const ui = render(<IconUpdateNotice slug={slug} currentIdentity={VERSION} userAgent={android} onNavigate={navigate} />);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} onNavigate={navigate} />);
     const url = `https://${window.location.host}/app/adega-show~0123456789/`;
     const expected = `intent://${window.location.host}/app/adega-show~0123456789/#Intent;scheme=https;package=com.android.chrome;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(url)};end`;
     expect(storeIconUpdateUrl(slug, VERSION, window.location.origin)).toBe(url);
@@ -59,7 +68,7 @@ describe('aviso único da instalação anterior', () => {
     const navigate = vi.fn();
     const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
     vi.stubGlobal('navigator', { userAgent: android, clipboard });
-    const ui = render(<IconUpdateNotice slug={slug} currentIdentity={VERSION} onNavigate={navigate} />);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} onNavigate={navigate} />);
     fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
     expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
     await act(async () => { vi.advanceTimersByTime(1500); });
@@ -70,7 +79,7 @@ describe('aviso único da instalação anterior', () => {
   });
   it('não mostra fallback se visibilitychange informou que o Chrome abriu', async () => {
     vi.useFakeTimers();
-    const ui = render(<IconUpdateNotice slug={slug} currentIdentity={VERSION} userAgent={android} onNavigate={vi.fn()} />);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} onNavigate={vi.fn()} />);
     fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
     const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     fireEvent(document, new Event('visibilitychange'));
@@ -79,7 +88,7 @@ describe('aviso único da instalação anterior', () => {
     visibility.mockRestore();
   });
   it('webview mostra o fallback imediato', () => {
-    const ui = render(<IconUpdateNotice slug={slug} currentIdentity={VERSION}
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION}
       userAgent="Mozilla/5.0 (Linux; Android 14; wv) Instagram" onNavigate={vi.fn()} />);
     fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
     expect(ui.getByTestId('icon-update-fallback')).toBeTruthy();
@@ -87,7 +96,7 @@ describe('aviso único da instalação anterior', () => {
   it('iOS usa o botão Atualizar para copiar o link HTTPS da nova versão', async () => {
     const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
     vi.stubGlobal('navigator', { userAgent: ios, clipboard });
-    const ui = render(<IconUpdateNotice slug={slug} currentIdentity={VERSION} />);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} />);
     expect(ui.queryByRole('link', { name: 'Atualizar' })).toBeNull();
     fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
     await act(async () => { await Promise.resolve(); });
