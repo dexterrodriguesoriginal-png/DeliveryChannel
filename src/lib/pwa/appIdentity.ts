@@ -1,7 +1,7 @@
 /**
  * Compatibilidade com WebAPKs já instalados em /app/<slug>~<hash10>/.
- * Novas instalações usam sempre o manifesto, id e scope canônicos.
- * Estes helpers preservam identidades legadas, não criam versões novas.
+ * O app estável permanece intacto; após mudança de logo/barra, versões novas
+ * têm id e escopo próprios. Os helpers também preservam installs legados.
  */
 export const APP_IDENTITY_SEP = '~';
 export const APP_IDENTITY_RE = /^[0-9a-f]{10}$/;
@@ -76,7 +76,7 @@ export function chromeIntentUrl(url: string, opts: { android: boolean; package?:
   try { u = new URL(url); } catch { return url; }
   if (u.protocol !== 'https:') return url;
   const pkg = opts.package === undefined ? CHROME_PACKAGE : opts.package;
-  return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;${pkg ? `package=${pkg};` : ''}S.browser_fallback_url=${encodeURIComponent(url)};end`;
+  return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;${pkg ? `package=${pkg};` : ''}launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(url)};end`;
 }
 
 /** Link do manifesto injetado pelo servidor pertence a esta loja (base ou versão de identidade)? */
