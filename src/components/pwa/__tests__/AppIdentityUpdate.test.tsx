@@ -2,7 +2,7 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppIdentityUpdate } from '../AppIdentityUpdate';
+import { AppIdentityUpdate, readAppIdentityMeta } from '../AppIdentityUpdate';
 
 let root: Root;
 let container: HTMLDivElement;
@@ -23,6 +23,18 @@ async function render() {
   });
 }
 describe('instalação antiga substituída', () => {
+  it('lê só hashes de dez caracteres na meta da identidade', () => {
+    const meta = document.createElement('meta');
+    meta.name = 'dc-app-identity';
+    meta.content = '0123456789';
+    document.head.appendChild(meta);
+    try {
+      expect(readAppIdentityMeta()).toBe('0123456789');
+      meta.content = 'invalid';
+      expect(readAppIdentityMeta()).toBeNull();
+    } finally { meta.remove(); }
+  });
+
   it('bloqueia a tela toda, mostra o texto exato e somente um link HTTPS relativo para a nova versão', async () => {
     await render();
     const screen = container.querySelector('[data-testid="identity-replaced-screen"]') as HTMLElement;
