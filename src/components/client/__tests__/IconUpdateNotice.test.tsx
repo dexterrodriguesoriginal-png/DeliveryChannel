@@ -3,11 +3,13 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import {
-  IconUpdateNotice, IconUpdateBrowserGuide, chromeIconUpdateIntent,
-  iconUpdateDismissKey, ICON_UPDATE_TEXT,
+  IconUpdateNotice, IconUpdateBrowserGuide, IconUpdateGuidePage, chromeIconUpdateIntent,
+  iconUpdateDismissKey, ICON_UPDATE_TEXT, getIconNoticeVisible,
 } from '../IconUpdateNotice';
 import { storeIconVersion, type StoreIdentityInput } from '../../../lib/pwa/storeManifest';
-import { captureInstallEvents, clearDeferredPrompt } from '../../../lib/pwa/installState';
+import { clearDeferredPrompt } from '../../../lib/pwa/installState';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const A = 'https://cdn.example/loja-a.png';
 const B = 'https://cdn.example/loja-b.png';
@@ -34,7 +36,7 @@ describe('aviso para atualizar ícone do PWA', () => {
   it('aparece instalado no Android quando a logo mudou e foi confirmada', () => {
     const ui = render(<IconUpdateNotice store={store} userAgent={android} />);
     expect(ui.getByTestId('icon-update-notice').textContent).toContain(ICON_UPDATE_TEXT);
-    expect(ui.getByRole('button', { name: 'Atualizar ícone' })).toBeTruthy();
+    expect(ui.getByRole('link', { name: 'Atualizar ícone' })).toBeTruthy();
   });
   it('não aparece em aba normal nem se logo não mudou ou ainda não foi confirmada', () => {
     setStandalone(false);
@@ -67,10 +69,14 @@ describe('aviso para atualizar ícone do PWA', () => {
     const navigate = vi.fn();
     const ui = render(<IconUpdateNotice store={store} userAgent={android} onNavigate={navigate} />);
     fireEvent.click(ui.getByRole('button', { name: 'Atualizar ícone' }));
-    const canonical = `https://${window.location.host}/app/adega-show/?atualizar_icone=1`;
-    const expected = `intent://${window.location.host}/app/adega-show/?atualizar_icone=1#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(canonical)};end`;
+    const canonical = `https://${window.location.host}/atualizar-icone/adega-show`;
+    const expected = `intent://${window.location.host}/atualizar-icone/adega-show#Intent;scheme=https;package=com.android.chrome;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(canonical)};end`;
     expect(chromeIconUpdateIntent(store.slug, window.location.origin)).toBe(expected);
     expect(navigate).toHaveBeenCalledWith(expected);
+    const anchor = ui.getByTestId('icon-update-open-chrome') as HTMLAnchorElement;
+    expect(anchor.href).toBe(expected);
+    expect(anchor.target).toBe('_blank');
+    expect(anchor.rel).toContain('noopener');
   });
   it('mostra fallback em 1,5s quando o WebAPK continua standalone e visível', async () => {
     vi.useFakeTimers();
@@ -86,7 +92,7 @@ describe('aviso para atualizar ícone do PWA', () => {
       fireEvent.click(ui.getByRole('button', { name: 'Copiar link' }));
       await act(async () => { await Promise.resolve(); });
       expect(clipboard.writeText).toHaveBeenCalledWith(
-        `https://${window.location.host}/app/adega-show/?atualizar_icone=1`
+        `https://${window.location.host}/atualizar-icone/adega-show`
       );
     } finally { vi.useRealTimers(); }
   });
@@ -127,40 +133,43 @@ describe('aviso para atualizar ícone do PWA', () => {
     const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
     vi.stubGlobal('navigator', { clipboard, userAgent: ios });
     const ui = render(<IconUpdateNotice store={store} userAgent={ios} />);
-    expect(ui.queryByRole('button', { name: 'Atualizar ícone' })).toBeNull();
+    expect(ui.queryByRole('link', { name: 'Atualizar ícone' })).toBeNull();
     expect(ui.getByText(/Abra no Safari/)).toBeTruthy();
     fireEvent.click(ui.getByRole('button', { name: 'Copiar link' }));
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith(
       `${window.location.origin}/app/adega-show/`
     ));
   });
-  it('Chrome externo aciona o evento beforeinstallprompt já capturado', async () => {
-    setStandalone(false);
-    window.history.replaceState(null, '', '/app/adega-show/?atualizar_icone=1');
-    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: android });
-    captureInstallEvents(window);
-    const ui = render(<IconUpdateBrowserGuide />);
-    const prompt = vi.fn().mockResolvedValue(undefined);
-    const event = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
-      prompt, userChoice: Promise.resolve({ outcome: 'accepted' as const }),
-    });
-    await act(async () => { window.dispatchEvent(event); });
-    const button = ui.getByRole('button', { name: 'Instalar aplicativo' }) as HTMLButtonElement;
-    await waitFor(() => expect(button.disabled).toBe(false));
-    fireEvent.click(button);
-    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
-  });
-
-  it('Chrome externo com parâmetro apresenta guia superior e usa beforeinstallprompt quando disponível', async () => {
-    setStandalone(false);
-    window.history.replaceState(null, '', '/app/adega-show/?atualizar_icone=1');
-    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: android });
-    const ui = render(<IconUpdateBrowserGuide />);
+  it('link do guia fora do scope aponta para a loja, sem instalar o app global', () => {
+    const ui = render(<IconUpdateBrowserGuide slug="adega-show" storeName="Adega Show"
+      logoUrl="https://cdn.example/logo.png" />);
     const guide = ui.getByTestId('icon-update-guide');
-    expect(guide.className).toContain('top-');
     expect(guide.textContent).toContain('Passo 1.');
     expect(guide.textContent).toContain('Passo 2.');
     expect(guide.textContent).toContain('Se aparecer Abrir em vez de Instalar');
-    expect((ui.getByRole('button', { name: 'Instalar aplicativo' }) as HTMLButtonElement).disabled).toBe(true);
+    const install = ui.getByRole('link', { name: 'Instalar aplicativo' }) as HTMLAnchorElement;
+    expect(install.getAttribute('href')).toBe('/app/adega-show/');
+    expect(ui.getByAltText('Logo de Adega Show')).toBeTruthy();
   });
+
+  it('rota dedicada /atualizar-icone/:slug monta guia independente do scope', async () => {
+    const src = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+    expect(src).toContain('IconUpdateGuidePage slug={slug}');
+    expect(src).toContain('/atualizar-icone/');
+    const ui = render(<IconUpdateGuidePage slug="adega-show" />);
+    expect(ui.getByTestId('icon-update-guide-page')).toBeTruthy();
+    expect(ui.getByRole('link', { name: 'Instalar aplicativo' }).getAttribute('href')).toBe('/app/adega-show/');
+  });
+
+  it('esconde as outras notificações enquanto o aviso de ícone estiver na tela', async () => {
+    const client = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
+    const toast = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pwa/PwaUpdateToast.tsx'), 'utf8');
+    expect(client).toContain('!iconNoticeVisible && <StoreVisualUpdateNotice');
+    expect(toast).toContain('if (!visible || iconNoticeVisible) return null');
+    const ui = render(<IconUpdateNotice store={store} userAgent={android} />);
+    await waitFor(() => expect(getIconNoticeVisible()).toBe(true));
+    fireEvent.click(ui.getByRole('button', { name: 'Dispensar aviso' }));
+    await waitFor(() => expect(getIconNoticeVisible()).toBe(false));
+  });
+
 });
