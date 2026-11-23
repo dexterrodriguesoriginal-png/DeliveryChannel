@@ -1,5 +1,5 @@
 import React, { useLayoutEffect } from 'react';
-import { setIconNoticeVisible } from '../client/IconUpdateNotice';
+import { setIconNoticeVisible, setReplacedScreenVisible } from '../client/IconUpdateNotice';
 import { APP_IDENTITY_META, APP_IDENTITY_RE, versionedStartUrl } from '../../lib/pwa/appIdentity';
 
 /** O HTML canônico mantém a meta apenas no modo versionado, sem mudar o manifesto estável. */
@@ -12,7 +12,11 @@ export function readAppIdentityMeta(doc: Document | undefined = typeof document 
 export function AppIdentityUpdate({ slug, currentIdentity }: { slug: string; currentIdentity: string }) {
   useLayoutEffect(() => {
     setIconNoticeVisible(true);
-    return () => setIconNoticeVisible(false);
+    setReplacedScreenVisible(true);
+    return () => {
+      setReplacedScreenVisible(false);
+      setIconNoticeVisible(false);
+    };
   }, []);
   const nextUrl = versionedStartUrl(slug, currentIdentity);
   return (
