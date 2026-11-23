@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Copy, RefreshCw } from 'lucide-react';
 import { chromeIntentUrl, versionedStoreScope } from '../../lib/pwa/appIdentity';
+import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { detectPlatform, isStandalone } from '../../lib/pwa/installState';
 import { Button } from '../ui/Button';
 
@@ -31,7 +32,7 @@ export function setIconNoticeVisible(value: boolean) {
 
 const isBlockingWebview = (ua: string) => /;\s*wv[);]|FBAN|FBAV|Instagram|WhatsApp|\bWebView\b/i.test(ua);
 interface NoticeProps {
-  slug: string;
+  store: StoreIdentityInput;
   currentIdentity: string;
   /** Deterministic fixtures; production derives the platform from the real device. */
   installed?: boolean;
@@ -39,7 +40,8 @@ interface NoticeProps {
   onNavigate?: (url: string) => void;
 }
 
-export function IconUpdateNotice({ slug, currentIdentity, installed, userAgent, onNavigate }: NoticeProps) {
+export function IconUpdateNotice({ store, currentIdentity, installed, userAgent, onNavigate }: NoticeProps) {
+  const slug = store.slug;
   const standalone = installed ?? (typeof window !== 'undefined' && isStandalone(window));
   const ua = userAgent ?? (typeof navigator === 'undefined' ? '' : navigator.userAgent);
   const platform = detectPlatform(ua);
