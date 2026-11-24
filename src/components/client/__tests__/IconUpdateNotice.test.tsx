@@ -81,6 +81,7 @@ describe('aviso único da instalação anterior', () => {
     expect(ui.getByTestId('icon-update-fallback')).toBeTruthy();
     expect(ui.getByTestId('icon-update-no-prompt').textContent).toBe(ICON_UPDATE_CHROME_HINT);
     expect(ui.queryByTestId('icon-update-install-button')).toBeNull();
+    expect(ui.getByTestId('icon-update-copy-link').textContent).toContain('Copiar link');
   });
   it('se o app antigo continua visível após 1,5s, mostra o fallback na mesma janela', async () => {
     vi.spyOn(window, 'open').mockReturnValue({} as Window);
@@ -190,6 +191,7 @@ describe('aviso único da instalação anterior', () => {
     expect(prompt).toHaveBeenCalledTimes(1);
     expect(ui.getByTestId('icon-update-no-prompt').textContent).toBe(ICON_UPDATE_CHROME_HINT);
     expect(ui.queryByTestId('icon-update-install-button')).toBeNull();
+    expect(ui.getByTestId('icon-update-copy-link').textContent).toContain('Copiar link');
   });
   it('iOS usa o botão Atualizar para copiar o link HTTPS da nova versão', async () => {
     const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };

@@ -238,7 +238,12 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
                 <Button type="button" variant="primary" size="sm" disabled={busy} isLoading={busy}
                   data-testid="icon-update-install-button" onClick={() => void installNewVersion()}>Instalar</Button>
               ) : (
-                <p data-testid="icon-update-no-prompt" className="text-xs text-gray-800">{ICON_UPDATE_CHROME_HINT}</p>
+                <>
+                  <p data-testid="icon-update-no-prompt" className="text-xs text-gray-800">{ICON_UPDATE_CHROME_HINT}</p>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void copy()}
+                    data-testid="icon-update-copy-link"
+                    leftIcon={<Copy className="h-3.5 w-3.5" />}>{copied ? 'Link copiado' : 'Copiar link'}</Button>
+                </>
               )}
             </div>
           )}
