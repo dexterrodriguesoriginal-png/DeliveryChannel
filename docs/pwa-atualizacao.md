@@ -24,14 +24,20 @@ O manifesto da rota estável nunca vira manifesto versionado: o cliente do WebAP
 
 ## Aviso para a versão antiga
 
-Se o app instalado em standalone for o estável ou um `~hash` antigo e a nova versão ainda **não** tiver sido aberta naquele aparelho, mostramos apenas “Atualize para a nova versão” e a ação “Atualizar”. No Android, o caminho padrão abre **no gesto do usuário** a URL HTTPS `/app/<slug>~<hash10>/?instalar=1` com `window.open(url, '_blank', 'noopener')`. Se a janela for bloqueada (`null`) ou o navegador lançar exceção, usa `window.location.href = url`. Em WebAPK do Chrome, uma navegação externa costuma abrir um **Chrome Custom Tab**, não necessariamente o aplicativo Chrome completo; o instalador próprio da página lida com esse cenário. Não usamos `?reinstall=1` nem a rota antiga `/atualizar-app/`.
+Se o app instalado em standalone for o estável ou um `~hash` antigo e a nova versão ainda **não** tiver sido aberta naquele aparelho, mostramos apenas “Atualize para a nova versão” e a ação “Atualizar”. No Android, o caminho padrão encadeia fallbacks no **gesto do usuário**, para o cliente conseguir instalar a versão nova:
 
-Para testes em dispositivo, o armazenamento local da origem aceita a chave `dc:update-open-mode` com **somente** três valores:
-- `window` (padrão): o fluxo HTTPS acima.
+1. Tenta abrir o Chrome com a URL HTTPS `/app/<slug>~<hash10>/?instalar=1` via `window.open(url, '_blank')` (sem `noopener` na lista de recursos: com ele `window.open` devolve `null` mesmo quando a janela abre). Se a abertura funcionar, a janela atual permanece no app antigo.
+2. Se a janela for bloqueada (`null`), o navegador lançar exceção, ou o app antigo continuar visível e standalone após **1,5 segundo**, não navegamos a janela atual. Mostramos o botão **Instalar**, que dispara o `beforeinstallprompt` retido, no próprio aviso.
+3. Se não houver prompt nativo (ou ele for dispensado), mostramos só a dica mínima: “Toque em ⋮ e em Abrir no Chrome”.
+
+Em WebAPK do Chrome, uma navegação externa costuma abrir um **Chrome Custom Tab**, não necessariamente o aplicativo Chrome completo; o instalador da página `?instalar=1` e o fallback acima cobrem esse cenário. Não usamos `?reinstall=1`, a rota antiga `/atualizar-app/` nem `window.location.href` no app antigo (isso impediria o fallback e poderia registrar a identidade cedo demais).
+
+Para testes em dispositivo, o parâmetro `?modo=window|chrome-component|googlechrome-scheme` grava a chave `dc:update-open-mode` na origem atual e some do endereço. A chave aceita **somente** esses três valores, que escolhem o primeiro passo da cadeia:
+- `window` (padrão): o `window.open` HTTPS acima.
 - `chrome-component` (experimental): âncora temporária com intent Android VIEW/BROWSABLE, componente `com.android.chrome/com.google.android.apps.chrome.Main`, `launchFlags=0x10000000` e `S.browser_fallback_url` HTTPS.
 - `googlechrome-scheme` (experimental): âncora `googlechrome://navigate?url=<URL codificada>`.
 
-Outros valores voltam ao modo `window`. Não há controle visível para o usuário. Nos modos experimentais, se o app permanecer visível e standalone após 1,5 segundo ou estiver em webview conhecido, mostramos “Copiar link” e a orientação para abrir a URL no Chrome. O timer **nunca** abre outra janela sem gesto do usuário. Em iOS, a ação continua copiando a URL HTTPS, sem prometer abrir o Chrome.
+Outros valores (e a ausência do parâmetro) não alteram a chave; valores inválidos na chave voltam ao modo `window`. Não há controle visível para o usuário. Em todos os modos, se o app permanecer visível e standalone após 1,5 segundo ou estiver em webview conhecido, vale a mesma cadeia Instalar → dica do ⋮. O timer **nunca** abre outra janela sem gesto do usuário. Em iOS, a ação continua copiando a URL HTTPS, sem prometer abrir o Chrome.
 
 A rota versionada com `?instalar=1`, quando aberta **fora do modo standalone** e com hash oficial atual, apresenta somente a logo e o nome da loja e o botão **Instalar**. Esse botão usa o evento `beforeinstallprompt` capturado por `installState`. Aceitar o convite não confirma a instalação: aguarda o evento `appinstalled` para mostrar “Pronto. Abra o novo app na tela do seu celular.” Sem prompt após 8 segundos, ou se ele for dispensado, a página orienta: “Toque em ⋮ e em Abrir no Chrome”. O sinal da versão nova só é escrito quando o cliente realmente abre o novo app em standalone.
 
