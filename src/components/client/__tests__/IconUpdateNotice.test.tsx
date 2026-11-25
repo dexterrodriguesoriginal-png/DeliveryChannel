@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { IconUpdateNotice, applyUpdateOpenModeFromSearch, consumeUpdateOpenModeParam, experimentalUpdateUrl, getUpdateOpenMode, getIconNoticeVisible, getReplacedScreenVisible, storeIconUpdateUrl, ICON_UPDATE_CHROME_HINT, ICON_UPDATE_INSTALLED_TEXT, UPDATE_OPEN_MODE_KEY } from '../IconUpdateNotice';
 import { captureInstallEvents, clearDeferredPrompt } from '../../../lib/pwa/installState';
+import { hasFreshPendingInstall } from '../../../lib/pwa/installSession';
 import type { StoreIdentityInput } from '../../../lib/pwa/storeManifest';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -64,6 +65,7 @@ describe('aviso único da instalação anterior', () => {
     expect(getUpdateOpenMode()).toBe('window');
     expect(storeIconUpdateUrl(slug, VERSION, window.location.origin)).toBe(installUrl);
     fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    expect(hasFreshPendingInstall(slug)).toBe(true);
     expect(open).toHaveBeenCalledWith(installUrl, '_blank');
     expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
     expect(installUrl).not.toMatch(/ícone|icone|logo|reinstall/i);
@@ -188,6 +190,7 @@ describe('aviso único da instalação anterior', () => {
       fireEvent.click(install);
       for (let i = 0; i < 4; i++) await Promise.resolve();
     });
+    expect(hasFreshPendingInstall(slug)).toBe(true);
     expect(prompt).toHaveBeenCalledTimes(1);
     expect(ui.getByTestId('icon-update-no-prompt').textContent).toBe(ICON_UPDATE_CHROME_HINT);
     expect(ui.queryByTestId('icon-update-install-button')).toBeNull();
@@ -248,7 +251,7 @@ describe('aviso único da instalação anterior', () => {
     expect(client).not.toContain('IconUpdateBrowserGuide');
     expect(client).toContain("!iconNoticeVisible && (!runningIdentity || standalone) && <StoreVisualUpdateNotice");
     const toast = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pwa/PwaUpdateToast.tsx'), 'utf8');
-    expect(toast).toContain('if (!visible || iconNoticeVisible) return null');
+    expect(toast).toContain('iconNoticeVisible || isInstallSession(window.location.search)');
     const main = fs.readFileSync(path.resolve(process.cwd(), 'src/main.tsx'), 'utf8');
     expect(main).toContain('consumeUpdateOpenModeParam(window)');
     const notice = fs.readFileSync(path.resolve(process.cwd(), 'src/components/client/IconUpdateNotice.tsx'), 'utf8');

@@ -11,6 +11,7 @@ import { detachGlobalManifestForStoreRoute } from './lib/pwa/applyStoreIdentity'
 import { isTotemRoute } from './lib/pwa/totemManifest';
 import { captureInstallEvents } from './lib/pwa/installState';
 import { consumeUpdateOpenModeParam } from './components/client/IconUpdateNotice';
+import { applyInstallSessionFromLocation } from './lib/pwa/installSession';
 import { registerPwaServiceWorker } from './lib/pwa/registerSw';
 import { storeAppCanonicalPath } from './lib/pwa/storeScopeUrl';
 import { PwaUpdateToast } from './components/pwa/PwaUpdateToast';
@@ -46,6 +47,8 @@ if (storeCanonical) window.history.replaceState(window.history.state, '', storeC
 captureInstallEvents(window);
 // ?modo= seleciona o experimento de abertura do Chrome (testes no aparelho).
 consumeUpdateOpenModeParam(window);
+// Se o prompt nativo abriu o start_url sem ?instalar=1, recupera a sessão de instalação.
+applyInstallSessionFromLocation(window);
 
 // Rotas de loja (/app/<slug>) nunca herdam o manifesto global da plataforma.
 detachGlobalManifestForStoreRoute(window.location.pathname);

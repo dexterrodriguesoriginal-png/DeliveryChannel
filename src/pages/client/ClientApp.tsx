@@ -138,6 +138,7 @@ import { hideBootScreen } from '../../lib/pwa/bootScreen';
 import { StorePresentationScreen } from '../../components/pwa/StorePresentationScreen';
 import { markPresentationShown, prefersReducedMotion, presentationPlan, type PresentationPlan, shouldShowPresentation } from '../../lib/pwa/presentation';
 import { identityStatus, newestLaunchedKey, splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath, versionedStoreScope } from '../../lib/pwa/appIdentity';
+import { isInstallSession, clearPendingInstall } from '../../lib/pwa/installSession';
 import { AppIdentityUpdate, readAppIdentityMeta } from '../../components/pwa/AppIdentityUpdate';
 import { shouldShowVersionInstallScreen, VersionInstallScreen } from '../../components/pwa/VersionInstallScreen';
 import { newIdempotencyKey } from '../../lib/pricing/idempotency';
@@ -258,7 +259,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   });
   const appStatus = !previewMode && currentIdentity
     ? identityStatus({
-        standalone, runningIdentity, currentIdentity, newestLaunched, reinstallRequested: false,
+        standalone, runningIdentity, currentIdentity, newestLaunched,
+        reinstallRequested: isInstallSession(window.location.search),
       })
     : 'current';
   const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
@@ -311,9 +313,12 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   }, [slug, previewMode]);
   useEffect(() => {
     if (previewMode || !currentIdentity || !slug || !standalone || runningIdentity !== currentIdentity) return;
+    // Custom Tab do app antigo com ?instalar=1 parece standalone; não registrar a versão como já aberta.
+    if (isInstallSession(window.location.search)) return;
     try {
       localStorage.setItem(newestLaunchedKey(slug), currentIdentity);
       setNewestLaunched(currentIdentity);
+      clearPendingInstall(slug);
     } catch { /* privado: não bloquear a vitrine */ }
   }, [previewMode, currentIdentity, slug, standalone, runningIdentity]);
   // Mantém #store-boot exatamente como está; somente aguarda a decisão sobre

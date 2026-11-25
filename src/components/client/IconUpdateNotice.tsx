@@ -3,6 +3,7 @@ import { Copy, RefreshCw } from 'lucide-react';
 import { versionedStoreScope } from '../../lib/pwa/appIdentity';
 import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { detectPlatform, isStandalone, getDeferredPrompt, subscribeInstall, wasAppInstalledEvent, clearDeferredPrompt } from '../../lib/pwa/installState';
+import { markPendingInstall } from '../../lib/pwa/installSession';
 import { Button } from '../ui/Button';
 
 export const ICON_UPDATE_TEXT = 'Atualize para a nova versão';
@@ -153,6 +154,7 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
   const installNewVersion = async () => {
     const prompt = getDeferredPrompt();
     if (!prompt || busy) return;
+    markPendingInstall(slug);
     setBusy(true);
     try {
       await prompt.prompt();
@@ -167,6 +169,7 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
   const onAndroidClick = () => {
     const mode = getUpdateOpenMode();
     // Executar diretamente no gesto do usuário: popups disparados por timers são bloqueados.
+    markPendingInstall(slug);
     left.current = false;
     setShowFallback(isBlockingWebview(ua));
     if (mode === 'window') {
