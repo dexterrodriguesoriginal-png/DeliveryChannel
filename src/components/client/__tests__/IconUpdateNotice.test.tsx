@@ -65,7 +65,7 @@ describe('aviso único da instalação anterior', () => {
     expect(getUpdateOpenMode()).toBe('window');
     expect(storeIconUpdateUrl(slug, VERSION, window.location.origin)).toBe(installUrl);
     fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
-    expect(hasFreshPendingInstall(slug)).toBe(true);
+    expect(hasFreshPendingInstall(slug, VERSION)).toBe(true);
     expect(open).toHaveBeenCalledWith(installUrl, '_blank');
     expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
     expect(installUrl).not.toMatch(/ícone|icone|logo|reinstall/i);
@@ -190,7 +190,7 @@ describe('aviso único da instalação anterior', () => {
       fireEvent.click(install);
       for (let i = 0; i < 4; i++) await Promise.resolve();
     });
-    expect(hasFreshPendingInstall(slug)).toBe(true);
+    expect(hasFreshPendingInstall(slug, VERSION)).toBe(true);
     expect(prompt).toHaveBeenCalledTimes(1);
     expect(ui.getByTestId('icon-update-no-prompt').textContent).toBe(ICON_UPDATE_CHROME_HINT);
     expect(ui.queryByTestId('icon-update-install-button')).toBeNull();

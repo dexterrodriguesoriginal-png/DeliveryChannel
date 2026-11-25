@@ -31,24 +31,27 @@ describe('installSession', () => {
     expect(INSTALL_PARAM).toBe('instalar');
   });
 
-  it('marca pendente com validade e limpa', () => {
+  it('marca pendente com validade, identidade alvo e limpa', () => {
     const s = memory();
-    expect(hasFreshPendingInstall('loja', s, 1000)).toBe(false);
-    markPendingInstall('loja', s, 1000);
-    expect(s.getItem(pendingInstallKey('loja'))).toBe('1000');
-    expect(hasFreshPendingInstall('loja', s, 1000 + PENDING_INSTALL_TTL_MS - 1)).toBe(true);
-    expect(hasFreshPendingInstall('loja', s, 1000 + PENDING_INSTALL_TTL_MS)).toBe(false);
-    expect(hasFreshPendingInstall('outra', s, 1000)).toBe(false);
+    const id = '0123456789';
+    expect(hasFreshPendingInstall('loja', id, s, 1000)).toBe(false);
+    markPendingInstall('loja', id, s, 1000);
+    expect(JSON.parse(s.getItem(pendingInstallKey('loja')) || '')).toEqual({ at: 1000, identity: id });
+    expect(hasFreshPendingInstall('loja', id, s, 1000 + PENDING_INSTALL_TTL_MS - 1)).toBe(true);
+    expect(hasFreshPendingInstall('loja', id, s, 1000 + PENDING_INSTALL_TTL_MS)).toBe(false);
+    expect(hasFreshPendingInstall('loja', 'aaaaaaaaaa', s, 1000)).toBe(false);
+    expect(hasFreshPendingInstall('outra', id, s, 1000)).toBe(false);
     clearPendingInstall('loja', s);
-    expect(hasFreshPendingInstall('loja', s, 1000)).toBe(false);
+    expect(hasFreshPendingInstall('loja', id, s, 1000)).toBe(false);
   });
 
-  it('acrescenta ?instalar=1 ao start_url versionado só com marca recente', () => {
+  it('acrescenta ?instalar=1 só no start_url da identidade alvo', () => {
     const s = memory();
     const path = '/app/loja~0123456789/';
     expect(searchToAddInstallSession(path, '?source=pwa', s, 2000)).toBeNull();
-    markPendingInstall('loja', s, 2000);
+    markPendingInstall('loja', '0123456789', s, 2000);
     expect(searchToAddInstallSession(path, '?source=pwa', s, 2000)).toBe('?source=pwa&instalar=1');
+    expect(searchToAddInstallSession('/app/loja~aaaaaaaaaa/', '?source=pwa', s, 2000)).toBeNull();
     expect(searchToAddInstallSession(path, '?instalar=1&source=pwa', s, 2000)).toBeNull();
     expect(searchToAddInstallSession('/app/loja/', '?source=pwa', s, 2000)).toBeNull();
     expect(searchToAddInstallSession(path, '?source=pwa', s, 2000 + PENDING_INSTALL_TTL_MS)).toBeNull();
@@ -56,14 +59,14 @@ describe('installSession', () => {
 
   it('não altera o start_url estável nem path sem marca', () => {
     const s = memory();
-    markPendingInstall('loja', s, 1);
+    markPendingInstall('loja', '0123456789', s, 1);
     expect(searchToAddInstallSession('/app/loja/', '?source=pwa', s, 1)).toBeNull();
     expect(searchToAddInstallSession('/tv', '?source=pwa', s, 1)).toBeNull();
   });
 
   it('applyInstallSessionFromLocation grava a query sem recarregar', () => {
     const s = memory();
-    markPendingInstall('loja', s, 5000);
+    markPendingInstall('loja', '0123456789', s, 5000);
     const loc = { pathname: '/app/loja~0123456789/', search: '?source=pwa', hash: '#x' };
     let stored = '';
     const w = {

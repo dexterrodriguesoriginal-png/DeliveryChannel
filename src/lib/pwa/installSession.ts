@@ -1,6 +1,6 @@
 /** Sessão explícita de instalação da versão nova (?instalar=1). */
 
-import { splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath } from './appIdentity';
+import { APP_IDENTITY_RE, splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath } from './appIdentity';
 
 export const INSTALL_PARAM = 'instalar';
 export const pendingInstallKey = (slug: string) => `dc:pending-install:${slug}`;
@@ -17,24 +17,37 @@ export function isInstallSession(search: string): boolean {
   return paramsOf(search).get(INSTALL_PARAM) === '1';
 }
 
+export interface PendingInstall { at: number; identity: string }
+
+export function readPendingInstall(slug: string, storage?: Readable, now = Date.now()): PendingInstall | null {
+  if (!slug) return null;
+  try {
+    const raw = (storage || window.localStorage).getItem(pendingInstallKey(slug));
+    if (!raw) return null;
+    const rec = JSON.parse(raw) as PendingInstall;
+    if (!Number.isFinite(rec.at) || rec.at <= 0 || now - rec.at < 0 || now - rec.at >= PENDING_INSTALL_TTL_MS) return null;
+    if (!APP_IDENTITY_RE.test(rec.identity)) return null;
+    return rec;
+  } catch {
+    return null;
+  }
+}
+
 export function markPendingInstall(
   slug: string,
+  identity: string,
   storage?: Pick<Storage, 'setItem'>,
   now = Date.now(),
 ): void {
-  if (!slug) return;
-  try { (storage || window.localStorage).setItem(pendingInstallKey(slug), String(now)); } catch { /* bloqueado */ }
+  if (!slug || !APP_IDENTITY_RE.test(identity)) return;
+  try {
+    (storage || window.localStorage).setItem(pendingInstallKey(slug), JSON.stringify({ at: now, identity }));
+  } catch { /* bloqueado */ }
 }
 
-export function hasFreshPendingInstall(slug: string, storage?: Readable, now = Date.now()): boolean {
-  if (!slug) return false;
-  try {
-    const raw = (storage || window.localStorage).getItem(pendingInstallKey(slug));
-    const at = Number(raw);
-    return Number.isFinite(at) && at > 0 && now - at >= 0 && now - at < PENDING_INSTALL_TTL_MS;
-  } catch {
-    return false;
-  }
+export function hasFreshPendingInstall(slug: string, identity: string, storage?: Readable, now = Date.now()): boolean {
+  const rec = readPendingInstall(slug, storage, now);
+  return !!rec && rec.identity === identity;
 }
 
 export function clearPendingInstall(slug: string, storage?: Pick<Storage, 'removeItem'>): void {
@@ -71,7 +84,7 @@ export function searchToAddInstallSession(
   const slug = storeSlugFromAppPath(pathname);
   const identity = splitStoreSegment(storeSegmentFromPath(pathname) || '').identity;
   if (!slug || !identity) return null;
-  if (!hasFreshPendingInstall(slug, storage, now)) return null;
+  if (!hasFreshPendingInstall(slug, identity, storage, now)) return null;
   const params = paramsOf(search);
   params.set(INSTALL_PARAM, '1');
   return `?${params.toString()}`;

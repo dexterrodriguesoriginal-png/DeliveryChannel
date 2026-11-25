@@ -154,7 +154,7 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
   const installNewVersion = async () => {
     const prompt = getDeferredPrompt();
     if (!prompt || busy) return;
-    markPendingInstall(slug);
+    markPendingInstall(slug, currentIdentity);
     setBusy(true);
     try {
       await prompt.prompt();
@@ -169,7 +169,7 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
   const onAndroidClick = () => {
     const mode = getUpdateOpenMode();
     // Executar diretamente no gesto do usuário: popups disparados por timers são bloqueados.
-    markPendingInstall(slug);
+    markPendingInstall(slug, currentIdentity);
     left.current = false;
     setShowFallback(isBlockingWebview(ua));
     if (mode === 'window') {
