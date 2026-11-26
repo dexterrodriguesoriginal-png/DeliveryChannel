@@ -138,7 +138,7 @@ import { StoreLoadingScreen } from '../../components/pwa/StoreLoadingScreen';
 import { hideBootScreen } from '../../lib/pwa/bootScreen';
 import { StorePresentationScreen } from '../../components/pwa/StorePresentationScreen';
 import { markPresentationShown, prefersReducedMotion, presentationPlan, type PresentationPlan, shouldShowPresentation } from '../../lib/pwa/presentation';
-import { identityStatus, newestLaunchedKey, splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath, versionedStoreRedirect } from '../../lib/pwa/appIdentity';
+import { identityStatus, newestLaunchedKey, readJustInstalled, splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath, versionedStoreRedirect } from '../../lib/pwa/appIdentity';
 import { isInstallSession, isVisualUpdateSession, clearPendingInstall } from '../../lib/pwa/installSession';
 import { readAppIdentityMeta } from '../../components/pwa/AppIdentityUpdate';
 import { shouldShowVersionInstallScreen, VersionInstallScreen } from '../../components/pwa/VersionInstallScreen';
@@ -258,6 +258,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   const [newestLaunched, setNewestLaunched] = useState<string | null>(() => {
     try { return localStorage.getItem(newestLaunchedKey(slug)); } catch { return null; }
   });
+  // A decisão da primeira abertura não muda após gravar a marca nesta mesma sessão.
+  const initialNewestLaunched = useRef(newestLaunched);
   const appStatus = !previewMode && currentIdentity
     ? identityStatus({
         standalone, runningIdentity, currentIdentity, newestLaunched,
@@ -1109,13 +1111,32 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     || addressFlow.open || isSubmittingOrder || Boolean(completedOrder);
   const versionedRedirectStarted = useRef(false);
   useEffect(() => {
+    const search = window.location.search;
+    const params = new URLSearchParams(search);
+    const ordinaryLaunch = !isInstallSession(search) && !isVisualUpdateSession(search)
+      && !params.has('mesa') && params.get('preview') !== '1';
+    const justInstalled = (() => {
+      try { return readJustInstalled(slug, localStorage); } catch { return null; }
+    })();
+    const firstVersionedLaunch = ordinaryLaunch && initialNewestLaunched.current === null && !justInstalled;
     const destination = versionedStoreRedirect({
       slug, currentIdentity, runningIdentity, standalone, previewMode,
       search: window.location.search, hash: window.location.hash,
       isLoadingStore, storeLoaded: Boolean(storeData), reloadUnsafe,
       alreadyRedirected: versionedRedirectStarted.current,
+      justInstalled, now: Date.now(),
+      newestLaunched: firstVersionedLaunch ? null : undefined,
     });
-    if (!destination) return;
+    if (!destination) {
+      if (firstVersionedLaunch && standalone && runningIdentity && currentIdentity && slug
+        && !previewMode && !isLoadingStore && storeData?.tenant.slug === slug && !reloadUnsafe) {
+        try {
+          localStorage.setItem(newestLaunchedKey(slug), runningIdentity);
+          setNewestLaunched(runningIdentity);
+        } catch { /* privado: não bloquear a vitrine */ }
+      }
+      return;
+    }
     versionedRedirectStarted.current = true;
     window.location.replace(destination);
   }, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity, reloadUnsafe]);

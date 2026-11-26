@@ -6,7 +6,7 @@ import { clearDeferredPrompt, getDeferredPrompt, subscribeInstall, isStandalone,
 import { SAFE_TOP } from '../../lib/pwa/edgeToEdge';
 import { isVisualUpdateSession } from '../../lib/pwa/installSession';
 
-export const STORE_UPDATE_BAR_HEIGHT = '3.5rem';
+export const STORE_UPDATE_BAR_HEIGHT = '2.5rem';
 
 export const UPDATE_GUIDE_STEP_1_TAB = 'Toque nos 3 pontinhos (⋮) no canto de cima e depois em "Abrir no Chrome".';
 export const UPDATE_GUIDE_STEP_1_CHROME = 'Toque nos 3 pontinhos (⋮) no canto de cima.';
@@ -67,14 +67,14 @@ export function StoreUpdateGuide({ slug, currentIdentity }: { slug: string; curr
 
   return (
     <>
-      <div data-testid="store-update-bar" className="sticky z-[45] flex items-center px-3"
+      <div data-testid="store-update-bar" className="sticky z-[45] flex items-center justify-end px-3"
         style={{ top: SAFE_TOP, height: STORE_UPDATE_BAR_HEIGHT, backgroundColor: 'var(--dc-bg-card-color)' }}>
-        <Button type="button" variant="primary" size="lg" className="w-full font-bold"
+        <Button type="button" variant="primary" size="sm" className="rounded-full px-4 font-semibold text-sm"
           style={{ backgroundColor: 'var(--dc-primary)', color: 'var(--dc-button-text)', borderColor: 'var(--dc-border)' }}
           data-testid="store-update-open-guide" onClick={() => setOpen(true)}>Atualizar</Button>
       </div>
       {open && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+        <div className="fixed inset-0 z-[90] flex items-start justify-center px-4 pt-2 pb-4 overflow-y-auto"
           data-testid="store-update-guide-backdrop" onMouseDown={event => {
             if (event.target === event.currentTarget) setOpen(false);
           }}>
