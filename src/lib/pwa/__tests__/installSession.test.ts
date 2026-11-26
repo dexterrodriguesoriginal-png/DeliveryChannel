@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   INSTALL_PARAM, PENDING_INSTALL_TTL_MS, applyInstallSessionFromLocation, clearAllPendingInstalls,
-  clearPendingInstall, hasFreshPendingInstall, isInstallSession, markPendingInstall,
+  clearPendingInstall, hasFreshPendingInstall, isInstallSession, isVisualUpdateSession, markPendingInstall,
   pendingInstallKey, searchToAddInstallSession,
 } from '../installSession';
 
@@ -29,6 +29,14 @@ describe('installSession', () => {
     expect(isInstallSession('?instalar=0')).toBe(false);
     expect(isInstallSession('')).toBe(false);
     expect(INSTALL_PARAM).toBe('instalar');
+  });
+
+  it('?atualizar=1 é sessão de catálogo, nunca um pedido de instalação', () => {
+    expect(isVisualUpdateSession('?atualizar=1')).toBe(true);
+    expect(isVisualUpdateSession('?origem=qr&atualizar=1')).toBe(true);
+    expect(isVisualUpdateSession('?atualizar=0')).toBe(false);
+    expect(isVisualUpdateSession('?instalar=1')).toBe(false);
+    expect(isInstallSession('?atualizar=1')).toBe(false);
   });
 
   it('marca pendente com validade, identidade alvo e limpa', () => {
