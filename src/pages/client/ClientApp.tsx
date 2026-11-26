@@ -2027,7 +2027,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         />
       )}
       {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
-      {!previewMode && isVisualUpdateSession(window.location.search) && runningIdentity === currentIdentity && (
+      {!previewMode && currentIdentity && isVisualUpdateSession(window.location.search) && runningIdentity === currentIdentity && (
         <StoreUpdateGuide slug={slug} currentIdentity={currentIdentity || ''} />
       )}
       {!previewMode && appStatus === 'current' && !isVisualUpdateSession(window.location.search) && !iconNoticeVisible && (!runningIdentity || standalone) && <StoreVisualUpdateNotice
