@@ -1,4 +1,5 @@
 /** Estado de instalação do PWA por loja (localStorage) + detecção de plataforma. */
+import { APP_IDENTITY_META, recordJustInstalled, splitStoreSegment, storeSegmentFromPath } from './appIdentity';
 import { clearAllPendingInstalls } from './installSession';
 export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -67,7 +68,21 @@ export function captureInstallEvents(w: Window) {
     e.preventDefault();
     deferred = e as BeforeInstallPromptEvent; listeners.forEach(l => l());
   });
-  w.addEventListener('appinstalled', () => { installedFlag = true; deferred = null; clearAllPendingInstalls(); listeners.forEach(l => l()); });
+  w.addEventListener('appinstalled', () => {
+    installedFlag = true;
+    deferred = null;
+    try {
+      const segment = storeSegmentFromPath(w.location.pathname);
+      const params = new URLSearchParams(w.location.search);
+      if (segment && !params.has('mesa') && params.get('preview') !== '1') {
+        const { slug, identity } = splitStoreSegment(segment);
+        const installedIdentity = identity || w.document.querySelector<HTMLMetaElement>(`meta[name="${APP_IDENTITY_META}"]`)?.content;
+        if (installedIdentity) recordJustInstalled(slug, installedIdentity, w.localStorage);
+      }
+    } catch { /* não bloquear a confirmação de instalação */ }
+    clearAllPendingInstalls();
+    listeners.forEach(l => l());
+  });
 }
 
 // --- Convite inteligente e persistente (por loja e por dispositivo; nunca no cadastro do dono) ---
