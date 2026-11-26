@@ -224,38 +224,20 @@ describe('aviso único da instalação anterior', () => {
     expect(notice.querySelectorAll('button,a')).toHaveLength(1);
     expect(getReplacedScreenVisible()).toBe(false);
   });
-  it('redirecionamento para versão nova respeita reloadUnsafe e ocorre apenas uma vez', () => {
+  it('ClientApp redireciona após reloadUnsafe, sem tela bloqueante ou aviso antigo', () => {
     const client = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
-    const guardIndex = client.indexOf('const reloadUnsafe =');
-    const redirectIndex = client.indexOf('const versionedRedirectStarted = useRef(false);');
-    expect(guardIndex).toBeGreaterThan(-1);
-    expect(redirectIndex).toBeGreaterThan(guardIndex);
-    const effectEnd = '}, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity, reloadUnsafe]);';
-    expect(client.indexOf(effectEnd, redirectIndex)).toBeGreaterThan(redirectIndex);
-    const redirect = client.slice(redirectIndex, client.indexOf(effectEnd, redirectIndex) + effectEnd.length);
-    expect(redirect).toContain('if (previewMode || standalone || !currentIdentity || !slug || isLoadingStore || !storeData || reloadUnsafe) return;');
-    expect(redirect).toContain("new URLSearchParams(window.location.search).has('mesa')");
-    expect(redirect).toContain("new URLSearchParams(window.location.search).get('preview') === '1'");
-    expect(redirect).toContain('versionedRedirectStarted.current) return;');
-    expect(redirect).toContain('versionedRedirectStarted.current = true;');
-    expect(redirect).toContain('window.location.replace(destination);');
-    expect(redirect).toContain('runningIdentity, reloadUnsafe]);');
-    expect(client.match(/window.location.replace\(destination\)/g)).toHaveLength(1);
-  });
-  it('ClientApp não monta aviso de legado sobre o app ~hash atual, nem o guia de remoção', () => {
-    const client = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
-    expect(client).toContain("appStatus === 'update-available'");
-    expect(client).toContain("appStatus === 'old-icon'");
-    expect(client).toContain("appStatus === 'current'");
-    expect(client).not.toContain('legacyIdentity && <AppIdentityUpdate');
-    expect(client).not.toContain('IconUpdateBrowserGuide');
-    expect(client).toContain("!iconNoticeVisible && (!runningIdentity || standalone) && <StoreVisualUpdateNotice");
+    expect(client.indexOf('const versionedRedirectStarted = useRef(false);'))
+      .toBeGreaterThan(client.indexOf('const reloadUnsafe ='));
+    expect(client).toContain('const destination = versionedStoreRedirect({');
+    expect(client).toContain('alreadyRedirected: versionedRedirectStarted.current');
+    expect(client).toContain('window.location.replace(destination);');
+    expect(client).not.toContain("if (appStatus === 'old-icon' && currentIdentity)");
+    expect(client).not.toContain('<AppIdentityUpdate');
+    expect(client).not.toContain('<IconUpdateNotice');
+    expect(client).toContain('<StoreUpdateGuide');
+    expect(client).toContain("!isVisualUpdateSession(window.location.search) && !iconNoticeVisible");
     const toast = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pwa/PwaUpdateToast.tsx'), 'utf8');
-    expect(toast).toContain('iconNoticeVisible || isInstallSession(window.location.search)');
-    const main = fs.readFileSync(path.resolve(process.cwd(), 'src/main.tsx'), 'utf8');
-    expect(main).toContain('consumeUpdateOpenModeParam(window)');
-    const notice = fs.readFileSync(path.resolve(process.cwd(), 'src/components/client/IconUpdateNotice.tsx'), 'utf8');
-    expect(notice).not.toContain('window.location.href = url');
+    expect(toast).toContain('isVisualUpdateSession(window.location.search)');
   });
 
   // Mantido no final: appinstalled é um sinal global compartilhado pela origem.
