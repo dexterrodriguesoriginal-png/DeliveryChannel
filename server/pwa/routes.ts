@@ -21,6 +21,7 @@ import { fetchPublicImage } from './safeFetch';
 import { isValidSlug, StoreResolver, supabaseEnvFrom } from './storeSource';
 import { RateLimiter } from '../payments/security';
 import { splitStoreSegment, versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope } from '../../src/lib/pwa/appIdentity';
+import { withTimeout } from './storeHtml';
 import { isVersionedStoreApp } from '../../src/lib/pwa/appVersionMode';
 
 declare const __PWA_BUILD_VERSION__: string | undefined;
@@ -499,9 +500,28 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
 
   // Vitrine sempre dentro do scope do manifesto (/app/<slug>/): instalar de "/app/<slug>" (fora do scope e
   // sem Service Worker) deixava o app da loja como atalho comum em vez de WebAPK. Mantém a query (mesa, preview, OAuth).
-  router.get('/app/:slug', (req, res, next) => {
+  router.get('/app/:slug', async (req, res, next) => {
     const q = req.originalUrl.indexOf('?');
-    const target = storeAppCanonicalPath(req.path, q >= 0 ? req.originalUrl.slice(q) : '');
+    const search = q >= 0 ? req.originalUrl.slice(q) : '';
+    const target = storeAppCanonicalPath(req.path, search);
+    const params = new URLSearchParams(search);
+    const slug = String(req.params.slug || '');
+    const excluded = params.has('mesa') || ['source', 'preview', 'atualizar', 'instalar', 'reinstall'].some(
+      (key) => params.getAll(key).includes(key === 'source' ? 'pwa' : '1'),
+    );
+    if (req.method === 'GET' && isValidSlug(slug) && !excluded) {
+      try {
+        const store = await withTimeout(lookupStoreForHtml(slug), 1500, null);
+        const currentIdentity = identityHeadOptions(store, null).appIdentity;
+        if (currentIdentity && /^[0-9a-f]{10}$/.test(currentIdentity)) {
+          res.set('Cache-Control', 'no-store');
+          res.redirect(302, versionedStoreScope(slug, currentIdentity) + search);
+          return;
+        }
+      } catch {
+        // Falha na leitura da identidade: preservar a navegação canônica existente.
+      }
+    }
     if (!target) return next();
     res.set('Cache-Control', 'no-cache');
     res.redirect(302, target);
