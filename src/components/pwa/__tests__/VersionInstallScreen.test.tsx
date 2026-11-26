@@ -89,6 +89,7 @@ describe('VersionInstallScreen', () => {
     expect(src).toContain('reinstallRequested: isInstallSession(window.location.search)');
     expect(src).toContain('if (isInstallSession(window.location.search)) return;');
     expect(src).toContain('(!runningIdentity || standalone) && <StoreVisualUpdateNotice');
+    expect(src).toContain('!isVisualUpdateSession(window.location.search) && !iconNoticeVisible');
     expect(src).toContain("!iconNoticeVisible && isLogoConfirmed(theme) && <InstallStoreAppHint");
     const toast = readFileSync(resolve(process.cwd(), 'src/components/pwa/PwaUpdateToast.tsx'), 'utf8');
     expect(toast).toContain('isInstallSession(window.location.search)');
