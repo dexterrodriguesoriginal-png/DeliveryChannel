@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { ArrowUpRight, X } from 'lucide-react';
 import { Button } from '../ui/Button';
-import { clearDeferredPrompt, getDeferredPrompt, subscribeInstall } from '../../lib/pwa/installState';
+import { clearDeferredPrompt, getDeferredPrompt, subscribeInstall, isStandalone } from '../../lib/pwa/installState';
 import { isVisualUpdateSession } from '../../lib/pwa/installSession';
 
 export const UPDATE_GUIDE_STEP_1_TAB = 'Toque nos 3 pontinhos (⋮) no canto de cima e depois em "Abrir no Chrome".';
@@ -18,7 +18,8 @@ export function StoreUpdateGuide({ slug, currentIdentity }: { slug: string; curr
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const deferred = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
-  const customTab = typeof navigator !== 'undefined' && likelyCustomTab(navigator.userAgent);
+  const customTab = typeof window !== 'undefined' && isStandalone(window)
+    || (typeof navigator !== 'undefined' && likelyCustomTab(navigator.userAgent));
   const enabled = !!slug && !!currentIdentity && typeof window !== 'undefined'
     && isVisualUpdateSession(window.location.search);
 
