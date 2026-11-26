@@ -52,7 +52,8 @@ import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
 import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint';
 import { isLogoConfirmed } from '../../lib/pwa/logoConfirmation';
 import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
-import { IconUpdateNotice, getIconNoticeVisible, subscribeIconNotice } from '../../components/client/IconUpdateNotice';
+import { getIconNoticeVisible, subscribeIconNotice } from '../../components/client/IconUpdateNotice';
+import { StoreUpdateGuide } from '../../components/pwa/StoreUpdateGuide';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewPresentationMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
 import { emitInviteTrigger, isStandalone } from '../../lib/pwa/installState';
@@ -137,8 +138,10 @@ import { StoreLoadingScreen } from '../../components/pwa/StoreLoadingScreen';
 import { hideBootScreen } from '../../lib/pwa/bootScreen';
 import { StorePresentationScreen } from '../../components/pwa/StorePresentationScreen';
 import { markPresentationShown, prefersReducedMotion, presentationPlan, type PresentationPlan, shouldShowPresentation } from '../../lib/pwa/presentation';
-import { identityStatus, newestLaunchedKey, splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath, versionedStoreScope } from '../../lib/pwa/appIdentity';
-import { AppIdentityUpdate, readAppIdentityMeta } from '../../components/pwa/AppIdentityUpdate';
+import { identityStatus, newestLaunchedKey, splitStoreSegment, storeSegmentFromPath, storeSlugFromAppPath, versionedStoreRedirect } from '../../lib/pwa/appIdentity';
+import { isInstallSession, isVisualUpdateSession, clearPendingInstall } from '../../lib/pwa/installSession';
+import { readAppIdentityMeta } from '../../components/pwa/AppIdentityUpdate';
+import { shouldShowVersionInstallScreen, VersionInstallScreen } from '../../components/pwa/VersionInstallScreen';
 import { newIdempotencyKey } from '../../lib/pricing/idempotency';
 import { searchProducts } from '../../lib/customer/search';
 import { buildReorderCart } from '../../lib/customer/reorder';
@@ -257,7 +260,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   });
   const appStatus = !previewMode && currentIdentity
     ? identityStatus({
-        standalone, runningIdentity, currentIdentity, newestLaunched, reinstallRequested: false,
+        standalone, runningIdentity, currentIdentity, newestLaunched,
+        reinstallRequested: isInstallSession(window.location.search),
       })
     : 'current';
   const [previewTheme, setPreviewTheme] = useState<Partial<TenantTheme> | null>(null);
@@ -310,9 +314,12 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
   }, [slug, previewMode]);
   useEffect(() => {
     if (previewMode || !currentIdentity || !slug || !standalone || runningIdentity !== currentIdentity) return;
+    // Custom Tab do app antigo com ?instalar=1 parece standalone; não registrar a versão como já aberta.
+    if (isInstallSession(window.location.search) || isVisualUpdateSession(window.location.search)) return;
     try {
       localStorage.setItem(newestLaunchedKey(slug), currentIdentity);
       setNewestLaunched(currentIdentity);
+      clearPendingInstall(slug);
     } catch { /* privado: não bloquear a vitrine */ }
   }, [previewMode, currentIdentity, slug, standalone, runningIdentity]);
   // Mantém #store-boot exatamente como está; somente aguarda a decisão sobre
@@ -1102,10 +1109,13 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     || addressFlow.open || isSubmittingOrder || Boolean(completedOrder);
   const versionedRedirectStarted = useRef(false);
   useEffect(() => {
-    if (previewMode || standalone || !currentIdentity || !slug || isLoadingStore || !storeData || reloadUnsafe) return;
-    if (runningIdentity || new URLSearchParams(window.location.search).has('mesa') ||
-        new URLSearchParams(window.location.search).get('preview') === '1' || versionedRedirectStarted.current) return;
-    const destination = versionedStoreScope(slug, currentIdentity) + window.location.search + window.location.hash;
+    const destination = versionedStoreRedirect({
+      slug, currentIdentity, runningIdentity, standalone, previewMode,
+      search: window.location.search, hash: window.location.hash,
+      isLoadingStore, storeLoaded: Boolean(storeData), reloadUnsafe,
+      alreadyRedirected: versionedRedirectStarted.current,
+    });
+    if (!destination) return;
     versionedRedirectStarted.current = true;
     window.location.replace(destination);
   }, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity, reloadUnsafe]);
@@ -1753,8 +1763,15 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
     return <StoreLoadingScreen />;
   }
 
-  if (appStatus === 'old-icon' && currentIdentity) {
-    return <div style={activeCssVars}><AppIdentityUpdate slug={slug} currentIdentity={currentIdentity} /></div>;
+  if (shouldShowVersionInstallScreen({
+    standalone, runningIdentity, currentIdentity, previewMode, search: window.location.search,
+  }) && storeData) {
+    return <div style={activeCssVars}>
+      <VersionInstallScreen
+        storeName={storeDisplayName(theme.storeName, storeData.tenant.name)}
+        logoUrl={theme.logoUrl}
+      />
+    </div>;
   }
 
   // --------------------------------------------------------------------------
@@ -2010,33 +2027,17 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         />
       )}
       {!previewMode && <SystemBarFills statusColor={systemBars.status} navColor={systemBars.nav} />}
-      {!previewMode && appStatus === 'update-available' && currentIdentity && (
-        <IconUpdateNotice currentIdentity={currentIdentity} store={{
-          id: storeData.tenant.id,
-          slug: storeData.tenant.slug,
-          name: storeData.tenant.name,
-          iconContentHash: currentIconContentHash,
-          appBaseLogoUrl: theme.tokens?.meta?.appBaseLogoUrl,
-          logoConfirmedUrl: theme.tokens?.meta?.logoConfirmedUrl,
-          appBaseNavColor: theme.tokens?.meta?.appBaseNavColor,
-          theme: {
-            storeName: theme.storeName, logoUrl: theme.logoUrl,
-            primaryColor: theme.primaryColor, backgroundColor: theme.backgroundColor,
-            tagline: theme.tagline,
-            headerColor: theme.tokens?.palette?.bgHeader,
-            statusBarColor: theme.tokens?.meta?.systemBars?.statusBarColor,
-            navBarColor: theme.tokens?.meta?.systemBars?.navBarColor,
-          },
-        }} />
+      {!previewMode && currentIdentity && isVisualUpdateSession(window.location.search) && runningIdentity === currentIdentity && (
+        <StoreUpdateGuide slug={slug} currentIdentity={currentIdentity || ''} />
       )}
-      {!previewMode && appStatus === 'current' && !iconNoticeVisible && <StoreVisualUpdateNotice
+      {!previewMode && appStatus === 'current' && !isVisualUpdateSession(window.location.search) && !iconNoticeVisible && (!runningIdentity || standalone) && <StoreVisualUpdateNotice
         slug={storeData.tenant.slug}
         tenantId={storeData.tenant.id}
         hidden={Boolean(selectedProductModal) || Boolean(selectedPromoOffer) || isCheckoutOpen || isPromoCheckoutOpen
           || isAuthModalOpen || isAccountOpen || addressFlow.open || isSubmittingOrder || navTab === 'cart'}
       />}
       {/* "Instalar app" só depois que a loja confirma a logo definitiva (ícone do app nasce com ela). */}
-      {!previewMode && appStatus === 'current' && isLogoConfirmed(theme) && <InstallStoreAppHint
+      {!previewMode && appStatus === 'current' && !isVisualUpdateSession(window.location.search) && !iconNoticeVisible && isLogoConfirmed(theme) && <InstallStoreAppHint
         tenantId={storeData.tenant.id}
         storeName={theme.storeName || storeData.tenant.name}
         color={theme.primaryColor || '#334155'}

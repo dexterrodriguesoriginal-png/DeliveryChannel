@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   chromeIntentUrl, identityStatus, isOwnManifestHref, reinstallUrl, splitStoreSegment, storeSlugFromAppPath,
-  versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope,
+  versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope, versionedStoreRedirect,
 } from '../appIdentity';
 import { extractStoreSlugFromPath, resolvePwaScope } from '../registerSw';
 import { emailRedirectUrl } from '../../auth/authRedirect';
@@ -44,6 +44,42 @@ describe('appIdentity', () => {
     expect(chromeIntentUrl(u, { android: false })).toBe(u);
     expect(chromeIntentUrl('http://x.com/', { android: true })).toBe('http://x.com/');
   });
+  it('WebAPK antigo abre Custom Tab na vitrine oficial com atualizar=1, sem instalação', () => {
+    const original = {
+      slug: 'loja', currentIdentity: 'bbbbbbbbbb', runningIdentity: 'aaaaaaaaaa',
+      standalone: true, previewMode: false, search: '?origem=qr', hash: '#produtos',
+      isLoadingStore: false, storeLoaded: true, reloadUnsafe: false,
+      alreadyRedirected: false,
+    };
+    expect(versionedStoreRedirect(original)).toBe('/app/loja~bbbbbbbbbb/?origem=qr&atualizar=1#produtos');
+    expect(versionedStoreRedirect({ ...original, runningIdentity: null }))
+      .toBe('/app/loja~bbbbbbbbbb/?origem=qr&atualizar=1#produtos');
+    expect(versionedStoreRedirect({ ...original, reloadUnsafe: true })).toBeNull();
+    expect(versionedStoreRedirect({ ...original, alreadyRedirected: true })).toBeNull();
+    expect(versionedStoreRedirect({ ...original, isLoadingStore: true })).toBeNull();
+    expect(versionedStoreRedirect({ ...original, storeLoaded: false })).toBeNull();
+    expect(versionedStoreRedirect({ ...original, currentIdentity: null })).toBeNull();
+    expect(versionedStoreRedirect({ ...original, runningIdentity: 'bbbbbbbbbb' })).toBeNull();
+    expect(versionedStoreRedirect({ ...original, previewMode: true })).toBeNull();
+    expect(versionedStoreRedirect({ ...original, search: '?mesa=abc' })).toBeNull();
+    expect(versionedStoreRedirect({ ...original, search: '?preview=1' })).toBeNull();
+    expect(versionedStoreRedirect({ ...original, search: '?instalar=1&origem=qr' }))
+      .toBe('/app/loja~bbbbbbbbbb/?origem=qr&atualizar=1#produtos');
+    expect(versionedStoreRedirect({ ...original, search: '?atualizar=1', runningIdentity: 'bbbbbbbbbb' }))
+      .toBeNull();
+  });
+  it('visitante do Chrome chega ao scope oficial SEM sessão atualizar', () => {
+    const browser = {
+      slug: 'loja', currentIdentity: 'bbbbbbbbbb', runningIdentity: null,
+      standalone: false, previewMode: false, search: '?origem=qr', hash: '',
+      isLoadingStore: false, storeLoaded: true, reloadUnsafe: false,
+      alreadyRedirected: false,
+    };
+    expect(versionedStoreRedirect(browser)).toBe('/app/loja~bbbbbbbbbb/?origem=qr');
+    expect(versionedStoreRedirect({ ...browser, runningIdentity: 'aaaaaaaaaa' })).toBeNull();
+    expect(versionedStoreRedirect({ ...browser, search: '?mesa=mesa1' })).toBeNull();
+  });
+
   it('manifesto da própria loja', () => {
     expect(isOwnManifestHref('/app/a/manifest.webmanifest', 'a')).toBe(true);
     expect(isOwnManifestHref('/app/a~0123456789/manifest.webmanifest', 'a')).toBe(true);

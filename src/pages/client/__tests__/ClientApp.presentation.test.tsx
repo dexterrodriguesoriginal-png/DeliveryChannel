@@ -73,16 +73,17 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Abertura da loja opt-in no aplicativo do cliente', () => {
-  it('depois da #dc-boot mostra a imagem da loja, "Pular" leva à vitrine e não repete na mesma abertura', async () => {
+  it('depois da #dc-boot mostra mídia sem Pular, erro libera a vitrine e não repete', async () => {
     h.load.mockResolvedValue({ status: 'ok', data: { ...store(), presentation: { url: 'https://cdn.test/marketing-public/t/a.webp', mediaType: 'IMAGE', imageSeconds: 3, oncePerDay: false } } });
     h.presentationEnabled = true;
     const first = render(<ClientApp />);
     const overlay = await screen.findByTestId('store-presentation');
     expect(overlay.getAttribute('data-kind')).toBe('IMAGE');
     expect((screen.getByTestId('store-presentation-image') as HTMLImageElement).src).toBe('https://cdn.test/marketing-public/t/a.webp');
-    // A vitrine já está montada por baixo (carrinho/checkout nunca ficam bloqueados depois do pular).
+    // A vitrine permanece montada sob a apresentação; não há botão para pular.
     expect(screen.getByRole('button', { name: 'Adicionar Hambúrguer da casa' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Pular/ }));
+    expect(screen.queryByTestId('store-presentation-skip')).toBeNull();
+    fireEvent.error(screen.getByTestId('store-presentation-image'));
     await waitFor(() => expect(screen.queryByTestId('store-presentation')).toBeNull());
     first.unmount();
     render(<ClientApp />);

@@ -2,7 +2,9 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
-import { IconUpdateNotice, chromeIconUpdateIntent, getIconNoticeVisible, getReplacedScreenVisible, storeIconUpdateUrl } from '../IconUpdateNotice';
+import { IconUpdateNotice, applyUpdateOpenModeFromSearch, consumeUpdateOpenModeParam, experimentalUpdateUrl, getUpdateOpenMode, getIconNoticeVisible, getReplacedScreenVisible, storeIconUpdateUrl, ICON_UPDATE_CHROME_HINT, ICON_UPDATE_INSTALLED_TEXT, UPDATE_OPEN_MODE_KEY } from '../IconUpdateNotice';
+import { captureInstallEvents, clearDeferredPrompt } from '../../../lib/pwa/installState';
+import { hasFreshPendingInstall } from '../../../lib/pwa/installSession';
 import type { StoreIdentityInput } from '../../../lib/pwa/storeManifest';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,10 +29,17 @@ function standalone(enabled: boolean) {
   }) as unknown as MediaQueryList);
 }
 beforeEach(() => {
+  localStorage.clear();
   standalone(true);
   window.history.replaceState(null, '', '/app/adega-show/');
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(() => {
+  cleanup();
+  clearDeferredPrompt();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 describe('aviso único da instalação anterior', () => {
   it('mostra só título e um botão na instalação Android', () => {
@@ -39,7 +48,7 @@ describe('aviso único da instalação anterior', () => {
     expect(notice.textContent).toContain('Atualize para a nova versão');
     expect(notice.textContent).not.toMatch(/ícone|logo|tela inicial/i);
     expect(notice.querySelectorAll('a,button')).toHaveLength(1);
-    expect(ui.getByRole('link', { name: 'Atualizar' })).toBeTruthy();
+    expect(ui.getByRole('button', { name: 'Atualizar' })).toBeTruthy();
     expect(getIconNoticeVisible()).toBe(true);
     expect(getReplacedScreenVisible()).toBe(false);
   });
@@ -49,50 +58,143 @@ describe('aviso único da instalação anterior', () => {
     expect(ui.queryByTestId('icon-update-notice')).toBeNull();
     expect(getIconNoticeVisible()).toBe(false);
   });
-  it('Android abre a URL HTTPS da nova instalação, com intent Chrome e fallback correspondente', () => {
-    const navigate = vi.fn();
-    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} onNavigate={navigate} />);
-    const url = `https://${window.location.host}/app/adega-show~0123456789/`;
-    const expected = `intent://${window.location.host}/app/adega-show~0123456789/#Intent;scheme=https;package=com.android.chrome;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(url)};end`;
-    expect(storeIconUpdateUrl(slug, VERSION, window.location.origin)).toBe(url);
-    expect(chromeIconUpdateIntent(slug, VERSION, window.location.origin)).toBe(expected);
-    fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
-    expect(navigate).toHaveBeenCalledWith(expected);
-    const anchor = ui.getByTestId('icon-update-open-chrome') as HTMLAnchorElement;
-    expect(anchor.getAttribute('href')).toBe(expected);
-    expect(anchor.target).toBe('_blank');
-    expect(anchor.rel).toContain('noopener');
-    expect(expected).not.toMatch(/atualizar-app|reinstall=1|icone|logo/i);
+  it('modo padrão window abre HTTPS da versão em nova janela, sem intent', () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
+    const installUrl = `https://${window.location.host}/app/adega-show~0123456789/?instalar=1`;
+    expect(getUpdateOpenMode()).toBe('window');
+    expect(storeIconUpdateUrl(slug, VERSION, window.location.origin)).toBe(installUrl);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    expect(hasFreshPendingInstall(slug, VERSION)).toBe(true);
+    expect(open).toHaveBeenCalledWith(installUrl, '_blank');
+    expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
+    expect(installUrl).not.toMatch(/ícone|icone|logo|reinstall/i);
   });
-  it('em 1,5s mostra copiar link só se permaneceu visível e standalone', async () => {
+  it('janela bloqueada não navega o app antigo e mostra a dica ou Instalar', () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const assigned = vi.fn();
+    const original = window.location;
+    vi.stubGlobal('location', { ...original, origin: original.origin, host: original.host,
+      set href(value: string) { assigned(value); }, get href() { return original.href; } });
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(assigned).not.toHaveBeenCalled();
+    expect(ui.getByTestId('icon-update-fallback')).toBeTruthy();
+    expect(ui.getByTestId('icon-update-no-prompt').textContent).toBe(ICON_UPDATE_CHROME_HINT);
+    expect(ui.queryByTestId('icon-update-install-button')).toBeNull();
+    expect(ui.getByTestId('icon-update-copy-link').textContent).toContain('Copiar link');
+  });
+  it('se o app antigo continua visível após 1,5s, mostra o fallback na mesma janela', async () => {
+    vi.spyOn(window, 'open').mockReturnValue({} as Window);
     vi.useFakeTimers();
-    const navigate = vi.fn();
-    const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
-    vi.stubGlobal('navigator', { userAgent: android, clipboard });
-    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} onNavigate={navigate} />);
-    fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
     expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
     await act(async () => { vi.advanceTimersByTime(1500); });
-    expect(ui.getByTestId('icon-update-fallback').textContent).toContain('Para atualizar, abra este link no Chrome');
-    fireEvent.click(ui.getByRole('button', { name: 'Copiar link' }));
-    await act(async () => { await Promise.resolve(); });
-    expect(clipboard.writeText).toHaveBeenCalledWith(`https://${window.location.host}/app/adega-show~0123456789/`);
+    expect(ui.getByTestId('icon-update-no-prompt').textContent).toBe(ICON_UPDATE_CHROME_HINT);
+    vi.useRealTimers();
   });
-  it('não mostra fallback se visibilitychange informou que o Chrome abriu', async () => {
+  it('chrome-component usa intent VIEW/BROWSABLE com componente e fallback idêntico', async () => {
+    localStorage.setItem(UPDATE_OPEN_MODE_KEY, 'chrome-component');
+    const navigate = vi.fn();
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} onNavigate={navigate} />);
+    const url = `https://${window.location.host}/app/adega-show~0123456789/?instalar=1`;
+    const expected = `intent://${window.location.host}/app/adega-show~0123456789/?instalar=1#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;component=com.android.chrome/com.google.android.apps.chrome.Main;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+    expect(experimentalUpdateUrl('chrome-component', url)).toBe(expected);
+    vi.useFakeTimers();
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    expect(navigate).toHaveBeenCalledWith(expected);
+    await act(async () => { vi.advanceTimersByTime(1500); });
+    expect(ui.getByTestId('icon-update-no-prompt').textContent).toBe(ICON_UPDATE_CHROME_HINT);
+    vi.useRealTimers();
+    expect(expected).not.toMatch(/ícone|icone|logo/i);
+  });
+  it('googlechrome-scheme é permitido apenas com override válido', () => {
+    localStorage.setItem(UPDATE_OPEN_MODE_KEY, 'googlechrome-scheme');
+    expect(getUpdateOpenMode()).toBe('googlechrome-scheme');
+    const navigate = vi.fn();
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} onNavigate={navigate} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    const url = `https://${window.location.host}/app/adega-show~0123456789/?instalar=1`;
+    expect(navigate).toHaveBeenCalledWith(`googlechrome://navigate?url=${encodeURIComponent(url)}`);
+    expect(experimentalUpdateUrl('googlechrome-scheme', url)).toBe(`googlechrome://navigate?url=${encodeURIComponent(url)}`);
+  });
+  it('override inválido volta ao modo window', () => {
+    localStorage.setItem(UPDATE_OPEN_MODE_KEY, 'invalid');
+    expect(getUpdateOpenMode()).toBe('window');
+    const open = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    expect(open).toHaveBeenCalledWith(expect.stringContaining('?instalar=1'), '_blank');
+  });
+  it('não mostra fallback quando aplicativo ficou oculto após modo experimental', async () => {
+    localStorage.setItem(UPDATE_OPEN_MODE_KEY, 'chrome-component');
     vi.useFakeTimers();
     const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} onNavigate={vi.fn()} />);
-    fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
     const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     fireEvent(document, new Event('visibilitychange'));
     await act(async () => { vi.advanceTimersByTime(1900); });
     expect(ui.queryByTestId('icon-update-fallback')).toBeNull();
     visibility.mockRestore();
+    vi.useRealTimers();
   });
-  it('webview mostra o fallback imediato', () => {
+  it('webview com modo experimental mostra fallback imediato', () => {
+    localStorage.setItem(UPDATE_OPEN_MODE_KEY, 'chrome-component');
     const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION}
       userAgent="Mozilla/5.0 (Linux; Android 14; wv) Instagram" onNavigate={vi.fn()} />);
-    fireEvent.click(ui.getByRole('link', { name: 'Atualizar' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
     expect(ui.getByTestId('icon-update-fallback')).toBeTruthy();
+    expect(ui.getByTestId('icon-update-no-prompt').textContent).toBe(ICON_UPDATE_CHROME_HINT);
+  });
+  it('?modo= grava o modo de abertura e some do endereço', () => {
+    const memory = { store: new Map<string, string>() };
+    const storage = {
+      getItem: (k: string) => memory.store.get(k) ?? null,
+      setItem: (k: string, v: string) => { memory.store.set(k, v); },
+    };
+    expect(applyUpdateOpenModeFromSearch('', storage)).toBeNull();
+    expect(applyUpdateOpenModeFromSearch('?foo=1', storage)).toBeNull();
+    expect(applyUpdateOpenModeFromSearch('?modo=invalid', storage)).toBeNull();
+    expect(storage.getItem(UPDATE_OPEN_MODE_KEY)).toBeNull();
+    expect(applyUpdateOpenModeFromSearch('?modo=chrome-component', storage)).toBe('chrome-component');
+    expect(storage.getItem(UPDATE_OPEN_MODE_KEY)).toBe('chrome-component');
+    expect(applyUpdateOpenModeFromSearch('modo=googlechrome-scheme', storage)).toBe('googlechrome-scheme');
+    expect(applyUpdateOpenModeFromSearch('?mesa=4&modo=window', storage)).toBe('window');
+    expect(getUpdateOpenMode(storage)).toBe('window');
+    window.history.replaceState(null, '', '/app/adega-show/?mesa=4&modo=chrome-component');
+    expect(consumeUpdateOpenModeParam(window)).toBe('chrome-component');
+    expect(getUpdateOpenMode()).toBe('chrome-component');
+    expect(window.location.search).toBe('?mesa=4');
+    expect(window.location.search).not.toContain('modo=');
+    const navigate = vi.fn();
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} onNavigate={navigate} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining('intent://'));
+  });
+  it('fallback com beforeinstallprompt mostra Instalar e, sem prompt, só a dica', async () => {
+    captureInstallEvents(window);
+    const prompt = vi.fn().mockResolvedValue(undefined);
+    const ev = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
+      prompt, userChoice: Promise.resolve({ outcome: 'dismissed' as const }),
+    });
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
+    await act(async () => { window.dispatchEvent(ev); });
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    const install = ui.getByTestId('icon-update-install-button');
+    expect(install.textContent).toContain('Instalar');
+    expect(ui.queryByTestId('icon-update-no-prompt')).toBeNull();
+    await act(async () => {
+      fireEvent.click(install);
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    expect(hasFreshPendingInstall(slug, VERSION)).toBe(true);
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(ui.getByTestId('icon-update-no-prompt').textContent).toBe(ICON_UPDATE_CHROME_HINT);
+    expect(ui.queryByTestId('icon-update-install-button')).toBeNull();
+    expect(ui.getByTestId('icon-update-copy-link').textContent).toContain('Copiar link');
   });
   it('iOS usa o botão Atualizar para copiar o link HTTPS da nova versão', async () => {
     const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
@@ -122,33 +224,41 @@ describe('aviso único da instalação anterior', () => {
     expect(notice.querySelectorAll('button,a')).toHaveLength(1);
     expect(getReplacedScreenVisible()).toBe(false);
   });
-  it('redirecionamento para versão nova respeita reloadUnsafe e ocorre apenas uma vez', () => {
+  it('ClientApp redireciona após reloadUnsafe, sem tela bloqueante ou aviso antigo', () => {
     const client = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
-    const guardIndex = client.indexOf('const reloadUnsafe =');
-    const redirectIndex = client.indexOf('const versionedRedirectStarted = useRef(false);');
-    expect(guardIndex).toBeGreaterThan(-1);
-    expect(redirectIndex).toBeGreaterThan(guardIndex);
-    const effectEnd = '}, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity, reloadUnsafe]);';
-    expect(client.indexOf(effectEnd, redirectIndex)).toBeGreaterThan(redirectIndex);
-    const redirect = client.slice(redirectIndex, client.indexOf(effectEnd, redirectIndex) + effectEnd.length);
-    expect(redirect).toContain('if (previewMode || standalone || !currentIdentity || !slug || isLoadingStore || !storeData || reloadUnsafe) return;');
-    expect(redirect).toContain("new URLSearchParams(window.location.search).has('mesa')");
-    expect(redirect).toContain("new URLSearchParams(window.location.search).get('preview') === '1'");
-    expect(redirect).toContain('versionedRedirectStarted.current) return;');
-    expect(redirect).toContain('versionedRedirectStarted.current = true;');
-    expect(redirect).toContain('window.location.replace(destination);');
-    expect(redirect).toContain('runningIdentity, reloadUnsafe]);');
-    expect(client.match(/window.location.replace\(destination\)/g)).toHaveLength(1);
-  });
-  it('ClientApp não monta aviso de legado sobre o app ~hash atual, nem o guia de remoção', () => {
-    const client = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
-    expect(client).toContain("appStatus === 'update-available'");
-    expect(client).toContain("appStatus === 'old-icon'");
-    expect(client).toContain("appStatus === 'current'");
-    expect(client).not.toContain('legacyIdentity && <AppIdentityUpdate');
-    expect(client).not.toContain('IconUpdateBrowserGuide');
-    expect(client).toContain("!iconNoticeVisible && <StoreVisualUpdateNotice");
+    expect(client.indexOf('const versionedRedirectStarted = useRef(false);'))
+      .toBeGreaterThan(client.indexOf('const reloadUnsafe ='));
+    expect(client).toContain('const destination = versionedStoreRedirect({');
+    expect(client).toContain('alreadyRedirected: versionedRedirectStarted.current');
+    expect(client).toContain('window.location.replace(destination);');
+    expect(client).not.toContain("if (appStatus === 'old-icon' && currentIdentity)");
+    expect(client).not.toContain('<AppIdentityUpdate');
+    expect(client).not.toContain('<IconUpdateNotice');
+    expect(client).toContain('<StoreUpdateGuide');
+    expect(client).toContain("!isVisualUpdateSession(window.location.search) && !iconNoticeVisible");
     const toast = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pwa/PwaUpdateToast.tsx'), 'utf8');
-    expect(toast).toContain('if (!visible || iconNoticeVisible) return null');
+    expect(toast).toContain('isVisualUpdateSession(window.location.search)');
+  });
+
+  // Mantido no final: appinstalled é um sinal global compartilhado pela origem.
+  it('Instalar aceito aguarda appinstalled antes de mostrar Pronto', async () => {
+    captureInstallEvents(window);
+    const prompt = vi.fn().mockResolvedValue(undefined);
+    const ev = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
+      prompt, userChoice: Promise.resolve({ outcome: 'accepted' as const }),
+    });
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const ui = render(<IconUpdateNotice store={store} currentIdentity={VERSION} userAgent={android} />);
+    await act(async () => { window.dispatchEvent(ev); });
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    await act(async () => {
+      fireEvent.click(ui.getByTestId('icon-update-install-button'));
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(ui.queryByTestId('icon-update-install-success')).toBeNull();
+    await act(async () => { window.dispatchEvent(new Event('appinstalled')); });
+    expect(ui.getByTestId('icon-update-install-success').textContent).toBe(ICON_UPDATE_INSTALLED_TEXT);
+    expect(ui.queryByTestId('icon-update-install-button')).toBeNull();
   });
 });

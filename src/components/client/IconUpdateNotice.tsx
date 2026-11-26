@@ -1,21 +1,67 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Copy, RefreshCw } from 'lucide-react';
-import { chromeIntentUrl, versionedStoreScope } from '../../lib/pwa/appIdentity';
+import { versionedStoreScope } from '../../lib/pwa/appIdentity';
 import type { StoreIdentityInput } from '../../lib/pwa/storeManifest';
-import { detectPlatform, isStandalone } from '../../lib/pwa/installState';
+import { detectPlatform, isStandalone, getDeferredPrompt, subscribeInstall, wasAppInstalledEvent, clearDeferredPrompt } from '../../lib/pwa/installState';
+import { markPendingInstall } from '../../lib/pwa/installSession';
 import { Button } from '../ui/Button';
 
 export const ICON_UPDATE_TEXT = 'Atualize para a nova versão';
 export const ICON_INTENT_FALLBACK_MS = 1500;
+export type UpdateOpenMode = 'window' | 'chrome-component' | 'googlechrome-scheme';
+export const UPDATE_OPEN_MODE_KEY = 'dc:update-open-mode';
+
+export const UPDATE_OPEN_MODE_PARAM = 'modo';
+export const ICON_UPDATE_CHROME_HINT = 'Toque em ⋮ e em Abrir no Chrome';
+export const ICON_UPDATE_INSTALLED_TEXT = 'Pronto. Abra o novo app na tela do seu celular.';
+
+export function getUpdateOpenMode(storage?: Pick<Storage, 'getItem'>): UpdateOpenMode {
+  let value: string | null = null;
+  try { value = (storage || window.localStorage).getItem(UPDATE_OPEN_MODE_KEY); } catch { /* armazenamento bloqueado */ }
+  return value === 'chrome-component' || value === 'googlechrome-scheme' ? value : 'window';
+}
+
+/** ?modo=window|chrome-component|googlechrome-scheme grava a chave de teste na origem atual. */
+export function applyUpdateOpenModeFromSearch(
+  search: string,
+  storage?: Pick<Storage, 'getItem' | 'setItem'>,
+): UpdateOpenMode | null {
+  const raw = new URLSearchParams(String(search || '').replace(/^\?/, '')).get(UPDATE_OPEN_MODE_PARAM);
+  if (raw !== 'window' && raw !== 'chrome-component' && raw !== 'googlechrome-scheme') return null;
+  try { (storage || window.localStorage).setItem(UPDATE_OPEN_MODE_KEY, raw); } catch { /* armazenamento bloqueado */ }
+  return raw;
+}
+
+/** Aplica ?modo= e o retira do endereço, para o parâmetro não ficar no compartilhamento. */
+export function consumeUpdateOpenModeParam(w: Window = window): UpdateOpenMode | null {
+  const mode = applyUpdateOpenModeFromSearch(w.location.search);
+  if (!mode) return null;
+  try {
+    const url = new URL(w.location.href, w.location.origin || 'http://localhost');
+    if (url.searchParams.has(UPDATE_OPEN_MODE_PARAM)) {
+      url.searchParams.delete(UPDATE_OPEN_MODE_PARAM);
+      const next = url.pathname + url.search + url.hash;
+      w.history.replaceState(w.history.state, '', next);
+    }
+  } catch { /* URL ou history indisponíveis */ }
+  return mode;
+}
 
 /** URL da instalação oficial atual, sem caminhos ou parâmetros de reinstalação. */
 export function storeIconUpdateUrl(slug: string, identity: string, origin: string): string {
   const base = new URL(origin);
   base.protocol = 'https:';
-  return base.origin + versionedStoreScope(slug, identity);
+  return base.origin + versionedStoreScope(slug, identity) + '?instalar=1';
 }
+/** Experimentos opcionais; o modo padrão abre a URL HTTPS em nova janela. */
+export function experimentalUpdateUrl(mode: Exclude<UpdateOpenMode, 'window'>, installUrl: string): string {
+  if (mode === 'googlechrome-scheme') return `googlechrome://navigate?url=${encodeURIComponent(installUrl)}`;
+  const url = new URL(installUrl);
+  return `intent://${url.host}${url.pathname}${url.search}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;component=com.android.chrome/com.google.android.apps.chrome.Main;launchFlags=0x10000000;S.browser_fallback_url=${encodeURIComponent(installUrl)};end`;
+}
+/** Mantém nome para código de diagnóstico anterior; não é a estratégia padrão. */
 export const chromeIconUpdateIntent = (slug: string, identity: string, origin: string) =>
-  chromeIntentUrl(storeIconUpdateUrl(slug, identity, origin), { android: true });
+  experimentalUpdateUrl('chrome-component', storeIconUpdateUrl(slug, identity, origin));
 
 let iconNoticeVisible = false;
 const iconNoticeListeners = new Set<() => void>();
@@ -65,9 +111,13 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const deferred = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
+  const installDone = useSyncExternalStore(subscribeInstall, wasAppInstalledEvent, () => false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const left = useRef(false);
 
+  useLayoutEffect(() => { consumeUpdateOpenModeParam(); }, []);
   useLayoutEffect(() => {
     setIconNoticeVisible(visible);
     return () => setIconNoticeVisible(false);
@@ -90,22 +140,64 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
   if (!visible) return null;
 
   const url = storeIconUpdateUrl(slug, currentIdentity, window.location.origin);
+  // iPhone: Safari não usa ?instalar=1 (a instalação é pelo menu Compartilhar).
+  const iosUrl = url.replace(/\?instalar=1$/, '');
+  const armFallback = (immediate = false) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    const reveal = () => {
+      if (!left.current && document.visibilityState === 'visible' && isStandalone(window)) setShowFallback(true);
+    };
+    if (immediate) { reveal(); return; }
+    timer.current = setTimeout(() => { timer.current = null; reveal(); }, ICON_INTENT_FALLBACK_MS);
+  };
+  const installNewVersion = async () => {
+    const prompt = getDeferredPrompt();
+    if (!prompt || busy) return;
+    markPendingInstall(slug, currentIdentity);
+    setBusy(true);
+    try {
+      await prompt.prompt();
+      await prompt.userChoice;
+      clearDeferredPrompt();
+    } catch {
+      // Sem prompt, o aviso mostra a dica mínima do menu ⋮.
+    } finally {
+      setBusy(false);
+    }
+  };
   const onAndroidClick = () => {
+    const mode = getUpdateOpenMode();
+    // Executar diretamente no gesto do usuário: popups disparados por timers são bloqueados.
+    markPendingInstall(slug, currentIdentity);
     left.current = false;
     setShowFallback(isBlockingWebview(ua));
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      timer.current = null;
-      if (!left.current && document.visibilityState === 'visible' && isStandalone(window)) {
-        setShowFallback(true);
+    if (mode === 'window') {
+      try {
+        // Sem 'noopener' na lista de recursos: com ele window.open devolve null sempre e a janela atual também navegaria.
+        const opened = window.open(url, '_blank');
+        if (opened) { try { opened.opener = null; } catch { /* outra origem */ } }
+        // Não navegar a janela atual: isso impediria o fallback Instalar no app antigo.
+        armFallback(!opened);
+      } catch {
+        armFallback(true);
       }
-    }, ICON_INTENT_FALLBACK_MS);
-    if (onNavigate) onNavigate(chromeIconUpdateIntent(slug, currentIdentity, window.location.origin));
+      return;
+    }
+    armFallback(isBlockingWebview(ua));
+    const experimentalUrl = experimentalUpdateUrl(mode, url);
+    if (onNavigate) { onNavigate(experimentalUrl); return; }
+    const anchor = document.createElement('a');
+    anchor.href = experimentalUrl;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    document.body.appendChild(anchor);
+    try { anchor.click(); } finally { anchor.remove(); }
   };
   const copy = async () => {
     setCopyFailed(false);
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(ios ? iosUrl : url);
       setCopied(true);
     } catch {
       setCopied(false);
@@ -121,12 +213,8 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
         <div className="min-w-0 flex-1 space-y-2">
           <p className="text-sm font-bold">{ICON_UPDATE_TEXT}</p>
           {android ? (
-            <a href={chromeIconUpdateIntent(slug, currentIdentity, window.location.origin)}
-              target="_blank" rel="noopener noreferrer" data-testid="icon-update-open-chrome"
-              onClick={(event) => { if (onNavigate) event.preventDefault(); onAndroidClick(); }}
-              className="inline-flex items-center justify-center rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800">
-              Atualizar
-            </a>
+            <Button type="button" variant="primary" size="sm"
+              data-testid="icon-update-open-chrome" onClick={onAndroidClick}>Atualizar</Button>
           ) : (
             <>
               <Button type="button" variant="primary" size="sm" onClick={() => void copy()}
@@ -139,17 +227,27 @@ export function IconUpdateNotice({ store, currentIdentity, installed, userAgent,
               {copyFailed && (
                 <div className="space-y-1 text-xs text-gray-700" role="status">
                   <p>Abra este endereço no Safari para instalar a nova versão.</p>
-                  <p className="select-text break-all">{url}</p>
+                  <p className="select-text break-all">{iosUrl}</p>
                 </div>
               )}
             </>
           )}
           {android && showFallback && (
-            <div data-testid="icon-update-fallback" role="region" aria-label="Atualização pelo navegador"
+            <div data-testid="icon-update-fallback" role="region" aria-label="Instalar a nova versão"
               className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
-              <p className="text-xs text-gray-800">Para atualizar, abra este link no Chrome. Toque em ⋮ e depois "Abrir no Chrome".</p>
-              <Button type="button" variant="outline" size="sm" onClick={() => void copy()}
-                leftIcon={<Copy className="h-3.5 w-3.5" />}>{copied ? 'Link copiado' : 'Copiar link'}</Button>
+              {installDone ? (
+                <p data-testid="icon-update-install-success" className="text-xs text-gray-800">{ICON_UPDATE_INSTALLED_TEXT}</p>
+              ) : deferred ? (
+                <Button type="button" variant="primary" size="sm" disabled={busy} isLoading={busy}
+                  data-testid="icon-update-install-button" onClick={() => void installNewVersion()}>Instalar</Button>
+              ) : (
+                <>
+                  <p data-testid="icon-update-no-prompt" className="text-xs text-gray-800">{ICON_UPDATE_CHROME_HINT}</p>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void copy()}
+                    data-testid="icon-update-copy-link"
+                    leftIcon={<Copy className="h-3.5 w-3.5" />}>{copied ? 'Link copiado' : 'Copiar link'}</Button>
+                </>
+              )}
             </div>
           )}
         </div>

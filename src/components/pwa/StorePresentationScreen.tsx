@@ -12,7 +12,7 @@ export interface StorePresentationScreenProps {
 /**
  * Apresentação imersiva: ocupa toda a viewport, sem cartões, marca da plataforma,
  * textos adicionais ou interferência no splash nativo.
- * Erro, autoplay bloqueado ou demora > 1,5s liberam imediatamente a vitrine.
+ * Autoplay com som bloqueado tenta novamente mudo; erro real ou demora > 1,5s liberam a vitrine.
  */
 export function StorePresentationScreen({ plan, storeName, reducedMotion = false, onDone }: StorePresentationScreenProps) {
   const [leaving, setLeaving] = useState(false);
@@ -41,8 +41,18 @@ export function StorePresentationScreen({ plan, storeName, reducedMotion = false
   useEffect(() => {
     timers.current.push(setTimeout(finish, PRESENTATION_START_TIMEOUT_MS));
     if (plan.kind === 'VIDEO') {
-      const p = videoRef.current?.play();
-      p?.catch(finish);
+      const video = videoRef.current;
+      if (video) {
+        // Primeiro tenta reproduzir COM som. Se autoplay com áudio for bloqueado,
+        // tenta mudo antes de liberar a vitrine.
+        const tryMuted = () => {
+          if (completed.current) return;
+          video.muted = true;
+          try { Promise.resolve(video.play()).catch(finish); } catch { finish(); }
+        };
+        video.muted = false;
+        try { Promise.resolve(video.play()).catch(tryMuted); } catch { tryMuted(); }
+      }
     }
     return () => clearTimers();
   }, []); // A abertura é um evento único; troca de mídia remonta por key.
@@ -70,7 +80,7 @@ export function StorePresentationScreen({ plan, storeName, reducedMotion = false
       )}
       {plan.kind === 'VIDEO' && (
         <video ref={videoRef} data-testid="store-presentation-video"
-          src={plan.url} autoPlay muted playsInline preload="auto" controls={false} disablePictureInPicture
+          src={plan.url} autoPlay playsInline preload="auto" controls={false} disablePictureInPicture
           style={mediaStyle} onPlaying={() => start(Math.min(plan.maxMs, PRESENTATION_MAX_VIDEO_SECONDS * 1000))}
           onTimeUpdate={e => { if (e.currentTarget.currentTime >= PRESENTATION_MAX_VIDEO_SECONDS) finish(); }}
           onEnded={finish} onError={finish} />
@@ -80,16 +90,7 @@ export function StorePresentationScreen({ plan, storeName, reducedMotion = false
           muted playsInline preload="metadata" controls={false} style={mediaStyle}
           onLoadedData={() => start(plan.durationMs)} onError={finish} />
       )}
-      <button type="button" data-testid="store-presentation-skip"
-        aria-label="Pular abertura e ir para a loja" onClick={finish}
-        style={{
-          position: 'absolute',
-          top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
-          right: 'calc(env(safe-area-inset-right, 0px) + 12px)',
-          border: '1px solid var(--dc-border)', borderRadius: 999, padding: '7px 13px',
-          background: 'var(--dc-bg-card-color)', color: 'var(--dc-text-main)',
-          fontWeight: 600, fontSize: 12, cursor: 'pointer', opacity: 0.9,
-        }}>Pular</button>
+
     </div>
   );
 }

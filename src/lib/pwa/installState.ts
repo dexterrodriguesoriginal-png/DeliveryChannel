@@ -1,4 +1,5 @@
 /** Estado de instalação do PWA por loja (localStorage) + detecção de plataforma. */
+import { clearAllPendingInstalls } from './installSession';
 export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
@@ -66,7 +67,7 @@ export function captureInstallEvents(w: Window) {
     e.preventDefault();
     deferred = e as BeforeInstallPromptEvent; listeners.forEach(l => l());
   });
-  w.addEventListener('appinstalled', () => { installedFlag = true; deferred = null; listeners.forEach(l => l()); });
+  w.addEventListener('appinstalled', () => { installedFlag = true; deferred = null; clearAllPendingInstalls(); listeners.forEach(l => l()); });
 }
 
 // --- Convite inteligente e persistente (por loja e por dispositivo; nunca no cadastro do dono) ---
