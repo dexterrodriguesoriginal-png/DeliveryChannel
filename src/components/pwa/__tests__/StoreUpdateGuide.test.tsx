@@ -10,7 +10,7 @@ beforeEach(() => {
   clearDeferredPrompt();
   window.history.replaceState(null, '', '/app/loja~0123456789/?atualizar=1');
 });
-afterEach(() => { cleanup(); clearDeferredPrompt(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); clearDeferredPrompt(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('guia opcional de atualização na loja', () => {
   it('não aparece fora da sessão ?atualizar=1', () => {
@@ -54,6 +54,40 @@ describe('guia opcional de atualização na loja', () => {
     expect(ui.queryByText(UPDATE_GUIDE_STEP_1_CHROME)).toBeNull();
     expect(native).toBeTruthy();
   });
+  it('iOS mostra Safari/Compartilhar, copia URL limpa e não mostra menu ⋮ ou seta', async () => {
+    const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    vi.stubGlobal('navigator', {
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile Safari/604.1',
+      platform: 'iPhone', maxTouchPoints: 5, clipboard,
+    });
+    const ui = render(<StoreUpdateGuide slug="loja" currentIdentity="0123456789" />);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    const guide = ui.getByTestId('store-update-guide');
+    expect(guide.textContent).toContain('Safari');
+    expect(guide.textContent).toContain('Compartilhar');
+    expect(guide.textContent).toContain('Adicionar à Tela de Início');
+    expect(guide.textContent).not.toMatch(/⋮|Abrir no Chrome|Criar atalho/i);
+    expect(ui.queryByTestId('store-update-arrow')).toBeNull();
+    expect(ui.queryByTestId('store-update-native-install')).toBeNull();
+    await act(async () => {
+      fireEvent.click(ui.getByRole('button', { name: 'Copiar link' }));
+      await Promise.resolve();
+    });
+    expect(clipboard.writeText).toHaveBeenCalledWith(window.location.origin + '/app/loja~0123456789/');
+    expect(ui.getByRole('button', { name: 'Link copiado' })).toBeTruthy();
+    expect(ui.getByRole('button', { name: 'Fechar guia' })).toBeTruthy();
+  });
+  it('iPadOS identificado como MacIntel com toque recebe instruções Safari', () => {
+    vi.stubGlobal('navigator', {
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15',
+      platform: 'MacIntel', maxTouchPoints: 5,
+    });
+    const ui = render(<StoreUpdateGuide slug="loja" currentIdentity="0123456789" />);
+    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
+    expect(ui.getByTestId('store-update-guide').textContent).toContain('Adicionar à Tela de Início');
+    expect(ui.queryByTestId('store-update-arrow')).toBeNull();
+  });
+
   it('exibe Instalar somente quando o navegador entrega beforeinstallprompt', async () => {
     captureInstallEvents(window);
     const prompt = vi.fn().mockResolvedValue(undefined);
