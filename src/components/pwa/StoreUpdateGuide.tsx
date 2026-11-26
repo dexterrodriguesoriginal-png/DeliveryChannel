@@ -3,7 +3,10 @@ import { ArrowUpRight, X } from 'lucide-react';
 import { versionedStoreScope } from '../../lib/pwa/appIdentity';
 import { Button } from '../ui/Button';
 import { clearDeferredPrompt, getDeferredPrompt, subscribeInstall, isStandalone, detectPlatform } from '../../lib/pwa/installState';
+import { SAFE_TOP } from '../../lib/pwa/edgeToEdge';
 import { isVisualUpdateSession } from '../../lib/pwa/installSession';
+
+export const STORE_UPDATE_BAR_HEIGHT = '3.5rem';
 
 export const UPDATE_GUIDE_STEP_1_TAB = 'Toque nos 3 pontinhos (⋮) no canto de cima e depois em "Abrir no Chrome".';
 export const UPDATE_GUIDE_STEP_1_CHROME = 'Toque nos 3 pontinhos (⋮) no canto de cima.';
@@ -64,8 +67,10 @@ export function StoreUpdateGuide({ slug, currentIdentity }: { slug: string; curr
 
   return (
     <>
-      <div className="fixed right-3 z-40" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' }}>
-        <Button type="button" variant="outline" size="sm"
+      <div data-testid="store-update-bar" className="sticky z-[45] flex items-center px-3"
+        style={{ top: SAFE_TOP, height: STORE_UPDATE_BAR_HEIGHT, backgroundColor: 'var(--dc-bg-card-color)' }}>
+        <Button type="button" variant="primary" size="lg" className="w-full font-bold"
+          style={{ backgroundColor: 'var(--dc-primary)', color: 'var(--dc-button-text)', borderColor: 'var(--dc-border)' }}
           data-testid="store-update-open-guide" onClick={() => setOpen(true)}>Atualizar</Button>
       </div>
       {open && (
