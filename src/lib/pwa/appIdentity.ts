@@ -40,6 +40,26 @@ export const versionedAppId = (tenantId: string, identity: string) => `/app-id/$
 /** Versão mais nova já aberta pelo ícone neste aparelho (armazenamento do Chrome é comum a todos os apps da origem). */
 export const newestLaunchedKey = (slug: string) => `dc:app-identity:${slug}`;
 
+export const JUST_INSTALLED_TTL_MS = 60 * 60 * 1000;
+export const justInstalledKey = (slug: string) => `dc:just-installed:${slug}`;
+export interface JustInstalled { identity: string; at: number }
+
+export function readJustInstalled(slug: string, storage: Pick<Storage, 'getItem'>): JustInstalled | null {
+  try {
+    const rec = JSON.parse(storage.getItem(justInstalledKey(slug)) || 'null') as JustInstalled | null;
+    return rec && typeof rec.identity === 'string' && APP_IDENTITY_RE.test(rec.identity)
+      && Number.isFinite(rec.at) ? rec : null;
+  } catch { return null; }
+}
+
+export function recordJustInstalled(slug: string, identity: string, storage: Pick<Storage, 'setItem'>, now = Date.now()): void {
+  if (!slug || !APP_IDENTITY_RE.test(identity)) return;
+  try {
+    storage.setItem(justInstalledKey(slug), JSON.stringify({ identity, at: now }));
+    storage.setItem(newestLaunchedKey(slug), identity);
+  } catch { /* armazenamento bloqueado */ }
+}
+
 export type IdentityStatus =
   /** Aberto pelo ícone da versão atual (ou no navegador comum sem pedido de reinstalação). */
   | 'current'
@@ -70,6 +90,7 @@ export function versionedStoreRedirect(input: {
   standalone: boolean; previewMode: boolean; search: string; hash: string;
   isLoadingStore: boolean; storeLoaded: boolean; reloadUnsafe: boolean;
   alreadyRedirected: boolean;
+  justInstalled?: JustInstalled | null; now?: number; newestLaunched?: string | null;
 }): string | null {
   const o = input;
   if (!o.slug || !o.currentIdentity || o.previewMode || o.isLoadingStore ||
@@ -78,12 +99,16 @@ export function versionedStoreRedirect(input: {
   if (params.has('mesa') || params.get('preview') === '1') return null;
   if (o.standalone) {
     if (o.runningIdentity === o.currentIdentity) return null;
+    const age = (o.now ?? Date.now()) - (o.justInstalled?.at ?? 0);
+    const fresh = !!o.justInstalled && age >= 0 && age < JUST_INSTALLED_TTL_MS;
+    if (o.runningIdentity && ((fresh && o.justInstalled?.identity === o.runningIdentity)
+      || (!o.justInstalled && o.newestLaunched === null))) return null;
     // A sessão é transitória, nunca alteramos start_url nem a identidade instalada.
     params.delete('instalar');
     params.delete('reinstall');
     params.set('atualizar', '1');
-  } else if (o.runningIdentity) {
-    return null; // O navegador já está em um scope versionado.
+  } else if (o.runningIdentity === o.currentIdentity) {
+    return null;
   }
   const search = params.toString();
   return versionedStoreScope(o.slug, o.currentIdentity)
