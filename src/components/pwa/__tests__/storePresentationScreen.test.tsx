@@ -20,6 +20,7 @@ describe('Abertura da loja — mídia e fallback', () => {
     const screen = ui.getByTestId('store-presentation');
     expect(screen.style.position).toBe('fixed');
     expect(ui.queryByText(/Delivery Channel apresenta/)).toBeNull();
+    expect(ui.queryByTestId('store-presentation-skip')).toBeNull();
     fireEvent.load(ui.getByTestId('store-presentation-image'));
     advance(2999); expect(done).not.toHaveBeenCalled();
     advance(1 + PRESENTATION_FADE_MS);
@@ -38,15 +39,44 @@ describe('Abertura da loja — mídia e fallback', () => {
     advance(PRESENTATION_START_TIMEOUT_MS - 1); expect(done).not.toHaveBeenCalled();
     advance(1 + PRESENTATION_FADE_MS); expect(done).toHaveBeenCalledTimes(1);
   });
-  it('vídeo é mudo, inline, limitado a 10s e permite pular', () => {
+  it('vídeo tenta começar COM som, sem Pular, e encerra no teto de 10s', () => {
     const done = vi.fn();
+    const play = vi.mocked(HTMLMediaElement.prototype.play);
     const ui = render(<StorePresentationScreen plan={{ kind: 'VIDEO', url: 'https://cdn.test/v.mp4', maxMs: 10000 }} onDone={done} />);
     const video = ui.getByTestId('store-presentation-video') as HTMLVideoElement;
-    expect(video.muted).toBe(true);
+    expect(video.muted).toBe(false);
+    expect(video.hasAttribute('muted')).toBe(false);
+    expect(play).toHaveBeenCalled();
     expect(video.hasAttribute('playsinline')).toBe(true);
+    expect(video.hasAttribute('controls')).toBe(false);
+    expect(ui.queryByTestId('store-presentation-skip')).toBeNull();
     fireEvent.playing(video);
     advance(9999); expect(done).not.toHaveBeenCalled();
-    fireEvent.click(ui.getByRole('button', { name: /Pular/ }));
+    advance(1 + PRESENTATION_FADE_MS);
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+  it('autoplay com som rejeitado tenta novamente mudo, sem cancelar a abertura', async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play')
+      .mockRejectedValueOnce(new DOMException('autoplay blocked', 'NotAllowedError'))
+      .mockResolvedValueOnce(undefined);
+    const done = vi.fn();
+    const ui = render(<StorePresentationScreen plan={{ kind: 'VIDEO', url: '/video.mp4', maxMs: 10000 }} onDone={done} />);
+    const video = ui.getByTestId('store-presentation-video') as HTMLVideoElement;
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(video.muted).toBe(true);
+    expect(done).not.toHaveBeenCalled();
+    fireEvent.playing(video);
+    advance(10000 + PRESENTATION_FADE_MS);
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+  it('se o fallback mudo também falhar, libera a vitrine sem travar', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play')
+      .mockRejectedValueOnce(new DOMException('blocked', 'NotAllowedError'))
+      .mockRejectedValueOnce(new Error('media failed'));
+    const done = vi.fn();
+    render(<StorePresentationScreen plan={{ kind: 'VIDEO', url: '/broken.mp4', maxMs: 10000 }} onDone={done} />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     advance(PRESENTATION_FADE_MS);
     expect(done).toHaveBeenCalledTimes(1);
   });
@@ -57,6 +87,8 @@ describe('Abertura da loja — mídia e fallback', () => {
       reducedMotion onDone={done} />);
     expect(ui.getByTestId('store-presentation').style.transition).toBe('none');
     expect(ui.queryByTestId('store-presentation-video')).toBeNull();
+    expect((ui.getByTestId('store-presentation-still') as HTMLVideoElement).muted).toBe(true);
+    expect(ui.queryByTestId('store-presentation-skip')).toBeNull();
     fireEvent.loadedData(ui.getByTestId('store-presentation-still'));
     advance(1500);
     expect(done).toHaveBeenCalledTimes(1);
