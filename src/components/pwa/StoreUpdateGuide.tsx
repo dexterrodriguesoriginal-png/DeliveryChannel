@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { ArrowUpRight, X } from 'lucide-react';
+import { versionedStoreScope } from '../../lib/pwa/appIdentity';
 import { Button } from '../ui/Button';
-import { clearDeferredPrompt, getDeferredPrompt, subscribeInstall, isStandalone } from '../../lib/pwa/installState';
+import { clearDeferredPrompt, getDeferredPrompt, subscribeInstall, isStandalone, detectPlatform } from '../../lib/pwa/installState';
 import { isVisualUpdateSession } from '../../lib/pwa/installSession';
 
 export const UPDATE_GUIDE_STEP_1_TAB = 'Toque nos 3 pontinhos (⋮) no canto de cima e depois em "Abrir no Chrome".';
@@ -17,7 +18,12 @@ export function likelyCustomTab(ua: string): boolean {
 export function StoreUpdateGuide({ slug, currentIdentity }: { slug: string; currentIdentity: string }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
   const deferred = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
+  const isIos = typeof navigator !== 'undefined' && (
+    detectPlatform(navigator.userAgent).startsWith('ios') ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
   const customTab = typeof window !== 'undefined' && isStandalone(window)
     || (typeof navigator !== 'undefined' && likelyCustomTab(navigator.userAgent));
   const enabled = !!slug && !!currentIdentity && typeof window !== 'undefined'
@@ -33,6 +39,13 @@ export function StoreUpdateGuide({ slug, currentIdentity }: { slug: string; curr
   }, [open]);
 
   if (!enabled) return null;
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.origin + versionedStoreScope(slug, currentIdentity));
+      setCopied(true);
+    } catch { setCopied(false); }
+  };
 
   const install = async () => {
     const prompt = getDeferredPrompt();
@@ -75,24 +88,36 @@ export function StoreUpdateGuide({ slug, currentIdentity }: { slug: string; curr
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex justify-end">
-              <ArrowUpRight data-testid="store-update-arrow" aria-hidden="true"
-                className="h-10 w-10 motion-safe:animate-bounce motion-reduce:animate-none"
-                style={{ color: 'var(--dc-primary)' }} />
-            </div>
-            <ol className="space-y-3 text-sm list-decimal pl-5">
-              <li>{customTab ? UPDATE_GUIDE_STEP_1_TAB : UPDATE_GUIDE_STEP_1_CHROME}</li>
-              <li>{UPDATE_GUIDE_STEP_2}</li>
-            </ol>
-            <p className="rounded-lg p-3 text-sm" style={{
-              background: 'var(--dc-bg-general-color)', border: '1px solid var(--dc-border)',
-            }}>
-              Vão aparecer duas opções: Instalar ou Criar atalho. Toque em <strong>Instalar</strong>.
-            </p>
-            {deferred && (
-              <Button type="button" variant="primary" size="md" disabled={busy}
-                data-testid="store-update-native-install" isLoading={busy}
-                onClick={() => void install()}>Instalar</Button>
+            {isIos ? (
+              <>
+                <p className="text-sm">Abra o link no Safari, toque no botão Compartilhar e depois em "Adicionar à Tela de Início".</p>
+                <Button type="button" variant="outline" size="sm"
+                  data-testid="store-update-copy-link" onClick={() => void copyLink()}>
+                  {copied ? 'Link copiado' : 'Copiar link'}
+                </Button>
+              </>
+            ) : (
+              <>
+              <div className="flex justify-end">
+                <ArrowUpRight data-testid="store-update-arrow" aria-hidden="true"
+                  className="h-10 w-10 motion-safe:animate-bounce motion-reduce:animate-none"
+                  style={{ color: 'var(--dc-primary)' }} />
+              </div>
+              <ol className="space-y-3 text-sm list-decimal pl-5">
+                <li>{customTab ? UPDATE_GUIDE_STEP_1_TAB : UPDATE_GUIDE_STEP_1_CHROME}</li>
+                <li>{UPDATE_GUIDE_STEP_2}</li>
+              </ol>
+              <p className="rounded-lg p-3 text-sm" style={{
+                background: 'var(--dc-bg-general-color)', border: '1px solid var(--dc-border)',
+              }}>
+                Vão aparecer duas opções: Instalar ou Criar atalho. Toque em <strong>Instalar</strong>.
+              </p>
+              {deferred && (
+                <Button type="button" variant="primary" size="md" disabled={busy}
+                  data-testid="store-update-native-install" isLoading={busy}
+                  onClick={() => void install()}>Instalar</Button>
+              )}
+                </>
             )}
           </section>
         </div>
