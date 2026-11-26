@@ -2,8 +2,9 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { StoreUpdateGuide, UPDATE_GUIDE_STEP_1_CHROME, UPDATE_GUIDE_STEP_1_TAB, UPDATE_GUIDE_STEP_2 } from '../StoreUpdateGuide';
+import { StoreUpdateGuide, STORE_UPDATE_BAR_HEIGHT, UPDATE_GUIDE_STEP_1_CHROME, UPDATE_GUIDE_STEP_1_TAB, UPDATE_GUIDE_STEP_2 } from '../StoreUpdateGuide';
 import { captureInstallEvents, clearDeferredPrompt } from '../../../lib/pwa/installState';
+import { SAFE_TOP } from '../../../lib/pwa/edgeToEdge';
 import { isVisualUpdateSession } from '../../../lib/pwa/installSession';
 
 beforeEach(() => {
@@ -21,10 +22,29 @@ describe('guia opcional de atualização na loja', () => {
     const ui = render(<StoreUpdateGuide slug="loja" currentIdentity="0123456789" />);
     expect(ui.queryByTestId('store-update-open-guide')).toBeNull();
   });
+  it('não mostra faixa para instalação nova com source=pwa', () => {
+    window.history.replaceState(null, '', '/app/loja~0123456789/?source=pwa');
+    const ui = render(<StoreUpdateGuide slug="loja" currentIdentity="0123456789" />);
+    expect(ui.queryByTestId('store-update-bar')).toBeNull();
+  });
+  it('mantém faixa própria visível acima do cabeçalho e da staff bar', () => {
+    window.history.replaceState(null, '', '/app/loja~0123456789/?source=pwa&atualizar=1');
+    const ui = render(<StoreUpdateGuide slug="loja" currentIdentity="0123456789" />);
+    const bar = ui.getByTestId('store-update-bar');
+    expect(bar.className).toContain('sticky');
+    expect(bar.className).toContain('z-[45]');
+    expect(bar.style.height).toBe(STORE_UPDATE_BAR_HEIGHT);
+    expect(bar.getAttribute('style')).toContain(SAFE_TOP);
+    const button = ui.getByRole('button', { name: 'Atualizar' });
+    expect(bar.contains(button)).toBe(true);
+    expect(button.className).toContain('w-full');
+    expect(ui.queryByRole('dialog')).toBeNull();
+  });
   it('permite comprar normalmente, abre e fecha modal por botão, Escape ou fundo', () => {
     const ui = render(<div><button type="button">Adicionar produto</button>
       <StoreUpdateGuide slug="loja" currentIdentity="0123456789" /></div>);
     expect(ui.getByRole('button', { name: 'Adicionar produto' })).toBeTruthy();
+    expect(ui.getByTestId('store-update-bar')).toBeTruthy();
     expect(ui.queryByTestId('store-update-guide')).toBeNull();
     fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
     expect(ui.getByRole('dialog', { name: 'Como atualizar o aplicativo' })).toBeTruthy();
