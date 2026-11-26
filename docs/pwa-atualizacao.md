@@ -1,56 +1,53 @@
-# Atualização dos aplicativos instalados — Delivery Channel
+# PWA — identidade e atualização da loja (CG-5)
 
-## Duas instalações podem coexistir
+## Identidades coexistentes e escopo
 
-O app de uma loja já instalada continua disponível com a identidade e o escopo de instalação que recebeu originalmente. Alterar **a imagem do ícone** ou a **cor resolvida da barra de navegação do Android** habilita uma nova instalação independente, identificada por um hash hexadecimal de dez caracteres. Não migramos nem apagamos o WebAPK antigo.
+O app estável de cada loja mantém `/app/<slug>/`, manifesto com `id: /app-id/<tenantId>` e escopo `/app/<slug>/` (barra final). Uma alteração **confirmada** da imagem do ícone ou da cor resolvida da barra de navegação habilita uma versão separada `/app/<slug>~<hash10>/`, manifesto com `id: /app-id/<tenantId>/<hash10>` e escopo `/app/<slug>~<hash10>/`, também com barra final. Novos layouts, produtos, nome, cor primária e cabeçalho não geram novas instalações; atualizam os dados da mesma loja. O hash do ícone usado nos arquivos PNG continua independente da identidade de instalação.
 
-Sem uma dessas mudanças confirmadas, todos os visitantes continuam usando o manifesto estável: `/app/<slug>/manifest.webmanifest`, com `id: /app-id/<tenantId>`, `scope: /app/<slug>/` e `start_url: /app/<slug>/?source=pwa`. Não ativamos modo versionado apenas por fazer deploy ou atualizar textos, catálogo, slogan, nome (quando há logo), cor primária, do cabeçalho, da barra de status ou timestamps.
+A versão antiga e a nova podem coexistir sem apagar o WebAPK antigo. Os manifestos das versões já instaladas preservam seu próprio `id`, `start_url` e `scope`. O `start_url` oficial continua `/app/<slug>~<hash10>/?source=pwa` — sem parâmetros de atualização. Não há migração de banco e nada altera o manifesto do PDV, totem, entregador, garçom ou cozinha.
 
-Quando o modo versionado está ativo, a identidade oficial corrente é `storeAppIdentity(store)`, calculada usando exclusivamente `storeIconVersion(store)` e `resolveSystemBars(...).nav` normalizada. O app novo tem:
-- `/app/<slug>~<hash10>/`
-- `id: /app-id/<tenantId>/<hash10>`
-- `scope: /app/<slug>~<hash10>/`
-- `start_url: /app/<slug>~<hash10>/?source=pwa`
+## Jornada CG-5 — app instalado desatualizado
 
-`storeIconVersion` continua reservada para `?v=` dos PNGs, favicon, apple-touch e totem: **alterar só a cor de navegação não muda o URL da imagem**. O hash de conteúdo da logo é resolvido no servidor; o cliente consulta `/api/pwa/version` e recebe `appIdentity` apenas no modo versionado.
+Ao abrir o **app antigo em standalone**, depois de o catálogo e a identidade oficial carregarem, a vitrine navega com `window.location.replace` para:
 
-A primeira mudança de barra salva `theme_tokens.meta.appBaseNavColor` com a barra resolvida anterior. O campo permanece no JSON do tema e é preservado pelo comando Restaurar ao padrão. Para logo, usamos `appBaseLogoUrl` e `logoConfirmedUrl` existentes: rascunhos ainda não confirmados não liberam uma versão nova. Não há migração de banco.
+```text
+/app/<slug>~<hashAtual>/?atualizar=1
+```
 
-## Links, QR Codes e instalação
+O destino está **fora do escopo** anterior porque os escopos de loja terminam em `/`. No WebAPK Android isso normalmente abre uma **Chrome Custom Tab**. A Custom Tab mostra **a loja completa**, incluindo categorias, produtos, sacola, autenticação e checkout. Não mostra uma tela bloqueante nem obriga instalar para fazer um pedido.
 
-Os códigos QR impressos e compartilhamentos continuam apontando para `/app/<slug>/`. Quando um visitante chega pelo **navegador comum**, o cliente redireciona apenas o navegador para `/app/<slug>~<hash10>/` (preservando query string) se o modo versionado estiver ativo. Apps já abertos em standalone não são redirecionados; os links de mesa (`?mesa=`) e a prévia de Design (`?preview=1`) continuam na rota original. Não há redirecionamento 302 geral do servidor.
+Só ocorre quando há identidade nova, a versão instalada não é a atual e o cliente está em standalone. O redirecionamento é idempotente e espera `reloadUnsafe` ficar falso, evitando interromper checkout, envio de pedidos ou formulários abertos. O helper puro `versionedStoreRedirect` recusa `?mesa=`, `?preview=1`, modo de prévia e contextos de navegação já atualizados. Preserva parâmetros inofensivos e fragmento, substitui somente os parâmetros de sessão e acrescenta `atualizar=1`.
 
-O manifesto da rota estável nunca vira manifesto versionado: o cliente do WebAPK estável continua válido. Cada rota antiga `~hash` mantém indefinidamente seus próprios `id`, `start_url`, `scope`, `related_applications` e HTML apontando para o próprio manifesto, mesmo quando a logo atual mudou, a loja saiu de uma lista de testes ou houve falha temporária de consulta. O conteúdo atual e os ícones `?v=` podem ser atualizados sem mudar aquela identidade.
+**QR Codes e links públicos** continuam apontando para `/app/<slug>/`. O navegador comum que chega à rota estável continua indo para a versão atual, **sem** `atualizar=1`; o app já instalado na identidade atual não redireciona.
 
-## Aviso para a versão antiga
+Na sessão `?atualizar=1`:
+- O catálogo funciona normalmente, sem `AppIdentityUpdate` nem `VersionInstallScreen` como destino.
+- O toast de atualização SW e o aviso visual interno não aparecem; o cliente não recebe outro banner de versão antiga.
+- O sinal `localStorage[dc:app-identity:<slug>]` **não** é escrito, mesmo se a Custom Tab herdar `display-mode: standalone`. A identidade nova é registrada apenas quando o WebAPK oficial é aberto de verdade, em standalone, sem `?instalar=1` nem `?atualizar=1`.
+- Um botão discreto **Atualizar**, no topo e abaixo da camada dos modais, abre **opcionalmente** o guia. Fechar volta ao cardápio sem perder a compra.
 
-Se o app instalado em standalone for o estável ou um `~hash` antigo e a nova versão ainda **não** tiver sido aberta naquele aparelho, mostramos apenas “Atualize para a nova versão” e a ação “Atualizar”. No Android, o caminho padrão encadeia fallbacks no **gesto do usuário**, para o cliente conseguir instalar a versão nova:
+## Guia pelo menu ⋮
 
-1. Tenta abrir o Chrome com a URL HTTPS `/app/<slug>~<hash10>/?instalar=1` via `window.open(url, '_blank')` (sem `noopener` na lista de recursos: com ele `window.open` devolve `null` mesmo quando a janela abre). Se a abertura funcionar, a janela atual permanece no app antigo.
-2. Se a janela for bloqueada (`null`), o navegador lançar exceção, ou o app antigo continuar visível e standalone após **1,5 segundo**, não navegamos a janela atual. Mostramos o botão **Instalar**, que dispara o `beforeinstallprompt` retido, no próprio aviso.
-3. Se não houver prompt nativo (ou ele for dispensado), mostramos a dica mínima “Toque em ⋮ e em Abrir no Chrome” e o botão “Copiar link” com a URL HTTPS da versão nova (o WebAPK antigo pode não ter o menu ⋮ do Chrome).
+O guia mostra uma seta CSS animada apontando para o canto superior direito, sem animação quando `prefers-reduced-motion` pede redução. Informa o procedimento:
 
-Em WebAPK do Chrome, uma navegação externa costuma abrir um **Chrome Custom Tab**, não o aplicativo Chrome completo. Essa aba herda o display-mode standalone do app antigo, então `?instalar=1` é uma **sessão explícita de instalação**: a tela de instalar aparece mesmo assim, e não gravamos `dc:app-identity:<slug>`. O toast de atualização do service worker e o aviso “Atualizar app” ficam ocultos nessa página. Não usamos a rota antiga `/atualizar-app/` nem `window.location.href` no app antigo (isso impediria o fallback e poderia registrar a identidade cedo demais).
+1. Na Custom Tab: **Toque nos 3 pontinhos (⋮) no canto de cima e depois em "Abrir no Chrome".** No Chrome completo: **Toque nos 3 pontinhos (⋮) no canto de cima.**
+2. **Depois toque em "Instalar aplicativo" ou "Adicionar à tela inicial".**
 
-Se o botão Instalar do aviso no app antigo dispara o `beforeinstallprompt` e o Chrome abre o `start_url` da versão nova (`?source=pwa`), uma marca curta `dc:pending-install:<slug>` permite acrescentar `?instalar=1` sem alterar o manifesto. O `start_url` do app novo instalado permanece `?source=pwa`, sem `instalar=1`. A marca some no `appinstalled` ou ao abrir de fato o app novo.
+**Vão aparecer duas opções: Instalar ou Criar atalho. Toque em Instalar.** Quando existe um `beforeinstallprompt` capturado, o guia também oferece **Instalar** diretamente; na Custom Tab esse evento geralmente não está disponível, e o caminho pelo menu ⋮ é o principal. O modal fecha por X/Fechar, Escape ou toque no fundo.
 
-Para testes em dispositivo, o parâmetro `?modo=window|chrome-component|googlechrome-scheme` grava a chave `dc:update-open-mode` na origem atual e some do endereço. A chave aceita **somente** esses três valores, que escolhem o primeiro passo da cadeia:
-- `window` (padrão): o `window.open` HTTPS acima.
-- `chrome-component` (experimental): âncora temporária com intent Android VIEW/BROWSABLE, componente `com.android.chrome/com.google.android.apps.chrome.Main`, `launchFlags=0x10000000` e `S.browser_fallback_url` HTTPS.
-- `googlechrome-scheme` (experimental): âncora `googlechrome://navigate?url=<URL codificada>`.
+Não usamos `intent://`, `googlechrome://`, `window.open`, `?instalar=1` nem `?reinstall=1` no **redirecionamento automático CG-5**. Os componentes/experimentos do antigo fluxo podem continuar no código para compatibilidade, mas não são montados para essa jornada.
 
-Outros valores (e a ausência do parâmetro) não alteram a chave; valores inválidos na chave voltam ao modo `window`. Não há controle visível para o usuário. Em todos os modos, se o app permanecer visível e standalone após 1,5 segundo ou estiver em webview conhecido, vale a mesma cadeia Instalar → dica do ⋮. O timer **nunca** abre outra janela sem gesto do usuário. Em iOS, a ação continua copiando a URL HTTPS, sem prometer abrir o Chrome.
+## Apresentação personalizada da loja
 
-A rota versionada com `?instalar=1` e hash oficial atual, **inclusive quando o display-mode diz standalone** (Custom Tab do app antigo), mostra o nome da loja e a instalação. Se houver `beforeinstallprompt`, o botão **Instalar** é a ação principal. Sem prompt (o caso usual na Custom Tab), a página mostra só: “Toque em ⋮ no canto de cima e depois em "Abrir no Chrome"”, com **Copiar link** e **Compartilhar**. Aceitar o convite nativo não confirma a instalação: aguarda `appinstalled` para “Pronto. Abra o novo app na tela do seu celular.” O sinal da versão nova só é escrito quando o cliente abre o app novo em standalone, sem `?instalar=1`.
+A abertura do lojista continua opcional, protegida pelo módulo `store_presentation` e com duração/controle de sessão definidos em `presentation.ts`. É independente do splash nativo, de `bootScreen.ts`, `#store-boot` e `#dc-boot`.
 
-Apenas o app oficial atual `~hash`, **aberto em standalone e sem `?instalar=1`**, grava `localStorage[dc:app-identity:<slug>] = <hash10>`. O navegador comum e a sessão `?instalar=1` nunca gravam. Depois disso, se o usuário abrir uma versão antiga, ela mostra **somente uma tela bloqueante**:
+- **Vídeo** tenta reproduzir automaticamente **com som**. Se a política de autoplay rejeitar, tenta novamente **mudo**. Se as duas tentativas falharem, se a mídia der erro ou se não começar em 1,5 s, abre a vitrine sem travar.
+- Reproduz até terminar ou até o teto de 10 s; o fade é preservado.
+- **Imagem** mantém seu tempo definido; com movimento reduzido, o plano STILL permanece sem áudio.
+- Não há botão **Pular**, controle de áudio, barras de progresso ou controles de vídeo.
 
-> Esta versão foi substituída. A nova versão já está instalada no seu celular. Remova esta versão e abra a nova.
+## Segurança e testes reais
 
-A única ação é “Abrir nova versão”, link HTTPS normal para o `start_url` da instalação atual, sem intent Chrome. Nem carrinho, menu, convite de instalação, notificação visual ou toast de atualização ficam acessíveis na versão antiga.
+O roteamento permanece exclusivo do `ClientApp` de `/app/<slug>/` sem `?mesa=`. Totem, garçom, KDS, cardápio de mesa, PDV e entregador têm fluxos próprios. O `tenantId` de pedidos e pagamentos nunca é substituído pelo hash visual.
 
-## Compatibilidade e validação
-
-`/api/pwa/version` continua disponibilizando a versão do build e `identityVersion` para atualizações normais. O mecanismo de CSS/tema em runtime e `theme-color` não é substituído. Ícones inválidos continuam respondendo 503 sem cache e nunca são substituídos por iniciais quando uma logo estava configurada.
-
-**Teste obrigatório em aparelho físico:** verificar como o WebAPK abre o endereço HTTPS em uma janela/Custom Tab, se o prompt nativo funciona e se a versão nova pode coexistir com a antiga. A visibilidade do novo ícone e a captura de links dependem da versão do Android, Chrome e políticas WebAPK. A implementação do link não garante sozinha esse comportamento.
+**Validar obrigatoriamente em Android físico:** abertura do WebAPK antigo com mudança real de logo/barra; Custom Tab no catálogo completo; compra possível sem atualização; guia ⋮ → Abrir no Chrome → Instalar (não Criar atalho); app recém-instalado funcionando sem aviso; duas versões coexistindo; vídeo com áudio quando permitido e fallback mudo quando bloqueado. O navegador pode não permitir áudio no autoplay: não é possível garantir som sem uma interação do usuário.
