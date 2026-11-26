@@ -26,10 +26,12 @@ async function render() {
   });
 }
 describe('instalação antiga substituída', () => {
-  it('ClientApp fornece as variáveis do tema ao retorno bloqueante antes da tela normal', () => {
+  it('ClientApp antigo não bloqueia o catálogo mesmo após o novo app ser aberto', () => {
     const client = readFileSync(resolve(process.cwd(), 'src/pages/client/ClientApp.tsx'), 'utf8');
-    expect(client).toMatch(/if \(appStatus === 'old-icon' && currentIdentity\)\s*\{\s*return <div style=\{activeCssVars\}><AppIdentityUpdate/);
-    expect(client.indexOf("if (appStatus === 'old-icon'")).toBeLessThan(client.indexOf('className="min-h-screen pb-44'));
+    expect(client).not.toContain('<AppIdentityUpdate');
+    expect(client).not.toContain("if (appStatus === 'old-icon'");
+    expect(client).toContain('versionedStoreRedirect({');
+    expect(client).toContain('<StoreUpdateGuide');
   });
 
   it('CookieBanner global não é renderizado quando a tela bloqueante está visível', () => {
