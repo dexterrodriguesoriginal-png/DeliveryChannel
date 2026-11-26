@@ -51,7 +51,7 @@ export function StoreUpdateGuide({ slug, currentIdentity }: { slug: string; curr
 
   return (
     <>
-      <div className="fixed right-3 z-30" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' }}>
+      <div className="fixed right-3 z-40" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' }}>
         <Button type="button" variant="outline" size="sm"
           data-testid="store-update-open-guide" onClick={() => setOpen(true)}>Atualizar</Button>
       </div>
