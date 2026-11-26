@@ -61,6 +61,35 @@ export function identityStatus(o: {
   return o.newestLaunched === o.currentIdentity ? 'old-icon' : 'update-available';
 }
 
+/** Determina o redirect sem afetar checkout e sem mudar rotas de mesa/preview.
+ * Navegador comum navega para o scope atual; WebAPK antigo abre uma sessão de
+ * atualização no scope novo, sem pedir instalação nem bloquear a vitrine.
+ */
+export function versionedStoreRedirect(input: {
+  slug: string; currentIdentity: string | null; runningIdentity: string | null;
+  standalone: boolean; previewMode: boolean; search: string; hash: string;
+  isLoadingStore: boolean; storeLoaded: boolean; reloadUnsafe: boolean;
+  alreadyRedirected: boolean;
+}): string | null {
+  const o = input;
+  if (!o.slug || !o.currentIdentity || o.previewMode || o.isLoadingStore ||
+      !o.storeLoaded || o.reloadUnsafe || o.alreadyRedirected) return null;
+  const params = new URLSearchParams(o.search.replace(/^\?/, ''));
+  if (params.has('mesa') || params.get('preview') === '1') return null;
+  if (o.standalone) {
+    if (o.runningIdentity === o.currentIdentity) return null;
+    // A sessão é transitória, nunca alteramos start_url nem a identidade instalada.
+    params.delete('instalar');
+    params.delete('reinstall');
+    params.set('atualizar', '1');
+  } else if (o.runningIdentity) {
+    return null; // O navegador já está em um scope versionado.
+  }
+  const search = params.toString();
+  return versionedStoreScope(o.slug, o.currentIdentity)
+    + (search ? `?${search}` : '') + o.hash;
+}
+
 /** URL https da versão atual (no navegador), com o pedido de reinstalação. */
 export function reinstallUrl(origin: string, slug: string, identity: string): string {
   return `${origin.replace(/\/$/, '')}${versionedStoreScope(slug, identity)}?${REINSTALL_PARAM}=1`;
