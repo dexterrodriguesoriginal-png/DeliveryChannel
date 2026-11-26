@@ -21,7 +21,6 @@ import { fetchPublicImage } from './safeFetch';
 import { isValidSlug, StoreResolver, supabaseEnvFrom } from './storeSource';
 import { RateLimiter } from '../payments/security';
 import { splitStoreSegment, versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope } from '../../src/lib/pwa/appIdentity';
-import { withTimeout } from './storeHtml';
 import { isVersionedStoreApp } from '../../src/lib/pwa/appVersionMode';
 
 declare const __PWA_BUILD_VERSION__: string | undefined;
@@ -511,7 +510,11 @@ export function createPwaRouter(opts: PwaRouteOptions): PwaRouter {
     );
     if (req.method === 'GET' && isValidSlug(slug) && !excluded) {
       try {
-        const store = await withTimeout(lookupStoreForHtml(slug), 1500, null);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const store = await Promise.race([
+          lookupStoreForHtml(slug),
+          new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), 1500); }),
+        ]).finally(() => { if (timer) clearTimeout(timer); });
         const currentIdentity = identityHeadOptions(store, null).appIdentity;
         if (currentIdentity && /^[0-9a-f]{10}$/.test(currentIdentity)) {
           res.set('Cache-Control', 'no-store');
