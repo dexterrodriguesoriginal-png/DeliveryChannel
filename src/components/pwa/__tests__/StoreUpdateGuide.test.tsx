@@ -36,7 +36,8 @@ describe('guia opcional de atualização na loja', () => {
     expect(bar.getAttribute('style')).toContain('background-color: var(--dc-bg-card-color)');
     const button = ui.getByRole('button', { name: 'Atualizar' });
     expect(bar.contains(button)).toBe(true);
-    expect(button.className).toContain('w-full');
+    expect(button.className).not.toContain('w-full');
+    expect(button.className).toContain('rounded-full');
     expect(ui.queryByRole('dialog')).toBeNull();
   });
   it('permite comprar normalmente, abre e fecha modal por botão, Escape ou fundo', () => {
@@ -47,6 +48,7 @@ describe('guia opcional de atualização na loja', () => {
     expect(ui.queryByTestId('store-update-guide')).toBeNull();
     fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
     expect(ui.getByRole('dialog', { name: 'Como atualizar o aplicativo' })).toBeTruthy();
+    expect(ui.getByTestId('store-update-guide-backdrop').className).toContain('items-start');
     expect(ui.getByText(UPDATE_GUIDE_STEP_2)).toBeTruthy();
     expect(ui.getByText(/Criar atalho/)).toBeTruthy();
     expect(ui.getByText('Instalar', { selector: 'strong' })).toBeTruthy();
