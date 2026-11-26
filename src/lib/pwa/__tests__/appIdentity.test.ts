@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  JUST_INSTALLED_TTL_MS, newestLaunchedKey, readJustInstalled, recordJustInstalled,
   chromeIntentUrl, identityStatus, isOwnManifestHref, reinstallUrl, splitStoreSegment, storeSlugFromAppPath,
   versionedAppId, versionedManifestPath, versionedStartUrl, versionedStoreScope, versionedStoreRedirect,
 } from '../appIdentity';
@@ -76,8 +77,38 @@ describe('appIdentity', () => {
       alreadyRedirected: false,
     };
     expect(versionedStoreRedirect(browser)).toBe('/app/loja~bbbbbbbbbb/?origem=qr');
-    expect(versionedStoreRedirect({ ...browser, runningIdentity: 'aaaaaaaaaa' })).toBeNull();
+    expect(versionedStoreRedirect({ ...browser, runningIdentity: 'aaaaaaaaaa' })).toBe('/app/loja~bbbbbbbbbb/?origem=qr');
+    expect(versionedStoreRedirect({ ...browser, runningIdentity: 'bbbbbbbbbb' })).toBeNull();
+    expect(versionedStoreRedirect({ ...browser, runningIdentity: 'aaaaaaaaaa', search: '?preview=1' })).toBeNull();
     expect(versionedStoreRedirect({ ...browser, search: '?mesa=mesa1' })).toBeNull();
+  });
+
+  it('protege instalação recente, inclusive reinstalação, mas não ícone antigo após TTL', () => {
+    const data = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => { data.set(key, value); },
+    };
+    const now = JUST_INSTALLED_TTL_MS * 10;
+    recordJustInstalled('loja', 'cccccccccc', storage, now - JUST_INSTALLED_TTL_MS * 2);
+    recordJustInstalled('loja', 'aaaaaaaaaa', storage, now);
+    expect(storage.getItem(newestLaunchedKey('loja'))).toBe('aaaaaaaaaa');
+    const justInstalled = readJustInstalled('loja', storage);
+    expect(justInstalled).toEqual({ identity: 'aaaaaaaaaa', at: now });
+    expect(readJustInstalled('outra', storage)).toBeNull();
+    const launch = {
+      slug: 'loja', currentIdentity: 'bbbbbbbbbb', runningIdentity: 'aaaaaaaaaa',
+      standalone: true, previewMode: false, search: '?source=pwa', hash: '',
+      isLoadingStore: false, storeLoaded: true, reloadUnsafe: false, alreadyRedirected: false,
+      justInstalled, now: now + 1, newestLaunched: storage.getItem(newestLaunchedKey('loja')),
+    };
+    const update = '/app/loja~bbbbbbbbbb/?source=pwa&atualizar=1';
+    expect(versionedStoreRedirect(launch)).toBeNull();
+    expect(versionedStoreRedirect({ ...launch, now: now + JUST_INSTALLED_TTL_MS })).toBe(update);
+    expect(versionedStoreRedirect({ ...launch, runningIdentity: null })).toBe(update);
+    expect(versionedStoreRedirect({ ...launch, runningIdentity: 'cccccccccc' })).toBe(update);
+    expect(versionedStoreRedirect({ ...launch, justInstalled: null, newestLaunched: null })).toBeNull();
+    expect(versionedStoreRedirect({ ...launch, justInstalled: null, newestLaunched: 'aaaaaaaaaa' })).toBe(update);
   });
 
   it('manifesto da própria loja', () => {
