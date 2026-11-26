@@ -99,7 +99,7 @@ export function versionedStoreRedirect(input: {
   if (params.has('mesa') || params.get('preview') === '1') return null;
   if (o.standalone) {
     if (o.runningIdentity === o.currentIdentity) return null;
-    const age = (o.now ?? Date.now()) - (o.justInstalled?.at ?? 0);
+    const age = o.now === undefined ? Infinity : o.now - (o.justInstalled?.at ?? 0);
     const fresh = !!o.justInstalled && age >= 0 && age < JUST_INSTALLED_TTL_MS;
     if (o.runningIdentity && ((fresh && o.justInstalled?.identity === o.runningIdentity)
       || (!o.justInstalled && o.newestLaunched === null))) return null;
@@ -107,8 +107,9 @@ export function versionedStoreRedirect(input: {
     params.delete('instalar');
     params.delete('reinstall');
     params.set('atualizar', '1');
-  } else if (o.runningIdentity === o.currentIdentity) {
-    return null;
+  } else {
+    if (o.runningIdentity === o.currentIdentity) return null;
+    params.delete('atualizar');
   }
   const search = params.toString();
   return versionedStoreScope(o.slug, o.currentIdentity)
