@@ -53,7 +53,7 @@ import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint
 import { isLogoConfirmed } from '../../lib/pwa/logoConfirmation';
 import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
 import { getIconNoticeVisible, subscribeIconNotice } from '../../components/client/IconUpdateNotice';
-import { StoreUpdateGuide } from '../../components/pwa/StoreUpdateGuide';
+import { StoreUpdateGuide, STORE_UPDATE_BAR_HEIGHT } from '../../components/pwa/StoreUpdateGuide';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewPresentationMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
 import { emitInviteTrigger, isStandalone } from '../../lib/pwa/installState';
@@ -2073,7 +2073,8 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       <div 
         className="sticky top-0 z-30 shadow-xs px-4 py-3 flex items-center justify-between border-b border-black/5 backdrop-blur-md"
         style={{
-          top: SAFE_TOP,
+          top: !previewMode && currentIdentity && isVisualUpdateSession(window.location.search) && runningIdentity === currentIdentity
+            ? `calc(${SAFE_TOP} + ${STORE_UPDATE_BAR_HEIGHT})` : SAFE_TOP,
           backgroundColor: 'var(--dc-bg-header-color, #ffffff)',
           backgroundImage: 'var(--dc-bg-header, none)',
         }}
