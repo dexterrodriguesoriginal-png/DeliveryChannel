@@ -60,7 +60,7 @@ export function StoreUpdateGuide({ slug, currentIdentity }: { slug: string; curr
           data-testid="store-update-guide-backdrop" onMouseDown={event => {
             if (event.target === event.currentTarget) setOpen(false);
           }}>
-          <div className="absolute inset-0 bg-black/60" aria-hidden="true" />
+          <div className="absolute inset-0 bg-black/60" aria-hidden="true" onMouseDown={() => setOpen(false)} />
           <section role="dialog" aria-modal="true" aria-label="Como atualizar o aplicativo"
             data-testid="store-update-guide"
             className="relative z-10 w-full max-w-md rounded-2xl p-5 shadow-xl space-y-4"
