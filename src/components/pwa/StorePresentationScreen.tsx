@@ -12,7 +12,7 @@ export interface StorePresentationScreenProps {
 /**
  * Apresentação imersiva: ocupa toda a viewport, sem cartões, marca da plataforma,
  * textos adicionais ou interferência no splash nativo.
- * Erro, autoplay bloqueado ou demora > 1,5s liberam imediatamente a vitrine.
+ * Autoplay com som bloqueado tenta novamente mudo; erro real ou demora > 1,5s liberam a vitrine.
  */
 export function StorePresentationScreen({ plan, storeName, reducedMotion = false, onDone }: StorePresentationScreenProps) {
   const [leaving, setLeaving] = useState(false);
