@@ -32,7 +32,7 @@ describe('guia opcional de atualização na loja', () => {
     expect(ui.getByText(/Criar atalho/)).toBeTruthy();
     expect(ui.getByText('Instalar', { selector: 'strong' })).toBeTruthy();
     const arrow = ui.getByTestId('store-update-arrow');
-    expect(arrow.className.baseVal || arrow.getAttribute('class')).toContain('motion-reduce:animate-none');
+    expect(arrow.getAttribute('class')).toContain('motion-reduce:animate-none');
     expect(ui.queryByTestId('store-update-native-install')).toBeNull();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(ui.queryByTestId('store-update-guide')).toBeNull();
