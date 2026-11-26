@@ -4,7 +4,6 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StoreUpdateGuide, STORE_UPDATE_BAR_HEIGHT, UPDATE_GUIDE_STEP_1_CHROME, UPDATE_GUIDE_STEP_1_TAB, UPDATE_GUIDE_STEP_2 } from '../StoreUpdateGuide';
 import { captureInstallEvents, clearDeferredPrompt } from '../../../lib/pwa/installState';
-import { SAFE_TOP } from '../../../lib/pwa/edgeToEdge';
 import { isVisualUpdateSession } from '../../../lib/pwa/installSession';
 
 beforeEach(() => {
@@ -34,7 +33,7 @@ describe('guia opcional de atualização na loja', () => {
     expect(bar.className).toContain('sticky');
     expect(bar.className).toContain('z-[45]');
     expect(bar.style.height).toBe(STORE_UPDATE_BAR_HEIGHT);
-    expect(bar.getAttribute('style')).toContain(SAFE_TOP);
+    expect(bar.getAttribute('style')).toContain('background-color: var(--dc-bg-card-color)');
     const button = ui.getByRole('button', { name: 'Atualizar' });
     expect(bar.contains(button)).toBe(true);
     expect(button.className).toContain('w-full');
