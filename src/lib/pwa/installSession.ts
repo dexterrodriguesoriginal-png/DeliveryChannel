@@ -17,6 +17,11 @@ export function isInstallSession(search: string): boolean {
   return paramsOf(search).get(INSTALL_PARAM) === '1';
 }
 
+/** Visita ao catálogo aberta a partir de um WebAPK antigo. */
+export function isVisualUpdateSession(search: string): boolean {
+  return paramsOf(search).get('atualizar') === '1';
+}
+
 export interface PendingInstall { at: number; identity: string }
 
 export function readPendingInstall(slug: string, storage?: Readable, now = Date.now()): PendingInstall | null {
