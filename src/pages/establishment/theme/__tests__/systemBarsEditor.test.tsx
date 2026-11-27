@@ -50,6 +50,16 @@ describe('editor: cores das barras do celular', () => {
     const hint = ui.getByTestId('installed-app-bars-hint');
     expect(hint.textContent).toContain('Baixar nova versão');
     expect(hint.textContent).toContain('continuam comprando normalmente');
+    expect(hint.textContent).toContain('24 a 72 horas');
+    expect(hint.textContent).toContain('sem garantia');
+    expect(hint.textContent).toContain('no fluxo versionado, pode ser necessário baixar a nova versão');
+    expect(ui.getByTestId('system-bars-card').textContent).toContain('Cardápio, preços, banners e promoções atualizam na hora após salvar');
+    const neutralTip = ui.getByTestId('neutral-nav-bars-tip');
+    expect(neutralTip.textContent).toContain('branco, preto ou cinza neutro');
+    expect(neutralTip.textContent).toContain('Black Friday');
+    expect(neutralTip.textContent).toContain('não muda em tempo real');
+    expect(ui.getByTestId('bar-nav-field').contains(neutralTip)).toBe(true);
+    expect(ui.getByTestId('bar-status-field').contains(neutralTip)).toBe(false);
     expect(ui.getByTestId('system-bars-card').textContent).not.toMatch(/até 1 dia|Chrome atualiza o app/);
     expect(ui.getByTestId('system-bars-card').textContent).toContain('fica gravada na instalação');
     expect(ui.getByTestId('bar-nav-field').contains(hint)).toBe(true);
