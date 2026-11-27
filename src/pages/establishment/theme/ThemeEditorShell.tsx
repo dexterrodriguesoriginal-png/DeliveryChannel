@@ -24,7 +24,7 @@ import { announceThemeSaved } from '../../../lib/theme/themeLiveUpdate';
 import { useBottomActionsOffset, useFloatingLeftOf } from '../../../lib/ui/bottomActionsOffset';
 import { LiveStorePreview } from '../../../components/establishment/theme/LiveStorePreview';
 import { ThemedProductItem } from '../../../components/storefront/ThemedProductList';
-import { BrandGuide, BarSwitches } from './BrandGuide';
+import { BarSwitches, BrandIdentityHelp } from './BrandGuide';
 import { templateTokens, useThemeDraft } from './useThemeDraft';
 import { logoConfirmedUrlToSave } from '../../../lib/pwa/logoConfirmation';
 import { appBaseLogoUrlToSave } from '../../../lib/pwa/appBaseLogo';
@@ -65,11 +65,9 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   const { modules, activeRole } = useModules();
   const presentationEnabled = Boolean(modules?.has('store_presentation')) && activeRole === 'OWNER';
   const draft = useThemeDraft(tenant.theme);
-  const controls = useThemeControls(draft.draftTokens, draft.updateTokens);
   const [barsEnabled, setBarsEnabled] = useState({ status: false, nav: false });
-  const [faqOpen, setFaqOpen] = useState(false);
+  const controls = useThemeControls(draft.draftTokens, draft.updateTokens, barsEnabled);
   useEffect(() => { setBarsEnabled({ status: false, nav: false }); }, [tenant.id, active]);
-  const identityChanged = (draft.draftTheme.logoUrl || '') !== (tenant.theme.logoUrl || '') || systemBarsFromTokens(draft.draftTokens).nav !== systemBarsFromTokens(themeToTokens(tenant.theme)).nav;
   const [galleryPreview, setGalleryPreview] = useState<StoreTemplate | null>(null);
   const [tab, setTab] = useState<Tab>('models');
   const [reviewedBars, setReviewedBars] = useState<string | null>(null);
@@ -268,9 +266,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
             Veja como sua loja vai aparecer para seus clientes.
           </p>
         </header>
-        <button type="button" className="theme-secondary" onClick={() => setFaqOpen(true)}>Guia de identidade e atualização</button>
-        {identityChanged && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">Clientes que já instalaram o app precisarão baixar a nova versão para ver o novo ícone ou barra de navegação. Eles continuam comprando normalmente. <button type="button" className="font-bold underline" onClick={() => setFaqOpen(true)}>Saiba mais</button></div>}
-        {faqOpen && <ThemeDialog title="Guia de identidade do app" onClose={() => setFaqOpen(false)}><BrandGuide /></ThemeDialog>}
+        <BrandIdentityHelp draftTheme={draft.draftTheme} savedTheme={tenant.theme} />
         <div className="theme-editor-body">
           <nav className="theme-desktop-nav" aria-label="Seções do editor">
             <p className="theme-nav-title">Design do App</p>
