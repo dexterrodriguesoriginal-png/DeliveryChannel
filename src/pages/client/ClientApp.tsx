@@ -53,6 +53,7 @@ import { InstallStoreAppHint } from '../../components/client/InstallStoreAppHint
 import { isLogoConfirmed } from '../../lib/pwa/logoConfirmation';
 import { StoreVisualUpdateNotice } from '../../components/client/StoreVisualUpdateNotice';
 import { getIconNoticeVisible, subscribeIconNotice } from '../../components/client/IconUpdateNotice';
+import { StoreVersionUpdatePrompt } from '../../components/pwa/StoreVersionUpdatePrompt';
 import { StoreUpdateGuide, STORE_UPDATE_BAR_HEIGHT } from '../../components/pwa/StoreUpdateGuide';
 import { subscribeThemeUpdates, shouldRefetchTheme, THEME_PING_MIN_MS, THEME_POLL_MS } from '../../lib/theme/themeLiveUpdate';
 import { isEmbeddedPreview, parsePreviewCardMessage, parsePreviewPresentationMessage, parsePreviewThemeMessage, PREVIEW_READY_MSG } from '../../lib/theme/previewBridge';
@@ -1137,6 +1138,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
       }
       return;
     }
+    if (standalone) return;
     versionedRedirectStarted.current = true;
     window.location.replace(destination);
   }, [previewMode, standalone, currentIdentity, slug, isLoadingStore, storeData, runningIdentity, reloadUnsafe]);
@@ -2142,6 +2144,14 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
           )}
         </div>
       </div>
+
+      {currentIdentity && standalone && !previewMode && (
+        <StoreVersionUpdatePrompt key={slug + ':' + currentIdentity}
+          slug={slug} currentIdentity={currentIdentity} runningIdentity={runningIdentity}
+          standalone={standalone} previewMode={previewMode} search={window.location.search}
+          reloadUnsafe={reloadUnsafe || Boolean(presentationRun) || pushPromptOpen}
+          navTab={navTab} />
+      )}
 
       {/* Visualização de Pedidos do Cliente */}
       {navTab === 'orders' ? (
