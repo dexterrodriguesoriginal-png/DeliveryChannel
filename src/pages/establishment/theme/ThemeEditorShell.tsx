@@ -29,6 +29,7 @@ import { logoConfirmedUrlToSave } from '../../../lib/pwa/logoConfirmation';
 import { appBaseLogoUrlToSave } from '../../../lib/pwa/appBaseLogo';
 import { appBaseNavColorToSave } from '../../../lib/pwa/appVersionMode';
 import { systemBarsFromTokens } from '../../../lib/pwa/systemBars';
+import { appTabBarColor } from '../../../lib/theme/appTabBar';
 import { invalidateStorePwaCache } from '../../../lib/pwa/invalidateStoreCache';
 import { useThemeControls } from './useThemeControls';
 import { ThemeEditorContext } from './ThemeEditorContext';
@@ -68,7 +69,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   const [tab, setTab] = useState<Tab>('models');
   const [reviewedBars, setReviewedBars] = useState<string | null>(null);
   const [viewedTheme, setViewedTheme] = useState<string | null>(null);
-  const barsKey = JSON.stringify({ bars: systemBarsFromTokens(draft.draftTokens), icons: draft.draftTokens.meta?.appTabBarColor });
+  const barsKey = JSON.stringify({ bars: systemBarsFromTokens(draft.draftTokens), icons: appTabBarColor(draft.draftTokens) });
   const previewKey = JSON.stringify(draft.draftTheme);
   const [products, setProducts] = useState<ThemedProductItem[]>([]);
   const [saving, setSaving] = useState(false);
