@@ -1,6 +1,7 @@
 import { appTabBarColor } from '../../../../lib/theme/appTabBar';
 
 export const INSTALLED_APP_BARS_HINT = 'Uma identidade consistente fortalece sua marca. Mudanças futuras de ícone ou da cor da barra de navegação geram o aviso “Baixar nova versão” para clientes antigos, que continuam comprando normalmente. Em instalações compatíveis, o ícone pode levar 24 a 72 horas para atualizar, sem garantia; no fluxo versionado, pode ser necessário baixar a nova versão.';
+import { BarSwitches } from '../BrandGuide';
 import { Smartphone } from 'lucide-react';
 import { ColorPicker } from '../../../../components/ui/ColorPicker';
 import { Card } from '../../../../components/ui/Card';
@@ -16,10 +17,11 @@ const FIELDS: { key: Which; label: string; hint: string; testId: string }[] = [
 
 /** Cores das barras do sistema do app instalado. Padrão: cor do cabeçalho do tema. */
 export function SystemBarsCard() {
-  const { draftTokens, updateSystemBars, updateAppTabBar } = useThemeEditorContext();
+  const { draftTokens, updateSystemBars, updateAppTabBar, barsEnabled = { status: false, nav: false }, setBarsEnabled } = useThemeEditorContext();
   const bars = systemBarsFromTokens(draftTokens);
   const custom = { ...draftTokens.meta?.systemBars, appTabBarColor: draftTokens.meta?.appTabBarColor };
-  const update = (key: Which, color: string | null) => key === 'appTabBarColor' ? updateAppTabBar(color) : updateSystemBars({ [key]: color });
+  const locked = (key: Which) => key === 'statusBarColor' ? !barsEnabled.status : key === 'navBarColor' ? !barsEnabled.nav : false;
+  const update = (key: Which, color: string | null) => locked(key) ? undefined : key === 'appTabBarColor' ? updateAppTabBar(color) : updateSystemBars({ [key]: color });
   const current: Record<Which, string> = { statusBarColor: bars.status, navBarColor: bars.nav, appTabBarColor: appTabBarColor(draftTokens) };
   return (
     <Card className="theme-tab-card p-5 space-y-5" data-testid="system-bars-card">
@@ -32,6 +34,7 @@ export function SystemBarsCard() {
           Combine as barras do Android com o visual da sua loja. Por padrão usam a cor do cabeçalho. A barra de status pode atualizar na hora; a cor da barra inferior fica gravada na instalação. Em versões recentes do Android, o sistema pode impor uma barra clara ou escura. Cardápio, preços, banners e promoções atualizam na hora após salvar.
         </p>
       </div>
+      <BarSwitches enabled={barsEnabled} onChange={value => setBarsEnabled?.(value)} />
       {FIELDS.map((f) => (
         <div key={f.key} className="space-y-2" data-testid={`${f.testId}-field`}>
           <div className="flex items-center justify-between gap-2">
@@ -42,7 +45,7 @@ export function SystemBarsCard() {
             <button
               type="button"
               data-testid={`${f.testId}-auto`}
-              disabled={!custom[f.key]}
+              disabled={locked(f.key) || !custom[f.key]}
               onClick={() => update(f.key, null)}
               className="theme-secondary text-[11px]"
             >
@@ -59,12 +62,14 @@ export function SystemBarsCard() {
             </p>
             </div>
           )}
+          <fieldset disabled={locked(f.key)} className={`min-w-0 space-y-2 border-0 p-0 ${locked(f.key) ? "opacity-50" : ""}`}>
           <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Atalhos de cor: ${f.label}`}>
             {BAR_PRESETS.map((p) => (
               <button
                 key={p.id}
                 type="button"
                 data-testid={`${f.testId}-preset-${p.id}`}
+                disabled={locked(f.key)}
                 aria-pressed={current[f.key] === p.color}
                 onClick={() => update(f.key, p.color)}
                 className={`flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-semibold ${
@@ -83,6 +88,7 @@ export function SystemBarsCard() {
             defaultColor={current[f.key]}
             testIdPrefix={`${f.testId}-picker`}
           />
+          </fieldset>
         </div>
       ))}
     </Card>
