@@ -38,6 +38,7 @@ import { IdentityTab } from './tabs/IdentityTab';
 import { PresentationScreenCard } from './tabs/PresentationScreenCard';
 import { useModules } from '../../../hooks/useModules';
 import { ColorsTab } from './tabs/ColorsTab';
+import { OwnerBrandChecklist } from './OwnerBrandChecklist';
 import { SystemBarsCard } from './tabs/SystemBarsCard';
 import { BackgroundsTab } from './tabs/BackgroundsTab';
 import { FontsTab } from './tabs/FontsTab';
@@ -65,6 +66,10 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   const controls = useThemeControls(draft.draftTokens, draft.updateTokens);
   const [galleryPreview, setGalleryPreview] = useState<StoreTemplate | null>(null);
   const [tab, setTab] = useState<Tab>('models');
+  const [reviewedBars, setReviewedBars] = useState<string | null>(null);
+  const [viewedTheme, setViewedTheme] = useState<string | null>(null);
+  const barsKey = JSON.stringify({ bars: systemBarsFromTokens(draft.draftTokens), icons: draft.draftTokens.meta?.appTabBarColor });
+  const previewKey = JSON.stringify(draft.draftTheme);
   const [products, setProducts] = useState<ThemedProductItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
@@ -162,7 +167,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
       showToast({
         type: 'success',
         title: 'Design salvo',
-        message: 'Sua loja já está com o novo visual. Conteúdo atualiza no próximo abrir; no Android/Chrome o ícone atualiza em ~1–3 dias após abrir o app, e no iOS só reinstalando.',
+        message: 'Sua loja já está com o novo visual. Mudanças de ícone ou da cor da barra inferior podem exigir uma nova instalação. Clientes antigos veem o aviso Baixar nova versão no Android e continuam comprando normalmente.',
       });
     } catch (error) {
       showToast({
@@ -275,6 +280,15 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
             aria-label="Conteúdo do editor"
           >
             <fieldset disabled={saving} className="min-w-0 border-0 p-0">
+              {activeRole === 'OWNER' && <OwnerBrandChecklist
+                draftTheme={draft.draftTheme}
+                savedTheme={tenant.theme}
+                barsReviewed={reviewedBars === barsKey}
+                previewViewed={viewedTheme === previewKey}
+                slug={tenant.slug}
+                storeName={tenant.name}
+                onNavigate={setTab}
+              />}
               <div hidden={tab !== 'models'}>
                 <TemplateGallery
                   active={tab === 'models'}
@@ -294,6 +308,9 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
                 <div className="space-y-4">
                   <ColorsTab />
                   <SystemBarsCard />
+                  {activeRole === 'OWNER' && <button type="button" className="theme-secondary" onClick={() => setReviewedBars(barsKey)}>
+                    {reviewedBars === barsKey ? 'Cores das barras revisadas' : 'Confirmar revisão das barras'}
+                  </button>}
                 </div>
               )}
               {tab === 'backgrounds' && <BackgroundsTab />}
@@ -330,6 +347,9 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
                     </p>
                   </div>
                   {preview}
+                  {activeRole === 'OWNER' && <button type="button" className="theme-secondary" onClick={() => setViewedTheme(previewKey)}>
+                    {viewedTheme === previewKey ? 'Prévia visualizada' : 'Confirmar visualização da prévia'}
+                  </button>}
                 </div>
               )}
             </fieldset>
