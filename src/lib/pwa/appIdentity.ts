@@ -82,8 +82,7 @@ export function identityStatus(o: {
 }
 
 /** Determina o redirect sem afetar checkout e sem mudar rotas de mesa/preview.
- * Navegador comum navega para o scope atual; WebAPK antigo abre uma sessão de
- * atualização no scope novo, sem pedir instalação nem bloquear a vitrine.
+ * Apenas navegador comum navega para o scope atual; standalone permanece no próprio escopo.
  */
 export function versionedStoreRedirect(input: {
   slug: string; currentIdentity: string | null; runningIdentity: string | null;
@@ -97,20 +96,8 @@ export function versionedStoreRedirect(input: {
       !o.storeLoaded || o.reloadUnsafe || o.alreadyRedirected) return null;
   const params = new URLSearchParams(o.search.replace(/^\?/, ''));
   if (params.has('mesa') || params.get('preview') === '1') return null;
-  if (o.standalone) {
-    if (o.runningIdentity === o.currentIdentity) return null;
-    const age = o.now === undefined ? Infinity : o.now - (o.justInstalled?.at ?? 0);
-    const fresh = !!o.justInstalled && age >= 0 && age < JUST_INSTALLED_TTL_MS;
-    if (o.runningIdentity && ((fresh && o.justInstalled?.identity === o.runningIdentity)
-      || (!o.justInstalled && o.newestLaunched === null))) return null;
-    // A sessão é transitória, nunca alteramos start_url nem a identidade instalada.
-    params.delete('instalar');
-    params.delete('reinstall');
-    params.set('atualizar', '1');
-  } else {
-    if (o.runningIdentity === o.currentIdentity) return null;
-    params.delete('atualizar');
-  }
+  if (o.standalone || o.runningIdentity === o.currentIdentity) return null;
+  params.delete('atualizar');
   const search = params.toString();
   return versionedStoreScope(o.slug, o.currentIdentity)
     + (search ? `?${search}` : '') + o.hash;
