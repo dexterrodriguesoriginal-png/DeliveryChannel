@@ -6,7 +6,7 @@ import { isDraftLogoConfirmed, logoChangedAfterConfirmation } from '../../../../
 const safeGet = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
 const safeSet = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
 /** Mesmo texto para todas as lojas (pedido do David, 19/11/2026). */
-export const LOGO_CHANGE_WARNING_TEXT = 'Sua nova logo já aparece dentro do app na hora e para todos os novos clientes. Clientes antigos verão um botão para atualizar o ícone da tela inicial.';
+export const LOGO_CHANGE_WARNING_TEXT = 'Após salvar, a nova logo aparece dentro do app. Clientes que já instalaram precisarão baixar a nova versão para ver o novo ícone e continuam comprando normalmente.';
 export const logoWarningKey = (tenantId: string, logoUrl: string) => `dc:logo-change-warning:${tenantId}:${logoUrl}`;
 
 /**
