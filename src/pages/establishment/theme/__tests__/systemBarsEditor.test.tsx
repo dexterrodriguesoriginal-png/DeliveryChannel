@@ -19,13 +19,14 @@ import { TEMPLATES } from '../../../../lib/theme/templates';
 afterEach(cleanup);
 function Harness() {
   const draft = useThemeDraft({ ...DEFAULT_DELIVERY_CHANNEL_THEME, storeName: 'Loja' } as any);
+  const [barsEnabled, setBarsEnabled] = React.useState({ status: false, nav: false });
   const controls = useThemeControls(draft.draftTokens, draft.updateTokens);
   return (
-    <ThemeEditorContext.Provider value={{ ...draft, ...controls, activeTenant: { id: 't', slug: 's' } as any }}>
+    <ThemeEditorContext.Provider value={{ ...draft, ...controls, barsEnabled, setBarsEnabled, activeTenant: { id: 't', slug: 's' } as any }}>
       <SystemBarsCard />
       <MobileNavigation type="customer" activeTab="home" onTabChange={() => {}} theme={draft.draftTheme} />
       <PhonePreview storeSlug="s" theme={draft.draftTheme} />
-      <button data-testid="apply" onClick={() => draft.applyTemplate(TEMPLATES[3])}>apply</button>
+      <button data-testid="apply" onClick={() => draft.applyTemplate(TEMPLATES[3], barsEnabled)}>apply</button>
       <output data-testid="saved">{JSON.stringify(draft.draftTokens.meta?.systemBars ?? null)}</output>
     </ThemeEditorContext.Provider>
   );
@@ -36,6 +37,7 @@ describe('editor: cores das barras do celular', () => {
     const ui = render(<Harness />);
     const tabs = ui.getByTestId('customer-bottom-nav');
     const before = tabs.style.backgroundColor;
+    fireEvent.click(ui.getByRole('switch', { name: 'Habilitar barra de navegação' }));
     fireEvent.click(ui.getByTestId('bar-nav-preset-preto'));
     expect(tabs.style.backgroundColor).toBe(before);
     fireEvent.click(ui.getByTestId('bar-icons-preset-dourado'));
@@ -68,6 +70,8 @@ describe('editor: cores das barras do celular', () => {
   });
   it('atalho dourado muda a barra de status na prévia antes de salvar; nav é independente', () => {
     const ui = render(<Harness />);
+    fireEvent.click(ui.getByRole('switch', { name: 'Habilitar barra de status' }));
+    fireEvent.click(ui.getByRole('switch', { name: 'Habilitar barra de navegação' }));
     fireEvent.click(ui.getByTestId('bar-status-preset-dourado'));
     expect((ui.getByTestId('phone-status-bar') as HTMLElement).style.backgroundColor).toBe('#d4a017');
     fireEvent.click(ui.getByTestId('bar-nav-preset-preto'));
@@ -76,23 +80,37 @@ describe('editor: cores das barras do celular', () => {
   });
   it('"Usar cor do cabeçalho" volta ao padrão e não deixa lixo no tema salvo', () => {
     const ui = render(<Harness />);
+    fireEvent.click(ui.getByRole('switch', { name: 'Habilitar barra de status' }));
+    fireEvent.click(ui.getByRole('switch', { name: 'Habilitar barra de navegação' }));
     fireEvent.click(ui.getByTestId('bar-status-preset-dourado'));
     fireEvent.click(ui.getByTestId('bar-status-auto'));
     expect(ui.getByTestId('saved').textContent).toBe('null');
   });
-  it('"Usar este tema" aplica as barras de status, navegação e ícones do tema, substituindo as escolhas manuais', () => {
+  it('"Usar este tema" aplica as barras habilitadas e ícones do tema', () => {
     const ui = render(<Harness />);
+    fireEvent.click(ui.getByRole('switch', { name: 'Habilitar barra de status' }));
+    fireEvent.click(ui.getByRole('switch', { name: 'Habilitar barra de navegação' }));
     fireEvent.click(ui.getByTestId('bar-status-preset-dourado'));
     fireEvent.click(ui.getByTestId('bar-nav-preset-preto'));
     fireEvent.click(ui.getByTestId('bar-icons-preset-vermelho'));
     fireEvent.click(ui.getByTestId('apply'));
     const template = TEMPLATES[3];
     const expected = systemBarsFromTokens(template.tokens as any);
-    expect(ui.getByTestId('saved').textContent).toBe(JSON.stringify(template.tokens.meta?.systemBars ?? null));
+    expect(JSON.parse(ui.getByTestId('saved').textContent!)).toEqual({ statusBarColor: expected.status, navBarColor: expected.nav });
     expect((ui.getByTestId('phone-status-bar') as HTMLElement).style.backgroundColor).toBe(expected.status);
     expect((ui.getByTestId('phone-nav-bar') as HTMLElement).style.backgroundColor).toBe(expected.nav);
     expect(ui.getByTestId('customer-bottom-nav').style.backgroundColor).toBe(appTabBarColor(themeToTokens(themeFromTemplate(template))));
     expect(ui.getByTestId('customer-bottom-nav').style.backgroundColor).not.toBe('#b91c1c');
+  });
+  it('inicia protegido e mantém as barras na prévia ao aplicar modelo', () => {
+    const ui = render(<Harness />);
+    const status = ui.getByTestId('phone-status-bar').style.backgroundColor;
+    const nav = ui.getByTestId('phone-nav-bar').style.backgroundColor;
+    expect((ui.getByRole('switch', { name: 'Habilitar barra de status' }) as HTMLInputElement).checked).toBe(false);
+    expect((ui.getByTestId('bar-nav-preset-preto') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(ui.getByTestId('apply'));
+    expect(ui.getByTestId('phone-status-bar').style.backgroundColor).toBe(status);
+    expect(ui.getByTestId('phone-nav-bar').style.backgroundColor).toBe(nav);
   });
   it('meta theme-color e color-scheme são atualizados em tempo de execução', () => {
     applySystemBarMeta('#d4a017', 'dark');
