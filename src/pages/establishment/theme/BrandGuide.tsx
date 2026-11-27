@@ -1,3 +1,8 @@
+import { useState } from 'react';
+import type { TenantTheme } from '../../../types';
+import { themeToTokens } from '../../../lib/theme/themeEngine';
+import { systemBarsFromTokens } from '../../../lib/pwa/systemBars';
+import { ThemeDialog } from './ThemeDialog';
 import { Lock, Unlock, Smartphone, Palette, Eye, QrCode, RefreshCw, Image } from 'lucide-react';
 import type { BarLocks } from './useThemeDraft';
 
@@ -27,4 +32,14 @@ export function BrandGuide() {
       <p className="text-xs leading-relaxed text-slate-600">{description}</p>
     </article>)}
   </div>;
+}
+
+export function BrandIdentityHelp({ draftTheme, savedTheme }: { draftTheme: TenantTheme; savedTheme: TenantTheme }) {
+  const [faqOpen, setFaqOpen] = useState(false);
+  const identityChanged = (draftTheme.logoUrl || '') !== (savedTheme.logoUrl || '') || systemBarsFromTokens(themeToTokens(draftTheme)).nav !== systemBarsFromTokens(themeToTokens(savedTheme)).nav;
+  return <>
+    <button type="button" className="theme-secondary" onClick={() => setFaqOpen(true)}>Guia de identidade e atualização</button>
+    {identityChanged && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">Clientes que já instalaram o app precisarão baixar a nova versão para ver o novo ícone ou barra de navegação. Eles continuam comprando normalmente. <button type="button" className="font-bold underline" onClick={() => setFaqOpen(true)}>Saiba mais</button></div>}
+    {faqOpen && <ThemeDialog title="Guia de identidade do app" onClose={() => setFaqOpen(false)}><BrandGuide /></ThemeDialog>}
+  </>;
 }
