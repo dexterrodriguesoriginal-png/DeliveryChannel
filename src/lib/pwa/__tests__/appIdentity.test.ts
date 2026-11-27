@@ -45,16 +45,16 @@ describe('appIdentity', () => {
     expect(chromeIntentUrl(u, { android: false })).toBe(u);
     expect(chromeIntentUrl('http://x.com/', { android: true })).toBe('http://x.com/');
   });
-  it('WebAPK antigo abre Custom Tab na vitrine oficial com atualizar=1, sem instalação', () => {
+  it('WebAPK antigo nunca sai do próprio escopo automaticamente', () => {
     const original = {
       slug: 'loja', currentIdentity: 'bbbbbbbbbb', runningIdentity: 'aaaaaaaaaa',
       standalone: true, previewMode: false, search: '?origem=qr', hash: '#produtos',
       isLoadingStore: false, storeLoaded: true, reloadUnsafe: false,
       alreadyRedirected: false,
     };
-    expect(versionedStoreRedirect(original)).toBe('/app/loja~bbbbbbbbbb/?origem=qr&atualizar=1#produtos');
+    expect(versionedStoreRedirect(original)).toBeNull();
     expect(versionedStoreRedirect({ ...original, runningIdentity: null }))
-      .toBe('/app/loja~bbbbbbbbbb/?origem=qr&atualizar=1#produtos');
+      .toBeNull();
     expect(versionedStoreRedirect({ ...original, reloadUnsafe: true })).toBeNull();
     expect(versionedStoreRedirect({ ...original, alreadyRedirected: true })).toBeNull();
     expect(versionedStoreRedirect({ ...original, isLoadingStore: true })).toBeNull();
@@ -65,7 +65,7 @@ describe('appIdentity', () => {
     expect(versionedStoreRedirect({ ...original, search: '?mesa=abc' })).toBeNull();
     expect(versionedStoreRedirect({ ...original, search: '?preview=1' })).toBeNull();
     expect(versionedStoreRedirect({ ...original, search: '?instalar=1&origem=qr' }))
-      .toBe('/app/loja~bbbbbbbbbb/?origem=qr&atualizar=1#produtos');
+      .toBeNull();
     expect(versionedStoreRedirect({ ...original, search: '?atualizar=1', runningIdentity: 'bbbbbbbbbb' }))
       .toBeNull();
   });
@@ -83,7 +83,7 @@ describe('appIdentity', () => {
     expect(versionedStoreRedirect({ ...browser, search: '?mesa=mesa1' })).toBeNull();
   });
 
-  it('protege instalação recente, inclusive reinstalação, mas não ícone antigo após TTL', () => {
+  it('standalone nunca redireciona, inclusive após TTL', () => {
     const data = new Map<string, string>();
     const storage = {
       getItem: (key: string) => data.get(key) ?? null,
@@ -102,13 +102,12 @@ describe('appIdentity', () => {
       isLoadingStore: false, storeLoaded: true, reloadUnsafe: false, alreadyRedirected: false,
       justInstalled, now: now + 1, newestLaunched: storage.getItem(newestLaunchedKey('loja')),
     };
-    const update = '/app/loja~bbbbbbbbbb/?source=pwa&atualizar=1';
     expect(versionedStoreRedirect(launch)).toBeNull();
-    expect(versionedStoreRedirect({ ...launch, now: now + JUST_INSTALLED_TTL_MS })).toBe(update);
-    expect(versionedStoreRedirect({ ...launch, runningIdentity: null })).toBe(update);
-    expect(versionedStoreRedirect({ ...launch, runningIdentity: 'cccccccccc' })).toBe(update);
+    expect(versionedStoreRedirect({ ...launch, now: now + JUST_INSTALLED_TTL_MS })).toBeNull();
+    expect(versionedStoreRedirect({ ...launch, runningIdentity: null })).toBeNull();
+    expect(versionedStoreRedirect({ ...launch, runningIdentity: 'cccccccccc' })).toBeNull();
     expect(versionedStoreRedirect({ ...launch, justInstalled: null, newestLaunched: null })).toBeNull();
-    expect(versionedStoreRedirect({ ...launch, justInstalled: null, newestLaunched: 'aaaaaaaaaa' })).toBe(update);
+    expect(versionedStoreRedirect({ ...launch, justInstalled: null, newestLaunched: 'aaaaaaaaaa' })).toBeNull();
   });
 
   it('manifesto da própria loja', () => {

@@ -19,7 +19,7 @@ export function likelyCustomTab(ua: string): boolean {
 
 /** O guia é sempre opcional: o catálogo e o checkout seguem disponíveis. */
 export function StoreUpdateGuide({ slug, currentIdentity }: { slug: string; currentIdentity: string }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => typeof window !== 'undefined' && isVisualUpdateSession(window.location.search));
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const deferred = useSyncExternalStore(subscribeInstall, getDeferredPrompt, () => null);
