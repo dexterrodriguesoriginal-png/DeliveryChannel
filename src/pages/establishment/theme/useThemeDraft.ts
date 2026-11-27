@@ -3,6 +3,17 @@ import { TenantTheme } from '../../../types';
 import { StoreTemplate, ThemeTokens } from '../../../types/theme';
 import { themeToTokens, tokensToTheme } from '../../../lib/theme/themeEngine';
 
+import { systemBarsFromTokens } from '../../../lib/pwa/systemBars';
+
+export type BarLocks = { status: boolean; nav: boolean };
+export function templateTokens(template: StoreTemplate, previous: ThemeTokens, enabled: BarLocks = { status: false, nav: false }): ThemeTokens {
+  const next = copy(template.tokens);
+  const old = systemBarsFromTokens(previous);
+  const incoming = systemBarsFromTokens(next);
+  return { ...next, meta: { ...next.meta, templateId: template.id, appTabBarColor: next.meta?.appTabBarColor ?? null,
+    systemBars: { ...next.meta?.systemBars, statusBarColor: enabled.status ? incoming.status : old.status, navBarColor: enabled.nav ? incoming.nav : old.nav } } };
+}
+
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const equal = (a: TenantTheme, b: TenantTheme) => JSON.stringify(a) === JSON.stringify(b);
 interface DraftState {
@@ -67,16 +78,8 @@ export function useThemeDraft(savedTheme: TenantTheme) {
     [setDraftTheme]
   );
   const applyTemplate = useCallback(
-    (template: StoreTemplate) => {
-      // "Usar este tema" aplica o tema inteiro, igual a "Ver na minha loja": barra de status, barra de navegação
-      // do Android e barra de ícones passam a seguir o modelo (escolhas manuais anteriores são substituídas;
-      // a loja pode personalizá-las de novo depois em Cores).
-      updateTokens(() => {
-        const meta = { ...copy(template.tokens.meta || {}), templateId: template.id };
-        if (!meta.systemBars) delete meta.systemBars;
-        if (meta.appTabBarColor === undefined) meta.appTabBarColor = null;
-        return { ...copy(template.tokens), meta };
-      });
+    (template: StoreTemplate, enabled?: BarLocks) => {
+      updateTokens(previous => templateTokens(template, previous, enabled));
     },
     [updateTokens]
   );

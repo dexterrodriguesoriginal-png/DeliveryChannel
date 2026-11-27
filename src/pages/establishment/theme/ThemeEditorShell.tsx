@@ -24,11 +24,13 @@ import { announceThemeSaved } from '../../../lib/theme/themeLiveUpdate';
 import { useBottomActionsOffset, useFloatingLeftOf } from '../../../lib/ui/bottomActionsOffset';
 import { LiveStorePreview } from '../../../components/establishment/theme/LiveStorePreview';
 import { ThemedProductItem } from '../../../components/storefront/ThemedProductList';
-import { useThemeDraft } from './useThemeDraft';
+import { BarSwitches, BrandIdentityHelp } from './BrandGuide';
+import { templateTokens, useThemeDraft } from './useThemeDraft';
 import { logoConfirmedUrlToSave } from '../../../lib/pwa/logoConfirmation';
 import { appBaseLogoUrlToSave } from '../../../lib/pwa/appBaseLogo';
 import { appBaseNavColorToSave } from '../../../lib/pwa/appVersionMode';
 import { systemBarsFromTokens } from '../../../lib/pwa/systemBars';
+import { appTabBarColor } from '../../../lib/theme/appTabBar';
 import { invalidateStorePwaCache } from '../../../lib/pwa/invalidateStoreCache';
 import { useThemeControls } from './useThemeControls';
 import { ThemeEditorContext } from './ThemeEditorContext';
@@ -38,6 +40,7 @@ import { IdentityTab } from './tabs/IdentityTab';
 import { PresentationScreenCard } from './tabs/PresentationScreenCard';
 import { useModules } from '../../../hooks/useModules';
 import { ColorsTab } from './tabs/ColorsTab';
+import { OwnerBrandChecklist } from './OwnerBrandChecklist';
 import { SystemBarsCard } from './tabs/SystemBarsCard';
 import { BackgroundsTab } from './tabs/BackgroundsTab';
 import { FontsTab } from './tabs/FontsTab';
@@ -62,9 +65,15 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   const { modules, activeRole } = useModules();
   const presentationEnabled = Boolean(modules?.has('store_presentation')) && activeRole === 'OWNER';
   const draft = useThemeDraft(tenant.theme);
-  const controls = useThemeControls(draft.draftTokens, draft.updateTokens);
+  const [barsEnabled, setBarsEnabled] = useState({ status: false, nav: false });
+  const controls = useThemeControls(draft.draftTokens, draft.updateTokens, barsEnabled);
+  useEffect(() => { setBarsEnabled({ status: false, nav: false }); }, [tenant.id, active]);
   const [galleryPreview, setGalleryPreview] = useState<StoreTemplate | null>(null);
   const [tab, setTab] = useState<Tab>('models');
+  const [reviewedBars, setReviewedBars] = useState<string | null>(null);
+  const [viewedTheme, setViewedTheme] = useState<string | null>(null);
+  const barsKey = JSON.stringify({ bars: systemBarsFromTokens(draft.draftTokens), icons: appTabBarColor(draft.draftTokens) });
+  const previewKey = JSON.stringify(draft.draftTheme);
   const [products, setProducts] = useState<ThemedProductItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
@@ -93,7 +102,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   }, [tab]);
   useUnsavedChanges(draft.isDirty);
   const apply = (template: StoreTemplate) => {
-    draft.applyTemplate(template);
+    draft.applyTemplate(template, barsEnabled);
     setGalleryPreview(null);
     setTab('identity');
     showToast({
@@ -162,7 +171,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
       showToast({
         type: 'success',
         title: 'Design salvo',
-        message: 'Sua loja já está com o novo visual. Conteúdo atualiza no próximo abrir; no Android/Chrome o ícone atualiza em ~1–3 dias após abrir o app, e no iOS só reinstalando.',
+        message: 'Sua loja já está com o novo visual. Mudanças de ícone ou da cor da barra inferior podem exigir uma nova instalação. Clientes antigos veem o aviso Baixar nova versão no Android e continuam comprando normalmente.',
       });
     } catch (error) {
       showToast({
@@ -235,7 +244,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   const previewFor = (fill: boolean) => (
     <LiveStorePreview
       fill={fill}
-      theme={tab === 'models' && galleryPreview ? tokensToTheme(galleryPreview.tokens, draft.draftTheme) : draft.draftTheme}
+      theme={tab === 'models' && galleryPreview ? tokensToTheme(templateTokens(galleryPreview, draft.draftTokens, barsEnabled), draft.draftTheme) : draft.draftTheme}
       storeSlug={tenant.slug}
       products={products}
       segmentId={resolveSegment(tenant.category)}
@@ -244,7 +253,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
   );
   const preview = previewFor(false);
   return (
-    <ThemeEditorContext.Provider value={{ ...draft, ...controls, activeTenant: tenant, openBackgrounds: surface => { controls.setActiveBgTarget(surface); setTab('backgrounds'); } }}>
+    <ThemeEditorContext.Provider value={{ ...draft, ...controls, activeTenant: tenant, barsEnabled, setBarsEnabled, openBackgrounds: surface => { controls.setActiveBgTarget(surface); setTab('backgrounds'); } }}>
       <div className="theme-editor" data-testid="theme-editor">
         <header className="theme-editor-header">
           <div className="flex items-center gap-2">
@@ -257,6 +266,7 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
             Veja como sua loja vai aparecer para seus clientes.
           </p>
         </header>
+        <BrandIdentityHelp draftTheme={draft.draftTheme} savedTheme={tenant.theme} />
         <div className="theme-editor-body">
           <nav className="theme-desktop-nav" aria-label="Seções do editor">
             <p className="theme-nav-title">Design do App</p>
@@ -275,8 +285,19 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
             aria-label="Conteúdo do editor"
           >
             <fieldset disabled={saving} className="min-w-0 border-0 p-0">
+              {activeRole === 'OWNER' && <OwnerBrandChecklist
+                draftTheme={draft.draftTheme}
+                savedTheme={tenant.theme}
+                barsReviewed={reviewedBars === barsKey}
+                previewViewed={viewedTheme === previewKey}
+                slug={tenant.slug}
+                storeName={tenant.name}
+                onNavigate={setTab}
+              />}
               <div hidden={tab !== 'models'}>
+                <BarSwitches enabled={barsEnabled} onChange={setBarsEnabled} />
                 <TemplateGallery
+                  renderPreview={template => <LiveStorePreview theme={tokensToTheme(templateTokens(template, draft.draftTokens, barsEnabled), draft.draftTheme)} storeSlug={tenant.slug} products={products} segmentId={resolveSegment(tenant.category)} isOpen={tenant.settings?.isOpen} />}
                   active={tab === 'models'}
                   tenantId={tenant.id}
                   storeSlug={tenant.slug}
@@ -294,6 +315,9 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
                 <div className="space-y-4">
                   <ColorsTab />
                   <SystemBarsCard />
+                  {activeRole === 'OWNER' && <button type="button" className="theme-secondary" onClick={() => setReviewedBars(barsKey)}>
+                    {reviewedBars === barsKey ? 'Cores das barras revisadas' : 'Confirmar revisão das barras'}
+                  </button>}
                 </div>
               )}
               {tab === 'backgrounds' && <BackgroundsTab />}
@@ -330,6 +354,9 @@ export function ThemeEditorShell({ tenant, active = true }: { tenant: Tenant; ac
                     </p>
                   </div>
                   {preview}
+                  {activeRole === 'OWNER' && <button type="button" className="theme-secondary" onClick={() => setViewedTheme(previewKey)}>
+                    {viewedTheme === previewKey ? 'Prévia visualizada' : 'Confirmar visualização da prévia'}
+                  </button>}
                 </div>
               )}
             </fieldset>

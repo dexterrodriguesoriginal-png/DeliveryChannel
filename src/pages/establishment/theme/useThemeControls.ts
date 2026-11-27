@@ -1,10 +1,26 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ThemePalette, ThemeTokens, BackgroundStyleConfig } from '../../../types/theme';
 import { normalizeHexColor, validateHexColor } from '../../../lib/theme/themeEngine';
+import { systemBarsFromTokens } from '../../../lib/pwa/systemBars';
+import type { BarLocks } from './useThemeDraft';
+
+function protectHeaderBars(previous: ThemeTokens, next: ThemeTokens, enabled: BarLocks): ThemeTokens {
+  if (previous.palette.bgHeader === next.palette.bgHeader) return next;
+  const before = systemBarsFromTokens(previous);
+  const after = systemBarsFromTokens(next);
+  const patch = {
+    ...(!enabled.status && before.status !== after.status ? { statusBarColor: before.status } : {}),
+    ...(!enabled.nav && before.nav !== after.nav ? { navBarColor: before.nav } : {}),
+  };
+  if (!Object.keys(patch).length) return next;
+  return { ...next, meta: { ...next.meta, systemBars: { ...next.meta?.systemBars, ...patch } } };
+}
+
 type PaletteTarget = keyof ThemePalette;
 export function useThemeControls(
   draftTokens: ThemeTokens,
-  updateTokens: (fn: (tokens: ThemeTokens) => ThemeTokens) => void
+  updateTokens: (fn: (tokens: ThemeTokens) => ThemeTokens) => void,
+  barsEnabled: BarLocks = { status: false, nav: false }
 ) {
   const [activeColorTarget, setActiveColorTarget] = useState<PaletteTarget>('primary');
   const [hexInputError, setHexInputError] = useState<string | null>(null);
@@ -144,11 +160,11 @@ export function useThemeControls(
         nextBackgrounds.card = { ...nextBackgrounds.card, color: normalized };
       }
 
-      return {
+      return protectHeaderBars(prev, {
         ...prev,
         palette: nextPalette,
         backgrounds: nextBackgrounds,
-      };
+      }, barsEnabled);
     });
   };
 
@@ -192,17 +208,17 @@ export function useThemeControls(
           if (surface === 'header') nextPalette.bgHeader = norm;
           if (surface === 'card') nextPalette.bgCard = norm;
         }
-        return {
+        return protectHeaderBars(prev, {
           ...prev,
           palette: nextPalette,
           backgrounds: {
             ...prev.backgrounds,
             [surface]: updatedBg,
           },
-        };
+        }, barsEnabled);
       });
     },
-    [updateTokens]
+    [updateTokens, barsEnabled.status, barsEnabled.nav]
   );
 
   // Listeners globais para arraste interativo de enquadramento da imagem de fundo

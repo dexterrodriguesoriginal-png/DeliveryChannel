@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { systemBarsFromTokens } from '../../../../lib/pwa/systemBars';
 import { useThemeDraft } from '../useThemeDraft';
 import { TEMPLATES } from '../../../../lib/theme/templates';
 import { DEFAULT_DELIVERY_CHANNEL_THEME } from '../../../../lib/theme/themeEngine';
@@ -25,6 +26,17 @@ describe('rascunho do tema', () => {
     act(() => result.current.undo());
     expect(result.current.draftTheme).toEqual(legacy);
     expect(result.current.isDirty).toBe(false);
+  });
+  it.each([{status: false, nav: false}, {status: true, nav: false}, {status: false, nav: true}])('respeita proteção independente %j', enabled => {
+    const { result } = renderHook(() => useThemeDraft(legacy));
+    const old = systemBarsFromTokens(result.current.draftTokens);
+    const template = TEMPLATES[12];
+    const incoming = systemBarsFromTokens(template.tokens);
+    act(() => result.current.applyTemplate(template, enabled));
+    const bars = systemBarsFromTokens(result.current.draftTokens);
+    expect(bars.status).toBe(enabled.status ? incoming.status : old.status);
+    expect(bars.nav).toBe(enabled.nav ? incoming.nav : old.nav);
+    expect(result.current.draftTokens.palette).toEqual(template.tokens.palette);
   });
   it('personalizar não modifica o catálogo; cancelar restaura o salvo', () => {
     const before = JSON.stringify(TEMPLATES[0]);
