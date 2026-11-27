@@ -8,23 +8,25 @@ A versão antiga e a nova podem coexistir sem apagar o WebAPK antigo. Os manifes
 
 ## Jornada CG-5 — app instalado desatualizado
 
-Ao abrir o **app antigo em standalone**, depois de o catálogo e a identidade oficial carregarem, a vitrine navega com `window.location.replace` para:
+O **app antigo permanece standalone**, no próprio escopo, sem redirecionamento automático mesmo após mudança de logo ou barra. A vitrine continua disponível para compras.
+
+Quando a identidade oficial difere da instalada (inclusive no app estável legado), a home exibe um aviso compacto no topo: **Nova versão da loja disponível** e **Baixar nova versão**. Não aparece durante instalação recente (TTL de `readJustInstalled`), prévia, mesa, sessões de instalação/atualização, checkout, modais, formulários ou outras abas. Fechar no X adia o aviso por 240.000 ms (4 minutos), persistidos por loja e identidade oficial no localStorage. Ao vencer o prazo, o aviso retorna quando a home estiver livre.
+
+**Somente o clique** em Baixar nova versão navega para:
 
 ```text
 /app/<slug>~<hashAtual>/?atualizar=1
 ```
 
-O destino está **fora do escopo** anterior porque os escopos de loja terminam em `/`. No WebAPK Android isso normalmente abre uma **Chrome Custom Tab**. A Custom Tab mostra **a loja completa**, incluindo categorias, produtos, sacola, autenticação e checkout. Não mostra uma tela bloqueante nem obriga instalar para fazer um pedido.
+O destino fora do escopo pode abrir uma Chrome Custom Tab no Android, com o catálogo completo e guia de atualização. Não é obrigatório instalar para comprar.
 
-Só ocorre quando há identidade nova, a versão instalada não é a atual e o cliente está em standalone. O redirecionamento é idempotente e espera `reloadUnsafe` ficar falso, evitando interromper checkout, envio de pedidos ou formulários abertos. O helper puro `versionedStoreRedirect` recusa `?mesa=`, `?preview=1`, modo de prévia e contextos de navegação já atualizados. Preserva parâmetros inofensivos e fragmento, substitui somente os parâmetros de sessão e acrescenta `atualizar=1`.
-
-**QR Codes e links públicos** continuam apontando para `/app/<slug>/`. O navegador comum que chega à rota estável continua indo para a versão atual, **sem** `atualizar=1`; o app já instalado na identidade atual não redireciona.
+**QR Codes e links públicos** continuam apontando para `/app/<slug>/`. O servidor preserva o 302 no-store na primeira visita elegível do navegador, antes do manifesto; `?source=pwa` permanece 200. O navegador comum em hash antigo continua indo ao oficial sem `atualizar=1`. O helper `versionedStoreRedirect` sempre retorna null em standalone.
 
 Na sessão `?atualizar=1`:
 - O catálogo funciona normalmente, sem `AppIdentityUpdate` nem `VersionInstallScreen` como destino.
 - O toast de atualização SW e o aviso visual interno não aparecem; o cliente não recebe outro banner de versão antiga.
 - O sinal `localStorage[dc:app-identity:<slug>]` **não** é escrito, mesmo se a Custom Tab herdar `display-mode: standalone`. A identidade nova é registrada apenas quando o WebAPK oficial é aberto de verdade, em standalone, sem `?instalar=1` nem `?atualizar=1`.
-- Um botão discreto **Atualizar**, no topo e abaixo da camada dos modais, abre **opcionalmente** o guia. Fechar volta ao cardápio sem perder a compra.
+- O guia **Como atualizar** abre automaticamente; a faixa discreta **Atualizar** permite reabri-lo. Fechar volta ao cardápio sem perder a compra.
 
 ## Guia pelo menu ⋮
 
@@ -35,7 +37,7 @@ O guia mostra uma seta CSS animada apontando para o canto superior direito, sem 
 
 **Vão aparecer duas opções: Instalar ou Criar atalho. Toque em Instalar.** Quando existe um `beforeinstallprompt` capturado, o guia também oferece **Instalar** diretamente; na Custom Tab esse evento geralmente não está disponível, e o caminho pelo menu ⋮ é o principal. O modal fecha por X/Fechar, Escape ou toque no fundo.
 
-Não usamos `intent://`, `googlechrome://`, `window.open`, `?instalar=1` nem `?reinstall=1` no **redirecionamento automático CG-5**. Os componentes/experimentos do antigo fluxo podem continuar no código para compatibilidade, mas não são montados para essa jornada.
+Não usamos `intent://`, `googlechrome://`, `window.open`, `?instalar=1` nem `?reinstall=1` no **clique de atualização CG-5**. Os componentes/experimentos do antigo fluxo podem continuar no código para compatibilidade, mas não são montados para essa jornada.
 
 ## Apresentação personalizada da loja
 
@@ -50,4 +52,4 @@ A abertura do lojista continua opcional, protegida pelo módulo `store_presentat
 
 O roteamento permanece exclusivo do `ClientApp` de `/app/<slug>/` sem `?mesa=`. Totem, garçom, KDS, cardápio de mesa, PDV e entregador têm fluxos próprios. O `tenantId` de pedidos e pagamentos nunca é substituído pelo hash visual.
 
-**Validar obrigatoriamente em Android físico:** abertura do WebAPK antigo com mudança real de logo/barra; Custom Tab no catálogo completo; compra possível sem atualização; guia ⋮ → Abrir no Chrome → Instalar (não Criar atalho); app recém-instalado funcionando sem aviso; duas versões coexistindo; vídeo com áudio quando permitido e fallback mudo quando bloqueado. O navegador pode não permitir áudio no autoplay: não é possível garantir som sem uma interação do usuário.
+**Validar obrigatoriamente em Android físico:** abertura do WebAPK antigo sem sair do standalone após mudança real de logo/barra; aviso recorrente após quatro minutos; Custom Tab no catálogo completo somente após clique; compra possível sem atualização; guia ⋮ → Abrir no Chrome → Instalar (não Criar atalho); app recém-instalado funcionando sem aviso; duas versões coexistindo; vídeo com áudio quando permitido e fallback mudo quando bloqueado. O navegador pode não permitir áudio no autoplay: não é possível garantir som sem uma interação do usuário.
