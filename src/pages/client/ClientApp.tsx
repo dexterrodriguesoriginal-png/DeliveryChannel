@@ -2149,7 +2149,7 @@ export const ClientApp: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => 
         <StoreVersionUpdatePrompt key={slug + ':' + currentIdentity}
           slug={slug} currentIdentity={currentIdentity} runningIdentity={runningIdentity}
           standalone={standalone} previewMode={previewMode} search={window.location.search}
-          reloadUnsafe={reloadUnsafe || Boolean(presentationRun) || pushPromptOpen}
+          reloadUnsafe={reloadUnsafe || Boolean(presentationRun) || pushPromptOpen || Boolean(upsell.offer)}
           navTab={navTab} />
       )}
 
