@@ -48,7 +48,10 @@ describe('editor: cores das barras do celular', () => {
   it('mostra o aviso do app instalado junto da cor da barra de navegação (sem dizer que a barra de ícones segue)', () => {
     const ui = render(<Harness />);
     const hint = ui.getByTestId('installed-app-bars-hint');
-    expect(hint.textContent).toBe('No app instalado no Android, a barra de navegação e a tela de abertura atualizam quando o Chrome atualiza o app ou ao reinstalar; seus clientes verão um aviso.');
+    expect(hint.textContent).toContain('Baixar nova versão');
+    expect(hint.textContent).toContain('continuam comprando normalmente');
+    expect(ui.getByTestId('system-bars-card').textContent).not.toMatch(/até 1 dia|Chrome atualiza o app/);
+    expect(ui.getByTestId('system-bars-card').textContent).toContain('fica gravada na instalação');
     expect(ui.getByTestId('bar-nav-field').contains(hint)).toBe(true);
     expect(ui.getByTestId('bar-icons-auto').textContent).toBe('Usar cor do cabeçalho');
     expect(ui.getByTestId('system-bars-card').textContent).not.toMatch(/segue a cor da barra de navegação/);
