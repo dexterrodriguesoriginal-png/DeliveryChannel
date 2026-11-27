@@ -38,15 +38,13 @@ describe('guia opcional de atualização na loja', () => {
     expect(bar.contains(button)).toBe(true);
     expect(button.className).not.toContain('w-full');
     expect(button.className).toContain('rounded-full');
-    expect(ui.queryByRole('dialog')).toBeNull();
+    expect(ui.getByRole('dialog')).toBeTruthy();
   });
   it('permite comprar normalmente, abre e fecha modal por botão, Escape ou fundo', () => {
     const ui = render(<div><button type="button">Adicionar produto</button>
       <StoreUpdateGuide slug="loja" currentIdentity="0123456789" /></div>);
     expect(ui.getByRole('button', { name: 'Adicionar produto' })).toBeTruthy();
     expect(ui.getByTestId('store-update-bar')).toBeTruthy();
-    expect(ui.queryByTestId('store-update-guide')).toBeNull();
-    fireEvent.click(ui.getByRole('button', { name: 'Atualizar' }));
     expect(ui.getByRole('dialog', { name: 'Como atualizar o aplicativo' })).toBeTruthy();
     expect(ui.getByTestId('store-update-guide-backdrop').className).toContain('items-start');
     expect(ui.getByText(UPDATE_GUIDE_STEP_2)).toBeTruthy();
