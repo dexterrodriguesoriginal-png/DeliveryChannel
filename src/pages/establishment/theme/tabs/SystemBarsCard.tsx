@@ -1,6 +1,6 @@
 import { appTabBarColor } from '../../../../lib/theme/appTabBar';
 
-export const INSTALLED_APP_BARS_HINT = 'No app instalado no Android, a barra de navegação e a tela de abertura atualizam quando o Chrome atualiza o app ou ao reinstalar; seus clientes verão um aviso.';
+export const INSTALLED_APP_BARS_HINT = 'Uma identidade consistente fortalece sua marca. Mudanças futuras de ícone ou da cor da barra de navegação geram o aviso “Baixar nova versão” para clientes antigos, que continuam comprando normalmente.';
 import { Smartphone } from 'lucide-react';
 import { ColorPicker } from '../../../../components/ui/ColorPicker';
 import { Card } from '../../../../components/ui/Card';
@@ -29,10 +29,7 @@ export function SystemBarsCard() {
           Barras do celular
         </h3>
         <p className="text-xs text-gray-500">
-          Combine as barras do Android com o visual da sua loja. Por padrão usam a cor do cabeçalho. No Chrome as
-          cores mudam na hora. No app instalado na tela inicial, a barra de status muda na hora, mas o Android só
-          troca a cor da barra de navegação quando o Chrome atualiza o app (em até 1 dia, depois de fechar e abrir
-          o app) ou ao remover e instalar o app de novo.
+          Combine as barras do Android com o visual da sua loja. Por padrão usam a cor do cabeçalho. A barra de status pode atualizar na hora; a cor da barra inferior fica gravada na instalação. Em versões recentes do Android, o sistema pode impor uma barra clara ou escura.
         </p>
       </div>
       {FIELDS.map((f) => (
@@ -53,7 +50,7 @@ export function SystemBarsCard() {
             </button>
           </div>
           {f.key === 'navBarColor' && (
-            <p data-testid="installed-app-bars-hint" className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+            <p data-testid="installed-app-bars-hint" className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5">
               {INSTALLED_APP_BARS_HINT}
             </p>
           )}
